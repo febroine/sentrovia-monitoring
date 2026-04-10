@@ -40,7 +40,7 @@ services:
       DISABLE_EMBEDDED_WORKER_SPAWN: "true"
     ports:
       - "3000:3000"
-    command: sh -c "npm run db:push && npm run start"
+    command: npm run docker:web
     healthcheck:
       test:
         [
@@ -74,7 +74,7 @@ services:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       WORKER_AUTO_START: "true"
-    command: npm run worker:start
+    command: npm run docker:worker
 
 volumes:
   pgdata:

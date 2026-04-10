@@ -15,6 +15,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "docker:web": "node scripts/bootstrap-runtime.mjs web",
+    "docker:worker": "node scripts/bootstrap-runtime.mjs worker",
     "worker:dev": "tsx watch src/worker/runner.ts",
     "worker:start": "tsx src/worker/runner.ts",
     "lint": "eslint",
