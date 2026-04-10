@@ -1,29 +1,251 @@
 # Sentrovia
 
-Sentrovia is a worker-driven monitoring platform built for self-hosted teams that want durable operational state, verification-aware incident confirmation, and readable delivery history in one console.
+> A verification-aware monitoring platform for teams that want cleaner alerts, durable runtime state, and a control plane that stays readable under real operational load.
+
+<p align="left">
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" />
+  <img alt="React" src="https://img.shields.io/badge/React-19-0f172a?style=flat-square&logo=react" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-First-2563eb?style=flat-square&logo=typescript&logoColor=white" />
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-0f172a?style=flat-square&logo=postgresql" />
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-0891b2?style=flat-square&logo=docker" />
+  <img alt="Worker Runtime" src="https://img.shields.io/badge/Worker-DB%20Backed-059669?style=flat-square" />
+</p>
+
+## What Sentrovia is
+
+Sentrovia is built for self-hosted teams that want more than a simple "ping and alert" tool.
 
 It combines:
 
-- a Next.js web console
-- a separate worker runtime
-- PostgreSQL as the source of truth
-- workspace defaults, company rollups, monitor timelines, and delivery history
+- a **Next.js web console** for configuration, operations, logs, delivery testing, and user workflows
+- a **dedicated worker runtime** for actual monitor execution
+- **PostgreSQL** as the source of truth for configuration and runtime state
+- a **verification mode** that reduces noisy first-failure alerting
+- **company-aware visibility** for grouped monitors and operational ownership
+- **delivery history** so teams can see what the system actually tried to send
 
-## What Sentrovia Monitors
+## Why teams would pick Sentrovia
+
+### ✅ Verification-aware incident handling
+
+Sentrovia does not immediately treat the first failure as a real outage.  
+The worker can move a monitor into **verification mode**, re-check at one-minute intervals, and only confirm the incident after the configured threshold is reached.
+
+### ✅ Durable, database-first state
+
+Checks, incidents, monitor history, worker heartbeat, companies, settings, templates, and delivery attempts are stored in PostgreSQL so every page reads the same persisted truth.
+
+### ✅ Internal control plane feel
+
+This project is designed more like an operations console than a toy dashboard:
+
+- dashboard summaries
+- monitor timelines
+- event logs
+- delivery history
+- company rollups
+- members and settings
+- worker health visibility
+
+### ✅ Multiple monitor types
 
 Sentrovia currently supports:
 
-- `HTTP / HTTPS` monitors
-- `TCP / Port` monitors
-- `PostgreSQL` monitors
+- `HTTP / HTTPS`
+- `TCP / Port`
+- `PostgreSQL`
 
-Each monitor type flows through the same verification, RCA, event logging, and notification pipeline.
+All monitor types use the same core pipeline for verification, RCA, event creation, and delivery.
+
+## Product Screens
+
+### Dashboard + Monitoring
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/screenshots/dashboard.png" alt="Sentrovia dashboard" />
+    </td>
+    <td width="50%">
+      <img src="./docs/screenshots/monitoring.png" alt="Sentrovia monitoring view" />
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <sub>Live operational summaries, worker visibility, and recent event context.</sub>
+    </td>
+    <td>
+      <sub>Monitor inventory with verification state, bulk actions, history strips, and company assignment.</sub>
+    </td>
+  </tr>
+</table>
+
+### Delivery + Documentation
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/screenshots/delivery.png" alt="Sentrovia delivery operations" />
+    </td>
+    <td width="50%">
+      <img src="./docs/screenshots/help.png" alt="Sentrovia help page" />
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <sub>Delivery testing, history inspection, retry workflows, and outbound channel visibility.</sub>
+    </td>
+    <td>
+      <sub>In-product operational documentation that explains how the runtime behaves in production.</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="./docs/screenshots/about.png" alt="Sentrovia about page" />
+</p>
+
+<p align="center">
+  <sub>About Sentrovia explains the architecture, runtime model, update awareness, and the actual execution path from browser input to persisted result.</sub>
+</p>
+
+## Core Capabilities
+
+### 🔎 Monitoring engine
+
+- HTTP/HTTPS monitor execution
+- TCP/port reachability checks
+- PostgreSQL connectivity checks
+- per-monitor timeout, retries, method, redirects, SSL behavior, and response settings
+- verification mode for delayed incident confirmation
+- check history with timeline surfaces
+
+### 🧠 Root cause analysis
+
+Sentrovia classifies failures into targeted RCA buckets such as:
+
+- DNS resolution failures
+- timeout failures
+- connection refused
+- SSL/TLS issues
+- HTTP 4xx
+- HTTP 5xx
+- redirect anomalies
+- generic network failures
+
+### 🔔 Delivery and notification routing
+
+- SMTP email delivery
+- Telegram delivery
+- Slack webhook delivery
+- Discord webhook delivery
+- generic webhook delivery
+- delivery history and retry visibility
+- workspace-level templates and recipient defaults
+- maintenance-window-aware suppression
+
+### 🧰 Operations and governance
+
+- companies and grouped monitor ownership
+- members directory
+- settings with defaults and templates
+- event logs with filters
+- worker heartbeat and health status
+- GitHub-based update awareness
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Operator uses Web Console"] --> B["Validated Route Handlers"]
+    B --> C["PostgreSQL stores monitor + settings state"]
+    C --> D["Worker polls due monitors"]
+    D --> E["HTTP / TCP / PostgreSQL checks"]
+    E --> F{"Failure?"}
+    F -- "No" --> G["Persist UP result + history"]
+    F -- "Yes" --> H["Enter verification mode"]
+    H --> I{"Threshold reached?"}
+    I -- "No" --> J["Schedule 1-minute confirmation check"]
+    I -- "Yes" --> K["Persist incident + RCA + events"]
+    K --> L["Render templates + route delivery"]
+    G --> M["Dashboard / Logs / Timelines / Reports"]
+    J --> D
+    L --> M
+```
+
+## Runtime model
+
+### Web console
+
+The web layer is the control plane. It is responsible for:
+
+- creating and updating monitors
+- reading dashboards and logs
+- editing settings, templates, members, and companies
+- rendering live operational views
+- exposing authenticated APIs for the worker and the UI
+
+### Worker
+
+The worker is the execution engine. It is responsible for:
+
+- selecting due monitors
+- building checks from saved monitor settings
+- applying batch size and concurrency rules
+- running verification mode
+- writing history, status, and event records
+- sending notifications through enabled channels
+- writing heartbeat and worker state back to the database
+
+### Database
+
+PostgreSQL is not just storage; it is the operational backbone. It persists:
+
+- users
+- companies
+- monitors
+- monitor checks
+- monitor events
+- delivery events
+- worker state
+- settings and templates
+- maintenance windows
+
+## Verification mode
+
+One of the most important behaviors in Sentrovia is the verification flow:
+
+1. A monitor fails once.
+2. The worker does **not** immediately open a real incident.
+3. The monitor enters **verification mode**.
+4. Follow-up checks run at one-minute intervals.
+5. If the failure repeats until the threshold is reached, the incident is confirmed.
+6. If the monitor comes back up before the threshold is reached, the verification state is cleared and the monitor returns to its normal schedule.
+
+This is a major difference from many lighter monitoring tools that alert on the first transient failure.
+
+## GitHub update awareness
+
+Sentrovia can detect that a newer version exists in a GitHub repository.
+
+It compares:
+
+- the local `package.json` version
+- the remote `package.json` version from `APP_UPDATE_REPO`
+
+This lets the UI surface a **new version available** banner in supported runtimes.
+
+Important note:
+
+- update detection works well in git-based checkouts
+- Docker deployments can still detect new versions
+- automatic apply usually still requires a host-level rebuild or restart flow
 
 ## Quick Start
 
-### Full Docker Setup
+### 🚀 Full Docker setup
 
-Run the full stack with one command:
+Run the full stack:
 
 ```bash
 docker compose up --build
@@ -33,13 +255,15 @@ This starts:
 
 - `db` for PostgreSQL
 - `web` for the Next.js application
-- `worker` for background monitoring checks
+- `worker` for background monitoring execution
 
-Open [http://localhost:3000](http://localhost:3000).
+Open:
 
-### Local Development Setup
+- [http://localhost:3000](http://localhost:3000)
 
-If you want to run the app locally while keeping PostgreSQL in Docker:
+### 🧪 Local development
+
+If you want PostgreSQL in Docker but run the app locally:
 
 1. Start the database:
 
@@ -59,7 +283,7 @@ npm run db:push
 npm run dev
 ```
 
-4. Start the worker in a second terminal:
+4. Start the worker in another terminal:
 
 ```bash
 npm run worker:dev
@@ -67,7 +291,7 @@ npm run worker:dev
 
 ## Environment
 
-Use `.env.local` for local development and start from `.env.example`.
+Start from `.env.example` and create `.env.local`.
 
 Typical local values:
 
@@ -85,18 +309,7 @@ APP_UPDATE_BRANCH=main
 ENABLE_IN_PLACE_UPDATES=true
 ```
 
-For Docker Compose, the services already inject the correct internal database host and worker flags.
-
-## Update Awareness
-
-Sentrovia can detect when a newer version has been pushed to its GitHub repository.
-
-The in-app update banner works by comparing:
-
-- the local `package.json` version
-- the remote `package.json` version from `APP_UPDATE_REPO`
-
-Automatic in-place update only works when the app runs from a writable git checkout with git installed. Docker deployments still detect updates, but usually need a rebuild or restart on the host.
+For Docker Compose, the services already inject the internal database host and worker flags they need.
 
 ## Scripts
 
@@ -109,16 +322,60 @@ Automatic in-place update only works when the app runs from a writable git check
 - `npm run db:generate` generates Drizzle migrations
 - `npm run db:push` pushes the current schema to PostgreSQL
 
-## Architecture Notes
+## Tech stack
 
-- The web console is the control plane for monitors, companies, members, settings, delivery, logs, and reports.
-- The worker is the execution engine for due-monitor selection, checking, verification mode, RCA, and delivery decisions.
-- PostgreSQL stores monitor configuration, worker heartbeat, checks, events, company relationships, settings, and delivery outcomes.
-- Verification mode prevents a single transient failure from instantly creating a real incident.
-- Maintenance windows suppress outbound alerts without deleting operational visibility.
+- **Next.js 16** for the app shell, pages, and route handlers
+- **React 19** for client-side interfaces
+- **TypeScript** across web, worker, and services
+- **Drizzle ORM** for schema and queries
+- **PostgreSQL** for durable state
+- **Zod** for validation
+- **Zustand** for focused UI state
+- **Nodemailer** for SMTP delivery
+- **Docker Compose** for self-hosted orchestration
+- **Playwright** for browser-level automation and screenshot tooling
 
-## Open Source Notes
+## Why GitHub shows mostly TypeScript
 
-- Do not commit `.env.local`
-- Do not commit real secrets or database dumps
-- The recommended onboarding path for contributors is the Docker workflow because it avoids local environment drift
+If the GitHub **Languages** panel looks almost entirely TypeScript, that is expected.
+
+GitHub Linguist works primarily from **tracked byte size**, not from how many file types exist conceptually.
+
+This repository currently contains a lot of:
+
+- `.ts`
+- `.tsx`
+
+and much less of:
+
+- `.css`
+- `.svg`
+- `.md`
+- `.yml`
+
+There are also SQL migrations, but they are relatively small compared to the application source. So the repo appears overwhelmingly TypeScript-heavy even though multiple technologies are in use.
+
+## Security and open source notes
+
+- do **not** commit `.env.local`
+- do **not** commit real secrets or database dumps
+- do **not** hardcode SMTP credentials or production tokens
+- prefer the Docker workflow for contributor onboarding
+- use real version bumps in `package.json` if you want update awareness to behave predictably
+
+## Project status
+
+Sentrovia is already strong as an internal monitoring and operations console, but it is still evolving.
+
+Natural next steps for the platform include:
+
+- additional monitor types like DNS, keyword, JSON assertion, and push monitors
+- public status pages
+- escalation policies
+- multi-region checks
+- incident ownership workflows
+
+---
+
+If you build on top of this project, keep the README aligned with the real system.  
+Sentrovia is most useful when the documentation explains how the platform actually behaves, not just what the screens look like.
