@@ -249,7 +249,7 @@ export const en = {
     monitoringActive: "Monitoring Active",
     monitoringStopped: "Monitoring Stopped",
     cores: "4 cores · Node.js",
-  runningStatus: "Sentrovia v1.0.0 · Running",
+  runningStatus: "Sentrovia v0.1.1 · Running",
     latencyTitle: "Hourly Response Time (Latency, p50 - p99)",
     uptimeTitle: "System Uptime (%)",
     recentEvents: "Recent Events",
@@ -485,4 +485,5 @@ export const en = {
 };
 
 export type AppTranslations = typeof en;
+
 
