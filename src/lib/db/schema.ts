@@ -47,6 +47,7 @@ export const userSettings = pgTable(
     notifyOnLatency: boolean("notify_on_latency").default(true).notNull(),
     notifyOnSslExpiry: boolean("notify_on_ssl_expiry").default(true).notNull(),
     notifyOnStatusChange: boolean("notify_on_status_change").default(false).notNull(),
+    alertDedupMinutes: integer("alert_dedup_minutes").default(15).notNull(),
     smtpHost: varchar("smtp_host", { length: 255 }),
     smtpPort: integer("smtp_port").default(587).notNull(),
     smtpUsername: varchar("smtp_username", { length: 255 }),
@@ -88,6 +89,7 @@ export const userSettings = pgTable(
     autoBackupEnabled: boolean("auto_backup_enabled").default(true).notNull(),
     backupWindow: varchar("backup_window", { length: 32 }).default("03:00").notNull(),
     eventRetentionDays: integer("event_retention_days").default(30).notNull(),
+    lastBackupAt: timestamp("last_backup_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -149,6 +151,11 @@ export const monitors = pgTable("monitors", {
   method: varchar("method", { length: 10 }).default("GET").notNull(),
   databaseSsl: boolean("database_ssl").default(true).notNull(),
   databasePasswordEncrypted: text("database_password_encrypted"),
+  keywordQuery: text("keyword_query"),
+  keywordInvert: boolean("keyword_invert").default(false).notNull(),
+  jsonPath: varchar("json_path", { length: 255 }),
+  jsonExpectedValue: text("json_expected_value"),
+  jsonMatchMode: varchar("json_match_mode", { length: 16 }).default("equals").notNull(),
   tags: text("tags")
     .array()
     .notNull()
@@ -205,6 +212,28 @@ export const monitorChecks = pgTable("monitor_checks", {
   statusCode: integer("status_code"),
   latencyMs: integer("latency_ms"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const monitorIncidents = pgTable("monitor_incidents", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  monitorId: text("monitor_id")
+    .notNull()
+    .references(() => monitors.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  status: varchar("status", { length: 16 }).default("open").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  statusCode: integer("status_code"),
+  errorMessage: text("error_message"),
+  notes: text("notes").default("").notNull(),
+  postmortem: text("postmortem").default("").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const logFilterPresets = pgTable("log_filter_presets", {

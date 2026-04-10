@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, FileSpreadsheet, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileCode2, FileSpreadsheet, Plus, Search, Tags, Trash2 } from "lucide-react";
+import { MonitorConfigDialog } from "@/components/monitoring/monitor-config-dialog";
 import { MonitorForm } from "@/components/monitoring/monitor-form";
 import { MonitorHistoryDialog } from "@/components/monitoring/monitor-history-dialog";
 import { MonitorImportDialog } from "@/components/monitoring/monitor-import-dialog";
 import { MonitorStats } from "@/components/monitoring/monitor-stats";
 import { MonitorTable } from "@/components/monitoring/monitor-table";
+import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
 import { payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -48,8 +50,10 @@ export default function MonitoringPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const [editingMonitor, setEditingMonitor] = useState<MonitorRecord | null>(null);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [tagPatchOpen, setTagPatchOpen] = useState(false);
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
   const [defaultForm, setDefaultForm] = useState(DEFAULT_MONITOR_FORM);
@@ -210,6 +214,10 @@ export default function MonitoringPage() {
             <FileSpreadsheet className="mr-2 size-4" />
             Import CSV
           </Button>
+          <Button variant="outline" onClick={() => setConfigOpen(true)}>
+            <FileCode2 className="mr-2 size-4" />
+            Monitoring as code
+          </Button>
           <Button variant="outline" onClick={() => void refreshMonitoring()} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </Button>
@@ -286,6 +294,10 @@ export default function MonitoringPage() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
               Bulk Edit
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)}>
+              <Tags className="mr-1 size-3.5" />
+              Tags
             </Button>
             <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
               Clear
@@ -442,6 +454,27 @@ export default function MonitoringPage() {
           importMonitors(imported);
           clearError();
           void refreshMonitoring();
+        }}
+      />
+      <MonitorConfigDialog
+        open={configOpen}
+        onOpenChange={setConfigOpen}
+        onImported={() => {
+          clearError();
+          void refreshMonitoring();
+        }}
+      />
+      <MonitorTagsDialog
+        open={tagPatchOpen}
+        onOpenChange={setTagPatchOpen}
+        selectedCount={selectedIds.size}
+        onApply={async ({ action, tags }) => {
+          await fetch("/api/monitors/tags", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: Array.from(selectedIds), action, tags }),
+          });
+          await refreshMonitoring();
         }}
       />
     </div>

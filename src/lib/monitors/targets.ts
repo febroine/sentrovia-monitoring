@@ -13,6 +13,8 @@ type TargetShape = Pick<
   | "databasePort"
   | "databaseName"
   | "databaseUsername"
+  | "keywordQuery"
+  | "jsonPath"
 >;
 
 export function buildCanonicalMonitorTarget(input: TargetShape) {
@@ -27,6 +29,14 @@ export function buildCanonicalMonitorTarget(input: TargetShape) {
       input.databaseName,
       input.databaseUsername
     );
+  }
+
+  if (input.monitorType === "keyword") {
+    return `${input.url.trim()}#keyword=${encodeURIComponent(input.keywordQuery.trim())}`;
+  }
+
+  if (input.monitorType === "json") {
+    return `${input.url.trim()}#json=${encodeURIComponent(input.jsonPath.trim())}`;
   }
 
   return input.url.trim();
@@ -47,6 +57,10 @@ export function getMonitorTargetDisplay(input: { monitorType: string; url: strin
     return `${target.host}:${target.port}/${target.databaseName}`;
   }
 
+  if (input.monitorType === "keyword" || input.monitorType === "json") {
+    return input.url.split("#")[0];
+  }
+
   return input.url;
 }
 
@@ -57,6 +71,14 @@ export function getMonitorTypeLabel(type: MonitorType | string) {
 
   if (type === "postgres") {
     return "PostgreSQL";
+  }
+
+  if (type === "keyword") {
+    return "Keyword";
+  }
+
+  if (type === "json") {
+    return "JSON Assertion";
   }
 
   return "HTTP";
@@ -101,11 +123,14 @@ export function parsePostgresMonitorTarget(url: string) {
 export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
   const portTarget = record.monitorType === "port" ? parsePortMonitorTarget(record.url) : null;
   const databaseTarget = record.monitorType === "postgres" ? parsePostgresMonitorTarget(record.url) : null;
+  const baseUrl = record.monitorType === "http" || record.monitorType === "keyword" || record.monitorType === "json"
+    ? record.url.split("#")[0]
+    : "";
 
   return {
     name: record.name,
     monitorType: record.monitorType,
-    url: record.monitorType === "http" ? record.url : "",
+    url: baseUrl,
     portHost: portTarget?.host ?? "",
     portNumber: portTarget?.port ?? DEFAULT_PORT_MONITOR_PORT,
     databaseHost: databaseTarget?.host ?? "",
@@ -115,6 +140,11 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     databasePassword: "",
     databasePasswordConfigured: record.databasePasswordConfigured,
     databaseSsl: record.databaseSsl,
+    keywordQuery: record.keywordQuery ?? "",
+    keywordInvert: record.keywordInvert,
+    jsonPath: record.jsonPath ?? "",
+    jsonExpectedValue: record.jsonExpectedValue ?? "",
+    jsonMatchMode: record.jsonMatchMode,
     companyId: record.companyId ?? "",
     company: record.company ?? "",
     notificationPref: record.notificationPref,

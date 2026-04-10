@@ -11,7 +11,6 @@ type AuthSessionRecord = {
   firstName: string;
   lastName: string;
   email: string;
-  department: string | null;
   createdAt: Date;
 };
 
@@ -36,7 +35,6 @@ const sessionColumns = {
   firstName: users.firstName,
   lastName: users.lastName,
   email: users.email,
-  department: users.department,
   createdAt: users.createdAt,
 };
 
@@ -56,7 +54,7 @@ function toSessionUser(user: AuthSessionRecord): SessionUser {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
-    department: user.department ?? null,
+    department: null,
   };
 }
 
@@ -71,10 +69,12 @@ function toPublicUser(user: AuthSessionRecord): PublicUser {
 }
 
 export async function registerUser(input: RegisterInput) {
-  const existingUser = await db.query.users.findFirst({
-    where: eq(users.email, input.email),
-    columns: { id: true },
-  });
+  const existingUser = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1)
+    .then((rows) => rows[0]);
 
   if (existingUser) {
     throw new AuthError("An account with this email already exists.", 409);
@@ -88,7 +88,6 @@ export async function registerUser(input: RegisterInput) {
       firstName: input.firstName,
       lastName: input.lastName,
       email: input.email,
-      department: input.department,
       passwordHash,
     })
     .returning(sessionColumns);
