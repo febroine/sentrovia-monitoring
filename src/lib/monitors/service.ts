@@ -1,0 +1,506 @@
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { getCompanyById } from "@/lib/companies/service";
+import { db } from "@/lib/db";
+import { monitorChecks, monitorEvents, monitors, userSettings, workerState } from "@/lib/db/schema";
+import type { MonitorInput } from "@/lib/monitors/schemas";
+import { buildCanonicalMonitorTarget, buildMonitorIdentityKey } from "@/lib/monitors/targets";
+import { encryptValue } from "@/lib/security/encryption";
+import { DEFAULT_SETTINGS } from "@/lib/settings/types";
+
+const WORKER_STATE_ID = "primary";
+
+export async function listMonitors(userId: string) {
+  return db
+    .select()
+    .from(monitors)
+    .where(eq(monitors.userId, userId))
+    .orderBy(desc(monitors.createdAt));
+}
+
+export async function createMonitor(userId: string, input: MonitorInput) {
+  const values = await buildMonitorValues(userId, input, null);
+  const [monitor] = await db
+    .insert(monitors)
+    .values(values)
+    .returning();
+
+  return monitor;
+}
+
+export async function updateMonitor(userId: string, monitorId: string, input: MonitorInput) {
+  const existingMonitor = await getMonitorById(userId, monitorId);
+  if (!existingMonitor) {
+    return null;
+  }
+
+  const values = await buildMonitorValues(userId, input, existingMonitor);
+  const [monitor] = await db
+    .update(monitors)
+    .set({
+      ...values,
+      userId,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
+    .returning();
+
+  return monitor;
+}
+
+export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {
+  const updated = await Promise.all(ids.map((monitorId) => updateMonitor(userId, monitorId, input)));
+  return updated.filter((monitor): monitor is NonNullable<typeof monitor> => Boolean(monitor));
+}
+
+export async function deleteMonitors(userId: string, ids: string[]) {
+  return db
+    .delete(monitors)
+    .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)))
+    .returning({ id: monitors.id });
+}
+
+export async function createManyMonitors(userId: string, inputs: MonitorInput[]) {
+  const existing = await db
+    .select({ monitorType: monitors.monitorType, url: monitors.url })
+    .from(monitors)
+    .where(eq(monitors.userId, userId));
+
+  const existingTargets = new Set(
+    existing.map((item) =>
+      buildMonitorIdentityKey({
+        monitorType: normalizeMonitorType(item.monitorType),
+        url: item.url,
+      })
+    )
+  );
+  const seenTargets = new Set(existingTargets);
+  const filtered = inputs.filter((input) => {
+    const url = buildCanonicalMonitorTarget(input);
+    const key = buildMonitorIdentityKey({ monitorType: input.monitorType, url });
+    if (seenTargets.has(key)) {
+      return false;
+    }
+
+    seenTargets.add(key);
+    return true;
+  });
+  const values = await Promise.all(filtered.map((input) => buildMonitorValues(userId, input, null)));
+
+  if (values.length === 0) {
+    return [];
+  }
+
+  return db.insert(monitors).values(values).returning();
+}
+
+export async function listDueMonitors(now: Date) {
+  const dueRows = await db
+    .select()
+    .from(monitors)
+    .where(and(eq(monitors.isActive, true), or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt))))
+    .orderBy(asc(monitors.nextCheckAt), asc(monitors.createdAt));
+
+  if (dueRows.length === 0) {
+    return [];
+  }
+
+  const userIds = Array.from(new Set(dueRows.map((monitor) => monitor.userId)));
+  const settingsRows = await db
+    .select({ userId: userSettings.userId, batchSize: userSettings.monitoringBatchSize })
+    .from(userSettings)
+    .where(inArray(userSettings.userId, userIds));
+
+  const batchSizeMap = new Map(
+    settingsRows.map((item) => [item.userId, item.batchSize ?? DEFAULT_SETTINGS.monitoring.batchSize])
+  );
+  const counters = new Map<string, number>();
+
+  return dueRows.filter((monitor) => {
+    const batchSize = Math.max(1, batchSizeMap.get(monitor.userId) ?? DEFAULT_SETTINGS.monitoring.batchSize);
+    const current = counters.get(monitor.userId) ?? 0;
+
+    if (current >= batchSize) {
+      return false;
+    }
+
+    counters.set(monitor.userId, current + 1);
+    return true;
+  });
+}
+
+export async function recordMonitorResult(
+  monitorId: string,
+  update: {
+    status: string;
+    statusCode: number | null;
+    uptime: string;
+    lastCheckedAt: Date;
+    nextCheckAt: Date;
+    lastSuccessAt?: Date | null;
+    lastFailureAt?: Date | null;
+    sslExpiresAt?: Date | null;
+    lastErrorMessage?: string | null;
+    consecutiveFailures: number;
+    verificationMode: boolean;
+    verificationFailureCount: number;
+    latencyMs?: number | null;
+  }
+) {
+  const [monitor] = await db
+    .update(monitors)
+    .set({
+      ...update,
+      updatedAt: new Date(),
+    })
+    .where(eq(monitors.id, monitorId))
+    .returning();
+
+  return monitor;
+}
+
+export async function appendMonitorEvent(input: {
+  monitorId: string;
+  userId: string;
+  eventType: string;
+  status?: string | null;
+  statusCode?: number | null;
+  latencyMs?: number | null;
+  message?: string | null;
+  rcaType?: string | null;
+  rcaTitle?: string | null;
+  rcaSummary?: string | null;
+}) {
+  await db.insert(monitorEvents).values({
+    monitorId: input.monitorId,
+    userId: input.userId,
+    eventType: input.eventType,
+    status: input.status ?? null,
+    statusCode: input.statusCode ?? null,
+    latencyMs: input.latencyMs ?? null,
+    message: input.message ?? null,
+    rcaType: input.rcaType ?? null,
+    rcaTitle: input.rcaTitle ?? null,
+    rcaSummary: input.rcaSummary ?? null,
+  });
+}
+
+export async function appendMonitorCheck(input: {
+  monitorId: string;
+  userId: string;
+  status: "up" | "down";
+  statusCode?: number | null;
+  latencyMs?: number | null;
+  createdAt: Date;
+}) {
+  await db.insert(monitorChecks).values({
+    monitorId: input.monitorId,
+    userId: input.userId,
+    status: input.status,
+    statusCode: input.statusCode ?? null,
+    latencyMs: input.latencyMs ?? null,
+    createdAt: input.createdAt,
+  });
+}
+
+export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 12) {
+  const rows = await db
+    .select()
+    .from(monitorChecks)
+    .where(eq(monitorChecks.userId, userId))
+    .orderBy(desc(monitorChecks.createdAt))
+    .limit(Math.max(limitPerMonitor, 1) * 500);
+
+  const grouped = new Map<string, typeof rows>();
+
+  for (const row of rows) {
+    const current = grouped.get(row.monitorId) ?? [];
+    if (current.length >= limitPerMonitor) {
+      continue;
+    }
+
+    current.push(row);
+    grouped.set(row.monitorId, current);
+  }
+
+  return Object.fromEntries(
+    Array.from(grouped.entries()).map(([monitorId, checks]) => [monitorId, checks.reverse()])
+  );
+}
+
+export async function getCompanySlaReport(userId: string, companyId: string) {
+  const company = await getCompanyById(userId, companyId);
+  if (!company) {
+    return null;
+  }
+
+  const companyMonitors = await db
+    .select({
+      id: monitors.id,
+      status: monitors.status,
+    })
+    .from(monitors)
+    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+
+  const monitorIds = companyMonitors.map((monitor) => monitor.id);
+  const windows = [
+    { label: "24h SLA", since: new Date(Date.now() - 1000 * 60 * 60 * 24) },
+    { label: "7d SLA", since: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7) },
+  ];
+
+  const checks =
+    monitorIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(monitorChecks)
+          .where(and(eq(monitorChecks.userId, userId), inArray(monitorChecks.monitorId, monitorIds)))
+          .orderBy(desc(monitorChecks.createdAt))
+          .limit(4000);
+
+  const periods = windows.map((window) => summarizeChecks(window.label, checks, window.since));
+  const recentChecks = checks.filter((check) => check.statusCode !== null).slice(0, 500);
+  const averageLatencyMs = averageValue(recentChecks.map((check) => check.latencyMs).filter(isNumber));
+  const statusCodes = buildStatusCodeSummary(recentChecks);
+
+  return {
+    companyId: company.id,
+    companyName: company.name,
+    monitorCount: companyMonitors.length,
+    activeCount: companyMonitors.filter((monitor) => monitor.status === "up").length,
+    averageLatencyMs,
+    periods,
+    statusCodes,
+  };
+}
+
+export async function getCompanyMonthlyUptimeReport(userId: string, companyId: string) {
+  const company = await getCompanyById(userId, companyId);
+  if (!company) {
+    return null;
+  }
+
+  const companyMonitors = await db
+    .select({ id: monitors.id })
+    .from(monitors)
+    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+  const monitorIds = companyMonitors.map((monitor) => monitor.id);
+
+  if (monitorIds.length === 0) {
+    return {
+      companyId: company.id,
+      companyName: company.name,
+      months: [],
+    };
+  }
+
+  const since = new Date();
+  since.setMonth(since.getMonth() - 5);
+  since.setDate(1);
+  since.setHours(0, 0, 0, 0);
+
+  const checks = await db
+    .select({
+      status: monitorChecks.status,
+      createdAt: monitorChecks.createdAt,
+    })
+    .from(monitorChecks)
+    .where(
+      and(
+        eq(monitorChecks.userId, userId),
+        inArray(monitorChecks.monitorId, monitorIds),
+        gte(monitorChecks.createdAt, since)
+      )
+    )
+    .orderBy(asc(monitorChecks.createdAt));
+
+  const months = buildMonthlyUptime(checks);
+
+  return {
+    companyId: company.id,
+    companyName: company.name,
+    months,
+  };
+}
+
+export async function getWorkerState() {
+  const [state] = await db.select().from(workerState).where(eq(workerState.id, WORKER_STATE_ID));
+
+  if (state) {
+    return state;
+  }
+
+  const [created] = await db
+    .insert(workerState)
+    .values({ id: WORKER_STATE_ID, desiredState: "stopped", running: false })
+    .returning();
+
+  return created;
+}
+
+export async function updateWorkerState(values: Partial<typeof workerState.$inferInsert>) {
+  await getWorkerState();
+
+  const [state] = await db
+    .update(workerState)
+    .set({
+      ...values,
+      updatedAt: new Date(),
+    })
+    .where(eq(workerState.id, WORKER_STATE_ID))
+    .returning();
+
+  return state;
+}
+
+export async function incrementWorkerCheckedCount(amount = 1) {
+  const state = await getWorkerState();
+
+  return updateWorkerState({
+    checkedCount: (state.checkedCount ?? 0) + amount,
+  });
+}
+
+async function buildMonitorValues(
+  userId: string,
+  input: MonitorInput,
+  existingMonitor: typeof monitors.$inferSelect | null
+) {
+  const companyRecord =
+    input.companyId && input.companyId.length > 0 ? await getCompanyById(userId, input.companyId) : null;
+  const monitorType = normalizeMonitorType(input.monitorType);
+  const url = buildCanonicalMonitorTarget(input);
+  const databasePasswordEncrypted =
+    monitorType === "postgres"
+      ? resolveDatabasePassword(input, existingMonitor)
+      : null;
+
+  return {
+    userId,
+    name: input.name,
+    monitorType,
+    url,
+    companyId: companyRecord?.id ?? null,
+    company: companyRecord?.name ?? input.company,
+    notificationPref: input.notificationPref,
+    notifEmail: input.notifEmail,
+    telegramBotToken: input.telegramBotToken,
+    telegramChatId: input.telegramChatId,
+    intervalValue: input.intervalValue,
+    intervalUnit: input.intervalUnit,
+    timeout: input.timeout,
+    retries: input.retries,
+    method: monitorType === "http" ? input.method : "GET",
+    databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
+    databasePasswordEncrypted,
+    tags: input.tags,
+    renotifyCount: input.renotifyCount,
+    maxRedirects: monitorType === "http" ? input.maxRedirects : 0,
+    ipFamily: monitorType === "postgres" ? "auto" : input.ipFamily,
+    checkSslExpiry: monitorType === "http" ? input.checkSslExpiry : false,
+    ignoreSslErrors: monitorType === "http" ? input.ignoreSslErrors : false,
+    cacheBuster: monitorType === "http" ? input.cacheBuster : false,
+    saveErrorPages: monitorType === "http" ? input.saveErrorPages : false,
+    saveSuccessPages: monitorType === "http" ? input.saveSuccessPages : false,
+    responseMaxLength: monitorType === "http" ? input.responseMaxLength : 0,
+    telegramTemplate: input.telegramTemplate,
+    emailSubject: input.emailSubject,
+    emailBody: input.emailBody,
+    sendIncidentScreenshot: false,
+    isActive: input.isActive,
+    verificationMode: false,
+    verificationFailureCount: 0,
+  };
+}
+
+async function getMonitorById(userId: string, monitorId: string) {
+  const [monitor] = await db
+    .select()
+    .from(monitors)
+    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)));
+
+  return monitor ?? null;
+}
+
+function normalizeMonitorType(value: string | null | undefined): MonitorInput["monitorType"] {
+  if (value === "port" || value === "postgres") {
+    return value;
+  }
+
+  return "http";
+}
+
+function resolveDatabasePassword(
+  input: MonitorInput,
+  existingMonitor: typeof monitors.$inferSelect | null
+) {
+  if (input.databasePassword.trim().length > 0) {
+    return encryptValue(input.databasePassword.trim());
+  }
+
+  return existingMonitor?.databasePasswordEncrypted ?? null;
+}
+
+function summarizeChecks(label: string, checks: Array<typeof monitorChecks.$inferSelect>, since: Date) {
+  const scoped = checks.filter((check) => check.createdAt >= since);
+  const totalChecks = scoped.length;
+  const upChecks = scoped.filter((check) => check.status === "up").length;
+  const incidents = scoped.filter((check) => check.status === "down").length;
+
+  return {
+    label,
+    uptimePct: totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100,
+    incidents,
+    totalChecks,
+  };
+}
+
+function buildStatusCodeSummary(checks: Array<typeof monitorChecks.$inferSelect>) {
+  const counts = new Map<number, number>();
+
+  for (const check of checks) {
+    if (typeof check.statusCode !== "number") {
+      continue;
+    }
+
+    counts.set(check.statusCode, (counts.get(check.statusCode) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([statusCode, count]) => ({ statusCode, count }))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 5);
+}
+
+function averageValue(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function isNumber(value: number | null): value is number {
+  return typeof value === "number";
+}
+
+function buildMonthlyUptime(checks: Array<{ status: string; createdAt: Date }>) {
+  const buckets = new Map<string, { total: number; up: number }>();
+
+  for (const check of checks) {
+    const key = `${check.createdAt.getUTCFullYear()}-${String(check.createdAt.getUTCMonth() + 1).padStart(2, "0")}`;
+    const bucket = buckets.get(key) ?? { total: 0, up: 0 };
+    bucket.total += 1;
+    if (check.status === "up") {
+      bucket.up += 1;
+    }
+    buckets.set(key, bucket);
+  }
+
+  return Array.from(buckets.entries())
+    .map(([label, bucket]) => ({
+      label,
+      uptimePct: bucket.total > 0 ? (bucket.up / bucket.total) * 100 : 100,
+      checks: bucket.total,
+    }))
+    .slice(-6);
+}

@@ -1,0 +1,11 @@
+.git
+.github
+.next
+node_modules
+npm-debug.log
+build_output.log
+build_output_utf8.log
+errors.txt
+tsconfig.tsbuildinfo
+.env.local
+.env
