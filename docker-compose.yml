@@ -1,3 +1,22 @@
+x-app-build: &app-build
+  context: .
+  dockerfile_inline: |
+    FROM node:20-bookworm-slim
+
+    WORKDIR /app
+
+    COPY package.json package-lock.json ./
+    RUN npm ci
+    RUN npx playwright install --with-deps chromium
+
+    COPY . .
+
+    RUN npm run build
+
+    EXPOSE 3000
+
+    CMD ["npm", "run", "start"]
+
 services:
   db:
     image: postgres:16-alpine
@@ -17,9 +36,7 @@ services:
       retries: 10
 
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: *app-build
     restart: unless-stopped
     depends_on:
       db:
@@ -53,9 +70,7 @@ services:
       start_period: 20s
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: *app-build
     restart: unless-stopped
     depends_on:
       web:
