@@ -10,6 +10,7 @@ export function serializeMonitorDates<T extends Record<string, unknown>>(monitor
     lastSuccessAt: serializeDate(monitor.lastSuccessAt),
     lastFailureAt: serializeDate(monitor.lastFailureAt),
     sslExpiresAt: serializeDate(monitor.sslExpiresAt),
+    heartbeatLastReceivedAt: serializeDate(monitor.heartbeatLastReceivedAt),
   };
 }
 

@@ -8,7 +8,7 @@ import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { createCompany, listCompanies } from "@/lib/companies/service";
 import { db } from "@/lib/db";
-import { companies, logFilterPresets, maintenanceWindows, monitorChecks, monitorEvents, monitorIncidents, monitors } from "@/lib/db/schema";
+import { companies, logFilterPresets, monitorChecks, monitorEvents, monitorIncidents, monitors } from "@/lib/db/schema";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 
 export async function buildWorkspaceBackupBundle(userId: string): Promise<WorkspaceBackupBundle> {
@@ -53,7 +53,6 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
 
   await db.transaction(async (tx) => {
     await tx.delete(logFilterPresets).where(eq(logFilterPresets.userId, userId));
-    await tx.delete(maintenanceWindows).where(eq(maintenanceWindows.userId, userId));
     await tx.delete(monitorChecks).where(eq(monitorChecks.userId, userId));
     await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));
     await tx.delete(monitorIncidents).where(eq(monitorIncidents.userId, userId));

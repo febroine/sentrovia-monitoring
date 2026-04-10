@@ -48,14 +48,20 @@ export function WorkerPulseCard() {
               <span>Heartbeat: {heartbeatAge === null ? "--" : `${heartbeatAge}s ago`}</span>
               <span>Last Cycle: {worker?.lastCycleAt ? new Date(worker.lastCycleAt).toLocaleString() : "--"}</span>
               <span>PID: {worker?.processAlive ? worker?.pid ?? "--" : "Offline"}</span>
+              <span>Backlog: {worker?.observability?.summary.dueBacklog ?? 0}</span>
+              <span>Cycle Duration: {worker?.lastCycleDurationMs === null ? "--" : `${worker?.lastCycleDurationMs}ms`}</span>
             </div>
             <p className="text-xs text-muted-foreground">{error ?? worker?.statusMessage ?? "Worker status will appear here."}</p>
           </div>
 
           <Button
             type="button"
-            variant={worker?.desiredState === "running" ? "outline" : "default"}
-            className={worker?.desiredState === "running" ? "" : "bg-violet-600 text-white hover:bg-violet-500"}
+            variant="default"
+            className={
+              worker?.desiredState === "running"
+                ? "bg-destructive text-white hover:bg-destructive/90"
+                : "bg-violet-600 text-white hover:bg-violet-500"
+            }
             onClick={() => void toggleWorker()}
             disabled={commandLoading}
           >

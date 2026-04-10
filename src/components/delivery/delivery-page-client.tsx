@@ -109,7 +109,7 @@ export function DeliveryPageClient() {
     setMessage(data.message ?? "Unable to save webhook settings.");
   }
 
-  async function sendTest(channel: "email" | "telegram" | "webhook" | "slack" | "discord") {
+  async function sendTest(channel: "email" | "telegram" | "webhook" | "discord") {
     setPendingAction(`test-${channel}`);
     const response = await fetch("/api/delivery/test", {
       method: "POST",
@@ -230,10 +230,6 @@ export function DeliveryPageClient() {
               <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void sendTest("telegram")} disabled={pendingAction !== null}>
                 <FlaskConical className="mr-2 h-4 w-4" />
                 Test Telegram
-              </Button>
-              <Button variant="outline" onClick={() => void sendTest("slack")} disabled={pendingAction !== null}>
-                <FlaskConical className="mr-2 h-4 w-4" />
-                Test Slack
               </Button>
               <Button variant="outline" onClick={() => void sendTest("discord")} disabled={pendingAction !== null}>
                 <FlaskConical className="mr-2 h-4 w-4" />

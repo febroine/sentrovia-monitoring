@@ -5,6 +5,7 @@ import type { ChangePasswordInput, LoginInput, RegisterInput } from "@/lib/auth/
 import { createSessionToken, type SessionUser } from "@/lib/auth/token";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { getAuthSecret } from "@/lib/env";
 
 type AuthSessionRecord = {
   id: string;
@@ -68,7 +69,13 @@ function toPublicUser(user: AuthSessionRecord): PublicUser {
   };
 }
 
+function ensureAuthRuntimeReady() {
+  getAuthSecret();
+}
+
 export async function registerUser(input: RegisterInput) {
+  ensureAuthRuntimeReady();
+
   const existingUser = await db
     .select({ id: users.id })
     .from(users)
@@ -103,6 +110,8 @@ export async function registerUser(input: RegisterInput) {
 }
 
 export async function loginUser(input: LoginInput) {
+  ensureAuthRuntimeReady();
+
   const user = await db
     .select(loginColumns)
     .from(users)
@@ -128,6 +137,8 @@ export async function loginUser(input: LoginInput) {
 }
 
 export async function changeUserPassword(userId: string, input: ChangePasswordInput) {
+  ensureAuthRuntimeReady();
+
   const user = await db
     .select(passwordColumns)
     .from(users)

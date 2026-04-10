@@ -1,4 +1,4 @@
-export type DeliveryChannel = "email" | "telegram" | "webhook" | "slack" | "discord";
+export type DeliveryChannel = "email" | "telegram" | "webhook" | "discord";
 export type DeliveryKind =
   | "failure"
   | "recovery"
@@ -6,6 +6,7 @@ export type DeliveryKind =
   | "ssl-expiry"
   | "status-change"
   | "check"
+  | "report"
   | "test";
 export type DeliveryStatus = "pending" | "retrying" | "delivered" | "failed";
 
@@ -47,7 +48,7 @@ export interface WebhookSettingsInput {
 }
 
 export interface DeliveryTestInput {
-  channel: "email" | "telegram" | "webhook" | "slack" | "discord";
+  channel: "email" | "telegram" | "webhook" | "discord";
   destination?: string;
   botToken?: string;
   chatId?: string;

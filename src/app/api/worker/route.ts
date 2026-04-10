@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { updateWorkerState, getWorkerState } from "@/lib/monitors/service";
+import { getWorkerObservability } from "@/lib/worker/observability";
 import { isPidAlive, spawnWorkerProcess } from "@/lib/worker/process";
 
 export const runtime = "nodejs";
@@ -20,7 +21,8 @@ function resolveProcessAlive(
 
 function serializeWorkerState(
   state: Awaited<ReturnType<typeof getWorkerState>>,
-  staleThresholdMs: number
+  staleThresholdMs: number,
+  observability?: Awaited<ReturnType<typeof getWorkerObservability>>
 ) {
   return {
     desiredState: state.desiredState,
@@ -28,11 +30,21 @@ function serializeWorkerState(
     processAlive: resolveProcessAlive(state.pid, state.heartbeatAt, staleThresholdMs),
     checkedCount: state.checkedCount,
     lastCycleAt: state.lastCycleAt?.toISOString() ?? null,
+    lastCycleDurationMs: state.lastCycleDurationMs,
+    lastCycleMonitorCount: state.lastCycleMonitorCount,
+    lastCycleSuccessCount: state.lastCycleSuccessCount,
+    lastCycleFailureCount: state.lastCycleFailureCount,
+    lastCyclePendingCount: state.lastCyclePendingCount,
+    lastCycleAverageLatencyMs: state.lastCycleAverageLatencyMs,
+    lastCycleBacklog: state.lastCycleBacklog,
+    lastErrorAt: state.lastErrorAt?.toISOString() ?? null,
+    lastErrorMessage: state.lastErrorMessage,
     heartbeatAt: state.heartbeatAt?.toISOString() ?? null,
     startedAt: state.startedAt?.toISOString() ?? null,
     stoppedAt: state.stoppedAt?.toISOString() ?? null,
     pid: state.pid,
     statusMessage: state.statusMessage,
+    observability,
   };
 }
 
@@ -60,7 +72,8 @@ export async function GET() {
       })
     : state;
 
-  return NextResponse.json(serializeWorkerState(normalizedState, staleThresholdMs));
+  const observability = await getWorkerObservability(session.id, normalizedState);
+  return NextResponse.json(serializeWorkerState(normalizedState, staleThresholdMs, observability));
 }
 
 export async function POST(request: NextRequest) {
@@ -92,5 +105,6 @@ export async function POST(request: NextRequest) {
         : "Worker stop requested from the web console.",
   });
 
-  return NextResponse.json(serializeWorkerState(state, Math.max(env.workerPollIntervalMs * 6, 180_000)));
+  const observability = await getWorkerObservability(session.id, state);
+  return NextResponse.json(serializeWorkerState(state, Math.max(env.workerPollIntervalMs * 6, 180_000), observability));
 }

@@ -82,5 +82,12 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
     );
   }
 
+  if (message.includes("auth_secret must be configured")) {
+    return new AuthError(
+      "Authentication is not configured for production. Set a strong AUTH_SECRET and restart the application.",
+      503
+    );
+  }
+
   return new AuthError(fallbackMessage, 500);
 }

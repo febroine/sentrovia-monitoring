@@ -11,19 +11,11 @@ export function NotificationChannelsEditor({
   settings: SettingsPayload;
   updateSetting: (
     path: string,
-    value: string | number | boolean | string[] | SettingsPayload["maintenanceWindows"]
+    value: string | number | boolean | string[]
   ) => void;
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <ChannelCard
-        title="Slack"
-        enabled={settings.notifications.slackEnabled}
-        url={settings.notifications.slackWebhookUrl}
-        onToggle={(checked) => updateSetting("notifications.slackEnabled", checked)}
-        onUrlChange={(value) => updateSetting("notifications.slackWebhookUrl", value)}
-        placeholder="https://hooks.slack.com/services/..."
-      />
+    <div className="grid gap-3 md:grid-cols-1">
       <ChannelCard
         title="Discord"
         enabled={settings.notifications.discordEnabled}

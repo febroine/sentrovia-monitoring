@@ -77,7 +77,7 @@ export function MonitorConfigDialog({
             <div className="space-y-2">
               <Label>Format</Label>
               <Select value={format} onValueChange={(value) => setFormat(value as "json" | "yaml")}>
-                <SelectTrigger>
+                <SelectTrigger className="h-10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -86,8 +86,8 @@ export function MonitorConfigDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => void handleExport()}>
+            <div className="flex flex-wrap items-end gap-2">
+              <Button variant="outline" className="h-10 min-w-[140px]" onClick={() => void handleExport()}>
                 <Download data-icon="inline-start" />
                 Export bundle
               </Button>
