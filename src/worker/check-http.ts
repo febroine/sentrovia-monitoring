@@ -1,21 +1,28 @@
 import http from "node:http";
 import https from "node:https";
 import tls from "node:tls";
+import type { IncomingMessage } from "node:http";
 import type { Monitor } from "@/lib/db/schema";
 import type { CheckResult } from "@/worker/types";
+
+interface HttpResponseSnapshot {
+  statusCode: number;
+  bodyText: string;
+}
 
 export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
 
   try {
-    const statusCode = await requestWithRedirects(monitor, buildUrl(monitor.url, monitor.cacheBuster), 0);
+    const response = await requestWithRedirects(monitor, buildRequestUrl(monitor.url, monitor.cacheBuster), 0);
     const sslExpiresAt = monitor.checkSslExpiry ? await readSslExpiry(monitor.url, monitor.ignoreSslErrors) : null;
+    const result = evaluateHttpResponse(monitor, response.statusCode, response.bodyText);
 
     return buildCheckResult(checkedAt, {
-      ok: statusCode >= 200 && statusCode < 400,
-      status: statusCode >= 200 && statusCode < 400 ? "up" : "down",
-      statusCode,
-      errorMessage: statusCode >= 200 && statusCode < 400 ? null : `HTTP ${statusCode}`,
+      ok: result.ok,
+      status: result.ok ? "up" : "down",
+      statusCode: response.statusCode,
+      errorMessage: result.errorMessage,
       sslExpiresAt,
     });
   } catch (error) {
@@ -29,7 +36,73 @@ export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
   }
 }
 
-function requestWithRedirects(monitor: Monitor, url: string, redirectCount: number): Promise<number> {
+function evaluateHttpResponse(monitor: Monitor, statusCode: number, bodyText: string) {
+  if (statusCode < 200 || statusCode >= 400) {
+    return {
+      ok: false,
+      errorMessage: `HTTP ${statusCode}`,
+    };
+  }
+
+  if (monitor.monitorType === "keyword") {
+    return evaluateKeywordResponse(monitor, bodyText);
+  }
+
+  if (monitor.monitorType === "json") {
+    return evaluateJsonResponse(monitor, bodyText);
+  }
+
+  return { ok: true, errorMessage: null };
+}
+
+function evaluateKeywordResponse(monitor: Monitor, bodyText: string) {
+  const query = monitor.keywordQuery?.trim() ?? "";
+  const containsKeyword = query.length > 0 && bodyText.includes(query);
+  const ok = monitor.keywordInvert ? !containsKeyword : containsKeyword;
+
+  if (ok) {
+    return { ok: true, errorMessage: null };
+  }
+
+  const message = monitor.keywordInvert
+    ? `Keyword assertion failed because "${query}" was still present in the response body.`
+    : `Keyword assertion failed because "${query}" was not found in the response body.`;
+
+  return { ok: false, errorMessage: message };
+}
+
+function evaluateJsonResponse(monitor: Monitor, bodyText: string) {
+  let payload: unknown;
+
+  try {
+    payload = JSON.parse(bodyText);
+  } catch {
+    return {
+      ok: false,
+      errorMessage: "JSON assertion failed because the response body is not valid JSON.",
+    };
+  }
+
+  const extracted = readJsonPath(payload, monitor.jsonPath ?? "");
+  const expected = monitor.jsonExpectedValue ?? "";
+  const matchMode = monitor.jsonMatchMode ?? "equals";
+  const actual = extracted === undefined ? undefined : stringifyJsonValue(extracted);
+  const ok = matchesJsonAssertion(matchMode, actual, expected);
+
+  if (ok) {
+    return { ok: true, errorMessage: null };
+  }
+
+  return {
+    ok: false,
+    errorMessage:
+      matchMode === "exists"
+        ? `JSON assertion failed because path "${monitor.jsonPath}" was not present.`
+        : `JSON assertion failed for path "${monitor.jsonPath}". Expected ${matchMode} "${expected}" but received "${actual ?? "undefined"}".`,
+  };
+}
+
+function requestWithRedirects(monitor: Monitor, url: string, redirectCount: number): Promise<HttpResponseSnapshot> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const transport = parsed.protocol === "https:" ? https : http;
@@ -52,7 +125,10 @@ function requestWithRedirects(monitor: Monitor, url: string, redirectCount: numb
           return;
         }
 
-        consumeResponse(response, monitor.responseMaxLength, () => resolve(statusCode), reject);
+        consumeResponse(response, monitor.responseMaxLength).then(
+          (bodyText) => resolve({ statusCode, bodyText }),
+          reject
+        );
       }
     );
 
@@ -62,46 +138,42 @@ function requestWithRedirects(monitor: Monitor, url: string, redirectCount: numb
   });
 }
 
-function consumeResponse(
-  response: http.IncomingMessage,
-  responseMaxLength: number,
-  onDone: () => void,
-  onError: (error: Error) => void
-) {
-  const limit = Math.max(0, responseMaxLength);
+async function consumeResponse(response: IncomingMessage, responseMaxLength: number) {
+  const limit = Math.max(0, responseMaxLength || 0);
+  const chunks: Buffer[] = [];
   let received = 0;
-  let finished = false;
 
-  response.on("data", (chunk: Buffer) => {
-    received += chunk.length;
-    if (!finished && limit > 0 && received > limit) {
-      finished = true;
-      onDone();
-      response.destroy();
-    }
-  });
-  response.on("end", () => {
-    if (!finished) {
-      finished = true;
-      onDone();
-    }
-  });
-  response.on("error", onError);
-  response.resume();
-}
+  for await (const chunk of response) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    received += buffer.length;
 
-function buildUrl(url: string, cacheBuster: boolean) {
-  if (!cacheBuster) {
-    return url;
+    if (limit > 0 && received > limit) {
+      chunks.push(buffer.subarray(0, Math.max(0, limit - (received - buffer.length))));
+      break;
+    }
+
+    chunks.push(buffer);
   }
 
-  const parsed = new URL(url);
-  parsed.searchParams.set("_monitor_ts", String(Date.now()));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function buildRequestUrl(url: string, cacheBuster: boolean) {
+  const parsed = new URL(stripAssertionHash(url));
+
+  if (cacheBuster) {
+    parsed.searchParams.set("_monitor_ts", String(Date.now()));
+  }
+
   return parsed.toString();
 }
 
+function stripAssertionHash(url: string) {
+  return url.split("#")[0];
+}
+
 function readSslExpiry(url: string, ignoreSslErrors: boolean): Promise<Date | null> {
-  const parsed = new URL(url);
+  const parsed = new URL(stripAssertionHash(url));
   if (parsed.protocol !== "https:") {
     return Promise.resolve(null);
   }
@@ -136,6 +208,59 @@ function parseCertificateExpiry(value: string | undefined) {
 
   const expiresAt = new Date(value);
   return Number.isNaN(expiresAt.getTime()) ? null : expiresAt;
+}
+
+function readJsonPath(payload: unknown, path: string) {
+  const segments = path
+    .trim()
+    .replace(/\[(\d+)\]/g, ".$1")
+    .split(".")
+    .filter(Boolean);
+
+  return segments.reduce<unknown>((current, segment) => {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      return Number.isInteger(index) ? current[index] : undefined;
+    }
+
+    if (typeof current === "object") {
+      return (current as Record<string, unknown>)[segment];
+    }
+
+    return undefined;
+  }, payload);
+}
+
+function matchesJsonAssertion(mode: Monitor["jsonMatchMode"], actual: string | undefined, expected: string) {
+  if (mode === "exists") {
+    return actual !== undefined;
+  }
+
+  if (actual === undefined) {
+    return false;
+  }
+
+  if (mode === "contains") {
+    return actual.includes(expected);
+  }
+
+  return actual === expected;
+}
+
+function stringifyJsonValue(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return JSON.stringify(value);
 }
 
 function toNodeFamily(ipFamily: Monitor["ipFamily"]) {

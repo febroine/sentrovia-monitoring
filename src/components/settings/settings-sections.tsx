@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { MaintenanceWindowsEditor } from "@/components/settings/maintenance-windows-editor";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
+import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
 import { SavedRecipientsManager } from "@/components/settings/saved-recipients-manager";
 import { TemplateEditor } from "@/components/settings/template-editor";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +76,13 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
             value={settings.notifications.statusCodeAlertCodes}
             onChange={(event) => updateSetting("notifications.statusCodeAlertCodes", event.target.value)}
             placeholder="500,502,503,504"
+          />
+        </Field>
+        <Field label="Alert dedup window (minutes)" hint="Suppress duplicate notifications of the same kind for the same monitor inside this time window.">
+          <Input
+            type="number"
+            value={settings.notifications.alertDedupMinutes}
+            onChange={(event) => updateSetting("notifications.alertDedupMinutes", Number(event.target.value) || 0)}
           />
         </Field>
       </SectionCard>
@@ -415,6 +423,10 @@ export function DataSettingsTab({ settings, updateSetting }: TabProps) {
         description="Create scheduled backups during the configured backup window."
         checked={settings.data.autoBackupEnabled}
         onChange={(checked) => updateSetting("data.autoBackupEnabled", checked)}
+      />
+      <BackupRestorePanel
+        lastBackupAt={settings.data.lastBackupAt}
+        onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
       />
     </SectionCard>
   );

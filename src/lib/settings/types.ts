@@ -24,6 +24,7 @@ export interface SettingsPayload {
     notifyOnLatency: boolean;
     notifyOnSslExpiry: boolean;
     notifyOnStatusChange: boolean;
+    alertDedupMinutes: number;
     smtpHost: string;
     smtpPort: number;
     smtpUsername: string;
@@ -69,6 +70,7 @@ export interface SettingsPayload {
     autoBackupEnabled: boolean;
     backupWindow: string;
     eventRetentionDays: number;
+    lastBackupAt: string | null;
   };
 }
 
@@ -90,6 +92,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     notifyOnLatency: true,
     notifyOnSslExpiry: true,
     notifyOnStatusChange: false,
+    alertDedupMinutes: 15,
     smtpHost: "",
     smtpPort: 587,
     smtpUsername: "",
@@ -137,5 +140,6 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     autoBackupEnabled: true,
     backupWindow: "03:00",
     eventRetentionDays: 30,
+    lastBackupAt: null,
   },
 };

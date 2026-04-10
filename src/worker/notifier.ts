@@ -7,6 +7,7 @@ import {
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
 import { hasActiveMaintenanceWindow } from "@/lib/maintenance/service";
+import { hasRecentMonitorEvent } from "@/lib/monitors/service";
 import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
@@ -91,23 +92,41 @@ async function shouldSendNotification(context: NotificationContext) {
     return false;
   }
 
+  if (context.kind === "status-change") {
+    return await shouldSendByKind(settings.notifications.notifyOnStatusChange, settings.notifications.alertDedupMinutes, context);
+  }
+
   if (context.kind === "failure") {
-    return settings.notifications.notifyOnDown;
+    return await shouldSendByKind(settings.notifications.notifyOnDown, settings.notifications.alertDedupMinutes, context);
   }
 
   if (context.kind === "recovery") {
-    return settings.notifications.notifyOnRecovery;
+    return await shouldSendByKind(settings.notifications.notifyOnRecovery, settings.notifications.alertDedupMinutes, context);
   }
 
   if (context.kind === "latency") {
-    return settings.notifications.notifyOnLatency;
+    return await shouldSendByKind(settings.notifications.notifyOnLatency, settings.notifications.alertDedupMinutes, context);
   }
 
-  if (context.kind === "status-change") {
-    return settings.notifications.notifyOnStatusChange;
+  return await shouldSendByKind(settings.notifications.notifyOnSslExpiry, settings.notifications.alertDedupMinutes, context);
+}
+
+async function shouldSendByKind(enabled: boolean, dedupMinutes: number, context: NotificationContext) {
+  if (!enabled) {
+    return false;
   }
 
-  return settings.notifications.notifyOnSslExpiry;
+  if (dedupMinutes <= 0) {
+    return true;
+  }
+
+  const since = new Date(context.result.checkedAt.getTime() - dedupMinutes * 60 * 1_000);
+  return !(await hasRecentMonitorEvent({
+    monitorId: context.monitor.id,
+    eventType: context.kind,
+    since,
+    before: context.result.checkedAt,
+  }));
 }
 
 function matchesWatchedStatusCode(raw: string, statusCode: number | null) {

@@ -35,6 +35,7 @@ export const settingsSchema = z.object({
     notifyOnLatency: z.boolean(),
     notifyOnSslExpiry: z.boolean(),
     notifyOnStatusChange: z.boolean(),
+    alertDedupMinutes: z.coerce.number().int().min(0).max(1440),
     smtpHost: optionalString(255),
     smtpPort: z.coerce.number().int().min(1).max(65535),
     smtpUsername: optionalString(255),
@@ -80,6 +81,7 @@ export const settingsSchema = z.object({
     autoBackupEnabled: z.boolean(),
     backupWindow: z.string().trim().min(4).max(32),
     eventRetentionDays: z.coerce.number().int().min(1).max(3650),
+    lastBackupAt: z.string().datetime().nullable().default(null),
   }),
 });
 

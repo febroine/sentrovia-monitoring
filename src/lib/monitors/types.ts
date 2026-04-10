@@ -1,9 +1,53 @@
+import type { SettingsPayload } from "@/lib/settings/types";
+
 export type SiteStatus = "up" | "down" | "pending";
 export type NotificationPref = "email" | "telegram" | "both" | "none";
 export type IntervalUnit = "sn" | "dk" | "sa";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 export type IpFamily = "auto" | "ipv4" | "ipv6";
-export type MonitorType = "http" | "port" | "postgres";
+export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres";
+export type JsonMatchMode = "equals" | "contains" | "exists";
+
+export interface MonitorTagPatch {
+  action: "add" | "remove" | "replace";
+  tags: string[];
+}
+
+export interface MonitorConfigBundle {
+  version: 1;
+  exportedAt: string;
+  source: "sentrovia";
+  monitors: MonitorPayload[];
+}
+
+export interface WorkspaceBackupBundle {
+  version: 1;
+  exportedAt: string;
+  source: "sentrovia";
+  settings: SettingsPayload;
+  companies: Array<{
+    name: string;
+    description: string;
+    isActive: boolean;
+  }>;
+  monitors: MonitorPayload[];
+}
+
+export interface IncidentRecord {
+  id: string;
+  monitorId: string;
+  monitorName: string;
+  monitorType: MonitorType;
+  company: string | null;
+  status: "open" | "resolved";
+  startedAt: string;
+  resolvedAt: string | null;
+  lastCheckedAt: string | null;
+  statusCode: number | null;
+  errorMessage: string | null;
+  notes: string;
+  postmortem: string;
+}
 
 export interface MonitorRecord {
   id: string;
@@ -41,6 +85,11 @@ export interface MonitorRecord {
   ipFamily: IpFamily;
   databaseSsl: boolean;
   databasePasswordConfigured: boolean;
+  keywordQuery: string | null;
+  keywordInvert: boolean;
+  jsonPath: string | null;
+  jsonExpectedValue: string | null;
+  jsonMatchMode: JsonMatchMode;
   checkSslExpiry: boolean;
   ignoreSslErrors: boolean;
   cacheBuster: boolean;
@@ -102,6 +151,11 @@ export interface MonitorPayload {
   databasePassword: string;
   databasePasswordConfigured: boolean;
   databaseSsl: boolean;
+  keywordQuery: string;
+  keywordInvert: boolean;
+  jsonPath: string;
+  jsonExpectedValue: string;
+  jsonMatchMode: JsonMatchMode;
   companyId: string;
   company: string;
   notificationPref: NotificationPref;
@@ -155,6 +209,11 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   databasePassword: "",
   databasePasswordConfigured: false,
   databaseSsl: true,
+  keywordQuery: "",
+  keywordInvert: false,
+  jsonPath: "",
+  jsonExpectedValue: "",
+  jsonMatchMode: "equals",
   companyId: "",
   company: "",
   notificationPref: "email",

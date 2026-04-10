@@ -54,6 +54,37 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
   return updated.filter((monitor): monitor is NonNullable<typeof monitor> => Boolean(monitor));
 }
 
+export async function updateMonitorTags(
+  userId: string,
+  ids: string[],
+  action: "add" | "remove" | "replace",
+  tags: string[]
+) {
+  const current = await db
+    .select()
+    .from(monitors)
+    .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)));
+
+  const normalizedTags = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+  const updated = await Promise.all(
+    current.map(async (monitor) => {
+      const nextTags = resolveTagPatch(monitor.tags, normalizedTags, action);
+      const [item] = await db
+        .update(monitors)
+        .set({
+          tags: nextTags,
+          updatedAt: new Date(),
+        })
+        .where(eq(monitors.id, monitor.id))
+        .returning();
+
+      return item;
+    })
+  );
+
+  return updated;
+}
+
 export async function deleteMonitors(userId: string, ids: string[]) {
   return db
     .delete(monitors)
@@ -217,6 +248,29 @@ export async function appendMonitorEvent(input: {
     rcaTitle: input.rcaTitle ?? null,
     rcaSummary: input.rcaSummary ?? null,
   });
+}
+
+export async function hasRecentMonitorEvent(input: {
+  monitorId: string;
+  eventType: string;
+  since: Date;
+  before: Date;
+}) {
+  const [event] = await db
+    .select({ id: monitorEvents.id })
+    .from(monitorEvents)
+    .where(
+      and(
+        eq(monitorEvents.monitorId, input.monitorId),
+        eq(monitorEvents.eventType, input.eventType),
+        gte(monitorEvents.createdAt, input.since),
+        lte(monitorEvents.createdAt, input.before)
+      )
+    )
+    .orderBy(desc(monitorEvents.createdAt))
+    .limit(1);
+
+  return Boolean(event);
 }
 
 export async function appendMonitorCheck(input: {
@@ -424,19 +478,24 @@ async function buildMonitorValues(
     intervalUnit: input.intervalUnit,
     timeout: input.timeout,
     retries: input.retries,
-    method: monitorType === "http" ? input.method : "GET",
+    method: monitorType === "port" || monitorType === "postgres" ? "GET" : input.method,
     databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
     databasePasswordEncrypted,
+    keywordQuery: monitorType === "keyword" ? input.keywordQuery.trim() : null,
+    keywordInvert: monitorType === "keyword" ? input.keywordInvert : false,
+    jsonPath: monitorType === "json" ? input.jsonPath.trim() : null,
+    jsonExpectedValue: monitorType === "json" ? input.jsonExpectedValue.trim() : null,
+    jsonMatchMode: monitorType === "json" ? input.jsonMatchMode : "equals",
     tags: input.tags,
     renotifyCount: input.renotifyCount,
-    maxRedirects: monitorType === "http" ? input.maxRedirects : 0,
+    maxRedirects: monitorType === "port" || monitorType === "postgres" ? 0 : input.maxRedirects,
     ipFamily: monitorType === "postgres" ? "auto" : input.ipFamily,
-    checkSslExpiry: monitorType === "http" ? input.checkSslExpiry : false,
-    ignoreSslErrors: monitorType === "http" ? input.ignoreSslErrors : false,
-    cacheBuster: monitorType === "http" ? input.cacheBuster : false,
-    saveErrorPages: monitorType === "http" ? input.saveErrorPages : false,
-    saveSuccessPages: monitorType === "http" ? input.saveSuccessPages : false,
-    responseMaxLength: monitorType === "http" ? input.responseMaxLength : 0,
+    checkSslExpiry: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.checkSslExpiry : false,
+    ignoreSslErrors: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.ignoreSslErrors : false,
+    cacheBuster: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.cacheBuster : false,
+    saveErrorPages: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.saveErrorPages : false,
+    saveSuccessPages: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.saveSuccessPages : false,
+    responseMaxLength: monitorType === "port" || monitorType === "postgres" ? 0 : input.responseMaxLength,
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
     emailBody: input.emailBody,
@@ -457,7 +516,7 @@ async function getMonitorById(userId: string, monitorId: string) {
 }
 
 function normalizeMonitorType(value: string | null | undefined): MonitorInput["monitorType"] {
-  if (value === "port" || value === "postgres") {
+  if (value === "port" || value === "postgres" || value === "keyword" || value === "json") {
     return value;
   }
 
@@ -542,4 +601,16 @@ function buildMonthlyUptime(checks: Array<{ status: string; createdAt: Date }>) 
       checks: bucket.total,
     }))
     .slice(-6);
+}
+
+function resolveTagPatch(current: string[], incoming: string[], action: "add" | "remove" | "replace") {
+  if (action === "replace") {
+    return incoming;
+  }
+
+  if (action === "remove") {
+    return current.filter((tag) => !incoming.includes(tag));
+  }
+
+  return Array.from(new Set([...current, ...incoming]));
 }

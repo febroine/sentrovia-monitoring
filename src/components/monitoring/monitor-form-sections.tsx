@@ -1,4 +1,4 @@
-import { DatabaseZap, Globe, Network } from "lucide-react";
+import { Braces, DatabaseZap, Globe, Network, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,6 +19,16 @@ const MONITOR_TYPE_OPTIONS: Array<{ value: MonitorType; icon: typeof Globe; desc
     value: "http",
     icon: Globe,
     description: "Full HTTP/HTTPS checks with redirects, SSL handling, and response controls.",
+  },
+  {
+    value: "keyword",
+    icon: Search,
+    description: "HTTP checks that confirm the response body contains or omits a specific keyword or phrase.",
+  },
+  {
+    value: "json",
+    icon: Braces,
+    description: "API checks that parse JSON and validate a path against an expected value or presence rule.",
   },
   {
     value: "port",
@@ -49,6 +59,8 @@ export function GeneralMonitorSettings({
 }) {
   const selectedMonitorType = MONITOR_TYPE_OPTIONS.find((option) => option.value === values.monitorType);
   const isHttpMonitor = values.monitorType === "http";
+  const isKeywordMonitor = values.monitorType === "keyword";
+  const isJsonMonitor = values.monitorType === "json";
   const isPortMonitor = values.monitorType === "port";
   const isPostgresMonitor = values.monitorType === "postgres";
 
@@ -112,7 +124,7 @@ export function GeneralMonitorSettings({
         </Field>
       </div>
 
-      {isHttpMonitor ? (
+      {isHttpMonitor || isKeywordMonitor || isJsonMonitor ? (
         <Field label="URL">
           <Input
             type="url"
@@ -122,6 +134,60 @@ export function GeneralMonitorSettings({
             required
           />
         </Field>
+      ) : null}
+
+      {isKeywordMonitor ? (
+        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+          <Field label="Keyword or phrase">
+            <Input
+              value={values.keywordQuery}
+              onChange={(event) => onFieldChange("keywordQuery", event.target.value)}
+              placeholder="All systems nominal"
+              required
+            />
+          </Field>
+          <CheckRow
+            label="Invert match"
+            description="Mark the monitor as healthy only when this keyword does not appear in the response body."
+            checked={values.keywordInvert}
+            onChange={(checked) => onFieldChange("keywordInvert", checked)}
+          />
+        </div>
+      ) : null}
+
+      {isJsonMonitor ? (
+        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="JSON path">
+              <Input
+                value={values.jsonPath}
+                onChange={(event) => onFieldChange("jsonPath", event.target.value)}
+                placeholder="data.status"
+                required
+              />
+            </Field>
+            <Field label="Match mode">
+              <Select value={values.jsonMatchMode} onValueChange={(value) => onFieldChange("jsonMatchMode", value as MonitorPayload["jsonMatchMode"])}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="equals">Equals</SelectItem>
+                  <SelectItem value="contains">Contains</SelectItem>
+                  <SelectItem value="exists">Exists</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <Field label="Expected value">
+            <Input
+              value={values.jsonExpectedValue}
+              onChange={(event) => onFieldChange("jsonExpectedValue", event.target.value)}
+              placeholder='healthy'
+              disabled={values.jsonMatchMode === "exists"}
+            />
+          </Field>
+        </div>
       ) : null}
 
       {isPortMonitor ? (
@@ -240,6 +306,7 @@ export function CheckMonitorSettings({
   onFieldChange: OnFieldChange;
 }) {
   const isHttpMonitor = values.monitorType === "http";
+  const isAssertionMonitor = values.monitorType === "keyword" || values.monitorType === "json";
   const isPostgresMonitor = values.monitorType === "postgres";
   const isPortMonitor = values.monitorType === "port";
 
@@ -306,7 +373,7 @@ export function CheckMonitorSettings({
         </Field>
       </div>
 
-      {isHttpMonitor ? (
+      {isHttpMonitor || isAssertionMonitor ? (
         <>
           <div className="grid grid-cols-2 gap-4">
             <Field label="HTTP method">
@@ -381,7 +448,7 @@ export function CheckMonitorSettings({
         recovers.
       </p>
 
-      {isHttpMonitor ? (
+      {isHttpMonitor || isAssertionMonitor ? (
         <div className="space-y-2">
           <CheckRow
             label="Check SSL expiry"

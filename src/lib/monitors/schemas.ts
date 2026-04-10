@@ -1,10 +1,11 @@
 import { z } from "zod";
 
-export const monitorTypeSchema = z.enum(["http", "port", "postgres"]);
+export const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres"]);
 export const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
 export const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
 export const ipFamilySchema = z.enum(["auto", "ipv4", "ipv6"]);
 export const methodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+export const jsonMatchModeSchema = z.enum(["equals", "contains", "exists"]);
 
 function optionalString(maxLength: number) {
   return z
@@ -37,6 +38,11 @@ export const monitorInputSchema = z
     databasePassword: optionalRequiredString(500),
     databasePasswordConfigured: z.boolean().default(false),
     databaseSsl: z.boolean().default(true),
+    keywordQuery: optionalRequiredString(500),
+    keywordInvert: z.boolean().default(false),
+    jsonPath: optionalRequiredString(255),
+    jsonExpectedValue: optionalRequiredString(500),
+    jsonMatchMode: jsonMatchModeSchema.default("equals"),
     companyId: z
       .string()
       .trim()
@@ -76,13 +82,46 @@ export const monitorInputSchema = z
     isActive: z.boolean().default(true),
   })
   .superRefine((value, context) => {
-    if (value.monitorType === "http") {
+    if (value.monitorType === "http" || value.monitorType === "keyword" || value.monitorType === "json") {
       const parsed = z.string().trim().url().safeParse(value.url);
       if (!parsed.success) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["url"],
-          message: "Enter a valid URL for an HTTP monitor.",
+          message: "Enter a valid URL for this monitor type.",
+        });
+      }
+    }
+
+    if (value.monitorType === "http") {
+      return;
+    }
+
+    if (value.monitorType === "keyword") {
+      if (value.keywordQuery.trim().length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["keywordQuery"],
+          message: "Enter the keyword or phrase that Sentrovia should look for.",
+        });
+      }
+      return;
+    }
+
+    if (value.monitorType === "json") {
+      if (value.jsonPath.trim().length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["jsonPath"],
+          message: "Enter a JSON path such as data.status or result.items[0].name.",
+        });
+      }
+
+      if (value.jsonMatchMode !== "exists" && value.jsonExpectedValue.trim().length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["jsonExpectedValue"],
+          message: "Enter the expected JSON value for this assertion.",
         });
       }
       return;

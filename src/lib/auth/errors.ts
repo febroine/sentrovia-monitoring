@@ -12,18 +12,33 @@ export function isAuthError(error: unknown): error is AuthError {
 type DatabaseErrorShape = {
   code?: string;
   errno?: string | number;
+  message?: string;
+  cause?: DatabaseErrorShape;
 };
+
+function unwrapDatabaseError(error: unknown): DatabaseErrorShape {
+  const current = (error ?? {}) as DatabaseErrorShape;
+  return current.cause ? { ...current.cause, message: current.cause.message ?? current.message } : current;
+}
 
 export function toAuthError(error: unknown, fallbackMessage: string) {
   if (isAuthError(error)) {
     return error;
   }
 
-  const databaseError = error as DatabaseErrorShape | undefined;
+  const databaseError = unwrapDatabaseError(error);
+  const message = databaseError.message?.toLowerCase() ?? "";
 
   if (databaseError?.code === "42703") {
     return new AuthError(
       "Database schema is out of date. Run `npm run db:push` on the server before registering a new account.",
+      503
+    );
+  }
+
+  if (message.includes("column") && message.includes("does not exist")) {
+    return new AuthError(
+      "Database schema is out of date. Run `npm run db:push` on the server and restart the web container.",
       503
     );
   }
@@ -45,6 +60,24 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
   if (databaseError?.code === "42P01") {
     return new AuthError(
       "Database schema is missing. Run `npm run db:push` before registering.",
+      503
+    );
+  }
+
+  if (message.includes("relation") && message.includes("does not exist")) {
+    return new AuthError(
+      "Database schema is missing. Run `npm run db:push` on the server and try again.",
+      503
+    );
+  }
+
+  if (databaseError?.code === "23505") {
+    return new AuthError("An account with this email already exists.", 409);
+  }
+
+  if (message.includes("connect econnrefused") || message.includes("connection refused")) {
+    return new AuthError(
+      "Database is unavailable. Verify the PostgreSQL host, port, and container status, then try again.",
       503
     );
   }

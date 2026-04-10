@@ -45,6 +45,8 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       notifyOnLatency: settings?.notifyOnLatency ?? DEFAULT_SETTINGS.notifications.notifyOnLatency,
       notifyOnSslExpiry: settings?.notifyOnSslExpiry ?? DEFAULT_SETTINGS.notifications.notifyOnSslExpiry,
       notifyOnStatusChange: settings?.notifyOnStatusChange ?? DEFAULT_SETTINGS.notifications.notifyOnStatusChange,
+      alertDedupMinutes:
+        settings?.alertDedupMinutes ?? DEFAULT_SETTINGS.notifications.alertDedupMinutes,
       smtpHost: settings?.smtpHost ?? "",
       smtpPort: settings?.smtpPort ?? DEFAULT_SETTINGS.notifications.smtpPort,
       smtpUsername: settings?.smtpUsername ?? "",
@@ -100,6 +102,7 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       autoBackupEnabled: settings?.autoBackupEnabled ?? DEFAULT_SETTINGS.data.autoBackupEnabled,
       backupWindow: settings?.backupWindow ?? DEFAULT_SETTINGS.data.backupWindow,
       eventRetentionDays: settings?.eventRetentionDays ?? DEFAULT_SETTINGS.data.eventRetentionDays,
+      lastBackupAt: settings?.lastBackupAt?.toISOString() ?? DEFAULT_SETTINGS.data.lastBackupAt,
     },
   };
 }
@@ -133,6 +136,7 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     notifyOnLatency: input.notifications.notifyOnLatency,
     notifyOnSslExpiry: input.notifications.notifyOnSslExpiry,
     notifyOnStatusChange: input.notifications.notifyOnStatusChange,
+    alertDedupMinutes: input.notifications.alertDedupMinutes,
     smtpHost: emptyToNull(input.notifications.smtpHost),
     smtpPort: input.notifications.smtpPort,
     smtpUsername: emptyToNull(input.notifications.smtpUsername),
@@ -171,6 +175,7 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     autoBackupEnabled: input.data.autoBackupEnabled,
     backupWindow: input.data.backupWindow,
     eventRetentionDays: input.data.eventRetentionDays,
+    lastBackupAt: input.data.lastBackupAt ? new Date(input.data.lastBackupAt) : existing?.lastBackupAt ?? null,
     updatedAt: new Date(),
   };
 
