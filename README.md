@@ -333,35 +333,6 @@ For Docker Compose, the services already inject the internal database host and w
 - **Zustand** for focused UI state
 - **Nodemailer** for SMTP delivery
 - **Docker Compose** for self-hosted orchestration
-- **Playwright** for browser-level automation and screenshot tooling
-
-## Why GitHub shows mostly TypeScript
-
-If the GitHub **Languages** panel looks almost entirely TypeScript, that is expected.
-
-GitHub Linguist works primarily from **tracked byte size**, not from how many file types exist conceptually.
-
-This repository currently contains a lot of:
-
-- `.ts`
-- `.tsx`
-
-and much less of:
-
-- `.css`
-- `.svg`
-- `.md`
-- `.yml`
-
-There are also SQL migrations, but they are relatively small compared to the application source. So the repo appears overwhelmingly TypeScript-heavy even though multiple technologies are in use.
-
-## Security and open source notes
-
-- do **not** commit `.env.local`
-- do **not** commit real secrets or database dumps
-- do **not** hardcode SMTP credentials or production tokens
-- prefer the Docker workflow for contributor onboarding
-- use real version bumps in `package.json` if you want update awareness to behave predictably
 
 ## Project status
 
@@ -376,6 +347,3 @@ Natural next steps for the platform include:
 - incident ownership workflows
 
 ---
-
-If you build on top of this project, keep the README aligned with the real system.  
-Sentrovia is most useful when the documentation explains how the platform actually behaves, not just what the screens look like.
