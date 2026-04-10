@@ -257,6 +257,15 @@ This starts:
 - `web` for the Next.js application
 - `worker` for background monitoring execution
 
+The Docker boot flow is self-initializing:
+
+- waits for PostgreSQL to become reachable
+- applies the latest Drizzle schema automatically
+- starts the web runtime
+- starts the worker only after the web container is healthy
+
+That means a fresh clone should not require a separate `npm run db:push` when you use Docker Compose.
+
 Open:
 
 - [http://localhost:3000](http://localhost:3000)
@@ -310,6 +319,30 @@ ENABLE_IN_PLACE_UPDATES=true
 ```
 
 For Docker Compose, the services already inject the internal database host and worker flags they need.
+
+## Self-hosted reliability notes
+
+If someone clones the public repository and starts it with:
+
+```bash
+docker compose up --build
+```
+
+they should get:
+
+- PostgreSQL booted automatically
+- schema applied automatically
+- web console on `http://localhost:3000`
+- worker attached automatically
+
+If they run the app outside Docker, they still need to:
+
+```bash
+docker compose up -d db
+npm run db:push
+npm run dev
+npm run worker:dev
+```
 
 ## Scripts
 
