@@ -144,6 +144,8 @@ export const monitors = pgTable("monitors", {
   notifEmail: varchar("notif_email", { length: 255 }),
   telegramBotToken: text("telegram_bot_token"),
   telegramChatId: varchar("telegram_chat_id", { length: 120 }),
+  heartbeatToken: text("heartbeat_token"),
+  heartbeatLastReceivedAt: timestamp("heartbeat_last_received_at", { withTimezone: true }),
   intervalValue: integer("interval_value").default(5).notNull(),
   intervalUnit: varchar("interval_unit", { length: 8 }).default("dk").notNull(),
   timeout: integer("timeout").default(5000).notNull(),
@@ -294,11 +296,64 @@ export const workerState = pgTable("worker_state", {
   running: boolean("running").default(false).notNull(),
   checkedCount: integer("checked_count").default(0).notNull(),
   lastCycleAt: timestamp("last_cycle_at", { withTimezone: true }),
+  lastCycleDurationMs: integer("last_cycle_duration_ms"),
+  lastCycleMonitorCount: integer("last_cycle_monitor_count").default(0).notNull(),
+  lastCycleSuccessCount: integer("last_cycle_success_count").default(0).notNull(),
+  lastCycleFailureCount: integer("last_cycle_failure_count").default(0).notNull(),
+  lastCyclePendingCount: integer("last_cycle_pending_count").default(0).notNull(),
+  lastCycleAverageLatencyMs: integer("last_cycle_average_latency_ms"),
+  lastCycleBacklog: integer("last_cycle_backlog").default(0).notNull(),
+  lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+  lastErrorMessage: text("last_error_message"),
   heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
   startedAt: timestamp("started_at", { withTimezone: true }),
   stoppedAt: timestamp("stopped_at", { withTimezone: true }),
   pid: integer("pid"),
   statusMessage: text("status_message"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const workerCycleMetrics = pgTable("worker_cycle_metrics", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  cycleStartedAt: timestamp("cycle_started_at", { withTimezone: true }).notNull(),
+  cycleFinishedAt: timestamp("cycle_finished_at", { withTimezone: true }).notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  backlogAtStart: integer("backlog_at_start").default(0).notNull(),
+  claimedMonitors: integer("claimed_monitors").default(0).notNull(),
+  completedMonitors: integer("completed_monitors").default(0).notNull(),
+  successCount: integer("success_count").default(0).notNull(),
+  failureCount: integer("failure_count").default(0).notNull(),
+  pendingCount: integer("pending_count").default(0).notNull(),
+  averageLatencyMs: integer("average_latency_ms"),
+  maxLatencyMs: integer("max_latency_ms"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const reportSchedules = pgTable("report_schedules", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  companyId: text("company_id").references(() => companies.id, { onDelete: "set null" }),
+  name: varchar("name", { length: 160 }).notNull(),
+  scope: varchar("scope", { length: 24 }).default("global").notNull(),
+  cadence: varchar("cadence", { length: 16 }).default("weekly").notNull(),
+  recipientEmails: text("recipient_emails")
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  isActive: boolean("is_active").default(true).notNull(),
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }).notNull(),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  lastDeliveredAt: timestamp("last_delivered_at", { withTimezone: true }),
+  lastStatus: varchar("last_status", { length: 16 }).default("idle").notNull(),
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -5,7 +5,7 @@ export type NotificationPref = "email" | "telegram" | "both" | "none";
 export type IntervalUnit = "sn" | "dk" | "sa";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 export type IpFamily = "auto" | "ipv4" | "ipv6";
-export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres";
+export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres" | "ping" | "heartbeat";
 export type JsonMatchMode = "equals" | "contains" | "exists";
 
 export interface MonitorTagPatch {
@@ -65,6 +65,8 @@ export interface MonitorRecord {
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
   sslExpiresAt: string | null;
+  heartbeatLastReceivedAt: string | null;
+  heartbeatToken: string | null;
   lastErrorMessage: string | null;
   consecutiveFailures: number;
   verificationMode: boolean;
@@ -138,12 +140,64 @@ export interface CompanyMonthlyReport {
   }>;
 }
 
+export interface WorkerCycleMetricRecord {
+  id: string;
+  cycleStartedAt: string;
+  cycleFinishedAt: string;
+  durationMs: number;
+  backlogAtStart: number;
+  claimedMonitors: number;
+  completedMonitors: number;
+  successCount: number;
+  failureCount: number;
+  pendingCount: number;
+  averageLatencyMs: number | null;
+  maxLatencyMs: number | null;
+  errorMessage: string | null;
+}
+
+export interface WorkerObservability {
+  summary: {
+    dueBacklog: number;
+    checksLastHour: number;
+    failuresLast24Hours: number;
+    averageLatencyMs24Hours: number;
+    lastCycleDurationMs: number | null;
+    lastCycleMonitorCount: number;
+    lastCycleSuccessCount: number;
+    lastCycleFailureCount: number;
+    lastCyclePendingCount: number;
+    lastCycleAverageLatencyMs: number | null;
+  };
+  recentCycles: WorkerCycleMetricRecord[];
+  slowMonitors: Array<{
+    monitorId: string;
+    name: string;
+    status: SiteStatus;
+    averageLatencyMs: number;
+    sampleCount: number;
+  }>;
+  failingMonitors: Array<{
+    monitorId: string;
+    name: string;
+    status: SiteStatus;
+    failureCount: number;
+    lastFailureAt: string | null;
+  }>;
+  recentErrors: Array<{
+    message: string;
+    createdAt: string;
+  }>;
+}
+
 export interface MonitorPayload {
   name: string;
   monitorType: MonitorType;
   url: string;
   portHost: string;
   portNumber: number;
+  heartbeatToken: string;
+  heartbeatLastReceivedAt: string | null;
   databaseHost: string;
   databasePort: number;
   databaseName: string;
@@ -189,11 +243,21 @@ export interface WorkerStatus {
   processAlive: boolean;
   checkedCount: number;
   lastCycleAt: string | null;
+  lastCycleDurationMs: number | null;
+  lastCycleMonitorCount: number;
+  lastCycleSuccessCount: number;
+  lastCycleFailureCount: number;
+  lastCyclePendingCount: number;
+  lastCycleAverageLatencyMs: number | null;
+  lastCycleBacklog: number;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
   heartbeatAt: string | null;
   startedAt: string | null;
   stoppedAt: string | null;
   pid: number | null;
   statusMessage: string | null;
+  observability?: WorkerObservability;
 }
 
 export const DEFAULT_MONITOR_FORM: MonitorPayload = {
@@ -202,6 +266,8 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   url: "",
   portHost: "",
   portNumber: 443,
+  heartbeatToken: "",
+  heartbeatLastReceivedAt: null,
   databaseHost: "",
   databasePort: 5432,
   databaseName: "",

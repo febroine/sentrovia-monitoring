@@ -1,6 +1,8 @@
 import type { Monitor } from "@/lib/db/schema";
 import { intervalToMs } from "@/lib/monitors/utils";
+import { checkHeartbeatMonitor } from "@/worker/check-heartbeat";
 import { checkHttpMonitor } from "@/worker/check-http";
+import { checkPingMonitor } from "@/worker/check-ping";
 import { checkPortMonitor } from "@/worker/check-port";
 import { checkPostgresMonitor } from "@/worker/check-postgres";
 import type { CheckResult } from "@/worker/types";
@@ -12,8 +14,16 @@ export async function checkMonitor(monitor: Monitor): Promise<CheckResult> {
     return checkPortMonitor(monitor);
   }
 
+  if (monitor.monitorType === "ping") {
+    return checkPingMonitor(monitor);
+  }
+
   if (monitor.monitorType === "postgres") {
     return checkPostgresMonitor(monitor);
+  }
+
+  if (monitor.monitorType === "heartbeat") {
+    return checkHeartbeatMonitor(monitor);
   }
 
   return checkHttpMonitor(monitor);

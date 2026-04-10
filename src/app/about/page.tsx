@@ -48,7 +48,7 @@ const overviewCards = [
 const runtimeFlow = [
   {
     title: "An operator configures intent in the web console",
-    body: "Monitor definitions, defaults, templates, maintenance windows, companies, and delivery settings all enter the system through authenticated route handlers in the Next.js application.",
+    body: "Monitor definitions, defaults, templates, companies, and delivery settings all enter the system through authenticated route handlers in the Next.js application.",
     icon: Settings2,
   },
   {
@@ -72,8 +72,8 @@ const runtimeFlow = [
     icon: ShieldCheck,
   },
   {
-    title: "Notifications pass through maintenance and routing logic",
-    body: "Maintenance windows can suppress outbound alerts without interrupting checks. If delivery proceeds, Sentrovia renders templates, resolves recipients, and attempts enabled channels.",
+    title: "Notifications pass through routing logic",
+    body: "When delivery proceeds, Sentrovia renders templates, resolves recipients, and attempts enabled channels.",
     icon: BellRing,
   },
   {
@@ -105,7 +105,7 @@ const stackSections = [
     items: [
       "Zustand for focused client-side page state",
       "Nodemailer for SMTP delivery and attachment sending",
-      "Fetch-based integrations for Telegram, Slack, Discord, and generic webhooks",
+      "Fetch-based integrations for Telegram, Discord, and generic webhooks",
     ],
   },
   {
@@ -148,7 +148,6 @@ const apiGroups = [
 const implementationNotes = [
   "Default monitor settings are active behavior, not decorative preferences. They feed create, import, and update fallback chains.",
   "Verification mode sits between first failure and confirmed incident so alerting reflects confirmed instability, not a single transient error.",
-  "Maintenance windows silence alerts without deleting visibility. Checks and logs continue to be written normally.",
   "Worker heartbeat is stored in the database so the console can distinguish a healthy UI from a stalled monitoring engine.",
   "Delivery history exists because knowing that an event happened is not enough; operators also need to know what the system attempted after that event.",
   "Version awareness is opt-in and driven by GitHub package version checks. Automatic apply is only available when the runtime has a writable git checkout.",
@@ -185,7 +184,7 @@ export default function AboutPage() {
                 </h1>
                 <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
                   The browser configures the platform and reads results. The worker executes monitoring,
-                  confirmation checks, maintenance suppression, delivery decisions, and monitor-type
+                  confirmation checks, delivery decisions, and monitor-type
                   specific probes. PostgreSQL keeps everything consistent so dashboards, logs, timelines,
                   reports, and version awareness all reflect the same stored reality.
                 </p>

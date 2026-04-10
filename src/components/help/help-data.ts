@@ -22,7 +22,6 @@ export type HelpCategory = {
 export const quickNotes = [
   "If a monitor looks stuck, check its timeline and the worker heartbeat first.",
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
-  "If alerts are silent during planned work, inspect Maintenance Windows before debugging channels.",
   "If a pushed GitHub change should trigger an update banner, bump package.json version and configure APP_UPDATE_REPO.",
 ];
 
@@ -124,11 +123,6 @@ export const helpCategories: HelpCategory[] = [
           "Not on the first failed response. Sentrovia waits for Verification Mode to confirm the outage. Only after the threshold is reached does it create the incident and dispatch notifications.",
       },
       {
-        question: "Do maintenance windows stop checks entirely?",
-        answer:
-          "No. Checks, timelines, and state updates continue normally. Maintenance windows only suppress outbound alerts when their suppression option is enabled.",
-      },
-      {
         question: "What happens if no monitor-specific recipient is set?",
         answer:
           "The system falls back to the default recipient stored in Settings. If neither a monitor-specific recipient nor a workspace fallback exists, email delivery is skipped safely.",
@@ -136,27 +130,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Can one outage notify multiple channels?",
         answer:
-          "Yes. Email, Telegram, Slack webhook, Discord webhook, and generic webhook flows can all participate in the same delivery decision, with each outcome recorded in delivery history.",
-      },
-      {
-        question: "Do template formatting controls affect every channel the same way?",
-        answer:
-          "No. HTML email renders simple formatting such as bold and italic, while text-only channels safely strip the markers so the final message stays readable in plain text clients.",
-      },
-      {
-        question: "What is the difference between a failure event and a confirmed incident?",
-        answer:
-          "A failure event is the first sign of trouble. A confirmed incident is a verified outage that has passed the one-minute confirmation checks and reached the configured threshold.",
-      },
-      {
-        question: "Will recovery notifications still fire after maintenance ends?",
-        answer:
-          "If the outage remains active after maintenance suppression is lifted, Sentrovia can still notify on later state changes. Recovery logic continues to follow the persisted incident state.",
-      },
-      {
-        question: "Can Slack and Discord be enabled together with email?",
-        answer:
-          "Yes. Workspace-level notification channels can be active together. Sentrovia attempts each enabled route independently and stores every result in delivery history.",
+          "Yes. Email, Telegram, Discord webhook, and generic webhook flows can all participate in the same delivery decision, with each outcome recorded in delivery history.",
       },
       {
         question: "What happens if a template is missing a token value?",

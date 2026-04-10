@@ -14,7 +14,7 @@ export function SavedRecipientsManager({
   settings: SettingsPayload;
   updateSetting: (
     path: string,
-    value: string | number | boolean | string[] | SettingsPayload["maintenanceWindows"]
+    value: string | number | boolean | string[]
   ) => void;
 }) {
   const [draft, setDraft] = useState("");

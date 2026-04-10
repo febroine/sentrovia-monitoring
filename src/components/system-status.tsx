@@ -57,6 +57,7 @@ export function SystemStatus() {
   const uptimeSeconds = worker?.startedAt ? Math.floor((Date.now() - new Date(worker.startedAt).getTime()) / 1000) : 0;
   const heartbeatAgeMs = worker?.heartbeatAt ? Date.now() - new Date(worker.heartbeatAt).getTime() : null;
   const heartbeatStale = Boolean(desiredRunning && (heartbeatAgeMs === null || heartbeatAgeMs > HEARTBEAT_STALE_MS));
+  const observability = worker?.observability;
 
   return (
     <Card className="border-border">
@@ -176,8 +177,13 @@ export function SystemStatus() {
 
             <Button
               type="button"
-              className={cn("mt-4 w-full", !desiredRunning && "bg-emerald-600 text-white hover:bg-emerald-700")}
-              variant={desiredRunning ? "outline" : "default"}
+              className={cn(
+                "mt-4 w-full",
+                desiredRunning
+                  ? "bg-destructive text-white hover:bg-destructive/90"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              )}
+              variant="default"
               onClick={() => void toggleWorker()}
               disabled={commandLoading || !worker}
             >
@@ -192,6 +198,87 @@ export function SystemStatus() {
             </Button>
           </div>
         </div>
+
+        {observability ? (
+          <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="space-y-4 rounded-lg border border-border bg-muted/10 p-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricPanel icon={Activity} label="Due Backlog" value={String(observability.summary.dueBacklog)} />
+                <MetricPanel icon={Activity} label="Checks / Hour" value={String(observability.summary.checksLastHour)} />
+                <MetricPanel icon={Activity} label="Failures / Day" value={String(observability.summary.failuresLast24Hours)} />
+                <MetricPanel
+                  icon={Activity}
+                  label="Last Cycle"
+                  value={
+                    observability.summary.lastCycleDurationMs === null
+                      ? "--"
+                      : `${observability.summary.lastCycleDurationMs}ms`
+                  }
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Metric
+                  label="Cycle Mix"
+                  value={`${observability.summary.lastCycleSuccessCount} up · ${observability.summary.lastCyclePendingCount} pending · ${observability.summary.lastCycleFailureCount} down`}
+                />
+                <Metric
+                  label="24h Avg Latency"
+                  value={`${observability.summary.averageLatencyMs24Hours} ms`}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Recent Cycles</p>
+                {observability.recentCycles.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No cycle metrics recorded yet.</p>
+                ) : (
+                  observability.recentCycles.slice(0, 4).map((cycle) => (
+                    <div key={cycle.id} className="rounded-lg border border-border bg-background px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{cycle.completedMonitors} completed</p>
+                        <span className="text-xs text-muted-foreground">{cycle.durationMs}ms</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Backlog {cycle.backlogAtStart} · {cycle.successCount} up · {cycle.pendingCount} pending · {cycle.failureCount} down
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <InsightList
+                title="Slow Monitors"
+                empty="No latency samples yet."
+                items={observability.slowMonitors.map((monitor) => ({
+                  key: monitor.monitorId,
+                  title: monitor.name,
+                  detail: `${monitor.averageLatencyMs}ms avg · ${monitor.sampleCount} checks · ${monitor.status}`,
+                }))}
+              />
+              <InsightList
+                title="Failing Monitors"
+                empty="No failures in the last 24 hours."
+                items={observability.failingMonitors.map((monitor) => ({
+                  key: monitor.monitorId,
+                  title: monitor.name,
+                  detail: `${monitor.failureCount} failures · ${monitor.status}`,
+                }))}
+              />
+              <InsightList
+                title="Recent Worker Errors"
+                empty="No worker-level cycle errors recorded."
+                items={observability.recentErrors.map((errorItem, index) => ({
+                  key: `${errorItem.createdAt}-${index}`,
+                  title: new Date(errorItem.createdAt).toLocaleString(),
+                  detail: errorItem.message,
+                }))}
+              />
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -203,6 +290,34 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function MetricPanel({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return <div className="rounded-lg border border-border bg-background px-3 py-2"><div className="flex items-center gap-2 text-muted-foreground"><Icon className="size-3.5" /><span className="text-[11px] uppercase tracking-wide">{label}</span></div><p className="mt-1 text-sm font-medium">{value}</p></div>;
+}
+
+function InsightList({
+  title,
+  empty,
+  items,
+}: {
+  title: string;
+  empty: string;
+  items: Array<{ key: string; title: string; detail: string }>;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/10 p-3">
+      <p className="text-sm font-medium">{title}</p>
+      <div className="mt-3 space-y-2">
+        {items.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{empty}</p>
+        ) : (
+          items.map((item) => (
+            <div key={item.key} className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-sm font-medium">{item.title}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
 }
 
 function StatusBar({ label, value, detail }: { label: string; value: number; detail: string }) {

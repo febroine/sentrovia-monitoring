@@ -3,19 +3,20 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, AlertTriangle, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3 } from 'lucide-react';
 import { SentroviaMark } from '@/components/brand/sentrovia-mark';
 import LogoutButton from '@/components/logout-button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/context/translation-context';
+import { SIDEBAR_ACCENT_UPDATED_EVENT } from '@/stores/use-settings-store';
 
 const navItems = [
   { href: '/dashboard', i18nKey: 'nav.dashboard', icon: LayoutDashboard },
   { href: '/monitoring', i18nKey: 'nav.monitors', icon: Activity },
   { href: '/companies', i18nKey: 'nav.companies', icon: Building2 },
   { href: '/logs', i18nKey: 'nav.logs', icon: ScrollText },
-  { href: '/incidents', i18nKey: 'nav.incidents', icon: AlertTriangle },
   { href: '/delivery', i18nKey: 'nav.delivery', icon: BellRing },
+  { href: '/reports', i18nKey: 'nav.reports', icon: BarChart3 },
   { href: '/status-codes', i18nKey: 'nav.statusCodes', icon: Binary },
   { href: '/members', i18nKey: 'nav.members', icon: UsersRound },
   { href: '/settings', i18nKey: 'nav.settings', icon: Settings },
@@ -100,6 +101,13 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
   useEffect(() => {
     let active = true;
 
+    function handleAccentUpdate(event: Event) {
+      const detail = (event as CustomEvent<{ accent?: SidebarAccent }>).detail;
+      if (detail?.accent) {
+        setAccent(detail.accent);
+      }
+    }
+
     void fetch('/api/settings', { cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) return null;
@@ -111,8 +119,11 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
       })
       .catch(() => undefined);
 
+    window.addEventListener(SIDEBAR_ACCENT_UPDATED_EVENT, handleAccentUpdate);
+
     return () => {
       active = false;
+      window.removeEventListener(SIDEBAR_ACCENT_UPDATED_EVENT, handleAccentUpdate);
     };
   }, []);
 

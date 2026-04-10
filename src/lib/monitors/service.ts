@@ -192,6 +192,21 @@ export async function claimDueMonitors(now: Date) {
     .returning();
 }
 
+export async function countDueMonitors(now: Date) {
+  const rows = await db
+    .select({ id: monitors.id })
+    .from(monitors)
+    .where(
+      and(
+        eq(monitors.isActive, true),
+        or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
+        or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
+      )
+    );
+
+  return rows.length;
+}
+
 export async function recordMonitorResult(
   monitorId: string,
   update: {
@@ -220,6 +235,36 @@ export async function recordMonitorResult(
     })
     .where(eq(monitors.id, monitorId))
     .returning();
+
+  return monitor;
+}
+
+export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
+  const [monitor] = await db
+    .update(monitors)
+    .set({
+      heartbeatLastReceivedAt: receivedAt,
+      nextCheckAt: receivedAt,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(monitors.monitorType, "heartbeat"), eq(monitors.heartbeatToken, token)))
+    .returning();
+
+  if (!monitor) {
+    return null;
+  }
+
+  await appendMonitorEvent({
+    monitorId: monitor.id,
+    userId: monitor.userId,
+    eventType: "heartbeat-received",
+    status: monitor.status,
+    statusCode: monitor.statusCode,
+    latencyMs: null,
+    message: "Heartbeat ping received from the external job.",
+  });
 
   return monitor;
 }
@@ -457,7 +502,12 @@ async function buildMonitorValues(
   const companyRecord =
     input.companyId && input.companyId.length > 0 ? await getCompanyById(userId, input.companyId) : null;
   const monitorType = normalizeMonitorType(input.monitorType);
-  const url = buildCanonicalMonitorTarget(input);
+  const heartbeatToken =
+    monitorType === "heartbeat" ? resolveHeartbeatToken(input, existingMonitor) : null;
+  const url = buildCanonicalMonitorTarget({
+    ...input,
+    heartbeatToken: heartbeatToken ?? input.heartbeatToken,
+  });
   const databasePasswordEncrypted =
     monitorType === "postgres"
       ? resolveDatabasePassword(input, existingMonitor)
@@ -474,11 +524,14 @@ async function buildMonitorValues(
     notifEmail: input.notifEmail,
     telegramBotToken: input.telegramBotToken,
     telegramChatId: input.telegramChatId,
+    heartbeatToken,
+    heartbeatLastReceivedAt:
+      monitorType === "heartbeat" ? existingMonitor?.heartbeatLastReceivedAt ?? null : null,
     intervalValue: input.intervalValue,
     intervalUnit: input.intervalUnit,
     timeout: input.timeout,
     retries: input.retries,
-    method: monitorType === "port" || monitorType === "postgres" ? "GET" : input.method,
+    method: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? "GET" : input.method,
     databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
     databasePasswordEncrypted,
     keywordQuery: monitorType === "keyword" ? input.keywordQuery.trim() : null,
@@ -488,14 +541,14 @@ async function buildMonitorValues(
     jsonMatchMode: monitorType === "json" ? input.jsonMatchMode : "equals",
     tags: input.tags,
     renotifyCount: input.renotifyCount,
-    maxRedirects: monitorType === "port" || monitorType === "postgres" ? 0 : input.maxRedirects,
-    ipFamily: monitorType === "postgres" ? "auto" : input.ipFamily,
+    maxRedirects: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? 0 : input.maxRedirects,
+    ipFamily: monitorType === "postgres" || monitorType === "heartbeat" ? "auto" : input.ipFamily,
     checkSslExpiry: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.checkSslExpiry : false,
     ignoreSslErrors: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.ignoreSslErrors : false,
     cacheBuster: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.cacheBuster : false,
     saveErrorPages: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.saveErrorPages : false,
     saveSuccessPages: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.saveSuccessPages : false,
-    responseMaxLength: monitorType === "port" || monitorType === "postgres" ? 0 : input.responseMaxLength,
+    responseMaxLength: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? 0 : input.responseMaxLength,
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
     emailBody: input.emailBody,
@@ -516,7 +569,7 @@ async function getMonitorById(userId: string, monitorId: string) {
 }
 
 function normalizeMonitorType(value: string | null | undefined): MonitorInput["monitorType"] {
-  if (value === "port" || value === "postgres" || value === "keyword" || value === "json") {
+  if (value === "port" || value === "postgres" || value === "keyword" || value === "json" || value === "ping" || value === "heartbeat") {
     return value;
   }
 
@@ -532,6 +585,21 @@ function resolveDatabasePassword(
   }
 
   return existingMonitor?.databasePasswordEncrypted ?? null;
+}
+
+function resolveHeartbeatToken(
+  input: MonitorInput,
+  existingMonitor: typeof monitors.$inferSelect | null
+) {
+  if (existingMonitor?.heartbeatToken) {
+    return existingMonitor.heartbeatToken;
+  }
+
+  if (input.heartbeatToken.trim().length >= 8) {
+    return input.heartbeatToken.trim();
+  }
+
+  return crypto.randomUUID();
 }
 
 function summarizeChecks(label: string, checks: Array<typeof monitorChecks.$inferSelect>, since: Date) {

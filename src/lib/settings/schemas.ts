@@ -8,17 +8,6 @@ const optionalString = (maxLength: number) =>
     .default("");
 
 export const settingsSchema = z.object({
-  maintenanceWindows: z.array(
-    z.object({
-      id: optionalString(120),
-      name: z.string().trim().min(2).max(160),
-      startsAt: z.string().datetime(),
-      endsAt: z.string().datetime(),
-      timezone: optionalString(64),
-      isActive: z.boolean(),
-      suppressNotifications: z.boolean(),
-    })
-  ),
   profile: z.object({
     firstName: z.string().trim().min(2).max(80),
     lastName: z.string().trim().min(2).max(80),
@@ -46,8 +35,6 @@ export const settingsSchema = z.object({
     smtpSecure: z.boolean(),
     smtpRequireTls: z.boolean(),
     smtpInsecureSkipVerify: z.boolean(),
-    slackWebhookUrl: optionalString(500),
-    slackEnabled: z.boolean(),
     discordWebhookUrl: optionalString(500),
     discordEnabled: z.boolean(),
     defaultEmailSubjectTemplate: optionalString(500),
@@ -63,7 +50,6 @@ export const settingsSchema = z.object({
     batchSize: z.coerce.number().int().min(1).max(500),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]),
     region: optionalString(64),
-    maintenanceWindow: optionalString(120),
     responseMaxLength: z.coerce.number().int().min(0).max(100_000),
     maxRedirects: z.coerce.number().int().min(0).max(10),
     ignoreSslErrors: z.boolean(),

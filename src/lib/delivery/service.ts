@@ -102,10 +102,6 @@ export async function sendDeliveryTest(userId: string, input: DeliveryTestInput)
     });
   }
 
-  if (input.channel === "slack") {
-    return sendChannelWebhookDelivery(userId, "slack", "test", message);
-  }
-
   if (input.channel === "discord") {
     return sendChannelWebhookDelivery(userId, "discord", "test", message);
   }
@@ -192,15 +188,7 @@ export async function sendTelegramDelivery(input: {
   }
 
   try {
-    const response = await fetch(`https://api.telegram.org/bot${input.botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: input.chatId,
-        text: input.body,
-        disable_web_page_preview: false,
-      }),
-    });
+    const response = await postTelegramMessage(input.botToken, input.chatId, input.body);
 
     if (!response.ok) {
       const body = await response.text();
@@ -240,15 +228,13 @@ export async function sendWebhookDelivery(
 
 export async function sendChannelWebhookDelivery(
   userId: string,
-  channel: "slack" | "discord",
+  channel: "discord",
   kind: DeliveryKind,
   message: string
 ) {
   const settings = await getSettings(userId);
-  const destination =
-    channel === "slack" ? settings?.notifications.slackWebhookUrl : settings?.notifications.discordWebhookUrl;
-  const enabled =
-    channel === "slack" ? settings?.notifications.slackEnabled : settings?.notifications.discordEnabled;
+  const destination = settings?.notifications.discordWebhookUrl;
+  const enabled = settings?.notifications.discordEnabled;
   const event = await createDeliveryEvent(userId, channel, kind, destination || `${channel} not configured`, {
     text: message,
   });
@@ -258,10 +244,7 @@ export async function sendChannelWebhookDelivery(
   }
 
   try {
-    const body =
-      channel === "slack"
-        ? { text: message }
-        : { content: message };
+    const body = { content: message };
     const response = await fetch(destination, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -372,7 +355,7 @@ async function getWebhookEndpoint(userId: string) {
 
 async function createDeliveryEvent(
   userId: string,
-  channel: "email" | "telegram" | "webhook" | "slack" | "discord",
+  channel: "email" | "telegram" | "webhook" | "discord",
   kind: DeliveryKind,
   destination: string,
   payload: Record<string, unknown>
@@ -527,4 +510,16 @@ function toMessage(error: unknown) {
 
 function escapeHtml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function postTelegramMessage(botToken: string, chatId: string, body: string) {
+  return fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: body,
+      disable_web_page_preview: false,
+    }),
+  });
 }

@@ -24,7 +24,7 @@ export default function HelpPage() {
                 </h1>
                 <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
                   This page explains the real system, not just the screens. It covers worker scheduling,
-                  verification mode, monitor types, maintenance suppression, delivery decisions, update
+                  verification mode, monitor types, delivery decisions, update
                   checks, logs, company rollups, and Docker runtime behavior in one readable place.
                 </p>
               </div>
@@ -61,8 +61,8 @@ export default function HelpPage() {
         />
         <FeatureCard
           icon={ShieldCheck}
-          title="Quiet During Planned Work"
-          text="Maintenance windows keep checks running while suppressing outbound noise, so the dataset stays complete without paging people unnecessarily."
+          title="Delivery Routing"
+          text="Email, Telegram, Discord, and webhook deliveries stay visible in one operational trail so teams can validate routing quickly."
           accent="border-l-emerald-500"
         />
         <FeatureCard

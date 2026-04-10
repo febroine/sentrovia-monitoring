@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { maintenanceWindows, userSettings, users } from "@/lib/db/schema";
+import { userSettings, users } from "@/lib/db/schema";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
 import type { SettingsInput } from "@/lib/settings/schemas";
 import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
@@ -14,21 +14,9 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) return null;
 
-  const [settings, maintenanceRows] = await Promise.all([
-    db.select().from(userSettings).where(eq(userSettings.userId, userId)).then((rows) => rows[0] ?? null),
-    db.select().from(maintenanceWindows).where(eq(maintenanceWindows.userId, userId)),
-  ]);
+  const settings = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).then((rows) => rows[0] ?? null);
 
   return {
-    maintenanceWindows: maintenanceRows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      startsAt: row.startsAt.toISOString(),
-      endsAt: row.endsAt.toISOString(),
-      timezone: row.timezone,
-      isActive: row.isActive,
-      suppressNotifications: row.suppressNotifications,
-    })),
     profile: {
       firstName: user.firstName,
       lastName: user.lastName,
@@ -58,8 +46,6 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       smtpRequireTls: settings?.smtpRequireTls ?? DEFAULT_SETTINGS.notifications.smtpRequireTls,
       smtpInsecureSkipVerify:
         settings?.smtpInsecureSkipVerify ?? DEFAULT_SETTINGS.notifications.smtpInsecureSkipVerify,
-      slackWebhookUrl: settings?.slackWebhookUrl ?? DEFAULT_SETTINGS.notifications.slackWebhookUrl,
-      slackEnabled: settings?.slackEnabled ?? DEFAULT_SETTINGS.notifications.slackEnabled,
       discordWebhookUrl: settings?.discordWebhookUrl ?? DEFAULT_SETTINGS.notifications.discordWebhookUrl,
       discordEnabled: settings?.discordEnabled ?? DEFAULT_SETTINGS.notifications.discordEnabled,
       defaultEmailSubjectTemplate:
@@ -79,7 +65,6 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       batchSize: settings?.monitoringBatchSize ?? DEFAULT_SETTINGS.monitoring.batchSize,
       method: settings?.monitoringMethod ?? DEFAULT_SETTINGS.monitoring.method,
       region: settings?.monitoringRegion ?? DEFAULT_SETTINGS.monitoring.region,
-      maintenanceWindow: settings?.monitoringMaintenanceWindow ?? "",
       responseMaxLength:
         settings?.monitoringResponseMaxLength ?? DEFAULT_SETTINGS.monitoring.responseMaxLength,
       maxRedirects: settings?.monitoringMaxRedirects ?? DEFAULT_SETTINGS.monitoring.maxRedirects,
@@ -146,8 +131,6 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     smtpSecure: input.notifications.smtpSecure,
     smtpRequireTls: input.notifications.smtpRequireTls,
     smtpInsecureSkipVerify: input.notifications.smtpInsecureSkipVerify,
-    slackWebhookUrl: emptyToNull(input.notifications.slackWebhookUrl),
-    slackEnabled: input.notifications.slackEnabled,
     discordWebhookUrl: emptyToNull(input.notifications.discordWebhookUrl),
     discordEnabled: input.notifications.discordEnabled,
     defaultEmailSubjectTemplate: emptyToNull(input.notifications.defaultEmailSubjectTemplate),
@@ -161,7 +144,6 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     monitoringBatchSize: input.monitoring.batchSize,
     monitoringMethod: input.monitoring.method,
     monitoringRegion: emptyToNull(input.monitoring.region) ?? DEFAULT_SETTINGS.monitoring.region,
-    monitoringMaintenanceWindow: emptyToNull(input.monitoring.maintenanceWindow),
     monitoringResponseMaxLength: input.monitoring.responseMaxLength,
     monitoringMaxRedirects: input.monitoring.maxRedirects,
     monitoringIgnoreSslErrors: input.monitoring.ignoreSslErrors,
@@ -185,29 +167,5 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     await db.insert(userSettings).values(values);
   }
 
-  await syncMaintenanceWindows(userId, input.maintenanceWindows);
-
   return getSettings(userId);
-}
-
-async function syncMaintenanceWindows(userId: string, windows: SettingsInput["maintenanceWindows"]) {
-  await db.delete(maintenanceWindows).where(eq(maintenanceWindows.userId, userId));
-
-  if (windows.length === 0) {
-    return;
-  }
-
-  await db.insert(maintenanceWindows).values(
-    windows.map((window) => ({
-      id: window.id || crypto.randomUUID(),
-      userId,
-      name: window.name,
-      startsAt: new Date(window.startsAt),
-      endsAt: new Date(window.endsAt),
-      timezone: window.timezone || "Europe/Istanbul",
-      isActive: window.isActive,
-      suppressNotifications: window.suppressNotifications,
-      updatedAt: new Date(),
-    }))
-  );
 }

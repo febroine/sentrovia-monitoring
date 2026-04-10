@@ -7,7 +7,7 @@ import type { SettingsPayload } from "@/lib/settings/types";
 
 type UpdateSetting = (
   path: string,
-  value: string | number | boolean | string[] | SettingsPayload["maintenanceWindows"]
+  value: string | number | boolean | string[]
 ) => void;
 
 export function AccountSettingsTab({

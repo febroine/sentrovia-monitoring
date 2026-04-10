@@ -92,7 +92,7 @@ export default function SignupPage() {
         {
           icon: Workflow,
           title: "Unified Delivery Trail",
-          description: "Email, Telegram, Slack, Discord, and webhook routing stay visible in a single delivery history.",
+          description: "Email, Telegram, Discord, and webhook routing stay visible in a single delivery history.",
           meta: "TRACEABLE ALERTING",
         },
         {
@@ -105,7 +105,7 @@ export default function SignupPage() {
       stats={[
         { label: "Monitor Types", value: "3", detail: "HTTP, TCP, and PostgreSQL checks" },
         { label: "Verification", value: "1m", detail: "Follow-up checks after the first failure" },
-        { label: "Alerting", value: "5+", detail: "Email, Telegram, Slack, Discord, and webhook" },
+        { label: "Alerting", value: "4+", detail: "Email, Telegram, Discord, and webhook" },
       ]}
       statsTitle="What the workspace gives you on day one"
       statsDescription="Registration is not just account creation. It grants access to the same monitoring model the worker uses in production."

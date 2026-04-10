@@ -1,41 +1,87 @@
 import { env } from "@/lib/env";
-import { openOrUpdateIncident, resolveIncident } from "@/lib/incidents/service";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
 import {
   appendMonitorCheck,
   appendMonitorEvent,
   incrementWorkerCheckedCount,
+  countDueMonitors,
   claimDueMonitors,
   recordMonitorResult,
   updateWorkerState,
 } from "@/lib/monitors/service";
 import type { Monitor } from "@/lib/db/schema";
+import { recordWorkerCycleMetric } from "@/lib/worker/observability";
 import { calculateNextCheckAt, calculateVerificationCheckAt, checkMonitor } from "@/worker/checker";
 import { sendMonitorNotifications } from "@/worker/notifier";
 
 export async function runMonitoringCycle() {
-  const now = new Date();
-  const dueMonitors = await claimDueMonitors(now);
+  const cycleStartedAt = new Date();
+  const backlogAtStart = await countDueMonitors(cycleStartedAt);
+  const dueMonitors = await claimDueMonitors(cycleStartedAt);
+  const cycleResults: Array<{ finalStatus: "up" | "down" | "pending"; latencyMs: number | null }> = [];
+  const cycleErrors: string[] = [];
 
   await updateWorkerState({
-    lastCycleAt: now,
-    heartbeatAt: now,
+    lastCycleAt: cycleStartedAt,
+    heartbeatAt: cycleStartedAt,
     statusMessage: dueMonitors.length > 0 ? `Processing ${dueMonitors.length} monitor(s).` : "Idle cycle completed.",
   });
 
   await runWithConcurrency(dueMonitors, env.workerConcurrency, async (monitor) => {
     try {
-      await processMonitor(monitor);
+      cycleResults.push(await processMonitor(monitor));
     } catch (error) {
+      cycleErrors.push(error instanceof Error ? error.message : "A monitor check failed unexpectedly.");
       await updateWorkerState({
         heartbeatAt: new Date(),
         statusMessage: error instanceof Error ? error.message : "A monitor check failed unexpectedly.",
+        lastErrorAt: new Date(),
+        lastErrorMessage: error instanceof Error ? error.message : "A monitor check failed unexpectedly.",
       });
     }
   });
 
+  const cycleFinishedAt = new Date();
+  const latencyValues = cycleResults
+    .map((item) => item.latencyMs)
+    .filter((item): item is number => typeof item === "number");
+  const successCount = cycleResults.filter((item) => item.finalStatus === "up").length;
+  const failureCount = cycleResults.filter((item) => item.finalStatus === "down").length;
+  const pendingCount = cycleResults.filter((item) => item.finalStatus === "pending").length;
+  const durationMs = Math.max(0, cycleFinishedAt.getTime() - cycleStartedAt.getTime());
+  const averageLatencyMs =
+    latencyValues.length > 0
+      ? Math.round(latencyValues.reduce((sum, value) => sum + value, 0) / latencyValues.length)
+      : null;
+  const maxLatencyMs = latencyValues.length > 0 ? Math.max(...latencyValues) : null;
+
+  await recordWorkerCycleMetric({
+    cycleStartedAt,
+    cycleFinishedAt,
+    durationMs,
+    backlogAtStart,
+    claimedMonitors: dueMonitors.length,
+    completedMonitors: cycleResults.length,
+    successCount,
+    failureCount,
+    pendingCount,
+    averageLatencyMs,
+    maxLatencyMs,
+    errorMessage: cycleErrors[0] ?? null,
+  });
+
   await updateWorkerState({
-    heartbeatAt: new Date(),
+    heartbeatAt: cycleFinishedAt,
+    lastCycleAt: cycleFinishedAt,
+    lastCycleDurationMs: durationMs,
+    lastCycleMonitorCount: dueMonitors.length,
+    lastCycleSuccessCount: successCount,
+    lastCycleFailureCount: failureCount,
+    lastCyclePendingCount: pendingCount,
+    lastCycleAverageLatencyMs: averageLatencyMs,
+    lastCycleBacklog: backlogAtStart,
+    lastErrorAt: cycleErrors[0] ? cycleFinishedAt : null,
+    lastErrorMessage: cycleErrors[0] ?? null,
     statusMessage:
       dueMonitors.length > 0
         ? `Completed ${dueMonitors.length} monitor check(s).`
@@ -179,35 +225,12 @@ async function processMonitor(monitor: Monitor) {
   if (!result.ok && failureEventMessage) {
     await appendDetailedEvent(monitor, result, "failure", failureEventMessage, rca, checkStatus);
     if (incidentConfirmedThisCycle) {
-      await openOrUpdateIncident({
-        monitorId: monitor.id,
-        userId: monitor.userId,
-        checkedAt: result.checkedAt,
-        statusCode: result.statusCode,
-        errorMessage: result.errorMessage,
-      });
       await sendMonitorNotifications({ kind: "failure", message: failureEventMessage, monitor, result, rca });
     }
   }
 
-  if (!result.ok && hadConfirmedIncident) {
-    await openOrUpdateIncident({
-      monitorId: monitor.id,
-      userId: monitor.userId,
-      checkedAt: result.checkedAt,
-      statusCode: result.statusCode,
-      errorMessage: result.errorMessage,
-    });
-  }
-
   if (result.ok && hadConfirmedIncident) {
     const message = "Service recovered and is responding again.";
-    await resolveIncident({
-      monitorId: monitor.id,
-      userId: monitor.userId,
-      checkedAt: result.checkedAt,
-      statusCode: result.statusCode,
-    });
     await appendDetailedEvent(monitor, result, "recovery", message, rca, "up");
     await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
   }
@@ -234,6 +257,11 @@ async function processMonitor(monitor: Monitor) {
     await appendDetailedEvent(monitor, result, "ssl-expiry", message, rca, checkStatus);
     await sendMonitorNotifications({ kind: "ssl-expiry", message, monitor, result, rca });
   }
+
+  return {
+    finalStatus: checkStatus,
+    latencyMs: result.latencyMs,
+  };
 }
 
 async function appendCheckEvent(

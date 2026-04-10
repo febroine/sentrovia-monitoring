@@ -1,4 +1,7 @@
-import { Braces, DatabaseZap, Globe, Network, Search } from "lucide-react";
+"use client";
+
+import { Activity, Braces, Clock3, Copy, DatabaseZap, Globe, Network, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +19,11 @@ import type {
 
 const MONITOR_TYPE_OPTIONS: Array<{ value: MonitorType; icon: typeof Globe; description: string }> = [
   {
+    value: "heartbeat",
+    icon: Clock3,
+    description: "Cron and background jobs call a generated heartbeat endpoint. The worker marks the monitor down when the heartbeat stops arriving on time.",
+  },
+  {
     value: "http",
     icon: Globe,
     description: "Full HTTP/HTTPS checks with redirects, SSL handling, and response controls.",
@@ -29,6 +37,11 @@ const MONITOR_TYPE_OPTIONS: Array<{ value: MonitorType; icon: typeof Globe; desc
     value: "json",
     icon: Braces,
     description: "API checks that parse JSON and validate a path against an expected value or presence rule.",
+  },
+  {
+    value: "ping",
+    icon: Activity,
+    description: "ICMP ping checks for host reachability and packet round-trip latency.",
   },
   {
     value: "port",
@@ -62,6 +75,8 @@ export function GeneralMonitorSettings({
   const isKeywordMonitor = values.monitorType === "keyword";
   const isJsonMonitor = values.monitorType === "json";
   const isPortMonitor = values.monitorType === "port";
+  const isPingMonitor = values.monitorType === "ping";
+  const isHeartbeatMonitor = values.monitorType === "heartbeat";
   const isPostgresMonitor = values.monitorType === "postgres";
 
   return (
@@ -190,6 +205,17 @@ export function GeneralMonitorSettings({
         </div>
       ) : null}
 
+      {isPingMonitor ? (
+        <Field label="Host">
+          <Input
+            value={values.portHost}
+            onChange={(event) => onFieldChange("portHost", event.target.value)}
+            placeholder="example.com"
+            required
+          />
+        </Field>
+      ) : null}
+
       {isPortMonitor ? (
         <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4">
           <Field label="Host">
@@ -209,6 +235,21 @@ export function GeneralMonitorSettings({
               onChange={(event) => onFieldChange("portNumber", Number(event.target.value) || 1)}
               required
             />
+          </Field>
+        </div>
+      ) : null}
+
+      {isHeartbeatMonitor ? (
+        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+          <div className="rounded-lg border border-border/80 bg-background px-4 py-3 text-xs leading-6 text-muted-foreground">
+            Save the monitor once to generate its dedicated heartbeat endpoint. Your cron job can then call that endpoint with
+            `GET` or `POST` on every successful run.
+          </div>
+          <Field label="Heartbeat endpoint">
+            <HeartbeatEndpointTools token={values.heartbeatToken} intervalValue={values.intervalValue} intervalUnit={values.intervalUnit} />
+          </Field>
+          <Field label="Last heartbeat">
+            <Input value={values.heartbeatLastReceivedAt ?? "No heartbeat received yet"} readOnly />
           </Field>
         </div>
       ) : null}
@@ -309,6 +350,8 @@ export function CheckMonitorSettings({
   const isAssertionMonitor = values.monitorType === "keyword" || values.monitorType === "json";
   const isPostgresMonitor = values.monitorType === "postgres";
   const isPortMonitor = values.monitorType === "port";
+  const isPingMonitor = values.monitorType === "ping";
+  const isHeartbeatMonitor = values.monitorType === "heartbeat";
 
   return (
     <div className="space-y-4">
@@ -426,7 +469,7 @@ export function CheckMonitorSettings({
         </>
       ) : null}
 
-      {isPortMonitor ? (
+      {isPortMonitor || isPingMonitor ? (
         <Field label="IP family">
           <Select value={values.ipFamily} onValueChange={(value) => onFieldChange("ipFamily", value as IpFamily)}>
             <SelectTrigger>
@@ -481,11 +524,18 @@ export function CheckMonitorSettings({
             onChange={(checked) => onFieldChange("saveSuccessPages", checked)}
           />
         </div>
+      ) : isHeartbeatMonitor ? (
+        <div className="rounded-lg border border-border/80 bg-muted/10 px-4 py-3 text-xs leading-5 text-muted-foreground">
+          Heartbeat monitors stay healthy only while your cron or background job keeps calling the generated heartbeat endpoint
+          within the configured interval.
+        </div>
       ) : (
         <div className="rounded-lg border border-border/80 bg-muted/10 px-4 py-3 text-xs leading-5 text-muted-foreground">
           {isPostgresMonitor
             ? "PostgreSQL monitors open a database session and run a lightweight SELECT 1 check. HTTP-specific options stay disabled for this monitor type."
-            : "Port monitors validate raw TCP reachability. HTTP redirects, response body limits, SSL expiry, and cache busters do not apply here."}
+            : isPingMonitor
+              ? "Ping monitors use ICMP reachability checks. HTTP redirects, response bodies, SSL expiry, and cache busters do not apply here."
+              : "Port monitors validate raw TCP reachability. HTTP redirects, response body limits, SSL expiry, and cache busters do not apply here."}
         </div>
       )}
     </div>
@@ -521,4 +571,69 @@ function CheckRow({
       </span>
     </label>
   );
+}
+
+function HeartbeatEndpointTools({
+  token,
+  intervalValue,
+  intervalUnit,
+}: {
+  token: string;
+  intervalValue: number;
+  intervalUnit: IntervalUnit;
+}) {
+  const endpointPath = token ? `/api/monitors/heartbeat/${token}` : "Generated after save";
+  const endpointUrl =
+    typeof window !== "undefined" && token
+      ? `${window.location.origin}/api/monitors/heartbeat/${token}`
+      : endpointPath;
+  const cronExpression = toCronExpression(intervalValue, intervalUnit);
+  const curlSnippet = token ? `curl -fsS -X POST "${endpointUrl}" >/dev/null` : "Save the monitor to generate the heartbeat endpoint.";
+  const cronSnippet = token
+    ? `${cronExpression} ${curlSnippet}`
+    : "Save the monitor to generate a ready-to-use cron example.";
+
+  async function copyValue(value: string) {
+    if (!token || typeof navigator === "undefined") {
+      return;
+    }
+
+    await navigator.clipboard.writeText(value);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Input value={endpointPath} readOnly />
+        <Button type="button" variant="outline" className="shrink-0" onClick={() => void copyValue(endpointUrl)} disabled={!token}>
+          <Copy className="mr-2 h-4 w-4" />
+          Copy endpoint
+        </Button>
+      </div>
+      <div className="space-y-2 rounded-lg border border-border/80 bg-background px-4 py-3">
+        <p className="text-xs font-medium text-foreground">Example curl</p>
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-muted-foreground">
+          {curlSnippet}
+        </pre>
+      </div>
+      <div className="space-y-2 rounded-lg border border-border/80 bg-background px-4 py-3">
+        <p className="text-xs font-medium text-foreground">Example cron</p>
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-muted-foreground">
+          {cronSnippet}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function toCronExpression(intervalValue: number, intervalUnit: IntervalUnit) {
+  if (intervalUnit === "sa") {
+    return `0 */${Math.max(1, intervalValue)} * * *`;
+  }
+
+  if (intervalUnit === "sn") {
+    return "* * * * *";
+  }
+
+  return `*/${Math.max(1, intervalValue)} * * * *`;
 }

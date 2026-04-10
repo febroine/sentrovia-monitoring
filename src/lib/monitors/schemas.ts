@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres"]);
+export const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
 export const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
 export const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
 export const ipFamilySchema = z.enum(["auto", "ipv4", "ipv6"]);
@@ -31,6 +31,8 @@ export const monitorInputSchema = z
     url: optionalRequiredString(2000),
     portHost: optionalRequiredString(255),
     portNumber: z.coerce.number().int().min(1).max(65_535).default(443),
+    heartbeatToken: optionalRequiredString(255),
+    heartbeatLastReceivedAt: z.string().datetime().nullable().default(null),
     databaseHost: optionalRequiredString(255),
     databasePort: z.coerce.number().int().min(1).max(65_535).default(5432),
     databaseName: optionalRequiredString(120),
@@ -127,12 +129,26 @@ export const monitorInputSchema = z
       return;
     }
 
-    if (value.monitorType === "port") {
+    if (value.monitorType === "port" || value.monitorType === "ping") {
       if (value.portHost.trim().length === 0) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["portHost"],
-          message: "Enter a hostname or IP address for the port monitor.",
+          message:
+            value.monitorType === "ping"
+              ? "Enter a hostname or IP address for the ping monitor."
+              : "Enter a hostname or IP address for the port monitor.",
+        });
+      }
+      return;
+    }
+
+    if (value.monitorType === "heartbeat") {
+      if (value.heartbeatToken.trim().length > 0 && value.heartbeatToken.trim().length < 8) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["heartbeatToken"],
+          message: "Heartbeat token must be at least 8 characters if you provide one.",
         });
       }
       return;

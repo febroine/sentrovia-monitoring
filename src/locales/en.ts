@@ -29,6 +29,7 @@ export const en = {
     logs: "Event Logs",
     incidents: "Incidents",
     delivery: "Delivery",
+    reports: "Reports",
     settings: "Settings"
   },
   settings: {
@@ -72,8 +73,6 @@ export const en = {
       emailDesc: "Sent for critical events.",
       telegram: "Telegram Notifications",
       telegramDesc: "Instant alerts via bot.",
-      slack: "Slack Webhook",
-      slackDesc: "Send alerts to #alerts channel.",
       sms: "SMS Notifications",
       smsDesc: "Get SMS for critical outages.",
       discord: "Discord Webhook",

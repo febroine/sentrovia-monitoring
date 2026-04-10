@@ -5,6 +5,8 @@ x-app-build: &app-build
 
     WORKDIR /app
 
+    RUN apt-get update && apt-get install -y iputils-ping && rm -rf /var/lib/apt/lists/*
+
     COPY package.json package-lock.json ./
     RUN npm ci
     RUN npx playwright install --with-deps chromium
@@ -50,8 +52,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
       APP_URL: ${APP_URL:-http://localhost:3000}
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-before-production}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-change-me-before-production-encryption}
+      AUTH_SECRET: ${AUTH_SECRET:-local-docker-auth-secret-please-change-before-public-deploy-2026}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-local-docker-encryption-secret-change-before-public-deploy-2026}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       DISABLE_EMBEDDED_WORKER_SPAWN: "true"
@@ -84,8 +86,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
       APP_URL: ${APP_URL:-http://localhost:3000}
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-before-production}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-change-me-before-production-encryption}
+      AUTH_SECRET: ${AUTH_SECRET:-local-docker-auth-secret-please-change-before-public-deploy-2026}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-local-docker-encryption-secret-change-before-public-deploy-2026}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       WORKER_AUTO_START: "true"

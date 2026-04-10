@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
 
+export const SIDEBAR_ACCENT_UPDATED_EVENT = "sentrovia:sidebar-accent-updated";
+
 interface SettingsState {
   settings: SettingsPayload;
   loading: boolean;
@@ -13,7 +15,7 @@ interface SettingsState {
   saveSettings: () => Promise<void>;
   updateSetting: (
     path: string,
-    value: string | number | boolean | string[] | SettingsPayload["maintenanceWindows"]
+    value: string | number | boolean | string[]
   ) => void;
   clearMessage: () => void;
 }
@@ -64,6 +66,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         error: null,
         message: "Settings saved.",
       });
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(SIDEBAR_ACCENT_UPDATED_EVENT, {
+            detail: {
+              accent: data.settings.appearance.sidebarAccent,
+            },
+          })
+        );
+      }
     } catch (error) {
       set({
         saving: false,
@@ -81,7 +93,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         return { settings: next, message: null };
       }
 
-      (next[section] as Record<string, string | number | boolean | string[] | SettingsPayload["maintenanceWindows"]>)[key] = value;
+      (next[section] as Record<string, string | number | boolean | string[]>)[key] = value;
       return { settings: next, message: null };
     }),
   clearMessage: () => set({ message: null, error: null }),

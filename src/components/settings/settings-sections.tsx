@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MaintenanceWindowsEditor } from "@/components/settings/maintenance-windows-editor";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
 import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
 import { SavedRecipientsManager } from "@/components/settings/saved-recipients-manager";
@@ -30,7 +29,7 @@ interface TabProps {
   settings: SettingsPayload;
   updateSetting: (
     path: string,
-    value: string | number | boolean | string[] | SettingsPayload["maintenanceWindows"]
+    value: string | number | boolean | string[]
   ) => void;
 }
 
@@ -275,13 +274,6 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
             placeholder="eu-central"
           />
         </Field>
-        <Field label="Maintenance window" hint="Optional note used for team coordination.">
-          <Input
-            value={settings.monitoring.maintenanceWindow}
-            onChange={(event) => updateSetting("monitoring.maintenanceWindow", event.target.value)}
-            placeholder="Sun 02:00-03:00"
-          />
-        </Field>
         <Field label="Response max length">
           <Input
             type="number"
@@ -315,7 +307,6 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
           </div>
         </Field>
       </div>
-      <MaintenanceWindowsEditor windows={settings.maintenanceWindows} updateSetting={updateSetting} />
     </SectionCard>
   );
 }
@@ -356,12 +347,6 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
           </SelectContent>
         </Select>
       </Field>
-      <ToggleRow
-        label="Show incident banner"
-        description="Display the active incident banner on the dashboard when alerts are open."
-        checked={settings.appearance.showIncidentBanner}
-        onChange={(checked) => updateSetting("appearance.showIncidentBanner", checked)}
-      />
       <ToggleRow
         label="Show charts section"
         description="Keep the dashboard focus widgets and analytical cards visible."

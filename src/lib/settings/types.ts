@@ -1,13 +1,4 @@
 export interface SettingsPayload {
-  maintenanceWindows: Array<{
-    id: string;
-    name: string;
-    startsAt: string;
-    endsAt: string;
-    timezone: string;
-    isActive: boolean;
-    suppressNotifications: boolean;
-  }>;
   profile: {
     firstName: string;
     lastName: string;
@@ -35,8 +26,6 @@ export interface SettingsPayload {
     smtpSecure: boolean;
     smtpRequireTls: boolean;
     smtpInsecureSkipVerify: boolean;
-    slackWebhookUrl: string;
-    slackEnabled: boolean;
     discordWebhookUrl: string;
     discordEnabled: boolean;
     defaultEmailSubjectTemplate: string;
@@ -52,7 +41,6 @@ export interface SettingsPayload {
     batchSize: number;
     method: string;
     region: string;
-    maintenanceWindow: string;
     responseMaxLength: number;
     maxRedirects: number;
     ignoreSslErrors: boolean;
@@ -75,7 +63,6 @@ export interface SettingsPayload {
 }
 
 export const DEFAULT_SETTINGS: SettingsPayload = {
-  maintenanceWindows: [],
   profile: {
     firstName: "",
     lastName: "",
@@ -103,8 +90,6 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     smtpSecure: true,
     smtpRequireTls: true,
     smtpInsecureSkipVerify: true,
-    slackWebhookUrl: "",
-    slackEnabled: false,
     discordWebhookUrl: "",
     discordEnabled: false,
     defaultEmailSubjectTemplate: "[Sentrovia] {domain} is {event_state} ({status_code})",
@@ -122,7 +107,6 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     batchSize: 20,
     method: "GET",
     region: "eu-central",
-    maintenanceWindow: "",
     responseMaxLength: 1024,
     maxRedirects: 5,
     ignoreSslErrors: true,

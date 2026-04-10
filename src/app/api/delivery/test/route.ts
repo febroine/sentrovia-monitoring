@@ -7,7 +7,7 @@ import { sendDeliveryTest } from "@/lib/delivery/service";
 export const runtime = "nodejs";
 
 const testSchema = z.object({
-  channel: z.enum(["email", "telegram", "webhook", "slack", "discord"]),
+  channel: z.enum(["email", "telegram", "webhook", "discord"]),
   destination: z.string().trim().max(500).optional(),
   botToken: z.string().trim().max(255).optional(),
   chatId: z.string().trim().max(255).optional(),

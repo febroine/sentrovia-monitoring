@@ -9,6 +9,7 @@ type TargetShape = Pick<
   | "url"
   | "portHost"
   | "portNumber"
+  | "heartbeatToken"
   | "databaseHost"
   | "databasePort"
   | "databaseName"
@@ -20,6 +21,14 @@ type TargetShape = Pick<
 export function buildCanonicalMonitorTarget(input: TargetShape) {
   if (input.monitorType === "port") {
     return buildPortMonitorTarget(input.portHost, input.portNumber);
+  }
+
+  if (input.monitorType === "ping") {
+    return buildPingMonitorTarget(input.portHost);
+  }
+
+  if (input.monitorType === "heartbeat") {
+    return buildHeartbeatMonitorTarget(input.heartbeatToken);
   }
 
   if (input.monitorType === "postgres") {
@@ -52,6 +61,16 @@ export function getMonitorTargetDisplay(input: { monitorType: string; url: strin
     return `${target.host}:${target.port}`;
   }
 
+  if (input.monitorType === "ping") {
+    const target = parsePingMonitorTarget(input.url);
+    return target.host;
+  }
+
+  if (input.monitorType === "heartbeat") {
+    const target = parseHeartbeatMonitorTarget(input.url);
+    return target.token ? `heartbeat:${target.token}` : "Heartbeat endpoint";
+  }
+
   if (input.monitorType === "postgres") {
     const target = parsePostgresMonitorTarget(input.url);
     return `${target.host}:${target.port}/${target.databaseName}`;
@@ -65,8 +84,16 @@ export function getMonitorTargetDisplay(input: { monitorType: string; url: strin
 }
 
 export function getMonitorTypeLabel(type: MonitorType | string) {
+  if (type === "heartbeat") {
+    return "Cron / Heartbeat";
+  }
+
+  if (type === "ping") {
+    return "Ping / ICMP";
+  }
+
   if (type === "port") {
-    return "Ping / Port";
+    return "TCP / Port";
   }
 
   if (type === "postgres") {
@@ -120,8 +147,30 @@ export function parsePostgresMonitorTarget(url: string) {
   };
 }
 
+export function parsePingMonitorTarget(url: string) {
+  const parsed = safeParseUrl(url);
+
+  if (!parsed) {
+    return {
+      host: stripProtocol(url),
+    };
+  }
+
+  return {
+    host: stripIpv6Brackets(parsed.hostname || parsed.host || ""),
+  };
+}
+
+export function parseHeartbeatMonitorTarget(url: string) {
+  return {
+    token: decodeURIComponent(stripProtocol(url).replace(/^\/+/, "").trim()),
+  };
+}
+
 export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
   const portTarget = record.monitorType === "port" ? parsePortMonitorTarget(record.url) : null;
+  const pingTarget = record.monitorType === "ping" ? parsePingMonitorTarget(record.url) : null;
+  const heartbeatTarget = record.monitorType === "heartbeat" ? parseHeartbeatMonitorTarget(record.url) : null;
   const databaseTarget = record.monitorType === "postgres" ? parsePostgresMonitorTarget(record.url) : null;
   const baseUrl = record.monitorType === "http" || record.monitorType === "keyword" || record.monitorType === "json"
     ? record.url.split("#")[0]
@@ -131,8 +180,10 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     name: record.name,
     monitorType: record.monitorType,
     url: baseUrl,
-    portHost: portTarget?.host ?? "",
+    portHost: portTarget?.host ?? pingTarget?.host ?? "",
     portNumber: portTarget?.port ?? DEFAULT_PORT_MONITOR_PORT,
+    heartbeatToken: record.heartbeatToken ?? heartbeatTarget?.token ?? "",
+    heartbeatLastReceivedAt: record.heartbeatLastReceivedAt,
     databaseHost: databaseTarget?.host ?? "",
     databasePort: databaseTarget?.port ?? DEFAULT_POSTGRES_PORT,
     databaseName: databaseTarget?.databaseName ?? "",
@@ -176,6 +227,15 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
 function buildPortMonitorTarget(host: string, port: number) {
   const normalizedHost = normalizeHost(host);
   return `tcp://${normalizedHost}:${toPort(port, DEFAULT_PORT_MONITOR_PORT)}`;
+}
+
+function buildPingMonitorTarget(host: string) {
+  const normalizedHost = normalizeHost(host);
+  return `icmp://${normalizedHost}`;
+}
+
+function buildHeartbeatMonitorTarget(token: string) {
+  return `heartbeat://${encodeURIComponent(token.trim())}`;
 }
 
 function buildPostgresMonitorTarget(host: string, port: number, databaseName: string, username: string) {

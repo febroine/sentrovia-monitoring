@@ -110,20 +110,6 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
-      {data.settings?.appearance.showIncidentBanner && data.summary.offline > 0 ? (
-        <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-4">
-          <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
-          <div>
-            <p className="text-sm font-medium text-destructive">
-              {data.summary.offline} active incident{data.summary.offline > 1 ? "s" : ""}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              At least one monitor is currently down and requires action.
-            </p>
-          </div>
-        </div>
-      ) : null}
-
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <Card key={card.label} className="overflow-hidden">

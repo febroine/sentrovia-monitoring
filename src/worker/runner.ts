@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { retryWebhookQueueForAllUsers } from "@/lib/delivery/service";
 import { getWorkerState, updateWorkerState } from "@/lib/monitors/service";
+import { runDueReportSchedules } from "@/lib/reports/service";
 import { runMonitoringCycle } from "@/worker/scheduler";
 
 let active = true;
@@ -47,6 +48,7 @@ async function main() {
         });
         await runMonitoringCycle();
         await retryWebhookQueueForAllUsers();
+        await runDueReportSchedules();
         await updateWorkerState({
           running: true,
           heartbeatAt: new Date(),

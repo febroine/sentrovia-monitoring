@@ -307,8 +307,8 @@ Typical local values:
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5433/uptimemonitoring
 APP_URL=http://localhost:3000
-AUTH_SECRET=replace-this-in-production
-APP_ENCRYPTION_SECRET=replace-with-a-32-byte-secret
+AUTH_SECRET=local-dev-auth-secret-change-before-public-deploy-2026
+APP_ENCRYPTION_SECRET=local-dev-encryption-secret-change-before-public-deploy-2026
 WORKER_CONCURRENCY=20
 WORKER_POLL_INTERVAL_MS=10000
 WORKER_AUTO_START=false
@@ -319,6 +319,7 @@ ENABLE_IN_PLACE_UPDATES=true
 ```
 
 For Docker Compose, the services already inject the internal database host and worker flags they need.
+The compose file also ships with local-only default secrets so a fresh clone can boot without extra setup. Override them in any real server deployment.
 
 ## Self-hosted reliability notes
 

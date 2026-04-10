@@ -6,7 +6,6 @@ import {
   sendTelegramDelivery,
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
-import { hasActiveMaintenanceWindow } from "@/lib/maintenance/service";
 import { hasRecentMonitorEvent } from "@/lib/monitors/service";
 import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
@@ -45,10 +44,6 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     });
   }
 
-  if (settings.notifications.slackEnabled && settings.notifications.slackWebhookUrl) {
-    await sendChannelWebhookDelivery(context.monitor.userId, "slack", context.kind, rendered.textBody);
-  }
-
   if (settings.notifications.discordEnabled && settings.notifications.discordWebhookUrl) {
     await sendChannelWebhookDelivery(context.monitor.userId, "discord", context.kind, rendered.textBody);
   }
@@ -70,10 +65,6 @@ export async function sendMonitorNotifications(context: NotificationContext) {
 
 async function shouldSendNotification(context: NotificationContext) {
   if (context.monitor.notificationPref === "none" || context.kind === "check") {
-    return false;
-  }
-
-  if (await hasActiveMaintenanceWindow(context.monitor.userId, context.result.checkedAt)) {
     return false;
   }
 
