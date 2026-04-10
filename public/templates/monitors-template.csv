@@ -1,0 +1,4 @@
+name,monitorType,url,portHost,portNumber,databaseHost,databasePort,databaseName,databaseUsername,databasePassword,databaseSsl,company,intervalValue,intervalUnit,timeout,retries,method,tags,notificationPref,notifEmail,telegramChatId,maxRedirects,ipFamily,checkSslExpiry,ignoreSslErrors,cacheBuster,saveErrorPages,saveSuccessPages,responseMaxLength,isActive
+Main Website,http,https://example.com,,,,,,,,,Sentrovia,5,dk,5000,3,GET,production|public,email,alerts@example.com,,5,auto,true,false,false,false,false,2048,true
+TLS Port Check,port,,example.com,443,,,,,,,Sentrovia,1,dk,3000,2,GET,edge|tcp,both,ops@example.com,123456789,0,ipv4,false,false,false,false,false,0,true
+Primary PostgreSQL,postgres,,,,db.example.internal,5432,production,monitor_user,replace-me,true,Sentrovia,2,dk,5000,2,GET,database|critical,email,dba@example.com,,0,auto,false,false,false,false,false,0,true

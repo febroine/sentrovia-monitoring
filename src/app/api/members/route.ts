@@ -1,0 +1,52 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { getSession } from "@/lib/auth/session";
+import { toAuthError } from "@/lib/auth/errors";
+import { deleteMembers, listMembers } from "@/lib/members/service";
+
+export const runtime = "nodejs";
+
+const memberDeleteSchema = z.object({
+  ids: z.array(z.string().trim().min(1)).min(1),
+});
+
+export async function GET() {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const members = await listMembers();
+    return NextResponse.json({
+      members: members.map((member) => ({
+        ...member,
+        createdAt: member.createdAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    const authError = toAuthError(error, "Unable to load members right now.");
+    return NextResponse.json({ message: authError.message }, { status: authError.status });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const parsed = memberDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ message: "Select at least one member." }, { status: 400 });
+    }
+
+    const deleted = await deleteMembers(parsed.data.ids, session.id);
+    return NextResponse.json({ ids: deleted.map((member) => member.id) });
+  } catch (error) {
+    const authError = toAuthError(error, "Unable to delete members right now.");
+    return NextResponse.json({ message: authError.message }, { status: authError.status });
+  }
+}
