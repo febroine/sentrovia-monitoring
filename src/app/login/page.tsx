@@ -4,11 +4,11 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import {
   ArrowRight,
+  BellRing,
+  Database,
   Eye,
   EyeOff,
-  KeyRound,
   LoaderCircle,
-  Shield,
   TimerReset,
 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -79,33 +79,35 @@ export default function LoginPage() {
   return (
     <AuthShell
       tone="primary"
-      heroTitle="Enter the Sentrovia command surface with a quieter, tighter auth flow."
-      heroDescription="Access monitor operations, delivery controls, event analysis, and worker visibility from the same focused reliability workspace."
+      heroTitle="Return to the Sentrovia control plane with the worker, logs, and delivery view in sync."
+      heroDescription="Sign in to review live monitor state, verification progress, delivery attempts, and company-level visibility from one database-backed workspace."
       showcaseCards={[
         {
-          icon: Shield,
-          title: "Hardened Session Flow",
-          description: "Signed cookies, strict same-site rules, and rate-limited auth requests.",
-          meta: "SECURITY FIRST",
-        },
-        {
           icon: TimerReset,
-          title: "Operational Continuity",
-          description: "Resume directly into dashboards, logs, delivery controls, and worker status.",
-          meta: "FAST REENTRY",
+          title: "Verification Timeline",
+          description: "See whether a failure is still being confirmed or has already become a real incident.",
+          meta: "INCIDENT CLARITY",
         },
         {
-          icon: KeyRound,
-          title: "Credential Discipline",
-          description: "Passwords never persist in plain storage and failed attempts are throttled.",
-          meta: "AUTH GUARDRAILS",
+          icon: BellRing,
+          title: "Delivery Trace",
+          description: "Inspect exactly what Sentrovia tried to send after a failure, recovery, or latency event.",
+          meta: "ALERT HISTORY",
+        },
+        {
+          icon: Database,
+          title: "Worker-Backed State",
+          description: "The console reads persisted worker output rather than temporary browser assumptions.",
+          meta: "PERSISTED VISIBILITY",
         },
       ]}
       stats={[
-        { label: "Session Window", value: "7d", detail: "Signed server session lifetime" },
-        { label: "Auth Control", value: "Strict", detail: "No-store auth responses" },
-        { label: "Operator View", value: "Live", detail: "Dashboard route continuation" },
+        { label: "Check Model", value: "Async", detail: "Batch selection with concurrency control" },
+        { label: "Event Trail", value: "Live", detail: "Logs and timelines update from persisted checks" },
+        { label: "Monitor Types", value: "3", detail: "HTTP, TCP, and PostgreSQL coverage" },
       ]}
+      statsTitle="What you are signing back into"
+      statsDescription="Sentrovia is designed as an operational workspace: checks, verification, delivery, logs, and worker state all read from the same durable model."
       formEyebrow="Sign In"
       formTitle="Open the Sentrovia workspace"
       formDescription="Use your registered operator email and password to continue into the monitoring console."

@@ -64,6 +64,8 @@ export function AuthShell({
   heroDescription,
   showcaseCards,
   stats,
+  statsTitle,
+  statsDescription,
   formEyebrow,
   formTitle,
   formDescription,
@@ -77,6 +79,8 @@ export function AuthShell({
   heroDescription: string;
   showcaseCards: AuthShowcaseCard[];
   stats: AuthStat[];
+  statsTitle: string;
+  statsDescription: string;
   formEyebrow: string;
   formTitle: string;
   formDescription: string;
@@ -132,10 +136,8 @@ export function AuthShell({
                 <Card className={cn("border-border/70 bg-card/80 backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]", palette.glow)}>
                   <div className={cn("absolute inset-x-0 top-0 h-px", palette.accentLine)} />
                   <CardHeader>
-                    <CardTitle>Command Surface Access</CardTitle>
-                    <CardDescription>
-                      Authentication is treated like the rest of the product: operational, deliberate, and visible.
-                    </CardDescription>
+                    <CardTitle>{statsTitle}</CardTitle>
+                    <CardDescription>{statsDescription}</CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-3 sm:grid-cols-3">
                     {stats.map((item) => (

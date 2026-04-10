@@ -4,7 +4,7 @@ import {
   appendMonitorCheck,
   appendMonitorEvent,
   incrementWorkerCheckedCount,
-  listDueMonitors,
+  claimDueMonitors,
   recordMonitorResult,
   updateWorkerState,
 } from "@/lib/monitors/service";
@@ -14,7 +14,7 @@ import { sendMonitorNotifications } from "@/worker/notifier";
 
 export async function runMonitoringCycle() {
   const now = new Date();
-  const dueMonitors = await listDueMonitors(now);
+  const dueMonitors = await claimDueMonitors(now);
 
   await updateWorkerState({
     lastCycleAt: now,
@@ -59,6 +59,7 @@ async function processMonitor(monitor: Monitor) {
     result.sslExpiresAt.getTime() - result.checkedAt.getTime() < 1000 * 60 * 60 * 24 * 14;
   let incidentConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
+  let checkStatus: "up" | "down" | "pending" = result.ok ? "up" : "pending";
 
   if (result.ok) {
     await recordMonitorResult(monitor.id, {
@@ -80,6 +81,7 @@ async function processMonitor(monitor: Monitor) {
     const verificationCount = wasVerifying ? monitor.verificationFailureCount + 1 : 1;
     const confirmedIncident = verificationCount >= threshold;
     incidentConfirmedThisCycle = confirmedIncident;
+    checkStatus = confirmedIncident ? "down" : "pending";
     failureEventMessage = confirmedIncident ? result.errorMessage ?? "Health check failed." : null;
 
     await recordMonitorResult(monitor.id, {
@@ -106,10 +108,12 @@ async function processMonitor(monitor: Monitor) {
         result,
         "verification",
         `Verification attempt ${verificationCount} of ${threshold} failed. Outage is pending confirmation.`,
-        rca
+        rca,
+        "pending"
       );
     }
   } else if (hadConfirmedIncident) {
+    checkStatus = "down";
     failureEventMessage = result.errorMessage ?? "Health check failed.";
     await recordMonitorResult(monitor.id, {
       status: "down",
@@ -127,6 +131,7 @@ async function processMonitor(monitor: Monitor) {
       latencyMs: result.latencyMs,
     });
   } else {
+    checkStatus = "pending";
     await recordMonitorResult(monitor.id, {
       status: "pending",
       statusCode: result.statusCode,
@@ -148,7 +153,8 @@ async function processMonitor(monitor: Monitor) {
       result,
       "verification",
       `Verification mode started. Attempt 1 of ${threshold} failed.`,
-      rca
+      rca,
+      "pending"
     );
   }
 
@@ -159,7 +165,7 @@ async function processMonitor(monitor: Monitor) {
   await appendMonitorCheck({
     monitorId: monitor.id,
     userId: monitor.userId,
-    status: result.status,
+    status: checkStatus,
     statusCode: result.statusCode,
     latencyMs: result.latencyMs,
     createdAt: result.checkedAt,
@@ -170,7 +176,7 @@ async function processMonitor(monitor: Monitor) {
   }
 
   if (!result.ok && failureEventMessage) {
-    await appendDetailedEvent(monitor, result, "failure", failureEventMessage, rca);
+    await appendDetailedEvent(monitor, result, "failure", failureEventMessage, rca, checkStatus);
     if (incidentConfirmedThisCycle) {
       await sendMonitorNotifications({ kind: "failure", message: failureEventMessage, monitor, result, rca });
     }
@@ -178,13 +184,13 @@ async function processMonitor(monitor: Monitor) {
 
   if (result.ok && hadConfirmedIncident) {
     const message = "Service recovered and is responding again.";
-    await appendDetailedEvent(monitor, result, "recovery", message, rca);
+    await appendDetailedEvent(monitor, result, "recovery", message, rca, "up");
     await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
   }
 
   if (latencyThresholdExceeded) {
     const message = `Latency reached ${result.latencyMs}ms.`;
-    await appendDetailedEvent(monitor, result, "latency", message, rca);
+    await appendDetailedEvent(monitor, result, "latency", message, rca, checkStatus);
     await sendMonitorNotifications({ kind: "latency", message, monitor, result, rca });
   }
 
@@ -195,13 +201,13 @@ async function processMonitor(monitor: Monitor) {
     previousStatusCode !== result.statusCode
   ) {
     const message = `Status code changed from ${previousStatusCode} to ${result.statusCode}.`;
-    await appendDetailedEvent(monitor, result, "status-change", message, rca);
+    await appendDetailedEvent(monitor, result, "status-change", message, rca, checkStatus);
     await sendMonitorNotifications({ kind: "status-change", message, monitor, result, rca });
   }
 
   if (sslExpiringSoon) {
     const message = `SSL certificate expires on ${result.sslExpiresAt?.toISOString()}.`;
-    await appendDetailedEvent(monitor, result, "ssl-expiry", message, rca);
+    await appendDetailedEvent(monitor, result, "ssl-expiry", message, rca, checkStatus);
     await sendMonitorNotifications({ kind: "ssl-expiry", message, monitor, result, rca });
   }
 }
@@ -231,13 +237,14 @@ async function appendDetailedEvent(
   result: Awaited<ReturnType<typeof checkMonitor>>,
   eventType: string,
   message: string,
-  rca: ReturnType<typeof analyzeRootCause>
+  rca: ReturnType<typeof analyzeRootCause>,
+  status: "up" | "down" | "pending"
 ) {
   await appendMonitorEvent({
     monitorId: monitor.id,
     userId: monitor.userId,
     eventType,
-    status: result.status,
+    status,
     statusCode: result.statusCode,
     latencyMs: result.latencyMs,
     message,

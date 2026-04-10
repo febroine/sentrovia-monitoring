@@ -25,7 +25,11 @@ export function MonitorHistoryStrip({
           }}
           className={cn(
             "h-2.5 w-5 rounded-full transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-            point.status === "up" ? "bg-emerald-500/85" : "bg-destructive/85"
+            point.status === "up"
+              ? "bg-emerald-500/85"
+              : point.status === "pending"
+                ? "bg-amber-500/85"
+                : "bg-destructive/85"
           )}
         />
       ))}

@@ -2,12 +2,14 @@ import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, userSettings, workerState } from "@/lib/db/schema";
+import { env } from "@/lib/env";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import { buildCanonicalMonitorTarget, buildMonitorIdentityKey } from "@/lib/monitors/targets";
 import { encryptValue } from "@/lib/security/encryption";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const WORKER_STATE_ID = "primary";
+const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 
 export async function listMonitors(userId: string) {
   return db
@@ -93,11 +95,17 @@ export async function createManyMonitors(userId: string, inputs: MonitorInput[])
   return db.insert(monitors).values(values).returning();
 }
 
-export async function listDueMonitors(now: Date) {
+export async function claimDueMonitors(now: Date) {
   const dueRows = await db
     .select()
     .from(monitors)
-    .where(and(eq(monitors.isActive, true), or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt))))
+    .where(
+      and(
+        eq(monitors.isActive, true),
+        or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
+        or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
+      )
+    )
     .orderBy(asc(monitors.nextCheckAt), asc(monitors.createdAt));
 
   if (dueRows.length === 0) {
@@ -115,7 +123,7 @@ export async function listDueMonitors(now: Date) {
   );
   const counters = new Map<string, number>();
 
-  return dueRows.filter((monitor) => {
+  const selectedRows = dueRows.filter((monitor) => {
     const batchSize = Math.max(1, batchSizeMap.get(monitor.userId) ?? DEFAULT_SETTINGS.monitoring.batchSize);
     const current = counters.get(monitor.userId) ?? 0;
 
@@ -126,6 +134,31 @@ export async function listDueMonitors(now: Date) {
     counters.set(monitor.userId, current + 1);
     return true;
   });
+
+  if (selectedRows.length === 0) {
+    return [];
+  }
+
+  const leaseToken = crypto.randomUUID();
+  return db
+    .update(monitors)
+    .set({
+      leaseToken,
+      leaseExpiresAt: new Date(now.getTime() + MONITOR_LEASE_MS),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        inArray(
+          monitors.id,
+          selectedRows.map((monitor) => monitor.id)
+        ),
+        eq(monitors.isActive, true),
+        or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
+        or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
+      )
+    )
+    .returning();
 }
 
 export async function recordMonitorResult(
@@ -150,6 +183,8 @@ export async function recordMonitorResult(
     .update(monitors)
     .set({
       ...update,
+      leaseToken: null,
+      leaseExpiresAt: null,
       updatedAt: new Date(),
     })
     .where(eq(monitors.id, monitorId))
@@ -187,7 +222,7 @@ export async function appendMonitorEvent(input: {
 export async function appendMonitorCheck(input: {
   monitorId: string;
   userId: string;
-  status: "up" | "down";
+  status: "up" | "down" | "pending";
   statusCode?: number | null;
   latencyMs?: number | null;
   createdAt: Date;
@@ -441,7 +476,7 @@ function resolveDatabasePassword(
 }
 
 function summarizeChecks(label: string, checks: Array<typeof monitorChecks.$inferSelect>, since: Date) {
-  const scoped = checks.filter((check) => check.createdAt >= since);
+  const scoped = checks.filter((check) => check.createdAt >= since && check.status !== "pending");
   const totalChecks = scoped.length;
   const upChecks = scoped.filter((check) => check.status === "up").length;
   const incidents = scoped.filter((check) => check.status === "down").length;
@@ -487,6 +522,10 @@ function buildMonthlyUptime(checks: Array<{ status: string; createdAt: Date }>) 
   const buckets = new Map<string, { total: number; up: number }>();
 
   for (const check of checks) {
+    if (check.status === "pending") {
+      continue;
+    }
+
     const key = `${check.createdAt.getUTCFullYear()}-${String(check.createdAt.getUTCMonth() + 1).padStart(2, "0")}`;
     const bucket = buckets.get(key) ?? { total: 0, up: 0 };
     bucket.total += 1;

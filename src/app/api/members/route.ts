@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { assertWorkspaceOwner } from "@/lib/auth/authorization";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { deleteMembers, listMembers } from "@/lib/members/service";
@@ -17,6 +18,7 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
+    await assertWorkspaceOwner(session.id);
     const members = await listMembers();
     return NextResponse.json({
       members: members.map((member) => ({
@@ -37,6 +39,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
+    await assertWorkspaceOwner(session.id);
     const body = await request.json();
     const parsed = memberDeleteSchema.safeParse(body);
     if (!parsed.success) {

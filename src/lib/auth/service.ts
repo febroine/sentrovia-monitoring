@@ -6,6 +6,24 @@ import { createSessionToken, type SessionUser } from "@/lib/auth/token";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 
+type AuthSessionRecord = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  department: string | null;
+  createdAt: Date;
+};
+
+type AuthLoginRecord = AuthSessionRecord & {
+  passwordHash: string;
+};
+
+type PasswordRecord = {
+  id: string;
+  passwordHash: string;
+};
+
 export interface PublicUser extends SessionUser {
   fullName: string;
   createdAt: string;
@@ -13,7 +31,26 @@ export interface PublicUser extends SessionUser {
 
 const DUMMY_PASSWORD_HASH = "$2b$12$ULM1ZLkMVlqUmKWyZs936uzGo.z3gHkvJXPtcv9aHW.EK/O.wY5RS";
 
-function toSessionUser(user: typeof users.$inferSelect): SessionUser {
+const sessionColumns = {
+  id: users.id,
+  firstName: users.firstName,
+  lastName: users.lastName,
+  email: users.email,
+  department: users.department,
+  createdAt: users.createdAt,
+};
+
+const loginColumns = {
+  ...sessionColumns,
+  passwordHash: users.passwordHash,
+};
+
+const passwordColumns = {
+  id: users.id,
+  passwordHash: users.passwordHash,
+};
+
+function toSessionUser(user: AuthSessionRecord): SessionUser {
   return {
     id: user.id,
     firstName: user.firstName,
@@ -23,7 +60,7 @@ function toSessionUser(user: typeof users.$inferSelect): SessionUser {
   };
 }
 
-function toPublicUser(user: typeof users.$inferSelect): PublicUser {
+function toPublicUser(user: AuthSessionRecord): PublicUser {
   const safeUser = toSessionUser(user);
 
   return {
@@ -54,7 +91,7 @@ export async function registerUser(input: RegisterInput) {
       department: input.department,
       passwordHash,
     })
-    .returning();
+    .returning(sessionColumns);
 
   if (!createdUser) {
     throw new AuthError("Unable to create your account right now.", 500);
@@ -67,9 +104,12 @@ export async function registerUser(input: RegisterInput) {
 }
 
 export async function loginUser(input: LoginInput) {
-  const user = await db.query.users.findFirst({
-    where: eq(users.email, input.email),
-  });
+  const user = await db
+    .select(loginColumns)
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1)
+    .then((rows) => rows[0] as AuthLoginRecord | undefined);
 
   if (!user) {
     await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
@@ -89,9 +129,12 @@ export async function loginUser(input: LoginInput) {
 }
 
 export async function changeUserPassword(userId: string, input: ChangePasswordInput) {
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-  });
+  const user = await db
+    .select(passwordColumns)
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .then((rows) => rows[0] as PasswordRecord | undefined);
 
   if (!user) {
     throw new AuthError("Account not found.", 404);

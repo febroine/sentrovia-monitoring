@@ -30,6 +30,13 @@ export function UpdateBanner() {
 
     const load = async () => {
       const response = await fetch("/api/app-update", { cache: "no-store" });
+      if (!response.ok) {
+        if (!cancelled) {
+          setStatus(null);
+        }
+        return;
+      }
+
       const data = (await response.json()) as UpdateResponse;
 
       if (!cancelled) {
