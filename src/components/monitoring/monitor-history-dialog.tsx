@@ -38,10 +38,10 @@ export function MonitorHistoryDialog({
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <HistoryStat
                 label="State"
-                value={selection.point.status === "up" ? "Online" : "Offline"}
-                helper={selection.point.status === "up" ? "Healthy check window" : "Failure window"}
-                accent={selection.point.status === "up" ? "before:bg-emerald-500" : "before:bg-destructive"}
-                icon={selection.point.status === "up" ? CheckCircle2 : ShieldAlert}
+                value={getStateLabel(selection.point.status)}
+                helper={getStateHelper(selection.point.status)}
+                accent={getStateAccent(selection.point.status)}
+                icon={selection.point.status === "up" ? CheckCircle2 : selection.point.status === "pending" ? Clock3 : ShieldAlert}
               />
               <HistoryStat
                 label="Window length"
@@ -91,7 +91,9 @@ export function MonitorHistoryDialog({
                         "h-3 w-6 rounded-full border transition",
                         point.status === "up"
                           ? "border-emerald-500/30 bg-emerald-500/80"
-                          : "border-destructive/30 bg-destructive/80",
+                          : point.status === "pending"
+                            ? "border-amber-500/30 bg-amber-500/80"
+                            : "border-destructive/30 bg-destructive/80",
                         point.id === selection.point.id ? "scale-110 ring-2 ring-ring/50" : "opacity-70",
                       ].join(" ")}
                       title={`${point.status.toUpperCase()} · ${formatDateTime(point.createdAt)}`}
@@ -131,7 +133,9 @@ export function MonitorHistoryDialog({
                           "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
                           point.status === "up"
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "bg-destructive/10 text-destructive",
+                            : point.status === "pending"
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              : "bg-destructive/10 text-destructive",
                         ].join(" ")}
                       >
                         {point.status.toUpperCase()}
@@ -230,6 +234,14 @@ function buildStateSummary(
   selection: NonNullable<ReturnType<typeof buildSelection>>,
   monitor: MonitorRecord
 ) {
+  if (selection.point.status === "pending") {
+    return `This check landed in verification mode for ${selection.durationLabel}. ${
+      monitor.verificationMode
+        ? `The worker is still confirming the outage (${monitor.verificationFailureCount}/${Math.max(1, monitor.retries)} attempts).`
+        : "The monitor later returned to a confirmed state."
+    }`;
+  }
+
   if (selection.point.status === "up") {
     return `The monitor remained healthy for ${selection.durationLabel}. ${
       monitor.verificationMode ? "It is currently in verification mode after a recent anomaly." : "No failure confirmation is active right now."
@@ -241,6 +253,30 @@ function buildStateSummary(
       ? `Verification is still running (${monitor.verificationFailureCount}/${Math.max(1, monitor.retries)} attempts).`
       : "This state has already been confirmed as an outage."
   }`;
+}
+
+function getStateLabel(status: MonitorHistoryPoint["status"]) {
+  if (status === "pending") {
+    return "Verifying";
+  }
+
+  return status === "up" ? "Online" : "Offline";
+}
+
+function getStateHelper(status: MonitorHistoryPoint["status"]) {
+  if (status === "pending") {
+    return "Pending confirmation window";
+  }
+
+  return status === "up" ? "Healthy check window" : "Failure window";
+}
+
+function getStateAccent(status: MonitorHistoryPoint["status"]) {
+  if (status === "pending") {
+    return "before:bg-amber-500";
+  }
+
+  return status === "up" ? "before:bg-emerald-500" : "before:bg-destructive";
 }
 
 function formatDateTime(value: string) {

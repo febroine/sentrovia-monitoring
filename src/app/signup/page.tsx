@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import {
   ArrowRight,
+  Database,
   Eye,
   EyeOff,
   LoaderCircle,
-  ShieldCheck,
-  UserPlus2,
-  UsersRound,
+  TimerReset,
+  Workflow,
 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
@@ -80,36 +80,38 @@ export default function SignupPage() {
   return (
     <AuthShell
       tone="emerald"
-      heroTitle="Create a Sentrovia operator identity for day-to-day monitoring work."
-      heroDescription="Provision access once, then move directly into dashboards, delivery operations, event review, and verification-aware incident handling."
+      heroTitle="Create a Sentrovia operator account for verification-aware monitoring."
+      heroDescription="New operators land inside the same control plane for HTTP, TCP, and PostgreSQL checks, worker visibility, delivery history, and operational logs."
       showcaseCards={[
         {
-          icon: UserPlus2,
-          title: "Fast Provisioning",
-          description: "Create an operator record and enter the workspace in a single secure pass.",
-          meta: "ONE STEP ENTRY",
+          icon: TimerReset,
+          title: "Verification Mode",
+          description: "Sentrovia confirms repeated failures before opening a real incident or sending alerts.",
+          meta: "LOWER NOISE",
         },
         {
-          icon: ShieldCheck,
-          title: "Session Integrity",
-          description: "Registration immediately issues a signed server session with strict cookie rules.",
-          meta: "SIGNED ACCESS",
+          icon: Workflow,
+          title: "Unified Delivery Trail",
+          description: "Email, Telegram, Slack, Discord, and webhook routing stay visible in a single delivery history.",
+          meta: "TRACEABLE ALERTING",
         },
         {
-          icon: UsersRound,
-          title: "Shared Visibility",
-          description: "New accounts land inside the same operational surface as the existing team.",
-          meta: "TEAM READY",
+          icon: Database,
+          title: "Durable Runtime State",
+          description: "Checks, events, heartbeats, and monitor history all persist in PostgreSQL for consistent reading.",
+          meta: "DB FIRST",
         },
       ]}
       stats={[
-        { label: "Password Policy", value: "12+", detail: "Length with mixed character classes" },
-        { label: "Auth Guard", value: "Limited", detail: "Registration attempts are throttled" },
-        { label: "Workspace Entry", value: "Instant", detail: "Session starts after registration" },
+        { label: "Monitor Types", value: "3", detail: "HTTP, TCP, and PostgreSQL checks" },
+        { label: "Verification", value: "1m", detail: "Follow-up checks after the first failure" },
+        { label: "Alerting", value: "5+", detail: "Email, Telegram, Slack, Discord, and webhook" },
       ]}
+      statsTitle="What the workspace gives you on day one"
+      statsDescription="Registration is not just account creation. It grants access to the same monitoring model the worker uses in production."
       formEyebrow="Register"
       formTitle="Create your Sentrovia account"
-      formDescription="Set up an operator profile for monitor management, incident review, delivery testing, and operational reporting."
+      formDescription="Set up an operator profile for monitor management, incident review, delivery testing, and team-level visibility."
       footerPrompt="Already have an account?"
       footerHref="/login"
       footerLabel="Sign in instead"
@@ -122,7 +124,7 @@ export default function SignupPage() {
               name="firstName"
               autoComplete="given-name"
               required
-              placeholder="Aykut"
+              placeholder="Enter first name"
               className={inputClassName}
             />
           </FieldBlock>
@@ -132,7 +134,7 @@ export default function SignupPage() {
               name="lastName"
               autoComplete="family-name"
               required
-              placeholder="Bayram"
+              placeholder="Enter last name"
               className={inputClassName}
             />
           </FieldBlock>

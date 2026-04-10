@@ -21,6 +21,13 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
 
   const databaseError = error as DatabaseErrorShape | undefined;
 
+  if (databaseError?.code === "42703") {
+    return new AuthError(
+      "Database schema is out of date. Run `npm run db:push` on the server before registering a new account.",
+      503
+    );
+  }
+
   if (databaseError?.code === "28P01") {
     return new AuthError(
       "Database credentials are invalid. Start the Docker PostgreSQL service or update your local database settings in .env.local.",

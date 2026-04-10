@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { assertWorkspaceOwner } from "@/lib/auth/authorization";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { updateMember } from "@/lib/members/service";
@@ -20,6 +21,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
+    await assertWorkspaceOwner(session.id);
     const body = await request.json();
     const parsed = memberUpdateSchema.safeParse(body);
     if (!parsed.success) {

@@ -128,6 +128,8 @@ export const monitors = pgTable("monitors", {
   isActive: boolean("is_active").default(true).notNull(),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   nextCheckAt: timestamp("next_check_at", { withTimezone: true }),
+  leaseToken: text("lease_token"),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
   lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
   lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
   sslExpiresAt: timestamp("ssl_expires_at", { withTimezone: true }),
