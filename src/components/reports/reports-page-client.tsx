@@ -20,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CompanyRecord } from "@/lib/companies/types";
@@ -351,8 +350,8 @@ export default function ReportsPageClient() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="overflow-hidden border-violet-500/15">
-          <CardHeader className="border-b bg-[linear-gradient(135deg,rgba(124,58,237,0.08),transparent_55%)] pb-4">
+        <Card className="overflow-hidden border-border/70">
+          <CardHeader className="border-b bg-muted/10 pb-4">
             <CardTitle className="text-base">Quick launch</CardTitle>
             <CardDescription>
               Use a preset to jump into the report type you create most often.
@@ -365,8 +364,8 @@ export default function ReportsPageClient() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-sky-500/15">
-          <CardHeader className="border-b bg-[linear-gradient(135deg,rgba(14,165,233,0.08),transparent_55%)] pb-4">
+        <Card className="overflow-hidden border-border/70">
+          <CardHeader className="border-b bg-muted/10 pb-4">
             <CardTitle className="text-base">Schedule pulse</CardTitle>
             <CardDescription>
               Keep an eye on upcoming sends and the latest delivery outcome.
@@ -380,13 +379,27 @@ export default function ReportsPageClient() {
         </Card>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "preview" | "schedules")} className="space-y-4">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="preview">Preview Studio</TabsTrigger>
-          <TabsTrigger value="schedules">Schedule Manager</TabsTrigger>
-        </TabsList>
+      <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+        <Card className="self-start overflow-hidden border-border/70">
+          <CardContent className="space-y-3 p-3">
+            <ReportModeButton
+              active={activeTab === "preview"}
+              title="Preview Studio"
+              description="Generate a one-off report and review the output before sharing."
+              onClick={() => setActiveTab("preview")}
+            />
+            <ReportModeButton
+              active={activeTab === "schedules"}
+              title="Schedule Manager"
+              description="Create recurring report runs and manage existing delivery plans."
+              onClick={() => setActiveTab("schedules")}
+            />
+          </CardContent>
+        </Card>
 
-        <TabsContent value="preview" className="space-y-4">
+        <div className="space-y-4">
+          {activeTab === "preview" ? (
+            <>
           <Card className="overflow-hidden border-border/70">
             <CardHeader className="border-b bg-muted/10 pb-4">
               <CardTitle>Generate manual report</CardTitle>
@@ -481,9 +494,9 @@ export default function ReportsPageClient() {
           </Card>
 
           {preview ? <ReportPreviewPanel report={preview} /> : null}
-        </TabsContent>
-
-        <TabsContent value="schedules" className="space-y-4">
+            </>
+          ) : (
+            <>
           <Card className="overflow-hidden border-border/70">
             <CardHeader className="border-b bg-muted/10 pb-4">
               <CardTitle>Create scheduled report</CardTitle>
@@ -641,8 +654,10 @@ export default function ReportsPageClient() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -702,6 +717,34 @@ function HeroStat({
         </div>
       </div>
     </div>
+  );
+}
+
+function ReportModeButton({
+  active,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full rounded-2xl border px-4 py-4 text-left transition-colors",
+        active
+          ? "border-primary/30 bg-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          : "border-border/70 bg-background hover:border-border hover:bg-muted/10"
+      )}
+    >
+      <p className="text-sm font-semibold">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+    </button>
   );
 }
 
