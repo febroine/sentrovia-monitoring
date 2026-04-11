@@ -10,7 +10,6 @@ import {
   Radar,
   Rows3,
 } from "lucide-react";
-import { AppUpdateCard } from "@/components/settings/app-update-card";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
 import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
 import { SavedRecipientsManager } from "@/components/settings/saved-recipients-manager";
@@ -444,50 +443,46 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
 
 export function DataSettingsTab({ settings, updateSetting }: TabProps) {
   return (
-    <div className="space-y-4">
-      <SectionCard
-        title="Retention and Backups"
-        description="Operational policies for data retention, event cleanup, and automated backup windows."
-        icon={FolderArchive}
-        iconClassName="text-amber-600 dark:text-amber-300"
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Retention period (days)">
-            <Input
-              type="number"
-              value={settings.data.retentionDays}
-              onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value) || 30)}
-            />
-          </Field>
-          <Field label="Backup window">
-            <Input
-              value={settings.data.backupWindow}
-              onChange={(event) => updateSetting("data.backupWindow", event.target.value)}
-              placeholder="03:00"
-            />
-          </Field>
-          <Field label="Event retention (days)">
-            <Input
-              type="number"
-              value={settings.data.eventRetentionDays}
-              onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value) || 30)}
-            />
-          </Field>
-        </div>
-        <ToggleRow
-          label="Automatic backups"
-          description="Create scheduled backups during the configured backup window."
-          checked={settings.data.autoBackupEnabled}
-          onChange={(checked) => updateSetting("data.autoBackupEnabled", checked)}
-        />
-        <BackupRestorePanel
-          lastBackupAt={settings.data.lastBackupAt}
-          onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
-        />
-      </SectionCard>
-
-      <AppUpdateCard settings={settings} updateSetting={updateSetting} />
-    </div>
+    <SectionCard
+      title="Retention and Backups"
+      description="Operational policies for data retention, event cleanup, and automated backup windows."
+      icon={FolderArchive}
+      iconClassName="text-amber-600 dark:text-amber-300"
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Retention period (days)">
+          <Input
+            type="number"
+            value={settings.data.retentionDays}
+            onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value) || 30)}
+          />
+        </Field>
+        <Field label="Backup window">
+          <Input
+            value={settings.data.backupWindow}
+            onChange={(event) => updateSetting("data.backupWindow", event.target.value)}
+            placeholder="03:00"
+          />
+        </Field>
+        <Field label="Event retention (days)">
+          <Input
+            type="number"
+            value={settings.data.eventRetentionDays}
+            onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value) || 30)}
+          />
+        </Field>
+      </div>
+      <ToggleRow
+        label="Automatic backups"
+        description="Create scheduled backups during the configured backup window."
+        checked={settings.data.autoBackupEnabled}
+        onChange={(checked) => updateSetting("data.autoBackupEnabled", checked)}
+      />
+      <BackupRestorePanel
+        lastBackupAt={settings.data.lastBackupAt}
+        onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
+      />
+    </SectionCard>
   );
 }
 

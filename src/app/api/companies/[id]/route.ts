@@ -6,6 +6,10 @@ import { deleteCompany, updateCompany } from "@/lib/companies/service";
 
 export const runtime = "nodejs";
 
+type CompanyRouteContext = {
+  params: Promise<{ id: string }>;
+};
+
 function serializeCompany(company: Awaited<ReturnType<typeof updateCompany>>) {
   if (!company) {
     return null;
@@ -18,7 +22,7 @@ function serializeCompany(company: Awaited<ReturnType<typeof updateCompany>>) {
   };
 }
 
-export async function PATCH(request: NextRequest, context: RouteContext<"/api/companies/[id]">) {
+export async function PATCH(request: NextRequest, context: CompanyRouteContext) {
   try {
     const session = await getSession();
     if (!session) {
@@ -44,7 +48,7 @@ export async function PATCH(request: NextRequest, context: RouteContext<"/api/co
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext<"/api/companies/[id]">) {
+export async function DELETE(_request: NextRequest, context: CompanyRouteContext) {
   try {
     const session = await getSession();
     if (!session) {

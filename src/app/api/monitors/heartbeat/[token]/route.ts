@@ -3,15 +3,19 @@ import { receiveHeartbeat } from "@/lib/monitors/service";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: NextRequest, context: RouteContext<"/api/monitors/heartbeat/[token]">) {
+type HeartbeatRouteContext = {
+  params: Promise<{ token: string }>;
+};
+
+export async function GET(_request: NextRequest, context: HeartbeatRouteContext) {
   return handleHeartbeat(context);
 }
 
-export async function POST(_request: NextRequest, context: RouteContext<"/api/monitors/heartbeat/[token]">) {
+export async function POST(_request: NextRequest, context: HeartbeatRouteContext) {
   return handleHeartbeat(context);
 }
 
-async function handleHeartbeat(context: RouteContext<"/api/monitors/heartbeat/[token]">) {
+async function handleHeartbeat(context: HeartbeatRouteContext) {
   const { token } = await context.params;
   const monitor = await receiveHeartbeat(token);
 
