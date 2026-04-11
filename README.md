@@ -17,8 +17,8 @@ Sentrovia is built for self-hosted teams that want more than a simple "ping and 
 
 It combines:
 
-- a **Next.js web console** for configuration, operations, logs, delivery testing, and user workflows
-- a **dedicated worker runtime** for actual monitor execution
+- a **Next.js web console** for configuration, operations, logs, delivery testing, reports, and user workflows
+- a **dedicated worker runtime** for actual monitor execution and scheduled jobs
 - **PostgreSQL** as the source of truth for configuration and runtime state
 - a **verification mode** that reduces noisy first-failure alerting
 - **company-aware visibility** for grouped monitors and operational ownership
@@ -26,16 +26,16 @@ It combines:
 
 ## Why teams would pick Sentrovia
 
-### Verification-aware incident handling
+### ✅ Verification-aware incident handling
 
 Sentrovia does not immediately treat the first failure as a real outage.  
-The worker can move a monitor into **verification mode**, re-check at one-minute intervals, and only confirm the incident after the configured threshold is reached.
+The worker can move a monitor into **verification mode**, re-check at one-minute intervals, and only confirm the outage after the configured threshold is reached.
 
-### Durable, database-first state
+### ✅ Durable, database-first state
 
-Checks, monitor history, worker heartbeat, worker metrics, companies, settings, reports, templates, and delivery attempts are stored in PostgreSQL so every page reads the same persisted truth.
+Checks, monitor history, worker heartbeat, worker metrics, companies, settings, templates, report schedules, and delivery attempts are stored in PostgreSQL so every page reads the same persisted truth.
 
-### Internal control plane feel
+### ✅ Internal control plane feel
 
 This project is designed more like an operations console than a toy dashboard:
 
@@ -48,7 +48,7 @@ This project is designed more like an operations console than a toy dashboard:
 - worker health visibility
 - reports and worker insights
 
-### Multiple monitor types
+### ✅ Multiple monitor types
 
 Sentrovia currently supports:
 
@@ -62,9 +62,61 @@ Sentrovia currently supports:
 
 All monitor types use the same core pipeline for verification, RCA, event creation, and delivery.
 
+## Product Screens
+
+### Dashboard + Monitoring
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/screenshots/dashboard.png" alt="Sentrovia dashboard" />
+    </td>
+    <td width="50%">
+      <img src="./docs/screenshots/monitoring.png" alt="Sentrovia monitoring view" />
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <sub>Live operational summaries, worker visibility, and recent event context.</sub>
+    </td>
+    <td>
+      <sub>Monitor inventory with verification state, bulk actions, history strips, and company assignment.</sub>
+    </td>
+  </tr>
+</table>
+
+### Delivery + Documentation
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/screenshots/delivery.png" alt="Sentrovia delivery operations" />
+    </td>
+    <td width="50%">
+      <img src="./docs/screenshots/help.png" alt="Sentrovia help page" />
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <sub>Delivery testing, history inspection, retry workflows, and outbound channel visibility.</sub>
+    </td>
+    <td>
+      <sub>In-product operational documentation that explains how the runtime behaves in production.</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="./docs/screenshots/about.png" alt="Sentrovia about page" />
+</p>
+
+<p align="center">
+  <sub>About Sentrovia explains the architecture, runtime model, worker behavior, reports flow, notifications engine, and the actual execution path from browser input to persisted result.</sub>
+</p>
+
 ## Core Capabilities
 
-### Monitoring engine
+### 🔎 Monitoring engine
 
 - HTTP/HTTPS monitor execution
 - keyword and JSON assertion checks
@@ -76,7 +128,7 @@ All monitor types use the same core pipeline for verification, RCA, event creati
 - verification mode for delayed outage confirmation
 - check history with timeline surfaces
 
-### Root cause analysis
+### 🧠 Root cause analysis
 
 Sentrovia classifies failures into targeted RCA buckets such as:
 
@@ -89,7 +141,7 @@ Sentrovia classifies failures into targeted RCA buckets such as:
 - redirect anomalies
 - generic network failures
 
-### Delivery and notification routing
+### 🔔 Delivery and notification routing
 
 - SMTP email delivery
 - Telegram delivery
@@ -97,17 +149,17 @@ Sentrovia classifies failures into targeted RCA buckets such as:
 - generic webhook delivery
 - delivery history and retry visibility
 - workspace-level templates and recipient defaults
-- prolonged downtime reminders with configurable timing
+- prolonged-downtime reminders with configurable timing
 - recovery alerts after a confirmed outage returns healthy
 
-### Operations and governance
+### 🧰 Operations and governance
 
 - companies and grouped monitor ownership
 - members directory
 - settings with defaults and templates
 - event logs with filters
 - worker heartbeat and health status
-- worker observability metrics
+- worker observability dashboard
 - reports center with previews and schedules
 
 ## How it works
@@ -117,7 +169,7 @@ flowchart LR
     A["Operator uses Web Console"] --> B["Validated Route Handlers"]
     B --> C["PostgreSQL stores monitor + settings state"]
     C --> D["Worker polls due monitors and report schedules"]
-    D --> E["HTTP / TCP / PostgreSQL / ICMP / Heartbeat checks"]
+    D --> E["HTTP / Keyword / JSON / TCP / PostgreSQL / ICMP / Heartbeat checks"]
     E --> F{"Failure?"}
     F -- "No" --> G["Persist UP result + history"]
     F -- "Yes" --> H["Enter verification mode"]
@@ -176,13 +228,15 @@ PostgreSQL is not just storage; it is the operational backbone. It persists:
 One of the most important behaviors in Sentrovia is the verification flow:
 
 1. A monitor fails once.
-2. The worker does **not** immediately open a confirmed outage.
+2. The worker does **not** immediately open a real outage.
 3. The monitor enters **verification mode**.
 4. Follow-up checks run at one-minute intervals.
 5. If the failure repeats until the threshold is reached, the outage is confirmed.
 6. If the monitor comes back up before the threshold is reached, the verification state is cleared and the monitor returns to its normal schedule.
-7. If the service stays down after confirmation, Sentrovia can continue sending repeated “still down” reminders on the interval you configure.
+7. If the service stays down after confirmation, Sentrovia can continue sending repeated "still down" reminders on the interval you configure.
 8. When the service returns healthy, a recovery notification is sent.
+
+This is a major difference from many lighter monitoring tools that alert on the first transient failure.
 
 ## Reports
 
@@ -199,7 +253,7 @@ Reports are not a side export anymore; the worker can pick up due report schedul
 
 ## Quick Start
 
-### Full Docker setup
+### 🚀 Full Docker setup
 
 Run the full stack:
 
@@ -213,17 +267,20 @@ This starts:
 - `web` for the Next.js application
 - `worker` for background monitoring execution
 
-The Docker boot flow is intended to be self-initializing:
+The Docker boot flow is self-initializing:
 
 - waits for PostgreSQL to become reachable
+- applies the latest Drizzle schema automatically
 - starts the web runtime
-- starts the worker runtime
+- starts the worker only after the web container is healthy
+
+That means a fresh clone should not require a separate `npm run db:push` when you use Docker Compose.
 
 Open:
 
 - [http://localhost:3000](http://localhost:3000)
 
-### Local development
+### 🧪 Local development
 
 If you want PostgreSQL in Docker but run the app locally:
 
@@ -282,6 +339,7 @@ docker compose up --build
 they should get:
 
 - PostgreSQL booted automatically
+- schema applied automatically
 - web console on `http://localhost:3000`
 - worker attached automatically
 
@@ -323,10 +381,10 @@ Sentrovia is already strong as an internal monitoring and operations console, bu
 
 Natural next steps for the platform include:
 
-- DNS monitor support
+- additional monitor types like DNS and push monitors
 - public status pages
-- richer HTTP assertions
+- escalation policies
 - multi-region checks
-- more advanced delivery routing
+- richer HTTP assertion workflows
 
 ---
