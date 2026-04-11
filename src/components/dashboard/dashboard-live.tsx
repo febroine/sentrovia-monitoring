@@ -12,6 +12,7 @@ import {
   Server,
   XCircle,
 } from "lucide-react";
+import { WorkerObservabilityDashboard } from "@/components/monitoring/worker-observability-dashboard";
 import { SystemStatus } from "@/components/system-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,13 +103,15 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </p>
       </header>
 
-      <SystemStatus />
-
       {streamError ? (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
           {streamError}
         </div>
       ) : null}
+
+      <SystemStatus />
+
+      <WorkerObservabilityDashboard />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (

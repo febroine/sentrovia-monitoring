@@ -12,7 +12,7 @@ export async function GET() {
     }
 
     await assertWorkspaceOwner(session.id);
-    const status = await getUpdateStatus();
+    const status = await getUpdateStatus(session.id);
     return NextResponse.json(status, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const authError = toAuthError(error, "Unable to load the update status right now.");
@@ -28,7 +28,7 @@ export async function POST() {
     }
 
     await assertWorkspaceOwner(session.id);
-    const result = await applyAvailableUpdate();
+    const result = await applyAvailableUpdate(session.id);
     return NextResponse.json(result);
   } catch (error) {
     const authError = toAuthError(error, "Unable to apply the update automatically.");

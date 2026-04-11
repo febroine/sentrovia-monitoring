@@ -53,6 +53,11 @@ export interface SettingsPayload {
     showIncidentBanner: boolean;
     showChartsSection: boolean;
   };
+  appUpdates: {
+    repo: string;
+    branch: string;
+    enableInPlaceUpdates: boolean;
+  };
   data: {
     retentionDays: number;
     autoBackupEnabled: boolean;
@@ -118,6 +123,11 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     dashboardLandingPage: "dashboard",
     showIncidentBanner: true,
     showChartsSection: true,
+  },
+  appUpdates: {
+    repo: "",
+    branch: "main",
+    enableInPlaceUpdates: true,
   },
   data: {
     retentionDays: 90,

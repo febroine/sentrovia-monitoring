@@ -1,6 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
+import {
+  BellRing,
+  FileText,
+  FolderArchive,
+  Mail,
+  Palette,
+  Radar,
+  Rows3,
+} from "lucide-react";
+import { AppUpdateCard } from "@/components/settings/app-update-card";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
 import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
 import { SavedRecipientsManager } from "@/components/settings/saved-recipients-manager";
@@ -37,8 +47,10 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
   return (
     <div className="space-y-4">
       <SectionCard
-        title="Alert conditions"
+        title="Alert Conditions"
         description="These switches are read by the worker before sending down, recovery, latency, SSL, or status-change notifications."
+        icon={BellRing}
+        iconClassName="text-amber-600 dark:text-amber-300"
       >
         <ToggleRow
           label="Site down alerts"
@@ -87,8 +99,10 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
       </SectionCard>
 
       <SectionCard
-        title="SMTP delivery"
+        title="SMTP Delivery"
         description="The worker uses these credentials directly. Passwords are encrypted before they are stored."
+        icon={Mail}
+        iconClassName="text-sky-600 dark:text-sky-300"
       >
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Host">
@@ -168,15 +182,19 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
       </SectionCard>
 
       <SectionCard
-        title="Additional notification channels"
+        title="Additional Notification Channels"
         description="Mirror the same worker notifications to collaboration tools through incoming webhooks."
+        icon={Rows3}
+        iconClassName="text-violet-600 dark:text-violet-300"
       >
         <NotificationChannelsEditor settings={settings} updateSetting={updateSetting} />
       </SectionCard>
 
       <SectionCard
-        title="Notification templates"
+        title="Notification Templates"
         description="These templates are used when a monitor does not override its own email or Telegram content."
+        icon={FileText}
+        iconClassName="text-emerald-600 dark:text-emerald-300"
       >
         <div className="rounded-xl border bg-muted/20 p-4">
           <p className="text-sm font-medium">Available template tokens</p>
@@ -218,8 +236,10 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
 export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
   return (
     <SectionCard
-      title="Default monitor configuration"
+      title="Default Monitor Configuration"
       description="If a site-level setting is omitted during manual creation or CSV import, these values are applied automatically."
+      icon={Radar}
+      iconClassName="text-rose-600 dark:text-rose-300"
     >
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Default interval" hint="Examples: 1m, 5m, 15m">
@@ -314,8 +334,10 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
 export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
   return (
     <SectionCard
-      title="Workspace experience"
+      title="Workspace Experience"
       description="These preferences are stored per user and shape dashboard density, motion, and landing behavior."
+      icon={Palette}
+      iconClassName="text-violet-600 dark:text-violet-300"
     >
       <ToggleRow
         label="Reduce motion"
@@ -376,44 +398,50 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
 
 export function DataSettingsTab({ settings, updateSetting }: TabProps) {
   return (
-    <SectionCard
-      title="Retention and backups"
-      description="Operational policies for data retention, event cleanup, and automated backup windows."
-    >
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Retention period (days)">
-          <Input
-            type="number"
-            value={settings.data.retentionDays}
-            onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value) || 30)}
-          />
-        </Field>
-        <Field label="Backup window">
-          <Input
-            value={settings.data.backupWindow}
-            onChange={(event) => updateSetting("data.backupWindow", event.target.value)}
-            placeholder="03:00"
-          />
-        </Field>
-        <Field label="Event retention (days)">
-          <Input
-            type="number"
-            value={settings.data.eventRetentionDays}
-            onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value) || 30)}
-          />
-        </Field>
-      </div>
-      <ToggleRow
-        label="Automatic backups"
-        description="Create scheduled backups during the configured backup window."
-        checked={settings.data.autoBackupEnabled}
-        onChange={(checked) => updateSetting("data.autoBackupEnabled", checked)}
-      />
-      <BackupRestorePanel
-        lastBackupAt={settings.data.lastBackupAt}
-        onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
-      />
-    </SectionCard>
+    <div className="space-y-4">
+      <SectionCard
+        title="Retention and Backups"
+        description="Operational policies for data retention, event cleanup, and automated backup windows."
+        icon={FolderArchive}
+        iconClassName="text-amber-600 dark:text-amber-300"
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Retention period (days)">
+            <Input
+              type="number"
+              value={settings.data.retentionDays}
+              onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value) || 30)}
+            />
+          </Field>
+          <Field label="Backup window">
+            <Input
+              value={settings.data.backupWindow}
+              onChange={(event) => updateSetting("data.backupWindow", event.target.value)}
+              placeholder="03:00"
+            />
+          </Field>
+          <Field label="Event retention (days)">
+            <Input
+              type="number"
+              value={settings.data.eventRetentionDays}
+              onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value) || 30)}
+            />
+          </Field>
+        </div>
+        <ToggleRow
+          label="Automatic backups"
+          description="Create scheduled backups during the configured backup window."
+          checked={settings.data.autoBackupEnabled}
+          onChange={(checked) => updateSetting("data.autoBackupEnabled", checked)}
+        />
+        <BackupRestorePanel
+          lastBackupAt={settings.data.lastBackupAt}
+          onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
+        />
+      </SectionCard>
+
+      <AppUpdateCard settings={settings} updateSetting={updateSetting} />
+    </div>
   );
 }
 
@@ -421,16 +449,29 @@ function SectionCard({
   title,
   description,
   children,
+  icon: Icon,
+  iconClassName,
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  icon?: React.ElementType;
+  iconClassName?: string;
 }) {
   return (
     <Card>
       <CardHeader className="border-b bg-muted/20 pb-4">
-        <CardTitle className="text-base">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+        <div className="flex items-start gap-3">
+          {Icon ? (
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-2.5 shadow-sm">
+              <Icon className={iconClassName ?? "text-primary"} />
+            </div>
+          ) : null}
+          <div className="space-y-1">
+            <CardTitle className="text-base">{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4 p-6">{children}</CardContent>
     </Card>

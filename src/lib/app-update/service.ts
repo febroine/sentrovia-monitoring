@@ -2,6 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { getSettings } from "@/lib/settings/service";
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_JSON_PATH = path.join(process.cwd(), "package.json");
@@ -24,47 +25,49 @@ export type UpdateStatus = {
   canAutoApply: boolean;
   message: string;
   releaseUrl: string | null;
+  checkedAt: string;
 };
 
-export async function getUpdateStatus(): Promise<UpdateStatus> {
-  const repo = process.env.APP_UPDATE_REPO?.trim() || null;
-  const branch = process.env.APP_UPDATE_BRANCH?.trim() || "main";
+export async function getUpdateStatus(userId?: string): Promise<UpdateStatus> {
+  const config = await resolveUpdateConfig(userId);
   const currentVersion = await readCurrentVersion();
 
-  if (!repo) {
+  if (!config.repo) {
     return {
       enabled: false,
       repo: null,
-      branch,
+      branch: config.branch,
       currentVersion,
       remoteVersion: null,
       updateAvailable: false,
       canAutoApply: false,
       message: "Update checks are disabled until APP_UPDATE_REPO is configured.",
       releaseUrl: null,
+      checkedAt: new Date().toISOString(),
     };
   }
 
-  const remoteManifest = await readRemoteManifest(repo, branch);
+  const remoteManifest = await readRemoteManifest(config.repo, config.branch);
   const remoteVersion = remoteManifest?.version ?? null;
   const updateAvailable = remoteVersion ? compareVersions(remoteVersion, currentVersion) > 0 : false;
-  const canAutoApply = await supportsInPlaceUpdate();
+  const canAutoApply = await supportsInPlaceUpdate(config.enableInPlaceUpdates);
 
   return {
     enabled: true,
-    repo,
-    branch,
+    repo: config.repo,
+    branch: config.branch,
     currentVersion,
     remoteVersion,
     updateAvailable,
     canAutoApply,
     message: buildStatusMessage(updateAvailable, canAutoApply, remoteVersion),
-    releaseUrl: `https://github.com/${repo}`,
+    releaseUrl: `https://github.com/${config.repo}`,
+    checkedAt: new Date().toISOString(),
   };
 }
 
-export async function applyAvailableUpdate() {
-  const status = await getUpdateStatus();
+export async function applyAvailableUpdate(userId?: string) {
+  const status = await getUpdateStatus(userId);
 
   if (!status.enabled) {
     throw new Error("Update checks are not configured for this deployment.");
@@ -120,8 +123,8 @@ async function readRemoteManifest(repo: string, branch: string) {
   return (await response.json()) as PackageManifest;
 }
 
-async function supportsInPlaceUpdate() {
-  if (process.env.ENABLE_IN_PLACE_UPDATES?.trim() === "false") {
+async function supportsInPlaceUpdate(enabledPreference: boolean) {
+  if (!enabledPreference || process.env.ENABLE_IN_PLACE_UPDATES?.trim() === "false") {
     return false;
   }
 
@@ -191,4 +194,22 @@ function buildStatusMessage(updateAvailable: boolean, canAutoApply: boolean, rem
   }
 
   return `Version ${remoteVersion} is available. This deployment can detect it, but the host must be updated manually.`;
+}
+
+async function resolveUpdateConfig(userId?: string) {
+  const settings = userId ? await getSettings(userId) : null;
+  const repo = settings?.appUpdates.repo.trim() || process.env.APP_UPDATE_REPO?.trim() || null;
+  const branch =
+    settings?.appUpdates.branch.trim() ||
+    process.env.APP_UPDATE_BRANCH?.trim() ||
+    "main";
+  const enableInPlaceUpdates =
+    settings?.appUpdates.enableInPlaceUpdates ??
+    process.env.ENABLE_IN_PLACE_UPDATES?.trim() !== "false";
+
+  return {
+    repo,
+    branch,
+    enableInPlaceUpdates,
+  };
 }
