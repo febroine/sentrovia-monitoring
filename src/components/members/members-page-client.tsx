@@ -47,7 +47,7 @@ export default function MembersPageClient() {
     departments: new Set(members.map((member) => member.department).filter(Boolean)).size,
     organizations: new Set(members.map((member) => member.organization).filter(Boolean)).size,
   };
-  const selectableFilteredIds = filtered.filter((member) => member.id === currentUserId).map((member) => member.id);
+  const selectableFilteredIds = filtered.map((member) => member.id);
 
   const allFilteredSelected = selectableFilteredIds.length > 0 && selectableFilteredIds.every((id) => selectedIds.has(id));
   const singleSelected = selectedIds.size === 1 ? members.find((member) => selectedIds.has(member.id)) ?? null : null;
@@ -100,8 +100,8 @@ export default function MembersPageClient() {
     }
   }
 
-  async function deleteSelected() {
-    if (selectedIds.size === 0) {
+  async function deleteMembersByIds(memberIds: string[]) {
+    if (memberIds.length === 0) {
       return;
     }
 
@@ -111,7 +111,7 @@ export default function MembersPageClient() {
       const response = await fetch("/api/members", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+        body: JSON.stringify({ ids: memberIds }),
       });
       const data = (await response.json()) as { ids?: string[]; message?: string };
       if (!response.ok || !data.ids) {
@@ -129,11 +129,11 @@ export default function MembersPageClient() {
     }
   }
 
-  function toggleSelect(id: string) {
-    if (id !== currentUserId) {
-      return;
-    }
+  async function deleteSelected() {
+    await deleteMembersByIds(Array.from(selectedIds));
+  }
 
+  function toggleSelect(id: string) {
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(id)) {
@@ -176,7 +176,7 @@ export default function MembersPageClient() {
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Members</h1>
           <p className="text-sm text-muted-foreground">
-            Review all registered users from one place. Only your own account details can be changed here.
+            Review all registered users from one place. Account details stay self-editable, and workspace members can be removed from here.
           </p>
         </div>
         <div className="flex w-full max-w-sm items-center gap-2">
@@ -202,7 +202,7 @@ export default function MembersPageClient() {
         <div className="flex flex-col gap-3 rounded-xl border border-sky-500/15 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
-            <p className="text-xs text-muted-foreground">Only your own account can be edited or removed from this screen.</p>
+            <p className="text-xs text-muted-foreground">Edit remains self-service, while deletion is available for selected workspace members.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => singleSelected && openEdit(singleSelected)} disabled={!singleSelected}>
@@ -223,7 +223,7 @@ export default function MembersPageClient() {
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/10 pb-4">
           <CardTitle className="text-base">Registered users</CardTitle>
-          <CardDescription>All members are visible here, but only your own account can be edited or removed.</CardDescription>
+          <CardDescription>All members are visible here. Editing is limited to your own account, while member removal is available from the list.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -265,8 +265,7 @@ export default function MembersPageClient() {
                     <button
                       type="button"
                       onClick={() => toggleSelect(member.id)}
-                      className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={member.id !== currentUserId}
+                      className="flex items-center justify-center text-muted-foreground"
                     >
                       {selectedIds.has(member.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                     </button>
@@ -294,7 +293,7 @@ export default function MembersPageClient() {
                     </Badge>
                   </TableCell>
                   <TableCell className="pr-4 text-right md:pr-6">
-                    <div className="flex justify-end pr-1">
+                    <div className="flex justify-end gap-1 pr-1">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -302,6 +301,14 @@ export default function MembersPageClient() {
                         disabled={member.id !== currentUserId}
                       >
                         <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void deleteMembersByIds([member.id])}
+                        disabled={saving}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                   </TableCell>

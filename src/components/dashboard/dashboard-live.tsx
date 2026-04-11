@@ -12,7 +12,6 @@ import {
   Server,
   XCircle,
 } from "lucide-react";
-import { WorkerObservabilityDashboard } from "@/components/monitoring/worker-observability-dashboard";
 import { SystemStatus } from "@/components/system-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -110,8 +109,6 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       ) : null}
 
       <SystemStatus />
-
-      <WorkerObservabilityDashboard />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (

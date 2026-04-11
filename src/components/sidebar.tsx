@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3 } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3, Radar } from 'lucide-react';
 import { SentroviaMark } from '@/components/brand/sentrovia-mark';
 import LogoutButton from '@/components/logout-button';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,7 @@ const navItems = [
   { href: '/logs', i18nKey: 'nav.logs', icon: ScrollText },
   { href: '/delivery', i18nKey: 'nav.delivery', icon: BellRing },
   { href: '/reports', i18nKey: 'nav.reports', icon: BarChart3 },
+  { href: '/observability', i18nKey: 'nav.observability', icon: Radar },
   { href: '/status-codes', i18nKey: 'nav.statusCodes', icon: Binary },
   { href: '/members', i18nKey: 'nav.members', icon: UsersRound },
   { href: '/settings', i18nKey: 'nav.settings', icon: Settings },

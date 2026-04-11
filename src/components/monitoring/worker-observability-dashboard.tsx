@@ -70,9 +70,6 @@ export function WorkerObservabilityDashboard() {
               <Badge variant="outline" className="border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300">
                 Worker Insights
               </Badge>
-              <Badge variant="outline" className="border-border/70 text-muted-foreground">
-                Separate dashboard
-              </Badge>
             </div>
             <div className="space-y-1">
               <CardTitle className="text-lg">Observability Dashboard</CardTitle>

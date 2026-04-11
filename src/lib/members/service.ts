@@ -50,14 +50,14 @@ export async function updateMember(
   return member ?? null;
 }
 
-export async function deleteMembers(ids: string[], currentUserId: string) {
-  const scopedIds = ids.filter((id) => id === currentUserId);
-  if (scopedIds.length === 0) {
+export async function deleteMembers(ids: string[]) {
+  const memberIds = Array.from(new Set(ids.filter(Boolean)));
+  if (memberIds.length === 0) {
     return [];
   }
 
   return db
     .delete(users)
-    .where(inArray(users.id, scopedIds))
+    .where(inArray(users.id, memberIds))
     .returning({ id: users.id });
 }

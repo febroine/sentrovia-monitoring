@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, BarChart3, LayoutDashboard, Settings, ScrollText } from 'lucide-react';
+import { Activity, BarChart3, LayoutDashboard, Radar, Settings, ScrollText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard },
   { href: '/monitoring', icon: Activity },
   { href: '/reports', icon: BarChart3 },
+  { href: '/observability', icon: Radar },
   { href: '/logs', icon: ScrollText },
   { href: '/settings', icon: Settings },
 ];
