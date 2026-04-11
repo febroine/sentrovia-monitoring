@@ -12,7 +12,7 @@ export interface CheckResult {
 }
 
 export interface NotificationContext {
-  kind: "failure" | "recovery" | "latency" | "ssl-expiry" | "status-change" | "check";
+  kind: "failure" | "recovery" | "latency" | "ssl-expiry" | "status-change" | "downtime-reminder" | "check";
   message: string;
   monitor: Monitor;
   result: CheckResult;

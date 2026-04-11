@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, type DatabaseExecutor } from "@/lib/db";
 import { userSettings, users } from "@/lib/db/schema";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
+import { assertSafeWebhookUrl } from "@/lib/security/webhook-safety";
 import type { SettingsInput } from "@/lib/settings/schemas";
 import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
 
@@ -33,6 +34,10 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       notifyOnLatency: settings?.notifyOnLatency ?? DEFAULT_SETTINGS.notifications.notifyOnLatency,
       notifyOnSslExpiry: settings?.notifyOnSslExpiry ?? DEFAULT_SETTINGS.notifications.notifyOnSslExpiry,
       notifyOnStatusChange: settings?.notifyOnStatusChange ?? DEFAULT_SETTINGS.notifications.notifyOnStatusChange,
+      prolongedDowntimeEnabled:
+        settings?.prolongedDowntimeEnabled ?? DEFAULT_SETTINGS.notifications.prolongedDowntimeEnabled,
+      prolongedDowntimeMinutes:
+        settings?.prolongedDowntimeMinutes ?? DEFAULT_SETTINGS.notifications.prolongedDowntimeMinutes,
       alertDedupMinutes:
         settings?.alertDedupMinutes ?? DEFAULT_SETTINGS.notifications.alertDedupMinutes,
       smtpHost: settings?.smtpHost ?? "",
@@ -54,6 +59,15 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         settings?.defaultEmailBodyTemplate ?? DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
       defaultTelegramTemplate:
         settings?.defaultTelegramTemplate ?? DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+      prolongedDowntimeEmailSubjectTemplate:
+        settings?.prolongedDowntimeEmailSubjectTemplate ??
+        DEFAULT_SETTINGS.notifications.prolongedDowntimeEmailSubjectTemplate,
+      prolongedDowntimeEmailBodyTemplate:
+        settings?.prolongedDowntimeEmailBodyTemplate ??
+        DEFAULT_SETTINGS.notifications.prolongedDowntimeEmailBodyTemplate,
+      prolongedDowntimeTelegramTemplate:
+        settings?.prolongedDowntimeTelegramTemplate ??
+        DEFAULT_SETTINGS.notifications.prolongedDowntimeTelegramTemplate,
       statusCodeAlertCodes:
         settings?.statusCodeAlertCodes ?? DEFAULT_SETTINGS.notifications.statusCodeAlertCodes,
       savedEmailRecipients: settings?.savedEmailRecipients ?? DEFAULT_SETTINGS.notifications.savedEmailRecipients,
@@ -98,8 +112,18 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
   };
 }
 
-export async function upsertSettings(userId: string, input: SettingsInput) {
-  await db
+export async function upsertSettings(
+  userId: string,
+  input: SettingsInput,
+  database: DatabaseExecutor = db,
+  skipReadback = false
+) {
+  const executor = database;
+  if (input.notifications.discordWebhookUrl.trim().length > 0) {
+    await assertSafeWebhookUrl(input.notifications.discordWebhookUrl);
+  }
+
+  await executor
     .update(users)
     .set({
       firstName: input.profile.firstName,
@@ -114,7 +138,7 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     })
     .where(eq(users.id, userId));
 
-  const [existing] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+  const [existing] = await executor.select().from(userSettings).where(eq(userSettings.userId, userId));
   const encryptedPassword =
     input.notifications.smtpPassword.trim().length > 0
       ? encryptValue(input.notifications.smtpPassword)
@@ -127,6 +151,8 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     notifyOnLatency: input.notifications.notifyOnLatency,
     notifyOnSslExpiry: input.notifications.notifyOnSslExpiry,
     notifyOnStatusChange: input.notifications.notifyOnStatusChange,
+    prolongedDowntimeEnabled: input.notifications.prolongedDowntimeEnabled,
+    prolongedDowntimeMinutes: input.notifications.prolongedDowntimeMinutes,
     alertDedupMinutes: input.notifications.alertDedupMinutes,
     smtpHost: emptyToNull(input.notifications.smtpHost),
     smtpPort: input.notifications.smtpPort,
@@ -142,6 +168,9 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     defaultEmailSubjectTemplate: emptyToNull(input.notifications.defaultEmailSubjectTemplate),
     defaultEmailBodyTemplate: emptyToNull(input.notifications.defaultEmailBodyTemplate),
     defaultTelegramTemplate: emptyToNull(input.notifications.defaultTelegramTemplate),
+    prolongedDowntimeEmailSubjectTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailSubjectTemplate),
+    prolongedDowntimeEmailBodyTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailBodyTemplate),
+    prolongedDowntimeTelegramTemplate: emptyToNull(input.notifications.prolongedDowntimeTelegramTemplate),
     statusCodeAlertCodes: emptyToNull(input.notifications.statusCodeAlertCodes),
     savedEmailRecipients: input.notifications.savedEmailRecipients,
     monitoringInterval: input.monitoring.interval,
@@ -171,9 +200,13 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
   };
 
   if (existing) {
-    await db.update(userSettings).set(values).where(eq(userSettings.userId, userId));
+    await executor.update(userSettings).set(values).where(eq(userSettings.userId, userId));
   } else {
-    await db.insert(userSettings).values(values);
+    await executor.insert(userSettings).values(values);
+  }
+
+  if (skipReadback) {
+    return null;
   }
 
   return getSettings(userId);

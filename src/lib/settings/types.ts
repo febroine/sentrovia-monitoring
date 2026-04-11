@@ -15,6 +15,8 @@ export interface SettingsPayload {
     notifyOnLatency: boolean;
     notifyOnSslExpiry: boolean;
     notifyOnStatusChange: boolean;
+    prolongedDowntimeEnabled: boolean;
+    prolongedDowntimeMinutes: number;
     alertDedupMinutes: number;
     smtpHost: string;
     smtpPort: number;
@@ -31,6 +33,9 @@ export interface SettingsPayload {
     defaultEmailSubjectTemplate: string;
     defaultEmailBodyTemplate: string;
     defaultTelegramTemplate: string;
+    prolongedDowntimeEmailSubjectTemplate: string;
+    prolongedDowntimeEmailBodyTemplate: string;
+    prolongedDowntimeTelegramTemplate: string;
     statusCodeAlertCodes: string;
     savedEmailRecipients: string[];
   };
@@ -84,6 +89,8 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     notifyOnLatency: true,
     notifyOnSslExpiry: true,
     notifyOnStatusChange: false,
+    prolongedDowntimeEnabled: true,
+    prolongedDowntimeMinutes: 180,
     alertDedupMinutes: 15,
     smtpHost: "",
     smtpPort: 587,
@@ -102,6 +109,11 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
       "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
     defaultTelegramTemplate:
       "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
+    prolongedDowntimeEmailSubjectTemplate: "[Sentrovia] {domain} has been DOWN for {downtime_duration}",
+    prolongedDowntimeEmailBodyTemplate:
+      "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    prolongedDowntimeTelegramTemplate:
+      "{domain} ({url}) is still DOWN\n\nDURATION: {downtime_duration}\nSTARTED: {downtime_started_at_local}\nLAST CHECK: {checked_at_local}\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
     statusCodeAlertCodes: "500,502,503,504",
     savedEmailRecipients: [],
   },

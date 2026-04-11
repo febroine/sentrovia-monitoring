@@ -13,12 +13,12 @@ import { renderNotificationTemplates } from "@/worker/templates";
 
 export async function sendMonitorNotifications(context: NotificationContext) {
   if (!(await shouldSendNotification(context))) {
-    return;
+    return false;
   }
 
   const settings = await getSettings(context.monitor.userId);
   if (!settings) {
-    return;
+    return false;
   }
 
   const rendered = renderNotificationTemplates(context, settings, env.appUrl);
@@ -61,6 +61,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     rcaSummary: context.rca.summary,
   });
   await sendWebhookDelivery(context.monitor.userId, context.kind, webhookPayload);
+  return true;
 }
 
 async function shouldSendNotification(context: NotificationContext) {
@@ -77,7 +78,7 @@ async function shouldSendNotification(context: NotificationContext) {
   if (
     hasWatchedCodes &&
     context.result.statusCode !== null &&
-    (context.kind === "failure" || context.kind === "status-change") &&
+    (context.kind === "failure" || context.kind === "status-change" || context.kind === "downtime-reminder") &&
     !matchesWatchedStatusCode(settings.notifications.statusCodeAlertCodes, context.result.statusCode)
   ) {
     return false;
@@ -89,6 +90,10 @@ async function shouldSendNotification(context: NotificationContext) {
 
   if (context.kind === "failure") {
     return await shouldSendByKind(settings.notifications.notifyOnDown, settings.notifications.alertDedupMinutes, context);
+  }
+
+  if (context.kind === "downtime-reminder") {
+    return await shouldSendDowntimeReminder(settings, context);
   }
 
   if (context.kind === "recovery") {
@@ -112,6 +117,30 @@ async function shouldSendByKind(enabled: boolean, dedupMinutes: number, context:
   }
 
   const since = new Date(context.result.checkedAt.getTime() - dedupMinutes * 60 * 1_000);
+  return !(await hasRecentMonitorEvent({
+    monitorId: context.monitor.id,
+    eventType: context.kind,
+    since,
+    before: context.result.checkedAt,
+  }));
+}
+
+async function shouldSendDowntimeReminder(settings: Awaited<ReturnType<typeof getSettings>>, context: NotificationContext) {
+  if (!settings?.notifications.prolongedDowntimeEnabled || !context.monitor.lastFailureAt) {
+    return false;
+  }
+
+  const intervalMinutes = settings.notifications.prolongedDowntimeMinutes;
+  const downtimeStartedAt = new Date(context.monitor.lastFailureAt);
+  if (Number.isNaN(downtimeStartedAt.getTime())) {
+    return false;
+  }
+
+  if (context.result.checkedAt.getTime() - downtimeStartedAt.getTime() < intervalMinutes * 60 * 1_000) {
+    return false;
+  }
+
+  const since = new Date(context.result.checkedAt.getTime() - intervalMinutes * 60 * 1_000);
   return !(await hasRecentMonitorEvent({
     monitorId: context.monitor.id,
     eventType: context.kind,

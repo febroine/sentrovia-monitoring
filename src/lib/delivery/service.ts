@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, webhookEndpoints } from "@/lib/db/schema";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
+import { assertSafeWebhookUrl, isWebhookSafetyError } from "@/lib/security/webhook-safety";
 import { getSettings } from "@/lib/settings/service";
 import { getSmtpSettings } from "@/lib/settings/smtp";
 import type {
@@ -53,6 +54,7 @@ export async function getDeliveryOverview(userId: string): Promise<DeliveryOverv
 }
 
 export async function upsertWebhookSettings(userId: string, input: WebhookSettingsInput) {
+  const safeUrl = await assertSafeWebhookUrl(input.url);
   const [existing] = await db
     .select()
     .from(webhookEndpoints)
@@ -63,7 +65,7 @@ export async function upsertWebhookSettings(userId: string, input: WebhookSettin
 
   const values = {
     userId,
-    url: input.url.trim(),
+    url: safeUrl,
     secretEncrypted,
     isActive: input.isActive,
     updatedAt: new Date(),
@@ -244,8 +246,9 @@ export async function sendChannelWebhookDelivery(
   }
 
   try {
+    const safeDestination = await assertSafeWebhookUrl(destination);
     const body = { content: message };
-    const response = await fetch(destination, {
+    const response = await fetch(safeDestination, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -388,8 +391,9 @@ async function attemptWebhookDelivery(
   }
 
   try {
+    const safeEndpointUrl = await assertSafeWebhookUrl(endpointUrl);
     const body = JSON.stringify(payload);
-    const response = await fetch(endpointUrl, {
+    const response = await fetch(safeEndpointUrl, {
       method: "POST",
       headers: buildWebhookHeaders(body, secret),
       body,
@@ -401,6 +405,10 @@ async function attemptWebhookDelivery(
 
     return markDeliveryRetryable(eventId, current.attempts + 1, response.status, await response.text());
   } catch (error) {
+    if (isWebhookSafetyError(error)) {
+      return markDeliveryFailed(eventId, null, toMessage(error));
+    }
+
     return markDeliveryRetryable(eventId, current.attempts + 1, null, toMessage(error));
   }
 }

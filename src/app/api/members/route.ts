@@ -19,6 +19,7 @@ export async function GET() {
 
     const members = await listMembers();
     return NextResponse.json({
+      currentUserId: session.id,
       members: members.map((member) => ({
         ...member,
         createdAt: member.createdAt.toISOString(),
@@ -41,6 +42,10 @@ export async function DELETE(request: NextRequest) {
     const parsed = memberDeleteSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ message: "Select at least one member." }, { status: 400 });
+    }
+
+    if (parsed.data.ids.some((id) => id !== session.id)) {
+      return NextResponse.json({ message: "You can only delete your own account." }, { status: 403 });
     }
 
     const deleted = await deleteMembers(parsed.data.ids, session.id);

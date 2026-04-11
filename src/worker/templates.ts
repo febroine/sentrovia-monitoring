@@ -16,7 +16,9 @@ export function renderNotificationTemplates(
   const statusCode = String(context.result.statusCode ?? "N/A");
   const statusLabel = statusMeta?.label ?? (context.result.ok ? "Healthy Response" : "Unavailable");
   const localTime = format(context.result.checkedAt, "dd.MM.yyyy HH:mm:ss");
-  const eventState = context.result.status === "up" ? "UP" : "DOWN";
+  const eventState = context.kind === "downtime-reminder" ? "DOWN" : context.result.status === "up" ? "UP" : "DOWN";
+  const downtimeStartedAt = context.monitor.lastFailureAt ? new Date(context.monitor.lastFailureAt) : context.result.checkedAt;
+  const downtimeDuration = formatDuration(context.result.checkedAt.getTime() - downtimeStartedAt.getTime());
   const htmlUrlPlaceholder = "__SENTROVIA_URL_LINK__";
   const htmlDashboardPlaceholder = "__SENTROVIA_DASHBOARD_LINK__";
   const monitorLink =
@@ -36,6 +38,11 @@ export function renderNotificationTemplates(
     "{event_state}": eventState,
     "{checked_at}": context.result.checkedAt.toISOString(),
     "{checked_at_local}": localTime,
+    "{downtime_started_at}": downtimeStartedAt.toISOString(),
+    "{downtime_started_at_local}": format(downtimeStartedAt, "dd.MM.yyyy HH:mm:ss"),
+    "{downtime_duration}": downtimeDuration,
+    "{downtime_minutes}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 60_000))),
+    "{downtime_hours}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 3_600_000))),
     "{message}": context.message,
     "{rca_type}": context.rca.type,
     "{rca_title}": context.rca.title,
@@ -43,9 +50,9 @@ export function renderNotificationTemplates(
     "{organization}": organization,
   };
 
-  const subjectTemplate = context.monitor.emailSubject || settings.notifications.defaultEmailSubjectTemplate;
-  const bodyTemplate = normalizeTemplate(context.monitor.emailBody || settings.notifications.defaultEmailBodyTemplate);
-  const telegramTemplate = normalizeTemplate(context.monitor.telegramTemplate || settings.notifications.defaultTelegramTemplate);
+  const subjectTemplate = resolveSubjectTemplate(context, settings);
+  const bodyTemplate = normalizeTemplate(resolveEmailBodyTemplate(context, settings));
+  const telegramTemplate = normalizeTemplate(resolveTelegramTemplate(context, settings));
   const renderedTextBody = applyTemplate(bodyTemplate, textReplacements);
   const renderedHtmlSource = applyTemplate(bodyTemplate, {
     ...textReplacements,
@@ -62,6 +69,30 @@ export function renderNotificationTemplates(
     }),
     telegramBody: toPlainText(applyTemplate(telegramTemplate, textReplacements)),
   };
+}
+
+function resolveSubjectTemplate(context: NotificationContext, settings: SettingsPayload) {
+  if (context.kind === "downtime-reminder") {
+    return settings.notifications.prolongedDowntimeEmailSubjectTemplate;
+  }
+
+  return context.monitor.emailSubject || settings.notifications.defaultEmailSubjectTemplate;
+}
+
+function resolveEmailBodyTemplate(context: NotificationContext, settings: SettingsPayload) {
+  if (context.kind === "downtime-reminder") {
+    return settings.notifications.prolongedDowntimeEmailBodyTemplate;
+  }
+
+  return context.monitor.emailBody || settings.notifications.defaultEmailBodyTemplate;
+}
+
+function resolveTelegramTemplate(context: NotificationContext, settings: SettingsPayload) {
+  if (context.kind === "downtime-reminder") {
+    return settings.notifications.prolongedDowntimeTelegramTemplate;
+  }
+
+  return context.monitor.telegramTemplate || settings.notifications.defaultTelegramTemplate;
 }
 
 function applyTemplate(template: string, replacements: Record<string, string>) {
@@ -110,6 +141,29 @@ function getDomain(url: string) {
   } catch {
     return url;
   }
+}
+
+function formatDuration(durationMs: number) {
+  const safeDurationMs = Math.max(0, durationMs);
+  const totalMinutes = Math.floor(safeDurationMs / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+
+  if (minutes > 0 || parts.length === 0) {
+    parts.push(`${minutes}m`);
+  }
+
+  return parts.join(" ");
 }
 
 function escapeHtml(value: string) {

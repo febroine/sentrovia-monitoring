@@ -15,6 +15,7 @@ const EMPTY_FORM = { username: "", email: "" };
 
 export default function MembersPageClient() {
   const [members, setMembers] = useState<MemberRecord[]>([]);
+  const [currentUserId, setCurrentUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +47,9 @@ export default function MembersPageClient() {
     departments: new Set(members.map((member) => member.department).filter(Boolean)).size,
     organizations: new Set(members.map((member) => member.organization).filter(Boolean)).size,
   };
+  const selectableFilteredIds = filtered.filter((member) => member.id === currentUserId).map((member) => member.id);
 
-  const allFilteredSelected = filtered.length > 0 && filtered.every((member) => selectedIds.has(member.id));
+  const allFilteredSelected = selectableFilteredIds.length > 0 && selectableFilteredIds.every((id) => selectedIds.has(id));
   const singleSelected = selectedIds.size === 1 ? members.find((member) => selectedIds.has(member.id)) ?? null : null;
 
   async function loadMembers() {
@@ -55,11 +57,12 @@ export default function MembersPageClient() {
 
     try {
       const response = await fetch("/api/members", { cache: "no-store" });
-      const data = (await response.json()) as { members?: MemberRecord[]; message?: string };
+      const data = (await response.json()) as { currentUserId?: string; members?: MemberRecord[]; message?: string };
       if (!response.ok) {
         throw new Error(data.message ?? "Unable to load members.");
       }
 
+      setCurrentUserId(data.currentUserId ?? "");
       setMembers(data.members ?? []);
       setError(null);
     } catch (caughtError) {
@@ -127,6 +130,10 @@ export default function MembersPageClient() {
   }
 
   function toggleSelect(id: string) {
+    if (id !== currentUserId) {
+      return;
+    }
+
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(id)) {
@@ -142,15 +149,20 @@ export default function MembersPageClient() {
     setSelectedIds((current) => {
       if (allFilteredSelected) {
         const next = new Set(current);
-        filtered.forEach((member) => next.delete(member.id));
+        selectableFilteredIds.forEach((id) => next.delete(id));
         return next;
       }
 
-      return new Set([...current, ...filtered.map((member) => member.id)]);
+      return new Set([...current, ...selectableFilteredIds]);
     });
   }
 
   function openEdit(member: MemberRecord) {
+    if (member.id !== currentUserId) {
+      setError("You can only edit your own username and email address.");
+      return;
+    }
+
     setEditingMember(member);
     setForm({
       username: member.username ?? "",
@@ -164,7 +176,7 @@ export default function MembersPageClient() {
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Members</h1>
           <p className="text-sm text-muted-foreground">
-            Manage registered users and contact details from one place.
+            Review all registered users from one place. Only your own account details can be changed here.
           </p>
         </div>
         <div className="flex w-full max-w-sm items-center gap-2">
@@ -190,7 +202,7 @@ export default function MembersPageClient() {
         <div className="flex flex-col gap-3 rounded-xl border border-sky-500/15 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
-            <p className="text-xs text-muted-foreground">Edit the selected user or remove selected accounts from the workspace.</p>
+            <p className="text-xs text-muted-foreground">Only your own account can be edited or removed from this screen.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => singleSelected && openEdit(singleSelected)} disabled={!singleSelected}>
@@ -211,14 +223,19 @@ export default function MembersPageClient() {
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/10 pb-4">
           <CardTitle className="text-base">Registered users</CardTitle>
-          <CardDescription>Select one or more users to edit or remove them.</CardDescription>
+          <CardDescription>All members are visible here, but only your own account can be edited or removed.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/20">
                 <TableHead className="w-14 pl-4">
-                  <button type="button" onClick={toggleAllFiltered} className="flex items-center justify-center text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={toggleAllFiltered}
+                    className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={selectableFilteredIds.length === 0}
+                  >
                     {allFilteredSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
                 </TableHead>
@@ -245,7 +262,12 @@ export default function MembersPageClient() {
               {!loading ? filtered.map((member) => (
                 <TableRow key={member.id} className={selectedIds.has(member.id) ? "bg-sky-500/5" : "hover:bg-muted/10"}>
                   <TableCell className="pl-4">
-                    <button type="button" onClick={() => toggleSelect(member.id)} className="flex items-center justify-center text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => toggleSelect(member.id)}
+                      className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={member.id !== currentUserId}
+                    >
                       {selectedIds.has(member.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                     </button>
                   </TableCell>
@@ -256,7 +278,9 @@ export default function MembersPageClient() {
                       </div>
                       <div>
                         <p className="font-medium">{member.firstName} {member.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{member.jobTitle ?? "No title set"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {member.id === currentUserId ? "Your account" : member.jobTitle ?? "Workspace member"}
+                        </p>
                       </div>
                     </div>
                   </TableCell>
@@ -271,9 +295,14 @@ export default function MembersPageClient() {
                   </TableCell>
                   <TableCell className="pr-4 text-right md:pr-6">
                     <div className="flex justify-end pr-1">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(member)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(member)}
+                        disabled={member.id !== currentUserId}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>

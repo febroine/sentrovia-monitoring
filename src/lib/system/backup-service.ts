@@ -1,7 +1,11 @@
 import { eq } from "drizzle-orm";
 import { parse, stringify } from "yaml";
+import type { MonitorInput } from "@/lib/monitors/schemas";
+import { companyInputSchema } from "@/lib/companies/schemas";
 import { createManyMonitors, listMonitors } from "@/lib/monitors/service";
+import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { toMonitorPayload } from "@/lib/monitors/targets";
+import { buildCanonicalMonitorTarget, buildMonitorIdentityKey } from "@/lib/monitors/targets";
 import type { MonitorRecord, WorkspaceBackupBundle } from "@/lib/monitors/types";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
@@ -51,43 +55,99 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
     throw new Error("The backup file does not match the Sentrovia workspace format.");
   }
 
+  const validated = validateWorkspaceBackupBundle(bundle);
+
   await db.transaction(async (tx) => {
+    await upsertSettings(userId, {
+      ...validated.settings,
+      data: {
+        ...validated.settings.data,
+        lastBackupAt: new Date().toISOString(),
+      },
+    }, tx, true);
+
     await tx.delete(logFilterPresets).where(eq(logFilterPresets.userId, userId));
     await tx.delete(monitorChecks).where(eq(monitorChecks.userId, userId));
     await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));
     await tx.delete(monitorIncidents).where(eq(monitorIncidents.userId, userId));
     await tx.delete(monitors).where(eq(monitors.userId, userId));
     await tx.delete(companies).where(eq(companies.userId, userId));
+
+    const restoredCompanies = await Promise.all(
+      validated.companies.map((company) => createCompany(userId, company, tx))
+    );
+
+    const companyIdByName = new Map(restoredCompanies.map((company) => [company.name, company.id]));
+    const restoredMonitors = validated.monitors.map((monitor) => ({
+      ...monitor,
+      companyId: monitor.company ? companyIdByName.get(monitor.company) ?? "" : "",
+    }));
+
+    await createManyMonitors(userId, restoredMonitors, tx);
   });
 
-  const settings = settingsSchema.parse(bundle.settings);
-  await upsertSettings(userId, {
-    ...settings,
-    data: {
-      ...settings.data,
-      lastBackupAt: new Date().toISOString(),
-    },
-  });
-
-  const restoredCompanies = await Promise.all(
-    bundle.companies.map((company) =>
-      createCompany(userId, {
-        name: company.name,
-        description: company.description,
-        isActive: company.isActive,
-      })
-    )
-  );
-
-  const companyIdByName = new Map(restoredCompanies.map((company) => [company.name, company.id]));
-  const restoredMonitors = bundle.monitors.map((monitor) => ({
-    ...monitor,
-    companyId: monitor.company ? companyIdByName.get(monitor.company) ?? "" : "",
-  }));
-
-  await createManyMonitors(userId, restoredMonitors as Parameters<typeof createManyMonitors>[1]);
   return {
     companies: await listCompanies(userId),
     monitors: await listMonitors(userId),
   };
+}
+
+function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
+  const settings = settingsSchema.parse(bundle.settings);
+  const companies = companyInputSchema.array().parse(bundle.companies);
+  const monitors = monitorInputSchema.array().parse(bundle.monitors);
+
+  assertUniqueCompanyNames(companies);
+  assertMonitorCompanyReferences(monitors, companies);
+  assertUniqueMonitorTargets(monitors);
+
+  return { settings, companies, monitors };
+}
+
+function assertUniqueCompanyNames(companies: Array<{ name: string }>) {
+  const seenNames = new Set<string>();
+
+  for (const company of companies) {
+    const key = company.name.trim().toLowerCase();
+    if (seenNames.has(key)) {
+      throw new Error(`Duplicate company name in backup: ${company.name}`);
+    }
+
+    seenNames.add(key);
+  }
+}
+
+function assertMonitorCompanyReferences(
+  monitors: Array<{ company: string | null }>,
+  companies: Array<{ name: string }>
+) {
+  const companyNames = new Set(companies.map((company) => company.name.trim().toLowerCase()));
+
+  for (const monitor of monitors) {
+    if (!monitor.company) {
+      continue;
+    }
+
+    if (!companyNames.has(monitor.company.trim().toLowerCase())) {
+      throw new Error(`Monitor references a missing company: ${monitor.company}`);
+    }
+  }
+}
+
+function assertUniqueMonitorTargets(monitors: MonitorInput[]) {
+  const seenTargets = new Set<string>();
+
+  for (const monitor of monitors) {
+    const canonicalTarget = buildCanonicalMonitorTarget(monitor);
+    const identityKey = buildMonitorIdentityKey({
+      monitorType: monitor.monitorType,
+      url: canonicalTarget,
+    });
+
+    if (seenTargets.has(identityKey)) {
+      throw new Error(`Duplicate monitor target in backup: ${monitor.name}`);
+    }
+
+    seenTargets.add(identityKey);
+  }
 }

@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, type DatabaseExecutor } from "@/lib/db";
 import { companies, monitors } from "@/lib/db/schema";
 import type { CompanyInput } from "@/lib/companies/schemas";
 
@@ -29,8 +29,8 @@ export async function listCompanies(userId: string) {
   });
 }
 
-export async function createCompany(userId: string, input: CompanyInput) {
-  const [company] = await db
+export async function createCompany(userId: string, input: CompanyInput, database: DatabaseExecutor = db) {
+  const [company] = await database
     .insert(companies)
     .values({
       userId,
@@ -47,8 +47,8 @@ export async function createCompany(userId: string, input: CompanyInput) {
   };
 }
 
-export async function getCompanyById(userId: string, companyId: string) {
-  const [company] = await db
+export async function getCompanyById(userId: string, companyId: string, database: DatabaseExecutor = db) {
+  const [company] = await database
     .select()
     .from(companies)
     .where(and(eq(companies.userId, userId), eq(companies.id, companyId)));

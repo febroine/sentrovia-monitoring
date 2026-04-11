@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 
@@ -21,6 +21,7 @@ export async function listMembers() {
 
 export async function updateMember(
   memberId: string,
+  currentUserId: string,
   input: {
     username: string;
     email: string;
@@ -33,7 +34,7 @@ export async function updateMember(
       email: input.email.trim(),
       updatedAt: new Date(),
     })
-    .where(eq(users.id, memberId))
+    .where(and(eq(users.id, memberId), eq(users.id, currentUserId)))
     .returning({
       id: users.id,
       firstName: users.firstName,
@@ -50,12 +51,13 @@ export async function updateMember(
 }
 
 export async function deleteMembers(ids: string[], currentUserId: string) {
-  if (ids.length === 0) {
+  const scopedIds = ids.filter((id) => id === currentUserId);
+  if (scopedIds.length === 0) {
     return [];
   }
 
   return db
     .delete(users)
-    .where(and(inArray(users.id, ids), ne(users.id, currentUserId)))
+    .where(inArray(users.id, scopedIds))
     .returning({ id: users.id });
 }

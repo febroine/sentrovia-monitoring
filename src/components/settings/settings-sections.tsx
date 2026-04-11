@@ -31,6 +31,10 @@ const TEMPLATE_TOKENS = [
   "{status_code}",
   "{status_label}",
   "{checked_at_local}",
+  "{downtime_started_at_local}",
+  "{downtime_duration}",
+  "{downtime_minutes}",
+  "{downtime_hours}",
   "{rca_summary}",
   "{organization}",
 ];
@@ -82,11 +86,29 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           checked={settings.notifications.notifyOnStatusChange}
           onChange={(checked) => updateSetting("notifications.notifyOnStatusChange", checked)}
         />
+        <ToggleRow
+          label="Prolonged downtime reminders"
+          description="Send another alert when a monitor has stayed down past the configured reminder interval."
+          checked={settings.notifications.prolongedDowntimeEnabled}
+          onChange={(checked) => updateSetting("notifications.prolongedDowntimeEnabled", checked)}
+        />
         <Field label="Status code watch list" hint="Comma-separated HTTP codes that should trigger code-specific alerts, for example 500,502,503,504.">
           <Input
             value={settings.notifications.statusCodeAlertCodes}
             onChange={(event) => updateSetting("notifications.statusCodeAlertCodes", event.target.value)}
             placeholder="500,502,503,504"
+          />
+        </Field>
+        <Field
+          label="Prolonged downtime reminder interval (minutes)"
+          hint="Example: 180 means send a 'still down' reminder after 3 hours, then again every 3 hours while the outage continues."
+        >
+          <Input
+            type="number"
+            value={settings.notifications.prolongedDowntimeMinutes}
+            onChange={(event) =>
+              updateSetting("notifications.prolongedDowntimeMinutes", Number(event.target.value) || 180)
+            }
           />
         </Field>
         <Field label="Alert dedup window (minutes)" hint="Suppress duplicate notifications of the same kind for the same monitor inside this time window.">
@@ -227,6 +249,30 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           rows={6}
           value={settings.notifications.defaultTelegramTemplate}
           onChange={(value) => updateSetting("notifications.defaultTelegramTemplate", value)}
+        />
+        <Field
+          label="Prolonged downtime email subject"
+          hint="Use this template for 'still down' reminder emails. Tokens like {downtime_duration} and {downtime_started_at_local} are available here."
+        >
+          <Input
+            value={settings.notifications.prolongedDowntimeEmailSubjectTemplate}
+            onChange={(event) =>
+              updateSetting("notifications.prolongedDowntimeEmailSubjectTemplate", event.target.value)
+            }
+          />
+        </Field>
+        <TemplateEditor
+          label="Prolonged downtime email body"
+          hint="This template is used only for reminder messages while a monitor remains down past the configured interval."
+          value={settings.notifications.prolongedDowntimeEmailBodyTemplate}
+          onChange={(value) => updateSetting("notifications.prolongedDowntimeEmailBodyTemplate", value)}
+        />
+        <TemplateEditor
+          label="Prolonged downtime Telegram template"
+          hint="Customize the reminder text sent to Telegram while an outage is still active."
+          rows={6}
+          value={settings.notifications.prolongedDowntimeTelegramTemplate}
+          onChange={(value) => updateSetting("notifications.prolongedDowntimeTelegramTemplate", value)}
         />
       </SectionCard>
     </div>
