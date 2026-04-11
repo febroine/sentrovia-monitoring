@@ -9,6 +9,14 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 export const metadata: Metadata = {
   title: 'Sentrovia Uptime Monitoring',
   description: 'Professional Uptime Monitoring Dashboard',
+  applicationName: 'Sentrovia',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: ['/icon.svg'],
+    apple: ['/icon.svg'],
+  },
 };
 
 export default function RootLayout({
