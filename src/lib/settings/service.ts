@@ -82,6 +82,12 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       showChartsSection:
         settings?.showChartsSection ?? DEFAULT_SETTINGS.appearance.showChartsSection,
     },
+    appUpdates: {
+      repo: settings?.appUpdateRepo ?? DEFAULT_SETTINGS.appUpdates.repo,
+      branch: settings?.appUpdateBranch ?? DEFAULT_SETTINGS.appUpdates.branch,
+      enableInPlaceUpdates:
+        settings?.enableInPlaceUpdates ?? DEFAULT_SETTINGS.appUpdates.enableInPlaceUpdates,
+    },
     data: {
       retentionDays: settings?.dataRetentionDays ?? DEFAULT_SETTINGS.data.retentionDays,
       autoBackupEnabled: settings?.autoBackupEnabled ?? DEFAULT_SETTINGS.data.autoBackupEnabled,
@@ -153,6 +159,9 @@ export async function upsertSettings(userId: string, input: SettingsInput) {
     dashboardLandingPage: input.appearance.dashboardLandingPage,
     showIncidentBanner: input.appearance.showIncidentBanner,
     showChartsSection: input.appearance.showChartsSection,
+    appUpdateRepo: emptyToNull(input.appUpdates.repo),
+    appUpdateBranch: emptyToNull(input.appUpdates.branch) ?? DEFAULT_SETTINGS.appUpdates.branch,
+    enableInPlaceUpdates: input.appUpdates.enableInPlaceUpdates,
     dataRetentionDays: input.data.retentionDays,
     autoBackupEnabled: input.data.autoBackupEnabled,
     backupWindow: input.data.backupWindow,

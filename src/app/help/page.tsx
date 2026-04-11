@@ -1,7 +1,7 @@
 "use client";
 
 import type { ElementType } from "react";
-import { Clock3, ShieldCheck, Sparkles } from "lucide-react";
+import { Clock3, Radar, Sparkles } from "lucide-react";
 import { HelpFaqPanel } from "@/components/help/help-faq-panel";
 import { helpCategories, quickNotes } from "@/components/help/help-data";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +24,8 @@ export default function HelpPage() {
                 </h1>
                 <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
                   This page explains the real system, not just the screens. It covers worker scheduling,
-                  verification mode, monitor types, delivery decisions, update
-                  checks, logs, company rollups, and Docker runtime behavior in one readable place.
+                  verification mode, monitor types, delivery decisions, reports, update checks,
+                  logs, worker insights, and Docker runtime behavior in one readable place.
                 </p>
               </div>
             </div>
@@ -56,13 +56,13 @@ export default function HelpPage() {
         <FeatureCard
           icon={Clock3}
           title="Verification-Aware Monitoring"
-          text="Pending, verifying, confirmed incident, and recovery states are separated so Sentrovia does not overreact to the first failure."
+          text="Pending, verifying, confirmed outage, and recovery states are separated so Sentrovia does not overreact to the first failure."
           accent="border-l-orange-500"
         />
         <FeatureCard
-          icon={ShieldCheck}
-          title="Delivery Routing"
-          text="Email, Telegram, Discord, and webhook deliveries stay visible in one operational trail so teams can validate routing quickly."
+          icon={Radar}
+          title="Worker Insights"
+          text="Backlog, cycle duration, failing monitors, and worker-level errors stay visible in a dedicated dashboard instead of hiding behind generic health badges."
           accent="border-l-emerald-500"
         />
         <FeatureCard

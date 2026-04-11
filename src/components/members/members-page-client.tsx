@@ -164,7 +164,7 @@ export default function MembersPageClient() {
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Members</h1>
           <p className="text-sm text-muted-foreground">
-            Manage registered users, ownership details, and contact settings from one place.
+            Manage registered users and contact details from one place.
           </p>
         </div>
         <div className="flex w-full max-w-sm items-center gap-2">
@@ -256,7 +256,7 @@ export default function MembersPageClient() {
                       </div>
                       <div>
                         <p className="font-medium">{member.firstName} {member.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{member.jobTitle ?? "Workspace operator"}</p>
+                        <p className="text-xs text-muted-foreground">{member.jobTitle ?? "No title set"}</p>
                       </div>
                     </div>
                   </TableCell>

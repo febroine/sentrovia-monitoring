@@ -8,12 +8,10 @@ import {
   Globe,
   Layers3,
   LayoutDashboard,
-  Mail,
-  ShieldAlert,
-  ServerCog,
-  Settings2,
-  ShieldCheck,
+  Radar,
   RefreshCw,
+  ServerCog,
+  ShieldCheck,
   Workflow,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -23,23 +21,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const overviewCards = [
   {
-    title: "Separate Worker Runtime",
+    title: "Worker-driven runtime",
     description:
-      "Checks are not executed in the browser. A dedicated worker owns due-monitor selection, request execution, verification mode, and outbound delivery decisions.",
+      "Checks run in a dedicated worker, not in the browser. The worker owns due-monitor selection, execution, verification, report delivery, and outbound channel decisions.",
     icon: ServerCog,
     accent: "border-l-sky-500",
   },
   {
-    title: "Database-First State Model",
+    title: "Database-first state model",
     description:
-      "PostgreSQL stores monitor configuration, checks, events, worker heartbeat, companies, members, delivery history, and workspace defaults as the single source of truth.",
+      "PostgreSQL stores monitor configuration, checks, events, worker heartbeat, worker metrics, members, companies, delivery history, settings, and report schedules as the durable source of truth.",
     icon: Database,
     accent: "border-l-emerald-500",
   },
   {
-    title: "Operational Console",
+    title: "Operator-facing control plane",
     description:
-      "The Next.js web console is responsible for visibility and configuration: monitors, settings, logs, delivery testing, company rollups, members, and operator workflows.",
+      "The Next.js console focuses on visibility and configuration: dashboards, worker insights, monitoring, reports, members, settings, and delivery tooling.",
     icon: LayoutDashboard,
     accent: "border-l-violet-500",
   },
@@ -47,38 +45,38 @@ const overviewCards = [
 
 const runtimeFlow = [
   {
-    title: "An operator configures intent in the web console",
-    body: "Monitor definitions, defaults, templates, companies, and delivery settings all enter the system through authenticated route handlers in the Next.js application.",
-    icon: Settings2,
-  },
-  {
-    title: "Validation normalizes every payload before persistence",
-    body: "Zod validates incoming payloads, settings defaults fill optional monitor gaps where appropriate, and Drizzle persists the resulting data into PostgreSQL.",
+    title: "Operators save monitoring intent in the web console",
+    body: "Monitor definitions, defaults, report schedules, companies, members, and delivery settings enter the system through authenticated Next.js route handlers.",
     icon: Workflow,
   },
   {
-    title: "The worker polls for due monitors",
-    body: "On each cycle the worker finds active monitors whose nextCheckAt is due, applies per-workspace batch size, and queues them for concurrency-limited execution.",
+    title: "Validation normalizes each payload before persistence",
+    body: "Zod validates input, settings defaults fill safe gaps, and Drizzle persists the resulting records into PostgreSQL.",
+    icon: Boxes,
+  },
+  {
+    title: "The worker polls for due work",
+    body: "On each cycle the worker finds active monitors and report schedules whose next run is due, applies batch and concurrency rules, and claims work safely.",
     icon: ServerCog,
   },
   {
-    title: "Each request is built from saved monitor settings",
-    body: "Method, timeout, redirects, SSL behavior, response limits, and verification threshold are loaded directly from the monitor row rather than from ad hoc runtime assumptions.",
+    title: "Type-specific probes run from stored monitor settings",
+    body: "HTTP, keyword, JSON, port, PostgreSQL, ping, and heartbeat checks all read their behavior directly from persisted monitor rows rather than from browser state.",
     icon: Globe,
   },
   {
-    title: "Verification mode filters out noisy first failures",
-    body: "A first failure does not immediately trigger a real outage. Sentrovia schedules one-minute confirmation checks and only opens the incident after the configured threshold is reached.",
+    title: "Verification mode filters transient failures",
+    body: "A first failure does not immediately become a confirmed outage. Sentrovia schedules one-minute confirmation checks and only escalates once the threshold is met.",
     icon: ShieldCheck,
   },
   {
-    title: "Notifications pass through routing logic",
-    body: "When delivery proceeds, Sentrovia renders templates, resolves recipients, and attempts enabled channels.",
+    title: "Delivery and reporting are routed from the worker",
+    body: "When a confirmed state change or due report requires outbound work, Sentrovia renders templates, resolves recipients, and records per-channel outcomes.",
     icon: BellRing,
   },
   {
-    title: "Results are written back for every surface to read",
-    body: "Status, code, latency, timestamps, check history, events, worker state, and delivery outcomes are written into PostgreSQL so dashboard, logs, and reports stay consistent.",
+    title: "Telemetry is written back for every product surface",
+    body: "Status, latency, timestamps, worker heartbeat, cycle metrics, delivery outcomes, and report schedule state are written into PostgreSQL so every screen reads the same reality.",
     icon: Gauge,
   },
 ];
@@ -87,9 +85,9 @@ const stackSections = [
   {
     title: "Application Layer",
     items: [
-      "Next.js 16 App Router for pages and authenticated route handlers",
-      "React 19 for client-side interactivity on monitoring, logs, settings, delivery, and profile flows",
-      "TypeScript across the web console, worker logic, schemas, and services",
+      "Next.js 16 App Router for pages and authenticated APIs",
+      "React 19 for client interactivity on monitoring, worker insights, delivery, reports, and settings",
+      "TypeScript across the console, worker, schemas, services, and report generation",
     ],
   },
   {
@@ -101,19 +99,19 @@ const stackSections = [
     ],
   },
   {
-    title: "State and Delivery",
+    title: "Operational Features",
     items: [
-      "Zustand for focused client-side page state",
-      "Nodemailer for SMTP delivery and attachment sending",
-      "Fetch-based integrations for Telegram, Discord, and generic webhooks",
+      "Dedicated Node worker process for checks, retries, and scheduled reports",
+      "Worker observability dashboard for backlog, cycle, and runtime error insight",
+      "Monitoring as Code, CSV import, company grouping, and delivery history",
     ],
   },
   {
-    title: "Runtime and Operations",
+    title: "Deployment and Runtime",
     items: [
-      "A dedicated Node worker process for monitoring execution",
       "Docker Compose for db + web + worker orchestration",
-      "Heartbeat-backed worker visibility rather than UI simulation",
+      "GitHub version awareness for update checks",
+      "Heartbeat-backed worker visibility instead of UI simulation",
     ],
   },
 ];
@@ -121,51 +119,59 @@ const stackSections = [
 const apiGroups = [
   {
     title: "Configuration APIs",
-    routes: ["/api/settings", "/api/companies", "/api/members"],
+    routes: ["/api/settings", "/api/companies", "/api/members", "/api/app-update"],
     description:
-      "These routes persist operator intent: profile data, defaults, delivery configuration, companies, members, and workspace-level behavior.",
+      "These routes persist operator intent: defaults, update configuration, companies, members, and workspace behavior.",
   },
   {
     title: "Monitoring APIs",
-    routes: ["/api/monitors", "/api/monitors/[id]", "/api/monitors/bulk", "/api/monitors/import"],
+    routes: ["/api/monitors", "/api/monitors/[id]", "/api/monitors/bulk", "/api/monitors/import", "/api/monitors/heartbeat/[token]"],
     description:
-      "These routes create and manage monitors, import structured CSV input, expose monitor history, and persist runtime-affecting monitor settings.",
+      "These routes create and manage monitors, import structured input, expose heartbeat endpoints, and persist runtime-affecting monitoring settings.",
   },
   {
     title: "Visibility APIs",
-    routes: ["/api/logs", "/api/dashboard/stream", "/api/worker"],
+    routes: ["/api/logs", "/api/dashboard/stream", "/api/worker", "/api/system"],
     description:
-      "These routes expose worker health, live dashboard updates, and event data that operators consume while making operational decisions.",
+      "These routes power worker state, live dashboard updates, system telemetry, and operator-facing runtime visibility.",
   },
   {
-    title: "Delivery APIs",
-    routes: ["/api/delivery", "/api/delivery/test", "/api/delivery/retry"],
+    title: "Delivery and Reporting APIs",
+    routes: ["/api/delivery", "/api/delivery/test", "/api/delivery/retry", "/api/reports", "/api/reports/preview", "/api/reports/send"],
     description:
-      "These routes power delivery history, smoke tests, retry workflows, and channel-level troubleshooting without changing monitor state.",
+      "These routes handle delivery history, test sends, retries, scheduled reports, and report previews or dispatch.",
   },
 ];
 
 const implementationNotes = [
-  "Default monitor settings are active behavior, not decorative preferences. They feed create, import, and update fallback chains.",
-  "Verification mode sits between first failure and confirmed incident so alerting reflects confirmed instability, not a single transient error.",
-  "Worker heartbeat is stored in the database so the console can distinguish a healthy UI from a stalled monitoring engine.",
-  "Delivery history exists because knowing that an event happened is not enough; operators also need to know what the system attempted after that event.",
-  "Version awareness is opt-in and driven by GitHub package version checks. Automatic apply is only available when the runtime has a writable git checkout.",
+  "Workspace defaults are active behavior, not cosmetic preferences. They feed create, import, and update fallback chains.",
+  "Verification mode exists to confirm instability before delivery begins, which keeps alerting calmer under transient failures.",
+  "Worker heartbeat and cycle metrics live in the database so the console can distinguish a healthy UI from a stale monitoring engine.",
+  "Reports are part of the product runtime now, not a side export. The worker can pick up due schedules and send them like any other operational task.",
+  "Update awareness is opt-in and version-based. Detection is broad, but automatic apply stays intentionally conservative.",
 ];
 
 const updateModel = [
   {
     title: "Version source",
-    body: "Sentrovia reads the local package version, then compares it to package.json in a configured GitHub repository branch. A newer remote version triggers an in-app update banner.",
+    body: "Sentrovia reads the running package version, then compares it to package.json in a configured GitHub repository branch.",
   },
   {
-    title: "Operator experience",
-    body: "When a newer version exists, the console surfaces a small top-right update card with the current version, remote version, and a direct action for supported runtimes.",
+    title: "Configuration source",
+    body: "The update repository can be supplied from Settings or environment variables, which makes self-hosted setups easier to standardize.",
   },
   {
-    title: "Automatic apply rules",
-    body: "In-place update only works if the app is running from a writable git checkout and git is available. Docker deployments usually detect updates but still require a host-level rebuild flow.",
+    title: "Apply behavior",
+    body: "In-place update only works when the runtime has a writable git checkout. Docker deployments usually detect updates but still require a host-level rebuild flow.",
   },
+];
+
+const productSurfaces = [
+  "Monitoring dashboard with live runtime and company health",
+  "Worker Insights dashboard with backlog, cycle, and error visibility",
+  "Reports center with preview studio and schedule manager",
+  "Delivery console for testing, retrying, and auditing outbound channels",
+  "Members, companies, and settings for workspace operations",
 ];
 
 export default function AboutPage() {
@@ -180,13 +186,12 @@ export default function AboutPage() {
               </Badge>
               <div className="space-y-3">
                 <h1 className="max-w-5xl text-3xl font-semibold tracking-tight md:text-4xl xl:text-[3rem] xl:leading-[1.04]">
-                  Sentrovia is a worker-driven monitoring platform built around durable state, verification-aware alerts, and operator visibility
+                  Sentrovia is a worker-driven monitoring platform built for durable state, clear operator visibility, and low-drama alerting
                 </h1>
                 <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
-                  The browser configures the platform and reads results. The worker executes monitoring,
-                  confirmation checks, delivery decisions, and monitor-type
-                  specific probes. PostgreSQL keeps everything consistent so dashboards, logs, timelines,
-                  reports, and version awareness all reflect the same stored reality.
+                  The browser configures the system and reads results. The worker executes checks, confirmation
+                  logic, report schedules, and outbound delivery. PostgreSQL keeps everything aligned so dashboards,
+                  logs, delivery, reports, and update awareness all reflect the same stored truth.
                 </p>
               </div>
             </div>
@@ -195,13 +200,13 @@ export default function AboutPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Product shape in one view</CardTitle>
                 <CardDescription>
-                  Three services, one source of truth, and a deliberate split between control plane and execution engine.
+                  Three services, one durable state layer, and distinct surfaces for operators.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-3">
                 <MetricCard label="Services" value="3" detail="db + web + worker" />
-                <MetricCard label="Runtime" value="Async" detail="batch + concurrency control" />
-                <MetricCard label="State Model" value="DB" detail="durable operational telemetry" />
+                <MetricCard label="Monitor Types" value="7" detail="http to heartbeat" />
+                <MetricCard label="Reports" value="Built-in" detail="preview + scheduled send" />
               </CardContent>
             </Card>
           </div>
@@ -222,6 +227,39 @@ export default function AboutPage() {
         ))}
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle className="text-base">Current product surfaces</CardTitle>
+            <CardDescription>
+              These are the operator-facing areas that define the current product shape.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {productSurfaces.map((item) => (
+              <div key={item} className="rounded-2xl border bg-muted/[0.06] px-4 py-3 text-sm leading-6 text-muted-foreground">
+                {item}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle className="text-base">What changed recently</CardTitle>
+            <CardDescription>
+              Sentrovia now includes newer operational surfaces that reshape how teams use it day to day.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <MetricCard label="Worker Insights" value="Live" detail="backlog, cycles, failures, errors" />
+            <MetricCard label="Reports" value="Expanded" detail="preview studio + schedule manager" />
+            <MetricCard label="Update Center" value="Configurable" detail="settings or env based GitHub checks" />
+            <MetricCard label="Heartbeat" value="Built-in" detail="cron or job monitoring endpoint" />
+          </CardContent>
+        </Card>
+      </section>
+
       <Tabs defaultValue="runtime" className="flex-col gap-6">
         <TabsList variant="line" className="w-fit max-w-full justify-start overflow-x-auto rounded-2xl border bg-card p-2">
           <TabsTrigger value="runtime" className="flex-none rounded-xl px-4">
@@ -237,7 +275,7 @@ export default function AboutPage() {
             API Shape
           </TabsTrigger>
           <TabsTrigger value="notes" className="flex-none rounded-xl px-4">
-            <Mail data-icon="inline-start" />
+            <Radar data-icon="inline-start" />
             Design Notes
           </TabsTrigger>
           <TabsTrigger value="updates" className="flex-none rounded-xl px-4">
@@ -249,9 +287,9 @@ export default function AboutPage() {
         <TabsContent value="runtime">
           <Card className="overflow-hidden">
             <CardHeader>
-              <CardTitle>How the monitoring runtime actually works</CardTitle>
+              <CardTitle>How the runtime works end to end</CardTitle>
               <CardDescription>
-                This is the real end-to-end execution path from browser input to stored check result and outbound delivery attempt.
+                From operator input to worker execution, persisted telemetry, and outbound delivery.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 lg:grid-cols-2">
@@ -307,23 +345,21 @@ export default function AboutPage() {
               <CardHeader>
                 <CardTitle>Why the separation of concerns matters</CardTitle>
                 <CardDescription>
-                  Sentrovia is easier to trust because the layers do different jobs and report on each other clearly.
+                  Sentrovia is easier to trust because the UI, worker, and database each have a clear job.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm leading-7 text-muted-foreground">
                 <p>
-                  The web console is the control plane. It is where operators configure intent, read
-                  results, review delivery history, manage settings, and inspect worker health.
+                  The web console is the control plane. It is where operators configure monitors, manage members,
+                  inspect worker health, review delivery history, and work with reports.
                 </p>
                 <p>
-                  The worker is the execution engine. It decides what should be checked next, how the
-                  request should be built, whether a failure is real or still unconfirmed, and whether an
-                  alert should be suppressed, retried, mirrored, or delivered.
+                  The worker is the execution engine. It decides what should run next, how a check should be built,
+                  whether a failure is real or still unconfirmed, and when reports or notifications should be sent.
                 </p>
                 <p>
-                  PostgreSQL keeps those two layers aligned. If the worker stalls, the console can still
-                  show that staleness. If the UI is refreshed, operators still see the same stored state
-                  that the worker wrote a moment earlier.
+                  PostgreSQL keeps those two layers aligned. If the worker stalls, the console can still show that
+                  staleness. If the browser refreshes, operators still read the same durable state written by the worker.
                 </p>
               </CardContent>
             </Card>
@@ -332,21 +368,19 @@ export default function AboutPage() {
               <CardHeader>
                 <CardTitle>Implementation notes that shape operator expectations</CardTitle>
                 <CardDescription>
-                  These product rules change how the platform behaves in production and are worth knowing.
+                  These product rules change behavior in production and are worth understanding.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {implementationNotes.map((note) => (
                   <div key={note} className="rounded-2xl border bg-muted/[0.06] px-4 py-3 text-sm leading-6 text-muted-foreground">
-                    <ShieldAlert className="mr-2 inline h-4 w-4 text-primary/80" />
                     {note}
                   </div>
                 ))}
                 <Separator />
                 <p className="text-sm leading-7 text-muted-foreground">
-                  When the platform changes in a way that affects execution flow, delivery routing, or the
-                  data model, this page should change too. It is intended to stay aligned with the actual
-                  system, not become stale marketing copy.
+                  This page is intended to stay aligned with the actual shipped system. When runtime behavior changes,
+                  this documentation should change with it.
                 </p>
               </CardContent>
             </Card>
@@ -359,25 +393,21 @@ export default function AboutPage() {
               <CardHeader>
                 <CardTitle>How GitHub update awareness works</CardTitle>
                 <CardDescription>
-                  The banner is designed for self-hosted teams that want the console to notice when the repository moves ahead.
+                  The update card is designed for self-hosted teams that want the console to notice when the repository moves ahead.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm leading-7 text-muted-foreground">
                 <p>
-                  Update awareness is version-based. Sentrovia reads the running package version from the
-                  local deployment and compares it against the package version in a configured GitHub
-                  repository branch. That means the most reliable release signal is a real version bump in
-                  package.json when you push application changes.
+                  Update awareness is version-based. Sentrovia reads the running package version and compares it against
+                  package.json in a configured GitHub branch. The most reliable release signal is still a real version bump.
                 </p>
                 <p>
-                  This design keeps the check simple and public-repo friendly. It avoids requiring a
-                  private GitHub token just to learn whether a newer build exists, while still giving
-                  operators a visible signal inside the product itself.
+                  Configuration can come from Settings or from environment variables. That makes it possible to support both
+                  local Docker users and more controlled self-hosted deployments with the same product surface.
                 </p>
                 <p>
-                  The Update button is intentionally conservative. Sentrovia only attempts an in-place pull
-                  when it can prove the runtime is backed by a writable git checkout. In Docker or packaged
-                  deployments, the banner still appears, but the host usually needs a manual rebuild flow.
+                  The Update button stays conservative by design. Docker deployments can detect a newer version, but they
+                  usually still need a host-level `git pull` plus rebuild flow rather than an in-place app-side patch.
                 </p>
               </CardContent>
             </Card>
@@ -386,7 +416,7 @@ export default function AboutPage() {
               <CardHeader>
                 <CardTitle>Update model</CardTitle>
                 <CardDescription>
-                  These three layers explain why detection is broad but automatic apply remains intentionally narrow.
+                  These layers explain why detection is broad but automatic apply remains intentionally narrow.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -456,4 +486,3 @@ function RuntimeStep({
     </div>
   );
 }
-

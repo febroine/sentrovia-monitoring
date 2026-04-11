@@ -119,6 +119,15 @@ export async function updateReportSchedule(
   return serializeSchedule(updated, await resolveCompanyName(userId, companyId));
 }
 
+export async function deleteReportSchedule(userId: string, scheduleId: string) {
+  const [deleted] = await db
+    .delete(reportSchedules)
+    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)))
+    .returning({ id: reportSchedules.id });
+
+  return deleted ?? null;
+}
+
 export async function generateReportPreview(
   userId: string,
   input: ReportPreviewInput,
