@@ -9,6 +9,10 @@ import { getSettings } from "@/lib/settings/service";
 
 export const runtime = "nodejs";
 
+type MonitorRouteContext = {
+  params: Promise<{ id: string }>;
+};
+
 function serializeMonitor(monitor: Awaited<ReturnType<typeof updateMonitor>>) {
   if (!monitor) {
     return null;
@@ -17,7 +21,7 @@ function serializeMonitor(monitor: Awaited<ReturnType<typeof updateMonitor>>) {
   return serializeMonitorRecord(monitor);
 }
 
-export async function PATCH(request: NextRequest, context: RouteContext<"/api/monitors/[id]">) {
+export async function PATCH(request: NextRequest, context: MonitorRouteContext) {
   try {
     const session = await getSession();
 
@@ -47,7 +51,7 @@ export async function PATCH(request: NextRequest, context: RouteContext<"/api/mo
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext<"/api/monitors/[id]">) {
+export async function DELETE(_request: NextRequest, context: MonitorRouteContext) {
   try {
     const session = await getSession();
 

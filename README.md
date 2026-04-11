@@ -1,6 +1,6 @@
 # Sentrovia
 
-> A verification-aware, self-hosted monitoring platform with a dedicated worker runtime, durable PostgreSQL state, customizable alerting, reports, and an operations-focused control plane.
+> A verification-aware monitoring platform for teams that want cleaner alerts, durable runtime state, and a control plane that stays readable under real operational load.
 
 <p align="left">
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" />
@@ -13,20 +13,42 @@
 
 ## What Sentrovia is
 
-Sentrovia is built for self-hosted teams that want more than a basic uptime checker.
+Sentrovia is built for self-hosted teams that want more than a simple "ping and alert" tool.
 
 It combines:
 
-- a **Next.js web console** for monitor management, settings, reports, help content, backup/restore, and operations workflows
-- a **dedicated worker runtime** for executing checks, verification mode, history writes, and outbound notifications
-- **PostgreSQL** as the source of truth for monitors, users, worker state, delivery history, reports, and settings
-- a **verification-first outage model** that avoids noisy first-failure alerts
-- **customizable notifications** across email, Telegram, Discord, and generic webhooks
-- **reports and worker insights** so teams can understand both monitored systems and the monitoring engine itself
+- a **Next.js web console** for configuration, operations, logs, delivery testing, and user workflows
+- a **dedicated worker runtime** for actual monitor execution
+- **PostgreSQL** as the source of truth for configuration and runtime state
+- a **verification mode** that reduces noisy first-failure alerting
+- **company-aware visibility** for grouped monitors and operational ownership
+- **delivery history** so teams can see what the system actually tried to send
 
-## Core capabilities
+## Why teams would pick Sentrovia
 
-### Monitor types
+### Verification-aware incident handling
+
+Sentrovia does not immediately treat the first failure as a real outage.  
+The worker can move a monitor into **verification mode**, re-check at one-minute intervals, and only confirm the incident after the configured threshold is reached.
+
+### Durable, database-first state
+
+Checks, monitor history, worker heartbeat, worker metrics, companies, settings, reports, templates, and delivery attempts are stored in PostgreSQL so every page reads the same persisted truth.
+
+### Internal control plane feel
+
+This project is designed more like an operations console than a toy dashboard:
+
+- dashboard summaries
+- monitor timelines
+- event logs
+- delivery history
+- company rollups
+- members and settings
+- worker health visibility
+- reports and worker insights
+
+### Multiple monitor types
 
 Sentrovia currently supports:
 
@@ -38,51 +60,75 @@ Sentrovia currently supports:
 - `Ping / ICMP`
 - `Cron / Heartbeat`
 
-### Alerting and delivery
+All monitor types use the same core pipeline for verification, RCA, event creation, and delivery.
 
-- verification-aware `down` and `recovery` notifications
-- configurable repeated `still down` reminders
-- customizable email and Telegram templates
+## Core Capabilities
+
+### Monitoring engine
+
+- HTTP/HTTPS monitor execution
+- keyword and JSON assertion checks
+- TCP/port reachability checks
+- PostgreSQL connectivity checks
+- ICMP reachability checks
+- heartbeat endpoint monitoring
+- per-monitor timeout, retries, method, redirects, SSL behavior, and response settings
+- verification mode for delayed outage confirmation
+- check history with timeline surfaces
+
+### Root cause analysis
+
+Sentrovia classifies failures into targeted RCA buckets such as:
+
+- DNS resolution failures
+- timeout failures
+- connection refused
+- SSL/TLS issues
+- HTTP 4xx
+- HTTP 5xx
+- redirect anomalies
+- generic network failures
+
+### Delivery and notification routing
+
 - SMTP email delivery
 - Telegram delivery
 - Discord webhook delivery
 - generic webhook delivery
-- delivery history and webhook retry visibility
+- delivery history and retry visibility
+- workspace-level templates and recipient defaults
+- prolonged downtime reminders with configurable timing
+- recovery alerts after a confirmed outage returns healthy
 
-### Operations
+### Operations and governance
 
-- worker start/stop controls
-- worker health and observability dashboard
-- monitor history and event timelines
-- bulk actions and tags
-- monitoring as code import/export
-- backup and restore
+- companies and grouped monitor ownership
 - members directory
-- update awareness for GitHub-based releases
+- settings with defaults and templates
+- event logs with filters
+- worker heartbeat and health status
+- worker observability metrics
+- reports center with previews and schedules
 
-### Reporting
+## How it works
 
-- weekly reports
-- monthly reports
-- company-scoped reports
-- global workspace reports
-- report preview
-- scheduled report delivery
-
-## Product surfaces
-
-Sentrovia currently includes:
-
-- `Dashboard`
-- `Monitoring`
-- `Companies`
-- `Logs`
-- `Delivery`
-- `Reports`
-- `Members`
-- `Settings`
-- `Help`
-- `About`
+```mermaid
+flowchart LR
+    A["Operator uses Web Console"] --> B["Validated Route Handlers"]
+    B --> C["PostgreSQL stores monitor + settings state"]
+    C --> D["Worker polls due monitors and report schedules"]
+    D --> E["HTTP / TCP / PostgreSQL / ICMP / Heartbeat checks"]
+    E --> F{"Failure?"}
+    F -- "No" --> G["Persist UP result + history"]
+    F -- "Yes" --> H["Enter verification mode"]
+    H --> I{"Threshold reached?"}
+    I -- "No" --> J["Schedule 1-minute confirmation check"]
+    I -- "Yes" --> K["Persist outage + RCA + events"]
+    K --> L["Render templates + route delivery"]
+    G --> M["Dashboard / Logs / Timelines / Reports"]
+    J --> D
+    L --> M
+```
 
 ## Runtime model
 
@@ -91,25 +137,28 @@ Sentrovia currently includes:
 The web layer is the control plane. It is responsible for:
 
 - creating and updating monitors
-- reading dashboards, logs, reports, and worker metrics
-- editing settings, templates, companies, members, and update config
-- exposing authenticated APIs for the UI and worker runtime
+- reading dashboards and logs
+- editing settings, templates, members, and companies
+- rendering live operational views
+- exposing authenticated APIs for the worker and the UI
 
 ### Worker
 
 The worker is the execution engine. It is responsible for:
 
 - selecting due monitors
-- running HTTP, TCP, PostgreSQL, ICMP, and heartbeat checks
-- applying verification mode before confirming an outage
-- persisting check history and event records
+- building checks from saved monitor settings
+- applying batch size and concurrency rules
+- running verification mode
+- writing history, status, and event records
 - sending notifications through enabled channels
-- recording worker pulse and cycle metrics
-- running scheduled report delivery jobs
+- sending prolonged downtime reminders
+- dispatching scheduled reports
+- writing heartbeat and worker state back to the database
 
 ### Database
 
-PostgreSQL persists the operational truth for:
+PostgreSQL is not just storage; it is the operational backbone. It persists:
 
 - users
 - companies
@@ -117,74 +166,38 @@ PostgreSQL persists the operational truth for:
 - monitor checks
 - monitor events
 - delivery events
-- webhook endpoints
 - worker state
 - worker cycle metrics
 - report schedules
-- user settings
+- settings and templates
 
-## Verification model
+## Verification mode
 
-One of the most important Sentrovia behaviors is the verification flow:
+One of the most important behaviors in Sentrovia is the verification flow:
 
 1. A monitor fails once.
-2. The worker does **not** immediately treat that as a confirmed outage.
+2. The worker does **not** immediately open a confirmed outage.
 3. The monitor enters **verification mode**.
 4. Follow-up checks run at one-minute intervals.
-5. If the failure repeats until the configured threshold is reached, the outage is confirmed and the first down notification is sent.
-6. If the service comes back before the threshold is reached, verification is cleared and no outage notification is sent.
-7. If the service stays down, optional prolonged-downtime reminders can continue on the interval you configure.
-8. When the service becomes healthy again, a recovery notification is sent.
+5. If the failure repeats until the threshold is reached, the outage is confirmed.
+6. If the monitor comes back up before the threshold is reached, the verification state is cleared and the monitor returns to its normal schedule.
+7. If the service stays down after confirmation, Sentrovia can continue sending repeated “still down” reminders on the interval you configure.
+8. When the service returns healthy, a recovery notification is sent.
 
 ## Reports
 
-The reports center supports:
+Sentrovia includes a built-in reports center with:
 
-- weekly summaries
-- monthly summaries
+- weekly reports
+- monthly reports
 - company-scoped reports
 - global workspace reports
-- schedule management
-- recipient lists
-- manual preview and send-now flows
+- preview before send
+- scheduled report delivery
 
-The worker is responsible for sending due scheduled reports.
+Reports are not a side export anymore; the worker can pick up due report schedules and send them as part of the product runtime.
 
-## Worker insights
-
-Sentrovia includes a worker observability surface that tracks:
-
-- due backlog
-- checks per hour
-- failures per day
-- last cycle timing
-- recent worker cycles
-- failing monitors
-- recent worker-level errors
-
-This makes it easier to debug the monitoring engine itself, not just the systems being monitored.
-
-## Update awareness
-
-Sentrovia can detect when a newer version exists in GitHub.
-
-It compares:
-
-- the local `package.json` version
-- the remote `package.json` version from the configured update repository
-
-You can configure this through:
-
-- environment variables like `APP_UPDATE_REPO`
-- or the in-app **Settings > Data > App Updates** panel
-
-Notes:
-
-- Docker deployments can detect that a newer version exists
-- applying the update still usually requires a host-level `git pull` plus rebuild/restart
-- the UI can show the current version, remote version, and last check state
-
-## Quick start
+## Quick Start
 
 ### Full Docker setup
 
@@ -197,19 +210,18 @@ docker compose up --build
 This starts:
 
 - `db` for PostgreSQL
-- `web` for the Next.js app
-- `worker` for background checks and scheduled jobs
+- `web` for the Next.js application
+- `worker` for background monitoring execution
 
-Then open:
+The Docker boot flow is intended to be self-initializing:
+
+- waits for PostgreSQL to become reachable
+- starts the web runtime
+- starts the worker runtime
+
+Open:
 
 - [http://localhost:3000](http://localhost:3000)
-
-For a fresh clone, the Docker flow is intended to be low-friction:
-
-- PostgreSQL boots automatically
-- the web runtime starts on port `3000`
-- the worker starts inside its own service
-- local-only default secrets are already present in the compose setup so signup/login works in local Docker
 
 ### Local development
 
@@ -221,7 +233,7 @@ If you want PostgreSQL in Docker but run the app locally:
 docker compose up -d db
 ```
 
-2. Push the schema:
+2. Apply the schema:
 
 ```bash
 npm run db:push
@@ -250,79 +262,37 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5433/uptimemonitoring
 APP_URL=http://localhost:3000
 AUTH_SECRET=local-dev-auth-secret-change-before-public-deploy-2026
 APP_ENCRYPTION_SECRET=local-dev-encryption-secret-change-before-public-deploy-2026
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5433
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=uptimemonitoring
 WORKER_CONCURRENCY=20
 WORKER_POLL_INTERVAL_MS=10000
 WORKER_AUTO_START=false
 DISABLE_EMBEDDED_WORKER_SPAWN=false
-APP_UPDATE_REPO=febroine/sentrovia-monitoring
-APP_UPDATE_BRANCH=main
-ENABLE_IN_PLACE_UPDATES=true
 ```
 
-For Docker Compose:
+For Docker Compose, the services already inject the internal database host and worker flags they need.
+The compose file also ships with local-only default secrets so a fresh clone can boot without extra setup. Override them in any real server deployment.
 
-- the compose services already inject the database host and worker flags they need
-- local-only default secrets are included for convenience
-- for any real deployment, replace them with strong values
+## Self-hosted reliability notes
 
-## Required follow-up after schema changes
-
-Some newer features add database columns and tables, including:
-
-- reports
-- worker observability metrics
-- app update configuration
-- prolonged downtime reminders
-
-If you pull a newer version outside the Docker bootstrap flow, run:
+If someone clones the public repository and starts it with:
 
 ```bash
-npm run db:push
+docker compose up --build
 ```
 
-## Notifications
+they should get:
 
-Sentrovia supports:
+- PostgreSQL booted automatically
+- web console on `http://localhost:3000`
+- worker attached automatically
 
-- first confirmed outage alerts
-- recovery alerts
-- latency alerts
-- SSL expiry alerts
-- status code change alerts
-- prolonged downtime reminders
-
-Template tokens available in notification templates include:
-
-- `{domain}`
-- `{url}`
-- `{url_link}`
-- `{event_state}`
-- `{status_code}`
-- `{status_label}`
-- `{checked_at_local}`
-- `{downtime_started_at_local}`
-- `{downtime_duration}`
-- `{downtime_minutes}`
-- `{downtime_hours}`
-- `{rca_summary}`
-- `{organization}`
-
-## GitHub update flow for Docker users
-
-If your local Docker deployment says a new version is available, the typical host-side update flow is:
+If they run the app outside Docker, they still need to:
 
 ```bash
-git pull
+docker compose up -d db
 npm run db:push
-docker compose up --build -d
+npm run dev
+npm run worker:dev
 ```
-
-If there were no schema changes, `npm run db:push` may be unnecessary, but it is the safe path after pulling a newer release.
 
 ## Scripts
 
@@ -334,39 +304,29 @@ If there were no schema changes, `npm run db:push` may be unnecessary, but it is
 - `npm run lint` runs ESLint
 - `npm run db:generate` generates Drizzle migrations
 - `npm run db:push` pushes the current schema to PostgreSQL
-- `npm run docker:web` runs the web bootstrap flow used in Docker
-- `npm run docker:worker` runs the worker bootstrap flow used in Docker
 
 ## Tech stack
 
-- **Next.js 16**
-- **React 19**
-- **TypeScript**
-- **Drizzle ORM**
-- **PostgreSQL**
-- **Zod**
-- **Zustand**
-- **Nodemailer**
-- **Docker Compose**
-
-## Security notes
-
-Recent hardening in the app includes:
-
-- member management now shows all users but only allows editing or deleting your own account
-- workspace restore validates the full payload before destructive writes and restores inside a transaction
-- webhook and Discord endpoints are checked against unsafe local/private targets before they are stored or called
+- **Next.js 16** for the app shell, pages, and route handlers
+- **React 19** for client-side interfaces
+- **TypeScript** across web, worker, and services
+- **Drizzle ORM** for schema and queries
+- **PostgreSQL** for durable state
+- **Zod** for validation
+- **Zustand** for focused UI state
+- **Nodemailer** for SMTP delivery
+- **Docker Compose** for self-hosted orchestration
 
 ## Project status
 
-Sentrovia is already a capable internal monitoring and operations console. Natural next steps include:
+Sentrovia is already strong as an internal monitoring and operations console, but it is still evolving.
+
+Natural next steps for the platform include:
 
 - DNS monitor support
 - public status pages
-- RBAC if the product moves beyond single-admin workspace assumptions
-- richer HTTP assertion support
-- branded export formats for reports
+- richer HTTP assertions
+- multi-region checks
+- more advanced delivery routing
 
 ---
-
-Self-hosted teams that want a database-backed monitoring control plane with a dedicated worker runtime, customizable alerts, and reports can clone the repo and get productive quickly.

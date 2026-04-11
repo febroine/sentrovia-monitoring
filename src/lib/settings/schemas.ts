@@ -67,11 +67,6 @@ export const settingsSchema = z.object({
     showIncidentBanner: z.boolean(),
     showChartsSection: z.boolean(),
   }),
-  appUpdates: z.object({
-    repo: optionalString(255),
-    branch: optionalString(120).transform((value) => value || "main"),
-    enableInPlaceUpdates: z.boolean(),
-  }),
   data: z.object({
     retentionDays: z.coerce.number().int().min(7).max(3650),
     autoBackupEnabled: z.boolean(),

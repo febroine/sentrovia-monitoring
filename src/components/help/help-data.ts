@@ -23,7 +23,7 @@ export type HelpCategory = {
 export const quickNotes = [
   "If monitors look stale, open Worker Insights first and check heartbeat, backlog, and recent errors.",
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
-  "If a pushed GitHub change should trigger an update banner, bump package.json and configure the update repository in Settings or env.",
+  "If you updated the code and behavior looks odd, restart the affected web and worker processes before debugging deeper.",
 ];
 
 export const helpCategories: HelpCategory[] = [
@@ -213,7 +213,7 @@ export const helpCategories: HelpCategory[] = [
     label: "Deployment",
     icon: Box,
     accent: "text-rose-600 dark:text-rose-300",
-    summary: "How local mode, Docker mode, update checks, and the runtime model work.",
+    summary: "How local mode, Docker mode, and the runtime model work.",
     faqs: [
       {
         question: "How does Docker mode run this project?",
@@ -231,14 +231,9 @@ export const helpCategories: HelpCategory[] = [
           "The worker resumes from persisted state. Because schedules, check history, heartbeat, and worker metrics are stored in PostgreSQL, the runtime continues from database truth rather than in-memory assumptions.",
       },
       {
-        question: "How does update detection work now?",
+        question: "How should I update a Docker deployment?",
         answer:
-          "Sentrovia compares the running package version to package.json in a configured GitHub repository branch. That repository can be set from Settings or env, and a newer remote version triggers the in-app update banner or update card.",
-      },
-      {
-        question: "Will the Update button always work automatically?",
-        answer:
-          "No. Automatic in-place update only works when the app runs from a writable git checkout with git available. Docker deployments can still detect updates, but the host usually needs a git pull plus rebuild flow.",
+          "Pull the latest repository changes on the host, run npm run db:push if the release adds schema changes, then rebuild and restart the containers with docker compose up --build -d.",
       },
       {
         question: "What should I do after changing environment variables in Docker mode?",

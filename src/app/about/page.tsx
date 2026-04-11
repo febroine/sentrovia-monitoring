@@ -1,6 +1,5 @@
 import type { ElementType } from "react";
 import {
-  ArrowUpRight,
   BellRing,
   Boxes,
   Database,
@@ -10,7 +9,6 @@ import {
   Layers3,
   LayoutDashboard,
   Radar,
-  RefreshCw,
   ServerCog,
   ShieldCheck,
   Workflow,
@@ -38,7 +36,7 @@ const overviewCards = [
   {
     title: "Operator-facing control plane",
     description:
-      "The Next.js console focuses on visibility and configuration: dashboards, worker insights, monitoring, reports, members, settings, and delivery tooling.",
+      "The Next.js console focuses on visibility and configuration: dashboards, worker insights, monitoring, reports, members, settings, help, and delivery tooling.",
     icon: LayoutDashboard,
     accent: "border-l-violet-500",
   },
@@ -111,8 +109,8 @@ const stackSections = [
     title: "Deployment and Runtime",
     items: [
       "Docker Compose for db + web + worker orchestration",
-      "GitHub version awareness for update checks",
       "Heartbeat-backed worker visibility instead of UI simulation",
+      "Backup and restore flows for self-hosted workspaces",
     ],
   },
 ];
@@ -120,9 +118,9 @@ const stackSections = [
 const apiGroups = [
   {
     title: "Configuration APIs",
-    routes: ["/api/settings", "/api/companies", "/api/members", "/api/app-update"],
+    routes: ["/api/settings", "/api/companies", "/api/members"],
     description:
-      "These routes persist operator intent: defaults, update configuration, companies, members, and workspace behavior.",
+      "These routes persist operator intent: defaults, companies, members, and workspace behavior.",
   },
   {
     title: "Monitoring APIs",
@@ -149,22 +147,6 @@ const implementationNotes = [
   "Verification mode exists to confirm instability before delivery begins, which keeps alerting calmer under transient failures.",
   "Worker heartbeat and cycle metrics live in the database so the console can distinguish a healthy UI from a stale monitoring engine.",
   "Reports are part of the product runtime now, not a side export. The worker can pick up due schedules and send them like any other operational task.",
-  "Update awareness is opt-in and version-based. Detection is broad, but automatic apply stays intentionally conservative.",
-];
-
-const updateModel = [
-  {
-    title: "Version source",
-    body: "Sentrovia reads the running package version, then compares it to package.json in a configured GitHub repository branch.",
-  },
-  {
-    title: "Configuration source",
-    body: "The update repository can be supplied from Settings or environment variables, which makes self-hosted setups easier to standardize.",
-  },
-  {
-    title: "Apply behavior",
-    body: "In-place update only works when the runtime has a writable git checkout. Docker deployments usually detect updates but still require a host-level rebuild flow.",
-  },
 ];
 
 const productSurfaces = [
@@ -198,7 +180,7 @@ const workerDeepDive = [
     title: "How recovery is detected",
     body:
       "If a monitor previously had a confirmed down state and later returns healthy, the worker writes a recovery event and sends a recovery notification once. This creates a clean down-to-up lifecycle instead of repeated duplicate recoveries.",
-    icon: RefreshCw,
+    icon: Gauge,
   },
 ];
 
@@ -206,7 +188,7 @@ const databaseDeepDive = [
   {
     title: "Configuration records",
     body:
-      "The database stores users, companies, monitor definitions, notification preferences, template defaults, delivery endpoints, update settings, and report schedules. The browser writes intent here and the worker reads from it.",
+      "The database stores users, companies, monitor definitions, notification preferences, template defaults, delivery endpoints, and report schedules. The browser writes intent here and the worker reads from it.",
   },
   {
     title: "Runtime records",
@@ -304,7 +286,7 @@ export default function AboutPage() {
                 <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
                   The browser configures the system and reads results. The worker executes checks, confirmation
                   logic, report schedules, and outbound delivery. PostgreSQL keeps everything aligned so dashboards,
-                  logs, delivery, reports, and update awareness all reflect the same stored truth.
+                  logs, delivery, and reports all reflect the same stored truth.
                 </p>
               </div>
             </div>
@@ -367,8 +349,8 @@ export default function AboutPage() {
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <MetricCard label="Worker Insights" value="Live" detail="backlog, cycles, failures, errors" />
             <MetricCard label="Reports" value="Expanded" detail="preview studio + schedule manager" />
-            <MetricCard label="Update Center" value="Configurable" detail="settings or env based GitHub checks" />
             <MetricCard label="Heartbeat" value="Built-in" detail="cron or job monitoring endpoint" />
+            <MetricCard label="Delivery" value="Auditable" detail="history, retries, channel outcomes" />
           </CardContent>
         </Card>
       </section>
@@ -390,10 +372,6 @@ export default function AboutPage() {
           <TabsTrigger value="notes" className="flex-none rounded-xl px-4">
             <Radar data-icon="inline-start" />
             Design Notes
-          </TabsTrigger>
-          <TabsTrigger value="updates" className="flex-none rounded-xl px-4">
-            <RefreshCw data-icon="inline-start" />
-            Updates
           </TabsTrigger>
           <TabsTrigger value="worker" className="flex-none rounded-xl px-4">
             <ServerCog data-icon="inline-start" />
@@ -520,53 +498,6 @@ export default function AboutPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="updates">
-          <div className="grid gap-6 xl:grid-cols-[0.98fr_1.02fr]">
-            <Card className="overflow-hidden">
-              <CardHeader>
-                <CardTitle>How GitHub update awareness works</CardTitle>
-                <CardDescription>
-                  The update card is designed for self-hosted teams that want the console to notice when the repository moves ahead.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm leading-7 text-muted-foreground">
-                <p>
-                  Update awareness is version-based. Sentrovia reads the running package version and compares it against
-                  package.json in a configured GitHub branch. The most reliable release signal is still a real version bump.
-                </p>
-                <p>
-                  Configuration can come from Settings or from environment variables. That makes it possible to support both
-                  local Docker users and more controlled self-hosted deployments with the same product surface.
-                </p>
-                <p>
-                  The Update button stays conservative by design. Docker deployments can detect a newer version, but they
-                  usually still need a host-level `git pull` plus rebuild flow rather than an in-place app-side patch.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="overflow-hidden">
-              <CardHeader>
-                <CardTitle>Update model</CardTitle>
-                <CardDescription>
-                  These layers explain why detection is broad but automatic apply remains intentionally narrow.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {updateModel.map((item) => (
-                  <div key={item.title} className="rounded-2xl border bg-muted/[0.06] px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <ArrowUpRight className="h-4 w-4 text-primary/80" />
-                      <p className="text-sm font-medium">{item.title}</p>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.body}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
         <TabsContent value="worker">
           <Card className="overflow-hidden">
             <CardHeader>
@@ -612,7 +543,7 @@ export default function AboutPage() {
                 <MetricCard label="History" value="Checks + Events" detail="timelines, logs, RCA summaries, delivery" />
                 <MetricCard label="Worker" value="Pulse + Cycles" detail="heartbeat, last cycle, backlog, recent errors" />
                 <MetricCard label="Reports" value="Schedules" detail="cadence, recipients, next run, delivery status" />
-                <MetricCard label="Settings" value="Live Behavior" detail="templates, defaults, update config, alert rules" />
+                <MetricCard label="Settings" value="Live Behavior" detail="templates, defaults, alert rules, backup policy" />
               </CardContent>
             </Card>
           </div>

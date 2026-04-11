@@ -24,7 +24,7 @@ export default function HelpPage() {
                 </h1>
                 <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
                   This page explains the real system, not just the screens. It covers worker scheduling,
-                  verification mode, monitor types, delivery decisions, reports, update checks,
+                  verification mode, monitor types, delivery decisions, reports, backup flows,
                   logs, worker insights, and Docker runtime behavior in one readable place.
                 </p>
               </div>
