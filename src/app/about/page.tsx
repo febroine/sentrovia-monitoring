@@ -4,6 +4,7 @@ import {
   BellRing,
   Boxes,
   Database,
+  FileText,
   Gauge,
   Globe,
   Layers3,
@@ -174,6 +175,118 @@ const productSurfaces = [
   "Members, companies, and settings for workspace operations",
 ];
 
+const workerDeepDive = [
+  {
+    title: "How the worker starts its cycle",
+    body:
+      "On every poll the worker asks PostgreSQL which monitors are due, respects workspace batch size, applies lease-based claiming, and marks the current cycle in worker state so the UI can show live heartbeat and cycle timing.",
+    icon: ServerCog,
+  },
+  {
+    title: "How verification mode prevents noisy alerts",
+    body:
+      "A first failure does not immediately become a confirmed outage. The worker can move the monitor into verification mode, run one-minute confirmation checks, and only send the first down notification after the retry threshold is met.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "How prolonged downtime reminders work",
+    body:
+      "Once an outage is confirmed, the worker keeps checking on the normal interval. If the monitor is still down after the configured reminder window, it can send a repeated 'still down' notification using a separate reminder template set.",
+    icon: BellRing,
+  },
+  {
+    title: "How recovery is detected",
+    body:
+      "If a monitor previously had a confirmed down state and later returns healthy, the worker writes a recovery event and sends a recovery notification once. This creates a clean down-to-up lifecycle instead of repeated duplicate recoveries.",
+    icon: RefreshCw,
+  },
+];
+
+const databaseDeepDive = [
+  {
+    title: "Configuration records",
+    body:
+      "The database stores users, companies, monitor definitions, notification preferences, template defaults, delivery endpoints, update settings, and report schedules. The browser writes intent here and the worker reads from it.",
+  },
+  {
+    title: "Runtime records",
+    body:
+      "Every executed check can write monitor status, status code, latency, last success time, last failure start, next due time, verification counters, worker heartbeat, cycle summaries, and delivery outcomes back into PostgreSQL.",
+  },
+  {
+    title: "Why durable state matters",
+    body:
+      "Because the worker and web console share the same persisted state, dashboards, reports, delivery history, and worker insights all read the same reality. A page refresh does not lose operational truth, and a stale worker is visible as stale data rather than hidden by the UI.",
+  },
+];
+
+const reportsDeepDive = [
+  {
+    title: "How reports are built",
+    body:
+      "Reports are generated from persisted monitor checks and company relationships. The reports center can preview weekly, monthly, company-scoped, and global workspace summaries before sending them.",
+  },
+  {
+    title: "How schedules run",
+    body:
+      "Scheduled reports live in the database with cadence, recipients, scope, and next-run time. The worker picks up due schedules during its cycle, generates the report payload, sends it, and updates the schedule status.",
+  },
+  {
+    title: "What the user controls",
+    body:
+      "Operators can create schedules, choose recipients, preview report output, send a report immediately, and manage multiple saved schedules from the reports surface without leaving the app.",
+  },
+];
+
+const notificationDeepDive = [
+  {
+    title: "Outbound channels",
+    body:
+      "Sentrovia supports SMTP email, Telegram, Discord webhook, and generic webhook delivery. Each delivery attempt is persisted so operators can audit success, failure, retry state, and destination history.",
+  },
+  {
+    title: "Template model",
+    body:
+      "The app has workspace-level default templates for email and Telegram, while monitors can still override their own subject/body when needed. Prolonged downtime reminders have their own dedicated template fields as well.",
+  },
+  {
+    title: "Delivery decision flow",
+    body:
+      "The worker decides whether an event should notify at all, applies dedup rules, respects per-monitor channel preferences, renders the final message, and only then dispatches through the enabled channel integrations.",
+  },
+];
+
+const monitorTypeGuide = [
+  {
+    title: "HTTP / HTTPS",
+    body: "Runs full web requests with method, timeout, redirects, SSL behavior, response size limits, and optional status-code-based notifications.",
+  },
+  {
+    title: "Keyword",
+    body: "Fetches the target page and checks whether the configured keyword or phrase is present, which is useful when a page can return 200 while still being functionally broken.",
+  },
+  {
+    title: "JSON Assertion",
+    body: "Requests an HTTP endpoint and validates a JSON path against an expected value or existence rule, which is useful for APIs and machine-readable health checks.",
+  },
+  {
+    title: "TCP / Port",
+    body: "Checks raw socket reachability against a host and port without relying on HTTP semantics.",
+  },
+  {
+    title: "PostgreSQL",
+    body: "Tests database connectivity directly against the configured host, port, database name, username, and SSL preference.",
+  },
+  {
+    title: "Ping / ICMP",
+    body: "Uses ICMP reachability checks to verify that a host is alive at the network layer, which is useful for servers, gateways, and internal infrastructure.",
+  },
+  {
+    title: "Cron / Heartbeat",
+    body: "Creates a unique heartbeat endpoint that an external cron job or scheduler can call. If the heartbeat stops arriving on time, the worker turns that into a down condition.",
+  },
+];
+
 export default function AboutPage() {
   return (
     <div className="flex w-full flex-col gap-8 animate-in fade-in duration-300">
@@ -281,6 +394,26 @@ export default function AboutPage() {
           <TabsTrigger value="updates" className="flex-none rounded-xl px-4">
             <RefreshCw data-icon="inline-start" />
             Updates
+          </TabsTrigger>
+          <TabsTrigger value="worker" className="flex-none rounded-xl px-4">
+            <ServerCog data-icon="inline-start" />
+            Worker Deep Dive
+          </TabsTrigger>
+          <TabsTrigger value="database" className="flex-none rounded-xl px-4">
+            <Database data-icon="inline-start" />
+            Database Model
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="flex-none rounded-xl px-4">
+            <FileText data-icon="inline-start" />
+            Reports
+          </TabsTrigger>
+          <TabsTrigger value="delivery" className="flex-none rounded-xl px-4">
+            <BellRing data-icon="inline-start" />
+            Notifications
+          </TabsTrigger>
+          <TabsTrigger value="monitors" className="flex-none rounded-xl px-4">
+            <Globe data-icon="inline-start" />
+            Monitor Types
           </TabsTrigger>
         </TabsList>
 
@@ -433,6 +566,159 @@ export default function AboutPage() {
             </Card>
           </div>
         </TabsContent>
+
+        <TabsContent value="worker">
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>How the worker actually behaves</CardTitle>
+              <CardDescription>
+                This is the execution layer of Sentrovia. It owns checks, verification, recovery, reminders, and scheduled report work.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-2">
+              {workerDeepDive.map((item, index) => (
+                <RuntimeStep key={item.title} index={index + 1} icon={item.icon} title={item.title} body={item.body} />
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="database">
+          <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <CardTitle>What the database stores</CardTitle>
+                <CardDescription>
+                  PostgreSQL is the durable source of truth for both configuration and runtime telemetry.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {databaseDeepDive.map((item) => (
+                  <DetailBlock key={item.title} title={item.title} body={item.body} />
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <CardTitle>Main state buckets</CardTitle>
+                <CardDescription>
+                  These are the product areas that persist into the database and feed the visible UI.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                <MetricCard label="Users" value="Profiles" detail="members, auth identity, workspace profile" />
+                <MetricCard label="Monitors" value="Config + Runtime" detail="definitions, status, timing, verification" />
+                <MetricCard label="History" value="Checks + Events" detail="timelines, logs, RCA summaries, delivery" />
+                <MetricCard label="Worker" value="Pulse + Cycles" detail="heartbeat, last cycle, backlog, recent errors" />
+                <MetricCard label="Reports" value="Schedules" detail="cadence, recipients, next run, delivery status" />
+                <MetricCard label="Settings" value="Live Behavior" detail="templates, defaults, update config, alert rules" />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="reports">
+          <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <CardTitle>How reports work</CardTitle>
+                <CardDescription>
+                  Reports are now part of the runtime, not just a one-off export button.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {reportsDeepDive.map((item) => (
+                  <DetailBlock key={item.title} title={item.title} body={item.body} />
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <CardTitle>Reports center responsibilities</CardTitle>
+                <CardDescription>
+                  The reports UI is responsible for authoring, previewing, and operating scheduled summaries.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <DetailBlock
+                  title="Preview studio"
+                  body="Lets operators inspect a report before it is sent so the report feels like a real operational deliverable, not a blind background job."
+                />
+                <DetailBlock
+                  title="Schedule manager"
+                  body="Stores recurring report jobs with cadence, recipient list, company scope, and next-run state so the worker can pick them up later."
+                />
+                <DetailBlock
+                  title="Manual send flow"
+                  body="Supports immediate delivery when someone wants to send a weekly or monthly summary right now without waiting for the next scheduled run."
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="delivery">
+          <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <CardTitle>How notifications are decided</CardTitle>
+                <CardDescription>
+                  Delivery is more than just sending text. The worker applies rules before any channel is called.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {notificationDeepDive.map((item) => (
+                  <DetailBlock key={item.title} title={item.title} body={item.body} />
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <CardTitle>Notification lifecycle</CardTitle>
+                <CardDescription>
+                  The same general pipeline applies to down, recovery, latency, SSL, and prolonged downtime events.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <DetailBlock
+                  title="1. Event is produced"
+                  body="The worker confirms a monitor outcome such as failure, recovery, latency threshold, SSL warning, status change, or still-down reminder."
+                />
+                <DetailBlock
+                  title="2. Rules are evaluated"
+                  body="Workspace settings decide whether that event type should notify, whether dedup should suppress it, and whether status-code filtering applies."
+                />
+                <DetailBlock
+                  title="3. Templates are rendered"
+                  body="The worker resolves workspace defaults or monitor-level overrides, fills tokens like domain, status code, RCA summary, and downtime duration, then prepares channel-specific output."
+                />
+                <DetailBlock
+                  title="4. Delivery is persisted"
+                  body="Every send attempt writes back into delivery history so operators can audit what happened, retry webhooks, and confirm whether a message actually left the system."
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="monitors">
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>Monitor types explained</CardTitle>
+              <CardDescription>
+                Each monitor type shares the same worker pipeline, but the actual probe behavior depends on the saved monitor definition.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              {monitorTypeGuide.map((item) => (
+                <DetailBlock key={item.title} title={item.title} body={item.body} />
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -483,6 +769,21 @@ function RuntimeStep({
           <p className="mt-2 text-sm leading-7 text-muted-foreground">{body}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DetailBlock({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-2xl border bg-muted/[0.06] px-4 py-4">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-2 text-sm leading-7 text-muted-foreground">{body}</p>
     </div>
   );
 }

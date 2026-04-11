@@ -1,0 +1,19 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="64" fill="#050816"/>
+  <rect x="18" y="18" width="220" height="220" rx="52" fill="url(#cardGlow)" stroke="url(#frame)" stroke-width="4"/>
+  <path d="M70 152C82 116 101 98 128 98C150 98 164 110 173 126C180 139 187 146 198 146" stroke="#FDBA74" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M58 146H82L103 121L122 161L144 102L161 131H198" stroke="#34D399" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="70" cy="146" r="10" fill="#F8FAFC"/>
+  <circle cx="198" cy="146" r="10" fill="#F8FAFC"/>
+  <defs>
+    <linearGradient id="cardGlow" x1="42" y1="34" x2="212" y2="222" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="40" y1="28" x2="224" y2="228" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.5" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#FDBA74"/>
+    </linearGradient>
+  </defs>
+</svg>
