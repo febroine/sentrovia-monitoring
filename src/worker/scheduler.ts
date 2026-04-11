@@ -140,7 +140,7 @@ async function processMonitor(monitor: Monitor) {
         ? calculateNextCheckAt(monitor, result.checkedAt)
         : calculateVerificationCheckAt(result.checkedAt),
       lastSuccessAt: monitor.lastSuccessAt,
-      lastFailureAt: result.checkedAt,
+      lastFailureAt: previousStatus === "up" ? result.checkedAt : monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
       lastErrorMessage: result.errorMessage,
       consecutiveFailures: verificationCount,
@@ -169,7 +169,7 @@ async function processMonitor(monitor: Monitor) {
       lastCheckedAt: result.checkedAt,
       nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt),
       lastSuccessAt: monitor.lastSuccessAt,
-      lastFailureAt: result.checkedAt,
+      lastFailureAt: monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
       lastErrorMessage: result.errorMessage,
       consecutiveFailures: monitor.consecutiveFailures + 1,
@@ -186,7 +186,7 @@ async function processMonitor(monitor: Monitor) {
       lastCheckedAt: result.checkedAt,
       nextCheckAt: calculateVerificationCheckAt(result.checkedAt),
       lastSuccessAt: monitor.lastSuccessAt,
-      lastFailureAt: result.checkedAt,
+      lastFailureAt: previousStatus === "up" ? result.checkedAt : monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
       lastErrorMessage: result.errorMessage,
       consecutiveFailures: 1,
@@ -229,6 +229,23 @@ async function processMonitor(monitor: Monitor) {
     }
   }
 
+  if (!result.ok && checkStatus === "down" && !incidentConfirmedThisCycle) {
+    const reminderMessage = buildDowntimeReminderMessage(monitor, result.checkedAt);
+    if (reminderMessage) {
+      const reminderSent = await sendMonitorNotifications({
+        kind: "downtime-reminder",
+        message: reminderMessage,
+        monitor,
+        result,
+        rca,
+      });
+
+      if (reminderSent) {
+        await appendDetailedEvent(monitor, result, "downtime-reminder", reminderMessage, rca, "down");
+      }
+    }
+  }
+
   if (result.ok && hadConfirmedIncident) {
     const message = "Service recovered and is responding again.";
     await appendDetailedEvent(monitor, result, "recovery", message, rca, "up");
@@ -262,6 +279,27 @@ async function processMonitor(monitor: Monitor) {
     finalStatus: checkStatus,
     latencyMs: result.latencyMs,
   };
+}
+
+function buildDowntimeReminderMessage(monitor: Monitor, checkedAt: Date) {
+  if (!monitor.lastFailureAt) {
+    return null;
+  }
+
+  const downtimeStartedAt = new Date(monitor.lastFailureAt);
+  if (Number.isNaN(downtimeStartedAt.getTime())) {
+    return null;
+  }
+
+  const durationMinutes = Math.max(0, Math.floor((checkedAt.getTime() - downtimeStartedAt.getTime()) / 60_000));
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+
+  if (hours > 0) {
+    return `Service has been down for ${hours}h ${minutes}m.`;
+  }
+
+  return `Service has been down for ${durationMinutes}m.`;
 }
 
 async function appendCheckEvent(

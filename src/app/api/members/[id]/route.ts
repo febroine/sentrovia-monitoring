@@ -27,7 +27,11 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     }
 
     const { id } = await context.params;
-    const member = await updateMember(id, parsed.data);
+    if (id !== session.id) {
+      return NextResponse.json({ message: "You can only edit your own account." }, { status: 403 });
+    }
+
+    const member = await updateMember(id, session.id, parsed.data);
     if (!member) {
       return NextResponse.json({ message: "Member not found." }, { status: 404 });
     }

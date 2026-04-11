@@ -47,6 +47,8 @@ export const userSettings = pgTable(
     notifyOnLatency: boolean("notify_on_latency").default(true).notNull(),
     notifyOnSslExpiry: boolean("notify_on_ssl_expiry").default(true).notNull(),
     notifyOnStatusChange: boolean("notify_on_status_change").default(false).notNull(),
+    prolongedDowntimeEnabled: boolean("prolonged_downtime_enabled").default(true).notNull(),
+    prolongedDowntimeMinutes: integer("prolonged_downtime_minutes").default(180).notNull(),
     alertDedupMinutes: integer("alert_dedup_minutes").default(15).notNull(),
     smtpHost: varchar("smtp_host", { length: 255 }),
     smtpPort: integer("smtp_port").default(587).notNull(),
@@ -64,6 +66,9 @@ export const userSettings = pgTable(
     defaultEmailSubjectTemplate: text("default_email_subject_template"),
     defaultEmailBodyTemplate: text("default_email_body_template"),
     defaultTelegramTemplate: text("default_telegram_template"),
+    prolongedDowntimeEmailSubjectTemplate: text("prolonged_downtime_email_subject_template"),
+    prolongedDowntimeEmailBodyTemplate: text("prolonged_downtime_email_body_template"),
+    prolongedDowntimeTelegramTemplate: text("prolonged_downtime_telegram_template"),
     statusCodeAlertCodes: varchar("status_code_alert_codes", { length: 500 }),
     savedEmailRecipients: text("saved_email_recipients")
       .array()

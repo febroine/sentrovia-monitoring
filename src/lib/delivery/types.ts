@@ -5,6 +5,7 @@ export type DeliveryKind =
   | "latency"
   | "ssl-expiry"
   | "status-change"
+  | "downtime-reminder"
   | "check"
   | "report"
   | "test";

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
-import { db } from "@/lib/db";
+import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, userSettings, workerState } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import type { MonitorInput } from "@/lib/monitors/schemas";
@@ -92,8 +92,8 @@ export async function deleteMonitors(userId: string, ids: string[]) {
     .returning({ id: monitors.id });
 }
 
-export async function createManyMonitors(userId: string, inputs: MonitorInput[]) {
-  const existing = await db
+export async function createManyMonitors(userId: string, inputs: MonitorInput[], database: DatabaseExecutor = db) {
+  const existing = await database
     .select({ monitorType: monitors.monitorType, url: monitors.url })
     .from(monitors)
     .where(eq(monitors.userId, userId));
@@ -117,13 +117,13 @@ export async function createManyMonitors(userId: string, inputs: MonitorInput[])
     seenTargets.add(key);
     return true;
   });
-  const values = await Promise.all(filtered.map((input) => buildMonitorValues(userId, input, null)));
+  const values = await Promise.all(filtered.map((input) => buildMonitorValues(userId, input, null, database)));
 
   if (values.length === 0) {
     return [];
   }
 
-  return db.insert(monitors).values(values).returning();
+  return database.insert(monitors).values(values).returning();
 }
 
 export async function claimDueMonitors(now: Date) {
@@ -497,10 +497,11 @@ export async function incrementWorkerCheckedCount(amount = 1) {
 async function buildMonitorValues(
   userId: string,
   input: MonitorInput,
-  existingMonitor: typeof monitors.$inferSelect | null
+  existingMonitor: typeof monitors.$inferSelect | null,
+  database: DatabaseExecutor = db
 ) {
   const companyRecord =
-    input.companyId && input.companyId.length > 0 ? await getCompanyById(userId, input.companyId) : null;
+    input.companyId && input.companyId.length > 0 ? await getCompanyById(userId, input.companyId, database) : null;
   const monitorType = normalizeMonitorType(input.monitorType);
   const heartbeatToken =
     monitorType === "heartbeat" ? resolveHeartbeatToken(input, existingMonitor) : null;
@@ -559,8 +560,8 @@ async function buildMonitorValues(
   };
 }
 
-async function getMonitorById(userId: string, monitorId: string) {
-  const [monitor] = await db
+async function getMonitorById(userId: string, monitorId: string, database: DatabaseExecutor = db) {
+  const [monitor] = await database
     .select()
     .from(monitors)
     .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)));
