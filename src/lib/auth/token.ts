@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { getAuthSecret } from "@/lib/env";
+import { env, getAuthSecret } from "@/lib/env";
 
 export const SESSION_COOKIE_NAME = "sentrovia.session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -18,6 +18,16 @@ export type SessionPayload = SessionUser;
 
 function getJwtKey() {
   return new TextEncoder().encode(getAuthSecret());
+}
+
+function shouldUseSecureSessionCookie() {
+  try {
+    const appUrl = new URL(env.appUrl);
+    const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+    return appUrl.protocol === "https:" && !localHosts.has(appUrl.hostname);
+  } catch {
+    return process.env.NODE_ENV === "production";
+  }
 }
 
 export async function createSessionToken(user: SessionUser) {
@@ -76,7 +86,7 @@ export function getSessionCookieOptions() {
     name: SESSION_COOKIE_NAME,
     httpOnly: true,
     sameSite: "strict" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureSessionCookie(),
     path: "/",
     priority: "high" as const,
     maxAge: SESSION_TTL_SECONDS,

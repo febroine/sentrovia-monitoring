@@ -5,12 +5,16 @@ import {
   BarChart3,
   Building2,
   CalendarDays,
+  Copy,
+  Download,
+  FileText,
   Mail,
   PlayCircle,
   Search,
   Send,
   Sparkles,
   Trash2,
+  UsersRound,
   WandSparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -23,15 +27,28 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CompanyRecord } from "@/lib/companies/types";
-import type { GeneratedReport, ReportCadence, ReportScheduleRecord, ReportScope } from "@/lib/reports/types";
+import type {
+  GeneratedReport,
+  ReportCadence,
+  ReportScheduleRecord,
+  ReportScope,
+  ReportTemplateVariant,
+} from "@/lib/reports/types";
 
 type ReportsResponse = { schedules?: ReportScheduleRecord[]; message?: string };
 type PreviewResponse = { report?: GeneratedReport; message?: string };
 type ScheduleFilter = "all" | "active" | "paused" | "failed";
+type DeliveryResult = {
+  status: string;
+  deliveredAt: string | null;
+  reportTitle: string;
+  recipients: string[];
+};
 
 type DraftReport = {
   scope: ReportScope;
   cadence: ReportCadence;
+  template: ReportTemplateVariant;
   companyId: string;
   recipients: string;
 };
@@ -40,6 +57,7 @@ type DraftSchedule = {
   name: string;
   scope: ReportScope;
   cadence: ReportCadence;
+  template: ReportTemplateVariant;
   companyId: string;
   recipients: string;
   nextRunAt: string;
@@ -49,6 +67,7 @@ type DraftSchedule = {
 const EMPTY_REPORT_DRAFT: DraftReport = {
   scope: "global",
   cadence: "weekly",
+  template: "operations",
   companyId: "",
   recipients: "",
 };
@@ -57,11 +76,38 @@ const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
   name: "Weekly Workspace Report",
   scope: "global",
   cadence: "weekly",
+  template: "operations",
   companyId: "",
   recipients: "",
   nextRunAt: "",
   isActive: true,
 };
+
+const TEMPLATE_OPTIONS: Array<{
+  value: ReportTemplateVariant;
+  label: string;
+  detail: string;
+  icon: typeof Sparkles;
+}> = [
+  {
+    value: "operations",
+    label: "Operations",
+    detail: "Detailed runtime language for operators and support teams.",
+    icon: BarChart3,
+  },
+  {
+    value: "executive",
+    label: "Executive",
+    detail: "Condensed summary focused on uptime, risk, and leadership visibility.",
+    icon: Sparkles,
+  },
+  {
+    value: "client",
+    label: "Client",
+    detail: "Customer-friendly wording that keeps technical noise low.",
+    icon: UsersRound,
+  },
+];
 
 export default function ReportsPageClient() {
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
@@ -70,6 +116,7 @@ export default function ReportsPageClient() {
   const [previewDraft, setPreviewDraft] = useState<DraftReport>(EMPTY_REPORT_DRAFT);
   const [scheduleDraft, setScheduleDraft] = useState<DraftSchedule>(EMPTY_SCHEDULE_DRAFT);
   const [preview, setPreview] = useState<GeneratedReport | null>(null);
+  const [lastDeliveryResult, setLastDeliveryResult] = useState<DeliveryResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -119,6 +166,17 @@ export default function ReportsPageClient() {
   }, [refreshPage]);
 
   useEffect(() => {
+    const search = typeof window === "undefined" ? "" : window.location.search;
+    const params = new URLSearchParams(search);
+    const mode = params.get("mode");
+
+    if (mode === "schedules" || mode === "preview") {
+      const frameId = window.requestAnimationFrame(() => setActiveTab(mode));
+      return () => window.cancelAnimationFrame(frameId);
+    }
+  }, []);
+
+  useEffect(() => {
     setScheduleDraft((current) => ({
       ...current,
       name: buildScheduleName(current.scope, current.cadence, current.companyId, companies),
@@ -127,6 +185,7 @@ export default function ReportsPageClient() {
 
   async function generatePreview() {
     setSaving(true);
+    setLastDeliveryResult(null);
 
     try {
       const response = await fetch("/api/reports/preview", {
@@ -135,6 +194,7 @@ export default function ReportsPageClient() {
         body: JSON.stringify({
           scope: previewDraft.scope,
           cadence: previewDraft.cadence,
+          template: previewDraft.template,
           companyId: previewDraft.scope === "company" ? previewDraft.companyId : null,
         }),
       });
@@ -163,16 +223,31 @@ export default function ReportsPageClient() {
         body: JSON.stringify({
           scope: previewDraft.scope,
           cadence: previewDraft.cadence,
+          template: previewDraft.template,
           companyId: previewDraft.scope === "company" ? previewDraft.companyId : null,
           recipientEmails: parseRecipients(previewDraft.recipients),
         }),
       });
-      const data = (await response.json()) as { message?: string };
+      const data = (await response.json()) as {
+        message?: string;
+        report?: GeneratedReport;
+        delivery?: { status?: string; deliveredAt?: string | null } | null;
+      };
 
       if (!response.ok) {
         throw new Error(data.message ?? "Unable to send the report.");
       }
 
+      if (data.report) {
+        setPreview(data.report);
+      }
+
+      setLastDeliveryResult({
+        status: data.delivery?.status ?? "sent",
+        deliveredAt: data.delivery?.deliveredAt ?? null,
+        reportTitle: data.report?.title ?? "Manual report",
+        recipients: parseRecipients(previewDraft.recipients),
+      });
       setMessage("Report sent successfully.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to send the report.");
@@ -192,6 +267,7 @@ export default function ReportsPageClient() {
           name: scheduleDraft.name,
           scope: scheduleDraft.scope,
           cadence: scheduleDraft.cadence,
+          template: scheduleDraft.template,
           companyId: scheduleDraft.scope === "company" ? scheduleDraft.companyId : null,
           recipientEmails: parseRecipients(scheduleDraft.recipients),
           isActive: scheduleDraft.isActive,
@@ -261,6 +337,26 @@ export default function ReportsPageClient() {
     }
   }
 
+  async function duplicateSchedule(schedule: ReportScheduleRecord) {
+    setSaving(true);
+
+    try {
+      const response = await fetch(`/api/reports/${schedule.id}/duplicate`, { method: "POST" });
+      const data = (await response.json()) as { schedule?: ReportScheduleRecord; message?: string };
+
+      if (!response.ok || !data.schedule) {
+        throw new Error(data.message ?? "Unable to duplicate the report schedule.");
+      }
+
+      setSchedules((current) => [data.schedule!, ...current]);
+      setMessage("Report schedule duplicated as a paused copy.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to duplicate the report schedule.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function deleteSchedule(scheduleId: string) {
     setSaving(true);
 
@@ -281,11 +377,16 @@ export default function ReportsPageClient() {
     }
   }
 
-  function applyPreviewPreset(scope: ReportScope, cadence: ReportCadence) {
+  function applyPreviewPreset(
+    scope: ReportScope,
+    cadence: ReportCadence,
+    template: ReportTemplateVariant
+  ) {
     setPreviewDraft((current) => ({
       ...current,
       scope,
       cadence,
+      template,
       companyId: scope === "global" ? "" : current.companyId,
     }));
     setActiveTab("preview");
@@ -296,12 +397,63 @@ export default function ReportsPageClient() {
       name: schedule.name,
       scope: schedule.scope,
       cadence: schedule.cadence,
+      template: schedule.template,
       companyId: schedule.companyId ?? "",
       recipients: schedule.recipientEmails.join(", "),
       nextRunAt: toLocalDateTime(schedule.nextRunAt),
       isActive: schedule.isActive,
     });
     setActiveTab("schedules");
+  }
+
+  function exportPreviewCsv() {
+    if (!preview) {
+      return;
+    }
+
+    const rows = [
+      ["Report", preview.title],
+      ["Workspace", preview.workspaceName],
+      ["Template", preview.templateLabel],
+      ["Scope", preview.scope === "company" ? preview.companyName ?? "Company" : "Global workspace"],
+      ["Period", preview.periodLabel],
+      ["Generated", new Date(preview.generatedAt).toLocaleString()],
+      ["Monitors", String(preview.summary.monitorCount)],
+      ["Uptime", `${preview.summary.uptimePct.toFixed(2)}%`],
+      ["Average latency", `${preview.summary.averageLatencyMs}ms`],
+      ["Failures", String(preview.summary.failureEvents)],
+      [""],
+      ["Monitor", "Status", "Uptime", "Avg latency", "Checks", "Failures"],
+      ...preview.monitorBreakdown.map((monitor) => [
+        monitor.name,
+        monitor.status,
+        `${monitor.uptimePct.toFixed(2)}%`,
+        `${monitor.averageLatencyMs}ms`,
+        String(monitor.totalChecks),
+        String(monitor.failures),
+      ]),
+    ];
+
+    downloadFile(toCsv(rows), `${slugify(preview.title)}.csv`, "text/csv;charset=utf-8");
+  }
+
+  function exportPreviewPdf() {
+    if (!preview) {
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=960,height=720");
+    if (!printWindow) {
+      setMessage("Pop-up blocked. Allow pop-ups to export a print-ready PDF view.");
+      return;
+    }
+
+    printWindow.document.write(buildPrintableReportHtml(preview));
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => {
+      printWindow.print();
+    }, 150);
   }
 
   const previewRecipients = parseRecipients(previewDraft.recipients);
@@ -351,21 +503,33 @@ export default function ReportsPageClient() {
 
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <Card className="overflow-hidden border-border/70">
-          <CardHeader className="border-b bg-muted/10 pb-4">
+          <CardHeader className="border-b pb-4">
             <CardTitle className="text-base">Quick launch</CardTitle>
             <CardDescription>
               Use a preset to jump into the report type you create most often.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 pt-4 sm:grid-cols-3">
-            <PresetButton title="Weekly workspace" detail="Fast global pulse" onClick={() => applyPreviewPreset("global", "weekly")} />
-            <PresetButton title="Monthly workspace" detail="Longer trend review" onClick={() => applyPreviewPreset("global", "monthly")} />
-            <PresetButton title="Company report" detail="Scoped customer view" onClick={() => applyPreviewPreset("company", "weekly")} />
+            <PresetButton
+              title="Weekly workspace"
+              detail="Fast global pulse"
+              onClick={() => applyPreviewPreset("global", "weekly", "operations")}
+            />
+            <PresetButton
+              title="Monthly executive"
+              detail="Leadership snapshot"
+              onClick={() => applyPreviewPreset("global", "monthly", "executive")}
+            />
+            <PresetButton
+              title="Company report"
+              detail="Scoped client view"
+              onClick={() => applyPreviewPreset("company", "weekly", "client")}
+            />
           </CardContent>
         </Card>
 
         <Card className="overflow-hidden border-border/70">
-          <CardHeader className="border-b bg-muted/10 pb-4">
+          <CardHeader className="border-b pb-4">
             <CardTitle className="text-base">Schedule pulse</CardTitle>
             <CardDescription>
               Keep an eye on upcoming sends and the latest delivery outcome.
@@ -401,13 +565,18 @@ export default function ReportsPageClient() {
           {activeTab === "preview" ? (
             <>
           <Card className="overflow-hidden border-border/70">
-            <CardHeader className="border-b bg-muted/10 pb-4">
+            <CardHeader className="border-b pb-4">
               <CardTitle>Generate manual report</CardTitle>
               <CardDescription>
                 Preview a report instantly or send it to a hand-picked recipient list.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
+              <TemplateStrip
+                value={previewDraft.template}
+                onChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
+              />
+
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Field label="Scope">
                   <Select
@@ -484,7 +653,15 @@ export default function ReportsPageClient() {
                   <Send className="mr-2 h-4 w-4" />
                   Send Now
                 </Button>
-                <Button variant="ghost" onClick={() => setPreviewDraft(EMPTY_REPORT_DRAFT)} disabled={saving}>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setPreviewDraft(EMPTY_REPORT_DRAFT);
+                    setPreview(null);
+                    setLastDeliveryResult(null);
+                  }}
+                  disabled={saving}
+                >
                   Reset
                 </Button>
               </div>
@@ -493,18 +670,37 @@ export default function ReportsPageClient() {
             </CardContent>
           </Card>
 
-          {preview ? <ReportPreviewPanel report={preview} /> : null}
+          {lastDeliveryResult ? <DeliveryResultCard delivery={lastDeliveryResult} /> : null}
+          {preview ? (
+            <ReportPreviewPanel
+              report={preview}
+              onExportCsv={exportPreviewCsv}
+              onExportPdf={exportPreviewPdf}
+            />
+          ) : (
+            <BuilderEmptyState
+              title="Preview studio is ready"
+              description="Pick a scope, cadence, and template, then generate a preview to inspect the final report before it goes out."
+              actionLabel="Use weekly workspace preset"
+              onAction={() => applyPreviewPreset("global", "weekly", "operations")}
+            />
+          )}
             </>
           ) : (
             <>
           <Card className="overflow-hidden border-border/70">
-            <CardHeader className="border-b bg-muted/10 pb-4">
+            <CardHeader className="border-b pb-4">
               <CardTitle>Create scheduled report</CardTitle>
               <CardDescription>
                 Save a recurring schedule, keep the same recipient list, and let the worker deliver it automatically.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
+              <TemplateStrip
+                value={scheduleDraft.template}
+                onChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
+              />
+
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Field label="Schedule name">
                   <Input value={scheduleDraft.name} onChange={(event) => setScheduleDraft((current) => ({ ...current, name: event.target.value }))} />
@@ -606,7 +802,7 @@ export default function ReportsPageClient() {
           </Card>
 
           <Card className="overflow-hidden border-border/70">
-            <CardHeader className="border-b bg-muted/10 pb-4">
+            <CardHeader className="border-b pb-4">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <CardTitle>Scheduled reports</CardTitle>
@@ -638,7 +834,10 @@ export default function ReportsPageClient() {
               {loading ? (
                 <p className="text-sm text-muted-foreground">Loading report schedules...</p>
               ) : filteredSchedules.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No report schedules match the current filters.</p>
+                <BuilderEmptyState
+                  title="No schedules match this view"
+                  description="Adjust your filters or create a new recurring report from the builder on the left."
+                />
               ) : (
                 filteredSchedules.map((schedule) => (
                   <ScheduleCard
@@ -648,6 +847,7 @@ export default function ReportsPageClient() {
                     onToggle={() => void toggleSchedule(schedule)}
                     onSendNow={() => void sendScheduleNow(schedule.id)}
                     onEdit={() => loadScheduleIntoBuilder(schedule)}
+                    onDuplicate={() => void duplicateSchedule(schedule)}
                     onDelete={() => void deleteSchedule(schedule.id)}
                   />
                 ))
@@ -748,6 +948,99 @@ function ReportModeButton({
   );
 }
 
+function TemplateStrip({
+  value,
+  onChange,
+}: {
+  value: ReportTemplateVariant;
+  onChange: (template: ReportTemplateVariant) => void;
+}) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      {TEMPLATE_OPTIONS.map((template) => {
+        const Icon = template.icon;
+        const active = template.value === value;
+
+        return (
+          <button
+            key={template.value}
+            type="button"
+            onClick={() => onChange(template.value)}
+            className={cn(
+              "rounded-2xl border px-4 py-4 text-left transition-colors",
+              active
+                ? "border-primary/30 bg-primary/5"
+                : "border-border/70 bg-background hover:border-border hover:bg-muted/10"
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">{template.label}</p>
+                <p className="text-xs leading-5 text-muted-foreground">{template.detail}</p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-background/80 p-2">
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function BuilderEmptyState({
+  title,
+  description,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <Card className="overflow-hidden border-dashed border-border/70 bg-muted/10">
+      <CardContent className="flex flex-col items-start gap-4 px-5 py-6">
+        <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+          <WandSparkles className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-base font-semibold">{title}</p>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        </div>
+        {actionLabel && onAction ? (
+          <Button variant="outline" onClick={onAction}>
+            {actionLabel}
+          </Button>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
+  return (
+    <Card className="overflow-hidden border-border/70 bg-background/60">
+      <CardHeader className="border-b border-border/60 pb-3">
+        <CardTitle className="text-base">Latest delivery result</CardTitle>
+        <CardDescription>
+          Manual send feedback for the last report dispatch from this page.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 pt-4 md:grid-cols-3">
+        <DetailBlock label="Report" value={delivery.reportTitle} />
+        <DetailBlock
+          label="Delivered"
+          value={delivery.deliveredAt ? new Date(delivery.deliveredAt).toLocaleString() : "Waiting for timestamp"}
+        />
+        <DetailBlock label="Recipients" value={delivery.recipients.join(", ") || "No recipients"} />
+      </CardContent>
+    </Card>
+  );
+}
+
 function PresetButton({
   title,
   detail,
@@ -761,7 +1054,7 @@ function PresetButton({
     <button
       type="button"
       onClick={onClick}
-      className="rounded-2xl border border-border/70 bg-muted/10 px-4 py-4 text-left transition hover:border-violet-500/30 hover:bg-violet-500/5"
+      className="rounded-2xl border border-border/70 bg-background px-4 py-4 text-left transition hover:border-border hover:bg-muted/10"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -815,6 +1108,7 @@ function ScheduleCard({
   onToggle,
   onSendNow,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   schedule: ReportScheduleRecord;
@@ -822,6 +1116,7 @@ function ScheduleCard({
   onToggle: () => void;
   onSendNow: () => void;
   onEdit: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -836,6 +1131,9 @@ function ScheduleCard({
             </Badge>
             <Badge variant="outline" className="border-border/70 text-muted-foreground">
               {schedule.cadence}
+            </Badge>
+            <Badge variant="outline" className="border-border/70 text-muted-foreground">
+              {schedule.template}
             </Badge>
           </div>
 
@@ -863,6 +1161,10 @@ function ScheduleCard({
           </Button>
           <Button variant="outline" onClick={onEdit} disabled={saving}>
             Load into builder
+          </Button>
+          <Button variant="outline" onClick={onDuplicate} disabled={saving}>
+            <Copy className="mr-2 h-4 w-4" />
+            Duplicate
           </Button>
           <Button variant="destructive" onClick={onDelete} disabled={saving}>
             <Trash2 className="mr-2 h-4 w-4" />
@@ -899,17 +1201,45 @@ function DetailBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ReportPreviewPanel({ report }: { report: GeneratedReport }) {
+function ReportPreviewPanel({
+  report,
+  onExportCsv,
+  onExportPdf,
+}: {
+  report: GeneratedReport;
+  onExportCsv: () => void;
+  onExportPdf: () => void;
+}) {
   const maxFailureCount = Math.max(1, ...report.failingMonitors.map((monitor) => monitor.failures));
 
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden border-violet-500/15">
         <CardHeader className="border-b bg-[linear-gradient(135deg,rgba(124,58,237,0.08),transparent_60%)]">
-          <CardTitle>{report.title}</CardTitle>
-          <CardDescription>
-            {report.periodLabel} / Generated {new Date(report.generatedAt).toLocaleString()}
-          </CardDescription>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle>{report.title}</CardTitle>
+              <CardDescription>
+                {report.periodLabel} / Generated {new Date(report.generatedAt).toLocaleString()}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="border-border/70 bg-background/80">
+                {report.templateLabel}
+              </Badge>
+              <Badge variant="outline" className="border-border/70 bg-background/80">
+                {report.workspaceName}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={onExportCsv}>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={onExportPdf}>
+                <FileText className="mr-2 h-4 w-4" />
+                Export PDF
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1153,4 +1483,118 @@ function toLocalDateTime(value: string) {
   const date = new Date(value);
   const timezoneOffsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
+}
+
+function toCsv(rows: Array<Array<string>>) {
+  return rows
+    .map((row) =>
+      row
+        .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+        .join(",")
+    )
+    .join("\n");
+}
+
+function downloadFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function buildPrintableReportHtml(report: GeneratedReport) {
+  const breakdownRows = report.monitorBreakdown
+    .map(
+      (monitor) => `
+        <tr>
+          <td>${escapeHtml(reportValue(monitor.name))}</td>
+          <td>${escapeHtml(reportValue(monitor.status))}</td>
+          <td>${escapeHtml(`${monitor.uptimePct.toFixed(2)}%`)}</td>
+          <td>${escapeHtml(`${monitor.averageLatencyMs}ms`)}</td>
+          <td>${escapeHtml(String(monitor.totalChecks))}</td>
+          <td>${escapeHtml(String(monitor.failures))}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <html>
+      <head>
+        <title>${escapeHtml(report.title)}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 32px; color: #111827; }
+          .hero { border: 1px solid #e5e7eb; border-radius: 20px; padding: 24px; margin-bottom: 24px; }
+          .eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; margin-bottom: 8px; }
+          .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+          .stat { border: 1px solid #e5e7eb; border-radius: 16px; padding: 14px; }
+          .stat-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; }
+          .stat-value { font-size: 24px; font-weight: 700; margin-top: 8px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+          th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
+          th { color: #475569; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+          .section-title { font-size: 18px; font-weight: 700; margin: 28px 0 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="hero">
+          <div class="eyebrow">${escapeHtml(report.templateLabel)}</div>
+          <h1>${escapeHtml(report.title)}</h1>
+          <p>${escapeHtml(report.workspaceName)} · ${escapeHtml(report.periodLabel)} · ${escapeHtml(
+            new Date(report.generatedAt).toLocaleString()
+          )}</p>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Monitors</div><div class="stat-value">${report.summary.monitorCount}</div></div>
+          <div class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${report.summary.uptimePct.toFixed(
+            2
+          )}%</div></div>
+          <div class="stat"><div class="stat-label">Avg latency</div><div class="stat-value">${report.summary.averageLatencyMs}ms</div></div>
+          <div class="stat"><div class="stat-label">Failures</div><div class="stat-value">${report.summary.failureEvents}</div></div>
+        </div>
+
+        <div class="section-title">Monitor breakdown</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Monitor</th>
+              <th>Status</th>
+              <th>Uptime</th>
+              <th>Avg latency</th>
+              <th>Checks</th>
+              <th>Failures</th>
+            </tr>
+          </thead>
+          <tbody>${breakdownRows}</tbody>
+        </table>
+      </body>
+    </html>
+  `;
+}
+
+function reportValue(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  return String(value);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }

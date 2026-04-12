@@ -3,6 +3,7 @@ import { z } from "zod";
 export const reportPreviewSchema = z.object({
   scope: z.enum(["global", "company"]),
   cadence: z.enum(["weekly", "monthly"]),
+  template: z.enum(["executive", "operations", "client"]).default("operations"),
   companyId: z.string().trim().max(120).nullable().optional(),
 });
 

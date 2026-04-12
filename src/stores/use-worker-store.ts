@@ -1,14 +1,14 @@
 "use client";
 
 import { create } from "zustand";
-import type { WorkerStatus } from "@/lib/monitors/types";
+import type { WorkerObservabilityRange, WorkerStatus } from "@/lib/monitors/types";
 
 interface WorkerStore {
   worker: WorkerStatus | null;
   loading: boolean;
   commandLoading: boolean;
   error: string | null;
-  loadWorker: () => Promise<void>;
+  loadWorker: (range?: WorkerObservabilityRange) => Promise<void>;
   toggleWorker: () => Promise<void>;
 }
 
@@ -17,9 +17,9 @@ export const useWorkerStore = create<WorkerStore>((set, get) => ({
   loading: true,
   commandLoading: false,
   error: null,
-  loadWorker: async () => {
+  loadWorker: async (range = "24h") => {
     try {
-      const response = await fetch("/api/worker", { cache: "no-store" });
+      const response = await fetch(`/api/worker?range=${range}`, { cache: "no-store" });
       const data = (await response.json()) as { message?: string } & WorkerStatus;
 
       if (!response.ok) {

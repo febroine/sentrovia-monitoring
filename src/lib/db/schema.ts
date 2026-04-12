@@ -351,6 +351,7 @@ export const reportSchedules = pgTable("report_schedules", {
   name: varchar("name", { length: 160 }).notNull(),
   scope: varchar("scope", { length: 24 }).default("global").notNull(),
   cadence: varchar("cadence", { length: 16 }).default("weekly").notNull(),
+  template: varchar("template", { length: 24 }).default("operations").notNull(),
   recipientEmails: text("recipient_emails")
     .array()
     .notNull()

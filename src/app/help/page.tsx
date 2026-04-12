@@ -57,19 +57,16 @@ export default function HelpPage() {
           icon={Clock3}
           title="Verification-Aware Monitoring"
           text="Pending, verifying, confirmed outage, and recovery states are separated so Sentrovia does not overreact to the first failure."
-          accent="border-l-orange-500"
         />
         <FeatureCard
           icon={Radar}
           title="Worker Insights"
           text="Backlog, cycle duration, failing monitors, and worker-level errors stay visible in a dedicated dashboard instead of hiding behind generic health badges."
-          accent="border-l-emerald-500"
         />
         <FeatureCard
           icon={Sparkles}
           title="Operationally Readable"
           text="Logs, timelines, delivery history, and dashboards read from the same durable store, which keeps the console consistent under load."
-          accent="border-l-violet-500"
         />
       </section>
 
@@ -97,16 +94,14 @@ function FeatureCard({
   icon: Icon,
   title,
   text,
-  accent,
 }: {
   icon: ElementType;
   title: string;
   text: string;
-  accent: string;
 }) {
   return (
     <Card className="overflow-hidden">
-      <CardContent className={`border-l-2 ${accent} px-5 py-5`}>
+      <CardContent className="px-5 py-5">
         <div className="mb-4 flex size-11 items-center justify-center rounded-2xl border bg-background">
           <Icon className="h-4 w-4 text-muted-foreground" />
         </div>

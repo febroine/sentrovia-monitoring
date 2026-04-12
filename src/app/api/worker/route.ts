@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { updateWorkerState, getWorkerState } from "@/lib/monitors/service";
+import type { WorkerObservabilityRange } from "@/lib/monitors/types";
 import { getWorkerObservability } from "@/lib/worker/observability";
 import { isPidAlive, spawnWorkerProcess } from "@/lib/worker/process";
 
@@ -48,13 +49,14 @@ function serializeWorkerState(
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getSession();
 
   if (!session) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const observabilityRange = resolveObservabilityRange(request);
   const state = await getWorkerState();
   const staleThresholdMs = Math.max(env.workerPollIntervalMs * 6, 180_000);
   const heartbeatAgeMs = state.heartbeatAt ? Date.now() - state.heartbeatAt.getTime() : null;
@@ -72,7 +74,7 @@ export async function GET() {
       })
     : state;
 
-  const observability = await getWorkerObservability(session.id, normalizedState);
+  const observability = await getWorkerObservability(session.id, normalizedState, observabilityRange);
   return NextResponse.json(serializeWorkerState(normalizedState, staleThresholdMs, observability));
 }
 
@@ -107,4 +109,14 @@ export async function POST(request: NextRequest) {
 
   const observability = await getWorkerObservability(session.id, state);
   return NextResponse.json(serializeWorkerState(state, Math.max(env.workerPollIntervalMs * 6, 180_000), observability));
+}
+
+function resolveObservabilityRange(request: NextRequest): WorkerObservabilityRange {
+  const range = request.nextUrl.searchParams.get("range");
+
+  if (range === "1h" || range === "24h" || range === "7d") {
+    return range;
+  }
+
+  return "24h";
 }

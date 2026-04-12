@@ -1,11 +1,13 @@
 export type ReportCadence = "weekly" | "monthly";
 export type ReportScope = "global" | "company";
 export type ReportScheduleStatus = "idle" | "delivered" | "failed";
+export type ReportTemplateVariant = "executive" | "operations" | "client";
 
 export interface ReportPreviewInput {
   scope: ReportScope;
   cadence: ReportCadence;
   companyId?: string | null;
+  template?: ReportTemplateVariant;
 }
 
 export interface ReportScheduleInput extends ReportPreviewInput {
@@ -20,6 +22,7 @@ export interface ReportScheduleRecord {
   name: string;
   scope: ReportScope;
   cadence: ReportCadence;
+  template: ReportTemplateVariant;
   companyId: string | null;
   companyName: string | null;
   recipientEmails: string[];
@@ -37,8 +40,11 @@ export interface GeneratedReport {
   title: string;
   scope: ReportScope;
   cadence: ReportCadence;
+  template: ReportTemplateVariant;
   companyId: string | null;
   companyName: string | null;
+  workspaceName: string;
+  templateLabel: string;
   generatedAt: string;
   periodStartedAt: string;
   periodEndedAt: string;
