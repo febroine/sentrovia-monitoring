@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckSquare, Mail, Pencil, Search, Square, Trash2, UserRound, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import type { MemberRecord } from "@/lib/members/types";
 const EMPTY_FORM = { username: "", email: "" };
 
 export default function MembersPageClient() {
+  const router = useRouter();
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -22,6 +24,7 @@ export default function MembersPageClient() {
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingMember, setEditingMember] = useState<MemberRecord | null>(null);
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
@@ -113,7 +116,7 @@ export default function MembersPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: memberIds }),
       });
-      const data = (await response.json()) as { ids?: string[]; message?: string };
+      const data = (await response.json()) as { ids?: string[]; message?: string; signedOut?: boolean };
       if (!response.ok || !data.ids) {
         throw new Error(data.message ?? "Unable to delete the selected members.");
       }
@@ -121,7 +124,13 @@ export default function MembersPageClient() {
       const deleted = new Set(data.ids);
       setMembers((current) => current.filter((member) => !deleted.has(member.id)));
       setSelectedIds(new Set());
+      setDeleteTargetIds([]);
       setError(null);
+
+      if (data.signedOut) {
+        router.replace("/login?message=account-removed");
+        router.refresh();
+      }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to delete the selected members.");
     } finally {
@@ -129,8 +138,8 @@ export default function MembersPageClient() {
     }
   }
 
-  async function deleteSelected() {
-    await deleteMembersByIds(Array.from(selectedIds));
+  async function confirmDeleteTargets() {
+    await deleteMembersByIds(deleteTargetIds);
   }
 
   function toggleSelect(id: string) {
@@ -169,6 +178,26 @@ export default function MembersPageClient() {
       email: member.email,
     });
   }
+
+  function openDeleteConfirmation(memberIds: string[]) {
+    const uniqueIds = Array.from(new Set(memberIds.filter(Boolean)));
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    setDeleteTargetIds(uniqueIds);
+  }
+
+  function closeDeleteConfirmation() {
+    if (saving) {
+      return;
+    }
+
+    setDeleteTargetIds([]);
+  }
+
+  const deleteTargets = members.filter((member) => deleteTargetIds.includes(member.id));
+  const deleteIncludesCurrentUser = deleteTargets.some((member) => member.id === currentUserId);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -209,7 +238,7 @@ export default function MembersPageClient() {
               <Pencil className="mr-2 h-4 w-4" />
               Edit selected
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => void deleteSelected()} disabled={saving}>
+            <Button variant="destructive" size="sm" onClick={() => openDeleteConfirmation(Array.from(selectedIds))} disabled={saving}>
               <Trash2 className="mr-2 h-4 w-4" />
               Delete selected
             </Button>
@@ -305,7 +334,7 @@ export default function MembersPageClient() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => void deleteMembersByIds([member.id])}
+                        onClick={() => openDeleteConfirmation([member.id])}
                         disabled={saving}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -336,6 +365,38 @@ export default function MembersPageClient() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMember(null)}>Cancel</Button>
             <Button onClick={() => void saveMember()} disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTargetIds.length > 0} onOpenChange={(open) => !open && closeDeleteConfirmation()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete member{deleteTargets.length === 1 ? "" : "s"}?</DialogTitle>
+            <DialogDescription>
+              This action permanently removes the selected account{deleteTargets.length === 1 ? "" : "s"} and related workspace data.
+              {deleteIncludesCurrentUser ? " Your current session will be closed immediately after deletion." : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+            <p className="text-sm font-medium text-destructive">Please confirm before continuing.</p>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              {deleteTargets.map((member) => (
+                <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2">
+                  <span className="font-medium text-foreground">
+                    {member.firstName} {member.lastName}
+                    {member.id === currentUserId ? " (you)" : ""}
+                  </span>
+                  <span className="truncate text-xs">{member.email}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteConfirmation} disabled={saving}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void confirmDeleteTargets()} disabled={saving}>
+              {saving ? "Deleting..." : `Delete ${deleteTargets.length === 1 ? "member" : "members"}`}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
+import { clearSessionCookie } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { deleteMembers, listMembers } from "@/lib/members/service";
 
@@ -45,7 +46,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     const deleted = await deleteMembers(parsed.data.ids);
-    return NextResponse.json({ ids: deleted.map((member) => member.id) });
+    const deletedIds = deleted.map((member) => member.id);
+    const response = NextResponse.json({
+      ids: deletedIds,
+      signedOut: deletedIds.includes(session.id),
+    });
+
+    return deletedIds.includes(session.id) ? clearSessionCookie(response) : response;
   } catch (error) {
     const authError = toAuthError(error, "Unable to delete members right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

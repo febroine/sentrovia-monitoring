@@ -11,10 +11,6 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 
-  if (isPublicRoute(pathname) && session) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
-
   if (!isPublicRoute(pathname) && !session) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
