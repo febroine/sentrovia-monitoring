@@ -12,6 +12,7 @@ type AuthSessionRecord = {
   firstName: string;
   lastName: string;
   email: string;
+  department: string | null;
   createdAt: Date;
 };
 
@@ -36,6 +37,7 @@ const sessionColumns = {
   firstName: users.firstName,
   lastName: users.lastName,
   email: users.email,
+  department: users.department,
   createdAt: users.createdAt,
 };
 
@@ -55,7 +57,7 @@ function toSessionUser(user: AuthSessionRecord): SessionUser {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
-    department: null,
+    department: user.department,
   };
 }
 
@@ -171,4 +173,15 @@ export async function changeUserPassword(userId: string, input: ChangePasswordIn
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));
+}
+
+export async function getActiveSessionUser(userId: string) {
+  const user = await db
+    .select(sessionColumns)
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .then((rows) => rows[0] as AuthSessionRecord | undefined);
+
+  return user ? toSessionUser(user) : null;
 }

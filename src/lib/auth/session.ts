@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { applyAuthResponseHeaders } from "@/lib/auth/response";
+import { getActiveSessionUser } from "@/lib/auth/service";
 import {
   SESSION_COOKIE_NAME,
   getSessionCookieOptions,
@@ -11,7 +12,12 @@ import {
 
 export const getSession = cache(async (): Promise<SessionPayload | null> => {
   const cookieStore = await cookies();
-  return verifySessionToken(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+  const tokenPayload = await verifySessionToken(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+  if (!tokenPayload) {
+    return null;
+  }
+
+  return getActiveSessionUser(tokenPayload.id);
 });
 
 export function applySessionCookie(response: NextResponse, token: string) {

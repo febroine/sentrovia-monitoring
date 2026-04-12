@@ -19,10 +19,10 @@ export function HelpFaqPanel({ category }: HelpFaqPanelProps) {
   return (
     <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
       <Card className="h-fit overflow-hidden border-border/70 xl:sticky xl:top-6">
-        <div className="border-b bg-[radial-gradient(circle_at_top_left,rgba(251,146,60,0.16),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent)]">
+        <div className="border-b bg-card">
           <CardHeader className="pb-4">
             <div className="flex items-start gap-4">
-              <div className="rounded-[1.25rem] border border-border/70 bg-background/80 p-3 shadow-sm">
+              <div className="rounded-[1.25rem] border border-border/70 bg-background p-3 shadow-sm">
                 <category.icon className={`h-5 w-5 ${category.accent}`} />
               </div>
               <div className="space-y-1">
