@@ -156,12 +156,15 @@ export interface WorkerCycleMetricRecord {
   errorMessage: string | null;
 }
 
+export type WorkerObservabilityRange = "1h" | "24h" | "7d";
+
 export interface WorkerObservability {
+  range: WorkerObservabilityRange;
   summary: {
     dueBacklog: number;
-    checksLastHour: number;
-    failuresLast24Hours: number;
-    averageLatencyMs24Hours: number;
+    checksInRange: number;
+    failuresInRange: number;
+    averageLatencyMsInRange: number;
     lastCycleDurationMs: number | null;
     lastCycleMonitorCount: number;
     lastCycleSuccessCount: number;
@@ -170,6 +173,12 @@ export interface WorkerObservability {
     lastCycleAverageLatencyMs: number | null;
   };
   recentCycles: WorkerCycleMetricRecord[];
+  trend: Array<{
+    label: string;
+    checks: number;
+    failures: number;
+    averageCycleDurationMs: number;
+  }>;
   slowMonitors: Array<{
     monitorId: string;
     name: string;
@@ -183,6 +192,24 @@ export interface WorkerObservability {
     status: SiteStatus;
     failureCount: number;
     lastFailureAt: string | null;
+  }>;
+  unstableMonitors: Array<{
+    monitorId: string;
+    name: string;
+    status: SiteStatus;
+    transitionCount: number;
+    lastStatusChangeAt: string | null;
+  }>;
+  staleMonitors: Array<{
+    monitorId: string;
+    name: string;
+    status: SiteStatus;
+    minutesSinceLastCheck: number | null;
+    lastCheckedAt: string | null;
+  }>;
+  failureReasons: Array<{
+    reason: string;
+    count: number;
   }>;
   recentErrors: Array<{
     message: string;

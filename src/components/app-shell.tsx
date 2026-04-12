@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/sidebar';
 import BottomNav from '@/components/bottom-nav';
+import { CommandPalette } from '@/components/command-palette';
 
 const AUTH_ROUTES = ['/login', '/signup'];
 
@@ -18,6 +19,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       <Sidebar className="hidden md:flex w-60 flex-col fixed inset-y-0 left-0 z-50 border-r border-border bg-surface-low" />
       <div className="relative flex min-h-screen flex-1 flex-col pb-16 md:ml-60 md:pb-0">
+        <CommandPalette />
         <main className="flex-1 overflow-x-hidden p-5 md:p-8">
           {children}
         </main>

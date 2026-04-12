@@ -11,10 +11,12 @@ import type {
   ReportScheduleInput,
   ReportScheduleRecord,
   ReportScheduleStatus,
+  ReportTemplateVariant,
 } from "@/lib/reports/types";
 
 const REPORT_PREVIEW_LIMIT = 12;
 const DEFAULT_FIRST_RUN_DELAY_MS = 60 * 60 * 1000;
+const DEFAULT_REPORT_TEMPLATE: ReportTemplateVariant = "operations";
 
 export async function listReportSchedules(userId: string): Promise<ReportScheduleRecord[]> {
   const rows = await db
@@ -34,9 +36,7 @@ export async function listReportSchedules(userId: string): Promise<ReportSchedul
   const companyNameMap = new Map<string, string>();
 
   for (const row of companyRows) {
-    if (row.id && row.name) {
-      companyNameMap.set(row.id, row.name);
-    }
+    companyNameMap.set(row.id, row.name);
   }
 
   return rows.map((row) => serializeSchedule(row, companyNameMap.get(row.companyId ?? "") ?? null));
@@ -51,6 +51,7 @@ export async function createReportSchedule(userId: string, input: ReportSchedule
       name: input.name.trim(),
       scope: input.scope,
       cadence: input.cadence,
+      template: input.template ?? DEFAULT_REPORT_TEMPLATE,
       companyId: resolvedCompanyId,
       recipientEmails: normalizeEmails(input.recipientEmails),
       isActive: input.isActive,
@@ -91,9 +92,11 @@ export async function updateReportSchedule(
 
   const scope = input.scope ?? (existing.scope as ReportPreviewInput["scope"]);
   const cadence = input.cadence ?? (existing.cadence as ReportCadence);
+  const template = input.template ?? (existing.template as ReportTemplateVariant);
   const companyId = await resolveScopedCompanyId(userId, {
     scope,
     cadence,
+    template,
     companyId: input.companyId ?? existing.companyId,
     name: input.name ?? existing.name,
     recipientEmails: input.recipientEmails ?? existing.recipientEmails,
@@ -107,6 +110,7 @@ export async function updateReportSchedule(
       name: input.name?.trim() ?? existing.name,
       scope,
       cadence,
+      template,
       companyId,
       recipientEmails: input.recipientEmails ? normalizeEmails(input.recipientEmails) : existing.recipientEmails,
       isActive: input.isActive ?? existing.isActive,
@@ -117,6 +121,38 @@ export async function updateReportSchedule(
     .returning();
 
   return serializeSchedule(updated, await resolveCompanyName(userId, companyId));
+}
+
+export async function duplicateReportSchedule(userId: string, scheduleId: string) {
+  const [existing] = await db
+    .select()
+    .from(reportSchedules)
+    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+
+  if (!existing) {
+    return null;
+  }
+
+  const [created] = await db
+    .insert(reportSchedules)
+    .values({
+      userId,
+      name: `${existing.name} Copy`,
+      scope: existing.scope,
+      cadence: existing.cadence,
+      template: existing.template,
+      companyId: existing.companyId,
+      recipientEmails: existing.recipientEmails,
+      isActive: false,
+      nextRunAt: resolveNextRunAt(null),
+      lastStatus: "idle",
+      lastRunAt: null,
+      lastDeliveredAt: null,
+      lastErrorMessage: null,
+    })
+    .returning();
+
+  return serializeSchedule(created, await resolveCompanyName(userId, created.companyId));
 }
 
 export async function deleteReportSchedule(userId: string, scheduleId: string) {
@@ -134,7 +170,9 @@ export async function generateReportPreview(
   now = new Date()
 ): Promise<GeneratedReport> {
   const scoped = await loadScopedReportData(userId, input, now);
+  const workspaceName = await getWorkspaceName(userId);
   const period = resolveReportPeriod(input.cadence, now);
+  const template = input.template ?? DEFAULT_REPORT_TEMPLATE;
   const checksByMonitor = groupChecksByMonitor(scoped.checks);
   const failuresByMonitor = groupFailuresByMonitor(scoped.failureEvents);
   const statusCodeSummary = buildStatusCodeSummary(scoped.checks);
@@ -151,8 +189,11 @@ export async function generateReportPreview(
     title: buildReportTitle(input.cadence, input.scope, scoped.companyName),
     scope: input.scope,
     cadence: input.cadence,
+    template,
     companyId: scoped.companyId,
     companyName: scoped.companyName,
+    workspaceName,
+    templateLabel: resolveTemplateLabel(template),
     generatedAt: now.toISOString(),
     periodStartedAt: period.startedAt.toISOString(),
     periodEndedAt: period.endedAt.toISOString(),
@@ -185,7 +226,7 @@ export async function dispatchReportNow(
   }
 
   const report = await generateReportPreview(userId, input);
-  const message = buildReportMessage(report, await getWorkspaceName(userId));
+  const message = buildReportMessage(report);
   const delivery = await sendEmailDelivery({
     userId,
     kind: "report",
@@ -218,6 +259,7 @@ export async function runDueReportSchedules(now = new Date()) {
         {
           scope: schedule.scope as ReportPreviewInput["scope"],
           cadence: schedule.cadence as ReportCadence,
+          template: schedule.template as ReportTemplateVariant,
           companyId: schedule.companyId,
         },
         schedule.recipientEmails
@@ -506,11 +548,25 @@ function buildMonitorBreakdown(
     });
 }
 
-function buildReportMessage(report: GeneratedReport, workspaceName: string) {
-  const subject = `[Sentrovia Reports] ${report.title}`;
+function buildReportMessage(report: GeneratedReport) {
+  const subjectPrefix =
+    report.template === "executive"
+      ? "[Sentrovia Executive Report]"
+      : report.template === "client"
+        ? "[Sentrovia Client Report]"
+        : "[Sentrovia Operations Report]";
+  const introLine =
+    report.template === "executive"
+      ? "A concise leadership snapshot of uptime, risk, and recent service movement."
+      : report.template === "client"
+        ? "A customer-friendly reliability summary focused on visible service health."
+        : "An operator-ready report focused on detailed runtime behavior, checks, and failures.";
+  const subject = `${subjectPrefix} ${report.title}`;
   const lines = [
     `${report.title}`,
-    `${workspaceName}`,
+    `${report.workspaceName}`,
+    `${report.templateLabel}`,
+    introLine,
     `${report.periodLabel} (${new Date(report.periodStartedAt).toLocaleString()} - ${new Date(report.periodEndedAt).toLocaleString()})`,
     "",
     `Monitors: ${report.summary.monitorCount}`,
@@ -523,7 +579,9 @@ function buildReportMessage(report: GeneratedReport, workspaceName: string) {
     `Failure events: ${report.summary.failureEvents}`,
     "",
     "Top slow monitors:",
-    ...report.slowMonitors.slice(0, 5).map((monitor) => `- ${monitor.name}: ${monitor.averageLatencyMs}ms avg over ${monitor.checks} checks`),
+    ...report.slowMonitors
+      .slice(0, 5)
+      .map((monitor) => `- ${monitor.name}: ${monitor.averageLatencyMs}ms avg over ${monitor.checks} checks`),
     "",
     "Top failing monitors:",
     ...report.failingMonitors.slice(0, 5).map((monitor) => `- ${monitor.name}: ${monitor.failures} failures`),
@@ -531,8 +589,19 @@ function buildReportMessage(report: GeneratedReport, workspaceName: string) {
 
   const htmlBody = `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
-      <h2 style="margin-bottom:8px">${escapeHtml(report.title)}</h2>
-      <p style="margin-top:0;color:#4b5563">${escapeHtml(workspaceName)} · ${escapeHtml(report.periodLabel)}</p>
+      <div style="border:1px solid #e5e7eb;border-radius:18px;padding:18px 20px;background:linear-gradient(135deg,rgba(15,23,42,0.03),rgba(59,130,246,0.03));margin-bottom:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <p style="margin:0 0 6px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#64748b">${escapeHtml(report.templateLabel)}</p>
+            <h2 style="margin:0 0 6px">${escapeHtml(report.title)}</h2>
+            <p style="margin:0;color:#4b5563">${escapeHtml(report.workspaceName)} - ${escapeHtml(report.periodLabel)}</p>
+          </div>
+          <div style="border:1px solid #dbeafe;border-radius:999px;padding:8px 12px;color:#1d4ed8;background:#eff6ff;font-size:12px;font-weight:600">
+            ${escapeHtml(report.scope === "company" ? report.companyName ?? "Company" : "Workspace")}
+          </div>
+        </div>
+        <p style="margin:12px 0 0;color:#475569">${escapeHtml(introLine)}</p>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0">
         ${renderMetricCard("Monitors", String(report.summary.monitorCount))}
         ${renderMetricCard("Uptime", `${report.summary.uptimePct.toFixed(2)}%`)}
@@ -541,8 +610,8 @@ function buildReportMessage(report: GeneratedReport, workspaceName: string) {
         ${renderMetricCard("Checks", String(report.summary.totalChecks))}
         ${renderMetricCard("Failures", String(report.summary.failureEvents))}
       </div>
-      ${renderSimpleList("Top slow monitors", report.slowMonitors.slice(0, 5).map((monitor) => `${monitor.name} · ${monitor.averageLatencyMs}ms avg`))}
-      ${renderSimpleList("Top failing monitors", report.failingMonitors.slice(0, 5).map((monitor) => `${monitor.name} · ${monitor.failures} failures`))}
+      ${renderSimpleList("Top slow monitors", report.slowMonitors.slice(0, 5).map((monitor) => `${monitor.name} - ${monitor.averageLatencyMs}ms avg`))}
+      ${renderSimpleList("Top failing monitors", report.failingMonitors.slice(0, 5).map((monitor) => `${monitor.name} - ${monitor.failures} failures`))}
     </div>
   `;
 
@@ -601,6 +670,7 @@ function serializeSchedule(
     name: row.name,
     scope: row.scope as ReportScheduleRecord["scope"],
     cadence: row.cadence as ReportScheduleRecord["cadence"],
+    template: row.template as ReportTemplateVariant,
     companyId: row.companyId,
     companyName,
     recipientEmails: row.recipientEmails,
@@ -617,6 +687,18 @@ function serializeSchedule(
 
 function normalizeEmails(recipientEmails: string[]) {
   return Array.from(new Set(recipientEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)));
+}
+
+function resolveTemplateLabel(template: ReportTemplateVariant) {
+  if (template === "executive") {
+    return "Executive Summary";
+  }
+
+  if (template === "client") {
+    return "Client Report";
+  }
+
+  return "Operations Report";
 }
 
 function averageValue(values: number[]) {
