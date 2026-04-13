@@ -1,4 +1,7 @@
-# Sentrovia
+<p align="center">
+  <img src="docs/screenshots/banner.png" alt="Sentrovia" width="100%">
+</p>
+
 
 > A verification-aware monitoring platform for teams that want cleaner alerts, durable runtime state, and a control plane that stays readable under real operational load.
 
