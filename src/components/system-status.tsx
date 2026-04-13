@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Activity, Cpu, HardDrive, LoaderCircle, Play, RefreshCw, Square } from "lucide-react";
+import { useCallback, useEffect, useState, type ElementType, type ReactNode } from "react";
+import { Activity, Cpu, HardDrive, LoaderCircle, Play, RefreshCw, RotateCcw, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
   const [systemData, setSystemData] = useState<SystemData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [checksResetBase, setChecksResetBase] = useState(0);
 
   const refreshAll = useCallback(async (showSpinner: boolean) => {
     if (showSpinner) {
@@ -52,6 +53,16 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
     return () => window.clearInterval(intervalId);
   }, [refreshAll]);
 
+  useEffect(() => {
+    if (!worker) {
+      return;
+    }
+
+    if (worker.checkedCount < checksResetBase) {
+      setChecksResetBase(0);
+    }
+  }, [checksResetBase, worker]);
+
   const workerActive = worker?.running ?? false;
   const desiredRunning = worker?.desiredState === "running";
   const processAlive = worker?.processAlive ?? false;
@@ -64,6 +75,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
   const heartbeatStale = Boolean(
     desiredRunning && (heartbeatAgeMs === null || heartbeatAgeMs > HEARTBEAT_STALE_MS)
   );
+  const visibleChecks = worker ? Math.max(0, worker.checkedCount - checksResetBase) : null;
 
   return (
     <Card className="border-border bg-gradient-to-br from-card via-card to-muted/20">
@@ -200,7 +212,25 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-              <MetricPanel icon={Cpu} label="Checks" value={worker ? worker.checkedCount.toLocaleString() : "--"} />
+              <MetricPanel
+                icon={Cpu}
+                label="Checks"
+                value={visibleChecks === null ? "--" : visibleChecks.toLocaleString()}
+                action={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => setChecksResetBase(worker?.checkedCount ?? 0)}
+                    disabled={!worker}
+                    aria-label="Reset checks counter on this screen"
+                    title="Reset checks counter on this screen"
+                  >
+                    <RotateCcw className="size-3" />
+                  </Button>
+                }
+              />
               <MetricPanel icon={HardDrive} label="Uptime" value={workerActive ? formatDuration(uptimeSeconds) : "--"} />
               <MetricPanel
                 icon={Activity}
@@ -254,16 +284,21 @@ function MetricPanel({
   icon: Icon,
   label,
   value,
+  action,
 }: {
-  icon: React.ElementType;
+  icon: ElementType;
   label: string;
   value: string;
+  action?: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-border/70 bg-background px-3 py-2.5">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="size-3.5" />
-        <span className="text-[11px] uppercase tracking-wide">{label}</span>
+      <div className="flex items-center justify-between gap-2 text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <Icon className="size-3.5" />
+          <span className="text-[11px] uppercase tracking-wide">{label}</span>
+        </div>
+        {action}
       </div>
       <p className="mt-1 text-sm font-medium">{value}</p>
     </div>

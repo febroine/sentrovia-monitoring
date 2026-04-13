@@ -442,18 +442,21 @@ export default function ReportsPageClient() {
       return;
     }
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=960,height=720");
+    const printDocument = buildPrintableReportHtml(preview);
+    const printBlob = new Blob([printDocument], { type: "text/html;charset=utf-8" });
+    const printUrl = URL.createObjectURL(printBlob);
+    const printWindow = window.open(printUrl, "_blank", "width=960,height=720");
+
     if (!printWindow) {
+      URL.revokeObjectURL(printUrl);
       setMessage("Pop-up blocked. Allow pop-ups to export a print-ready PDF view.");
       return;
     }
 
-    printWindow.document.write(buildPrintableReportHtml(preview));
-    printWindow.document.close();
     printWindow.focus();
     window.setTimeout(() => {
-      printWindow.print();
-    }, 150);
+      URL.revokeObjectURL(printUrl);
+    }, 60_000);
   }
 
   const previewRecipients = parseRecipients(previewDraft.recipients);
@@ -1529,8 +1532,10 @@ function buildPrintableReportHtml(report: GeneratedReport) {
     .join("");
 
   return `
-    <html>
+    <!DOCTYPE html>
+    <html lang="en">
       <head>
+        <meta charset="utf-8" />
         <title>${escapeHtml(report.title)}</title>
         <style>
           body { font-family: Arial, sans-serif; margin: 32px; color: #111827; }
@@ -1544,7 +1549,15 @@ function buildPrintableReportHtml(report: GeneratedReport) {
           th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
           th { color: #475569; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
           .section-title { font-size: 18px; font-weight: 700; margin: 28px 0 12px; }
+          @media print {
+            body { margin: 16px; }
+          }
         </style>
+        <script>
+          window.addEventListener("load", () => {
+            window.setTimeout(() => window.print(), 150);
+          });
+        </script>
       </head>
       <body>
         <div class="hero">
