@@ -7,12 +7,9 @@ import {
   FileCode2,
   FileSpreadsheet,
   Plus,
-  Radar,
-  Save,
   Search,
   Tags,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import { MonitorConfigDialog } from "@/components/monitoring/monitor-config-dialog";
 import { MonitorForm } from "@/components/monitoring/monitor-form";
@@ -23,7 +20,6 @@ import { MonitorTable } from "@/components/monitoring/monitor-table";
 import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
 import { payloadFromMonitor } from "@/components/monitoring/utils";
-import { PageHero } from "@/components/page-hero";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -41,15 +37,6 @@ import { useMonitoringStore } from "@/stores/use-monitoring-store";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const;
 const PAGE_NUMBER_WINDOW = 5;
-const MONITORING_VIEW_STORAGE_KEY = "sentrovia-monitoring-views";
-
-type MonitoringSavedView = {
-  id: string;
-  name: string;
-  search: string;
-  companyFilter: string;
-  pageSize: number;
-};
 
 export default function MonitoringPage() {
   const {
@@ -82,8 +69,6 @@ export default function MonitoringPage() {
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, MonitorHistoryPoint[]>>({});
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
-  const [savedViews, setSavedViews] = useState<MonitoringSavedView[]>(() => readSavedMonitoringViews());
-  const [savedViewName, setSavedViewName] = useState("");
 
   const companyFilters = useMemo(
     () => ["all", ...Array.from(new Set(monitors.map((monitor) => monitor.company).filter(Boolean)))],
@@ -103,6 +88,10 @@ export default function MonitoringPage() {
         return matchesSearch && matchesCompany;
       }),
     [companyFilter, monitors, search]
+  );
+  const problematicCount = useMemo(
+    () => monitors.filter((monitor) => monitor.status === "down" || monitor.verificationMode).length,
+    [monitors]
   );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -198,43 +187,6 @@ export default function MonitoringPage() {
     }
   }
 
-  function saveCurrentView() {
-    const normalizedName = savedViewName.trim();
-    if (!normalizedName) {
-      return;
-    }
-
-    const nextViews = upsertSavedMonitoringView(savedViews, {
-      id: normalizedName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-      name: normalizedName,
-      search,
-      companyFilter,
-      pageSize,
-    });
-
-    writeSavedMonitoringViews(nextViews);
-    setSavedViews(nextViews);
-    setSavedViewName("");
-  }
-
-  function applySavedView(viewId: string) {
-    const view = savedViews.find((item) => item.id === viewId);
-    if (!view) {
-      return;
-    }
-
-    setSearch(view.search);
-    setCompanyFilter(view.companyFilter);
-    setPageSize(resolvePageSize(view.pageSize));
-    setPage(1);
-  }
-
-  function removeSavedView(viewId: string) {
-    const nextViews = savedViews.filter((view) => view.id !== viewId);
-    writeSavedMonitoringViews(nextViews);
-    setSavedViews(nextViews);
-  }
-
   function toggleAll() {
     if (allPageSelected) {
       setSelectedIds((current) => {
@@ -271,48 +223,36 @@ export default function MonitoringPage() {
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
-      <PageHero
-        eyebrow="Monitoring"
-        title="Runtime Monitor Control"
-        description="Build, filter, and operate your monitor fleet with reusable views, worker pulse visibility, and import/export workflows in one place."
-        actions={
-          <div className="flex flex-wrap gap-2 xl:justify-end">
-            <a href="/templates/monitors-template.csv" download className={buttonVariants({ variant: "outline" })}>
-              <FileSpreadsheet className="mr-2 size-4" />
-              Sample CSV
-            </a>
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <FileSpreadsheet className="mr-2 size-4" />
-              Import CSV
-            </Button>
-            <Button variant="outline" onClick={() => setConfigOpen(true)}>
-              <FileCode2 className="mr-2 size-4" />
-              Monitoring as Code
-            </Button>
-            <Button variant="outline" onClick={() => void refreshMonitoring()} disabled={loading}>
-              {loading ? "Refreshing..." : "Refresh"}
-            </Button>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 size-4" />
-              Add Monitor
-            </Button>
-          </div>
-        }
-        metrics={[
-          {
-            icon: Radar,
-            label: "Visible",
-            value: String(filtered.length),
-            detail: "Monitors matching current filters",
-          },
-          {
-            icon: TriangleAlert,
-            label: "Down now",
-            value: String(monitors.filter((monitor) => monitor.status === "down").length),
-            detail: "Endpoints currently degraded",
-          },
-        ]}
-      />
+      <section className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-semibold tracking-tight">Monitoring</h1>
+          <p className="text-sm text-muted-foreground">
+            {filtered.length} endpoints shown · {problematicCount} problematic
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 xl:justify-end">
+          <a href="/templates/monitors-template.csv" download className={buttonVariants({ variant: "outline" })}>
+            <FileSpreadsheet className="mr-2 size-4" />
+            Sample CSV
+          </a>
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <FileSpreadsheet className="mr-2 size-4" />
+            Import CSV
+          </Button>
+          <Button variant="outline" onClick={() => setConfigOpen(true)}>
+            <FileCode2 className="mr-2 size-4" />
+            Monitoring as Code
+          </Button>
+          <Button variant="outline" onClick={() => void refreshMonitoring()} disabled={loading}>
+            {loading ? "Refreshing..." : "Refresh"}
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 size-4" />
+            Add Monitor
+          </Button>
+        </div>
+      </section>
 
       {error ? (
         <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -322,55 +262,6 @@ export default function MonitoringPage() {
 
       <WorkerPulseCard />
       <MonitorStats monitors={monitors} />
-
-      <div className="rounded-2xl border border-border/70 bg-muted/10 px-4 py-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Saved views</p>
-            <p className="text-xs leading-5 text-muted-foreground">
-              Save common monitoring filters locally for faster operator hops. Logs already have server-side presets; this gives monitoring the same convenience.
-            </p>
-          </div>
-
-          <div className="flex flex-1 flex-col gap-3 xl:max-w-3xl xl:flex-row xl:items-end">
-            <div className="flex-1">
-              <Input
-                value={savedViewName}
-                onChange={(event) => setSavedViewName(event.target.value)}
-                placeholder="Save current filters as a named view"
-              />
-            </div>
-            <Button variant="outline" onClick={saveCurrentView} disabled={!savedViewName.trim()}>
-              <Save className="mr-2 size-4" />
-              Save View
-            </Button>
-          </div>
-        </div>
-
-        {savedViews.length > 0 ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {savedViews.map((view) => (
-              <div
-                key={view.id}
-                className="flex items-center gap-2 rounded-2xl border border-border/70 bg-background px-3 py-2"
-              >
-                <button type="button" className="text-sm font-medium" onClick={() => applySavedView(view.id)}>
-                  {view.name}
-                </button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={() => removeSavedView(view.id)}
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
@@ -421,13 +312,6 @@ export default function MonitoringPage() {
             ))}
           </SelectContent>
         </Select>
-      </div>
-
-      <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3">
-        <p className="text-sm font-medium">Operator hint</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Use saved views for recurring slices like production-only, company-specific, or degraded endpoints. For keyboard-first navigation, open the command palette with <span className="font-medium">Ctrl + K</span>.
-        </p>
       </div>
 
       {selectedIds.size > 0 ? (
@@ -631,48 +515,3 @@ function buildVisiblePages(currentPage: number, totalPages: number, windowSize: 
   return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }
 
-function readSavedMonitoringViews(): MonitoringSavedView[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(MONITORING_VIEW_STORAGE_KEY);
-    if (!rawValue) {
-      return [];
-    }
-
-    const parsed = JSON.parse(rawValue) as MonitoringSavedView[];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((view) => typeof view?.id === "string" && typeof view?.name === "string");
-  } catch {
-    return [];
-  }
-}
-
-function writeSavedMonitoringViews(views: MonitoringSavedView[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(MONITORING_VIEW_STORAGE_KEY, JSON.stringify(views));
-}
-
-function upsertSavedMonitoringView(
-  currentViews: MonitoringSavedView[],
-  nextView: MonitoringSavedView
-) {
-  const remainingViews = currentViews.filter((view) => view.id !== nextView.id);
-  return [nextView, ...remainingViews].slice(0, 8);
-}
-
-function resolvePageSize(value: number): (typeof PAGE_SIZE_OPTIONS)[number] {
-  if (PAGE_SIZE_OPTIONS.includes(value as (typeof PAGE_SIZE_OPTIONS)[number])) {
-    return value as (typeof PAGE_SIZE_OPTIONS)[number];
-  }
-
-  return PAGE_SIZE_OPTIONS[0];
-}

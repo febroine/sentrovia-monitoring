@@ -12,8 +12,6 @@ export interface SettingsPayload {
   notifications: {
     notifyOnDown: boolean;
     notifyOnRecovery: boolean;
-    notifyOnLatency: boolean;
-    notifyOnSslExpiry: boolean;
     notifyOnStatusChange: boolean;
     prolongedDowntimeEnabled: boolean;
     prolongedDowntimeMinutes: number;
@@ -45,10 +43,13 @@ export interface SettingsPayload {
     retries: number;
     batchSize: number;
     method: string;
-    region: string;
     responseMaxLength: number;
     maxRedirects: number;
+    checkSslExpiry: boolean;
     ignoreSslErrors: boolean;
+    cacheBuster: boolean;
+    saveErrorPages: boolean;
+    saveSuccessPages: boolean;
   };
   appearance: {
     reduceMotion: boolean;
@@ -57,6 +58,8 @@ export interface SettingsPayload {
     dashboardLandingPage: string;
     showIncidentBanner: boolean;
     showChartsSection: boolean;
+    highContrastSurfaces: boolean;
+    use24HourClock: boolean;
   };
   data: {
     retentionDays: number;
@@ -81,8 +84,6 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   notifications: {
     notifyOnDown: true,
     notifyOnRecovery: true,
-    notifyOnLatency: true,
-    notifyOnSslExpiry: true,
     notifyOnStatusChange: false,
     prolongedDowntimeEnabled: true,
     prolongedDowntimeMinutes: 180,
@@ -118,10 +119,13 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     retries: 3,
     batchSize: 20,
     method: "GET",
-    region: "eu-central",
     responseMaxLength: 1024,
     maxRedirects: 5,
+    checkSslExpiry: false,
     ignoreSslErrors: true,
+    cacheBuster: false,
+    saveErrorPages: false,
+    saveSuccessPages: false,
   },
   appearance: {
     reduceMotion: false,
@@ -130,6 +134,8 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     dashboardLandingPage: "dashboard",
     showIncidentBanner: true,
     showChartsSection: true,
+    highContrastSurfaces: false,
+    use24HourClock: true,
   },
   data: {
     retentionDays: 90,

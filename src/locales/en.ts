@@ -30,7 +30,6 @@ export const en = {
     incidents: "Incidents",
     delivery: "Delivery",
     reports: "Reports",
-    observability: "Observability",
     settings: "Settings"
   },
   settings: {

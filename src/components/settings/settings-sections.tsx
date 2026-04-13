@@ -68,18 +68,6 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           onChange={(checked) => updateSetting("notifications.notifyOnRecovery", checked)}
         />
         <ToggleRow
-          label="High latency alerts"
-          description="Alert when latency crosses the monitor-specific latency threshold."
-          checked={settings.notifications.notifyOnLatency}
-          onChange={(checked) => updateSetting("notifications.notifyOnLatency", checked)}
-        />
-        <ToggleRow
-          label="SSL expiry alerts"
-          description="Warn before monitored certificates approach expiry."
-          checked={settings.notifications.notifyOnSslExpiry}
-          onChange={(checked) => updateSetting("notifications.notifyOnSslExpiry", checked)}
-        />
-        <ToggleRow
           label="Status change digest"
           description="Include HTTP status code transitions in outbound notifications."
           checked={settings.notifications.notifyOnStatusChange}
@@ -286,91 +274,138 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
       icon={Radar}
       iconClassName="text-rose-600 dark:text-rose-300"
     >
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Default interval" hint="Examples: 1m, 5m, 15m">
-          <Input
-            value={settings.monitoring.interval}
-            onChange={(event) => updateSetting("monitoring.interval", event.target.value)}
-            placeholder="5m"
-          />
-        </Field>
-        <Field label="Timeout (ms)" hint="Used by the worker when a monitor does not override timeout.">
-          <Input
-            type="number"
-            value={settings.monitoring.timeout}
-            onChange={(event) => updateSetting("monitoring.timeout", Number(event.target.value) || 1000)}
-          />
-        </Field>
-        <Field label="Verification attempts" hint="How many 1-minute confirmation checks must fail in a row before an outage is confirmed and notifications are sent.">
-          <Input
-            type="number"
-            value={settings.monitoring.retries}
-            onChange={(event) => updateSetting("monitoring.retries", Number(event.target.value) || 1)}
-          />
-        </Field>
-        <Field label="Worker batch size" hint="Maximum number of due monitors the worker will pull from this workspace during one scheduler cycle.">
-          <Input
-            type="number"
-            value={settings.monitoring.batchSize}
-            onChange={(event) => updateSetting("monitoring.batchSize", Number(event.target.value) || 1)}
-          />
-        </Field>
-        <Field label="HTTP method">
-          <Select
-            value={settings.monitoring.method}
-            onValueChange={(value) => updateSetting("monitoring.method", String(value))}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Primary region">
-          <Input
-            value={settings.monitoring.region}
-            onChange={(event) => updateSetting("monitoring.region", event.target.value)}
-            placeholder="eu-central"
-          />
-        </Field>
-        <Field label="Response max length">
-          <Input
-            type="number"
-            value={settings.monitoring.responseMaxLength}
-            onChange={(event) =>
-              updateSetting("monitoring.responseMaxLength", Number(event.target.value) || 0)
-            }
-          />
-        </Field>
-        <Field label="Max redirects">
-          <Input
-            type="number"
-            value={settings.monitoring.maxRedirects}
-            onChange={(event) => updateSetting("monitoring.maxRedirects", Number(event.target.value) || 0)}
-          />
-        </Field>
-        <Field label="Ignore SSL errors by default" hint="Applied automatically when a site-level setting is omitted during monitor creation or CSV import.">
-          <div className="rounded-xl border bg-muted/20 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">Default SSL bypass</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  New monitors inherit this value unless the monitor explicitly overrides it.
-                </p>
-              </div>
-              <Switch
-                checked={settings.monitoring.ignoreSslErrors}
-                onCheckedChange={(checked) => updateSetting("monitoring.ignoreSslErrors", checked)}
-              />
-            </div>
+      <div className="rounded-2xl border bg-muted/15 p-4">
+        <p className="text-sm font-medium">Override behavior</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          These values fill the gaps when a monitor is created manually or imported from CSV. If a monitor defines its
+          own setting later, the site-level value always wins.
+        </p>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border bg-muted/15 p-5">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Scheduling and execution</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              Control how often the worker checks monitors and how many confirmation attempts are required.
+            </p>
           </div>
-        </Field>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <Field label="Default interval" hint="Examples: 1m, 5m, 15m">
+              <Input
+                value={settings.monitoring.interval}
+                onChange={(event) => updateSetting("monitoring.interval", event.target.value)}
+                placeholder="5m"
+              />
+            </Field>
+            <Field label="Timeout (ms)" hint="Used by the worker when a monitor does not override timeout.">
+              <Input
+                type="number"
+                value={settings.monitoring.timeout}
+                onChange={(event) => updateSetting("monitoring.timeout", Number(event.target.value) || 1000)}
+              />
+            </Field>
+            <Field
+              label="Verification attempts"
+              hint="How many 1-minute confirmation checks must fail before an outage is confirmed."
+            >
+              <Input
+                type="number"
+                value={settings.monitoring.retries}
+                onChange={(event) => updateSetting("monitoring.retries", Number(event.target.value) || 1)}
+              />
+            </Field>
+            <Field
+              label="Worker batch size"
+              hint="Maximum number of due monitors the worker will claim in one scheduler cycle."
+            >
+              <Input
+                type="number"
+                value={settings.monitoring.batchSize}
+                onChange={(event) => updateSetting("monitoring.batchSize", Number(event.target.value) || 1)}
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-muted/15 p-5">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">HTTP request defaults</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              These values shape the default request that Sentrovia builds before monitor-specific overrides are applied.
+            </p>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <Field label="HTTP method">
+              <Select
+                value={settings.monitoring.method}
+                onValueChange={(value) => updateSetting("monitoring.method", String(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Response max length" hint="0 keeps the current unlimited behavior for new monitors.">
+              <Input
+                type="number"
+                value={settings.monitoring.responseMaxLength}
+                onChange={(event) =>
+                  updateSetting("monitoring.responseMaxLength", Number(event.target.value) || 0)
+                }
+              />
+            </Field>
+            <Field label="Max redirects" hint="0 disables redirect following for monitors that do not override it.">
+              <Input
+                type="number"
+                value={settings.monitoring.maxRedirects}
+                onChange={(event) => updateSetting("monitoring.maxRedirects", Number(event.target.value) || 0)}
+              />
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <ToggleCard
+          label="Check SSL expiry"
+          description="New monitors inherit certificate expiry checks unless the monitor overrides it."
+          checked={settings.monitoring.checkSslExpiry}
+          onChange={(checked) => updateSetting("monitoring.checkSslExpiry", checked)}
+        />
+        <ToggleCard
+          label="Ignore SSL errors"
+          description="Apply SSL bypass by default when a new monitor does not explicitly choose a value."
+          checked={settings.monitoring.ignoreSslErrors}
+          onChange={(checked) => updateSetting("monitoring.ignoreSslErrors", checked)}
+        />
+        <ToggleCard
+          label="Enable cache buster"
+          description="Append a cache-busting query string by default to avoid stale CDN responses."
+          checked={settings.monitoring.cacheBuster}
+          onChange={(checked) => updateSetting("monitoring.cacheBuster", checked)}
+        />
+        <ToggleCard
+          label="Save error pages"
+          description="Keep failed HTTP response bodies by default for RCA and template usage."
+          checked={settings.monitoring.saveErrorPages}
+          onChange={(checked) => updateSetting("monitoring.saveErrorPages", checked)}
+        />
+        <ToggleCard
+          label="Save success pages"
+          description="Store successful HTTP responses by default when the monitor does not override it."
+          checked={settings.monitoring.saveSuccessPages}
+          onChange={(checked) => updateSetting("monitoring.saveSuccessPages", checked)}
+        />
       </div>
     </SectionCard>
   );
@@ -396,6 +431,18 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
         checked={settings.appearance.compactDensity}
         onChange={(checked) => updateSetting("appearance.compactDensity", checked)}
       />
+      <ToggleRow
+        label="High contrast surfaces"
+        description="Increase panel and border contrast for darker environments and large wallboard screens."
+        checked={settings.appearance.highContrastSurfaces}
+        onChange={(checked) => updateSetting("appearance.highContrastSurfaces", checked)}
+      />
+      <ToggleRow
+        label="24-hour clock"
+        description="Show dashboard timestamps in 24-hour format instead of locale AM/PM formatting."
+        checked={settings.appearance.use24HourClock}
+        onChange={(checked) => updateSetting("appearance.use24HourClock", checked)}
+      />
       <Field label="Sidebar accent">
         <Select
           value={settings.appearance.sidebarAccent}
@@ -419,6 +466,12 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
         description="Keep the dashboard focus widgets and analytical cards visible."
         checked={settings.appearance.showChartsSection}
         onChange={(checked) => updateSetting("appearance.showChartsSection", checked)}
+      />
+      <ToggleRow
+        label="Incident banner"
+        description="Show a dashboard banner when one or more monitors are currently offline."
+        checked={settings.appearance.showIncidentBanner}
+        onChange={(checked) => updateSetting("appearance.showIncidentBanner", checked)}
       />
       <Field label="Landing page">
         <Select

@@ -18,7 +18,7 @@ interface SystemData {
 const HEARTBEAT_STALE_MS = 180_000;
 const REFRESH_INTERVAL_MS = 10_000;
 
-export function SystemStatus() {
+export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boolean }) {
   const { worker, commandLoading, error, loadWorker, toggleWorker } = useWorkerStore();
   const [systemData, setSystemData] = useState<SystemData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,7 +123,11 @@ export function SystemStatus() {
                 label="Updated"
                 value={
                   lastUpdated
-                    ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    ? lastUpdated.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: !use24HourClock,
+                      })
                     : "--:--"
                 }
               />

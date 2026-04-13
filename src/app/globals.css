@@ -112,3 +112,28 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+.sentrovia-reduce-motion *,
+.sentrovia-reduce-motion *::before,
+.sentrovia-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.sentrovia-compact-density table th,
+.sentrovia-compact-density table td {
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+
+.sentrovia-high-contrast {
+  --color-border: #3a3a42;
+  --color-card: #0d1013;
+  --color-muted: #101317;
+  --color-muted-foreground: #c0c4cc;
+  --color-surface-low: #0a0c0f;
+  --color-surface-high: #101318;
+  --color-surface-highest: #181d24;
+}

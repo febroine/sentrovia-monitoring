@@ -100,11 +100,7 @@ async function shouldSendNotification(context: NotificationContext) {
     return await shouldSendByKind(settings.notifications.notifyOnRecovery, settings.notifications.alertDedupMinutes, context);
   }
 
-  if (context.kind === "latency") {
-    return await shouldSendByKind(settings.notifications.notifyOnLatency, settings.notifications.alertDedupMinutes, context);
-  }
-
-  return await shouldSendByKind(settings.notifications.notifyOnSslExpiry, settings.notifications.alertDedupMinutes, context);
+  return false;
 }
 
 async function shouldSendByKind(enabled: boolean, dedupMinutes: number, context: NotificationContext) {

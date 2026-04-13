@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
 
 export const SIDEBAR_ACCENT_UPDATED_EVENT = "sentrovia:sidebar-accent-updated";
+export const APPEARANCE_SETTINGS_UPDATED_EVENT = "sentrovia:appearance-updated";
 
 interface SettingsState {
   settings: SettingsPayload;
@@ -68,6 +69,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       });
 
       if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(APPEARANCE_SETTINGS_UPDATED_EVENT, {
+            detail: {
+              appearance: data.settings.appearance,
+            },
+          })
+        );
         window.dispatchEvent(
           new CustomEvent(SIDEBAR_ACCENT_UPDATED_EVENT, {
             detail: {

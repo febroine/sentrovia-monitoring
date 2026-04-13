@@ -86,8 +86,8 @@ export function MonitorTable({
             <TableHead className="w-[90px]">Response</TableHead>
             <TableHead className="w-[90px]">Latency</TableHead>
             <TableHead className="w-[120px]">Notification</TableHead>
-            <TableHead className="w-[112px]">Company</TableHead>
-            <TableHead className="w-[108px]">Timeline</TableHead>
+            <TableHead className="w-[96px]">Company</TableHead>
+            <TableHead className="w-[96px]">Timeline</TableHead>
             <TableHead className="w-[110px]">Last check</TableHead>
             <TableHead className="w-[80px]">Uptime</TableHead>
             <TableHead className="w-[50px]" />

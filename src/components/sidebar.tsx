@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3, Radar } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3 } from 'lucide-react';
 import { SentroviaMark } from '@/components/brand/sentrovia-mark';
 import LogoutButton from '@/components/logout-button';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,6 @@ const navItems = [
   { href: '/logs', i18nKey: 'nav.logs', icon: ScrollText },
   { href: '/delivery', i18nKey: 'nav.delivery', icon: BellRing },
   { href: '/reports', i18nKey: 'nav.reports', icon: BarChart3 },
-  { href: '/observability', i18nKey: 'nav.observability', icon: Radar },
   { href: '/status-codes', i18nKey: 'nav.statusCodes', icon: Binary },
   { href: '/members', i18nKey: 'nav.members', icon: UsersRound },
   { href: '/settings', i18nKey: 'nav.settings', icon: Settings },
@@ -131,13 +130,13 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
   return (
     <div
       className={cn(
-        'border-r p-5 pt-8',
+        'h-dvh overflow-y-auto border-r p-5 pt-8',
         palette.shell,
         className
       )}
       {...props}
     >
-      <div className="flex min-h-full flex-col">
+      <div className="flex min-h-full flex-col pb-4">
         <div className="mb-8 px-1">
           <div className="flex items-center gap-3">
             <div

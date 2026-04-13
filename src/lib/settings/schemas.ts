@@ -21,8 +21,6 @@ export const settingsSchema = z.object({
   notifications: z.object({
     notifyOnDown: z.boolean(),
     notifyOnRecovery: z.boolean(),
-    notifyOnLatency: z.boolean(),
-    notifyOnSslExpiry: z.boolean(),
     notifyOnStatusChange: z.boolean(),
     prolongedDowntimeEnabled: z.boolean(),
     prolongedDowntimeMinutes: z.coerce.number().int().min(5).max(10080),
@@ -54,10 +52,13 @@ export const settingsSchema = z.object({
     retries: z.coerce.number().int().min(1).max(10),
     batchSize: z.coerce.number().int().min(1).max(500),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]),
-    region: optionalString(64),
     responseMaxLength: z.coerce.number().int().min(0).max(100_000),
     maxRedirects: z.coerce.number().int().min(0).max(10),
+    checkSslExpiry: z.boolean(),
     ignoreSslErrors: z.boolean(),
+    cacheBuster: z.boolean(),
+    saveErrorPages: z.boolean(),
+    saveSuccessPages: z.boolean(),
   }),
   appearance: z.object({
     reduceMotion: z.boolean(),
@@ -66,6 +67,8 @@ export const settingsSchema = z.object({
     dashboardLandingPage: z.enum(["dashboard", "monitoring", "companies", "logs", "settings"]),
     showIncidentBanner: z.boolean(),
     showChartsSection: z.boolean(),
+    highContrastSurfaces: z.boolean(),
+    use24HourClock: z.boolean(),
   }),
   data: z.object({
     retentionDays: z.coerce.number().int().min(7).max(3650),

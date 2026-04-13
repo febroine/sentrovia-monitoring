@@ -20,7 +20,7 @@ if (!DATABASE_URL) {
 await waitForDatabase(DATABASE_URL);
 
 if (mode === "web") {
-  await runStep("npm", ["run", "db:push"], "Applying database schema");
+  await runStep("npm", ["run", "db:push:bootstrap"], "Applying database schema");
   runForeground("npm", ["run", "start"]);
 } else {
   runForeground("npm", ["run", "worker:start"]);

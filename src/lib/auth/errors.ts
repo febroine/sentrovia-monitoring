@@ -31,7 +31,7 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
 
   if (databaseError?.code === "42703") {
     return new AuthError(
-      "Database schema is out of date. Run `npm run db:push` on the server before registering a new account.",
+      "Database schema is out of date. Run `npm run db:push` on the server and restart the application.",
       503
     );
   }
