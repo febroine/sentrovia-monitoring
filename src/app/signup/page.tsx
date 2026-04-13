@@ -66,7 +66,7 @@ export default function SignupPage() {
       clearSignupPasswords(formRef.current);
 
       startTransition(() => {
-        router.replace("/dashboard");
+        router.replace("/");
         router.refresh();
       });
     } catch {

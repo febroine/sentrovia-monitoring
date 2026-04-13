@@ -65,7 +65,7 @@ export default function LoginPage() {
           : "/dashboard";
 
       startTransition(() => {
-        router.replace(nextPath);
+        router.replace(nextPath === "/dashboard" ? "/" : nextPath);
         router.refresh();
       });
     } catch {

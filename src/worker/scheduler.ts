@@ -99,11 +99,6 @@ async function processMonitor(monitor: Monitor) {
   const previousStatusCode = monitor.statusCode;
   const hadConfirmedIncident = previousStatus === "down" && !monitor.verificationMode;
   const wasVerifying = monitor.verificationMode;
-  const latencyThresholdExceeded = result.latencyMs !== null && result.latencyMs > monitor.timeout * 0.8;
-  const sslExpiringSoon =
-    monitor.checkSslExpiry &&
-    result.sslExpiresAt !== null &&
-    result.sslExpiresAt.getTime() - result.checkedAt.getTime() < 1000 * 60 * 60 * 24 * 14;
   let incidentConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
   let checkStatus: "up" | "down" | "pending" = result.ok ? "up" : "pending";
@@ -252,12 +247,6 @@ async function processMonitor(monitor: Monitor) {
     await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
   }
 
-  if (latencyThresholdExceeded) {
-    const message = `Latency reached ${result.latencyMs}ms.`;
-    await appendDetailedEvent(monitor, result, "latency", message, rca, checkStatus);
-    await sendMonitorNotifications({ kind: "latency", message, monitor, result, rca });
-  }
-
   if (
     !monitor.verificationMode &&
     previousStatusCode !== null &&
@@ -267,12 +256,6 @@ async function processMonitor(monitor: Monitor) {
     const message = `Status code changed from ${previousStatusCode} to ${result.statusCode}.`;
     await appendDetailedEvent(monitor, result, "status-change", message, rca, checkStatus);
     await sendMonitorNotifications({ kind: "status-change", message, monitor, result, rca });
-  }
-
-  if (sslExpiringSoon) {
-    const message = `SSL certificate expires on ${result.sslExpiresAt?.toISOString()}.`;
-    await appendDetailedEvent(monitor, result, "ssl-expiry", message, rca, checkStatus);
-    await sendMonitorNotifications({ kind: "ssl-expiry", message, monitor, result, rca });
   }
 
   return {

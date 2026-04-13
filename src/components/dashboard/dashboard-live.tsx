@@ -87,6 +87,9 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const currentEventPage = Math.min(eventPage, eventPages);
   const companyItems = paginate(data.companyHealth, currentCompanyPage, 4);
   const eventItems = paginate(data.events, currentEventPage, 5);
+  const showChartsSection = data.settings?.appearance.showChartsSection ?? true;
+  const showIncidentBanner = data.settings?.appearance.showIncidentBanner ?? true;
+  const use24HourClock = data.settings?.appearance.use24HourClock ?? true;
 
   return (
     <div className="space-y-6">
@@ -108,7 +111,13 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
-      <SystemStatus />
+      {showIncidentBanner && data.summary.offline > 0 ? (
+        <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {data.summary.offline} monitor currently offline. Verification and delivery history are available below.
+        </div>
+      ) : null}
+
+      <SystemStatus use24HourClock={use24HourClock} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
@@ -127,22 +136,32 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <PanelCompanyHealth companies={companyItems} page={currentCompanyPage} totalPages={companyPages} onPageChange={setCompanyPage} />
-        <PanelRecentEvents events={eventItems} page={currentEventPage} totalPages={eventPages} onPageChange={setEventPage} />
-      </div>
+      {showChartsSection ? (
+        <>
+          <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+            <PanelCompanyHealth companies={companyItems} page={currentCompanyPage} totalPages={companyPages} onPageChange={setCompanyPage} />
+            <PanelRecentEvents
+              events={eventItems}
+              page={currentEventPage}
+              totalPages={eventPages}
+              onPageChange={setEventPage}
+              use24HourClock={use24HourClock}
+            />
+          </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Delivery Operations</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-4">
-          <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
-          <MetricCard label="Retry Queue" value={String(data.delivery.pendingWebhookRetries)} sub="Webhook items waiting for retry" tone="amber" />
-          <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Requires operator review" tone="rose" />
-          <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Delivery Operations</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-4">
+              <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
+              <MetricCard label="Retry Queue" value={String(data.delivery.pendingWebhookRetries)} sub="Webhook items waiting for retry" tone="amber" />
+              <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Requires operator review" tone="rose" />
+              <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -215,11 +234,13 @@ function PanelRecentEvents({
   page,
   totalPages,
   onPageChange,
+  use24HourClock,
 }: {
   events: DashboardData["events"];
   page: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  use24HourClock: boolean;
 }) {
   return (
     <Card>
@@ -253,7 +274,7 @@ function PanelRecentEvents({
               </div>
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Clock3 className="h-3 w-3" />
-                {new Date(event.createdAt).toLocaleString()}
+                {new Date(event.createdAt).toLocaleString([], { hour12: !use24HourClock })}
               </div>
             </div>
           ))
