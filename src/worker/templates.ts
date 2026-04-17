@@ -76,6 +76,10 @@ function resolveSubjectTemplate(context: NotificationContext, settings: Settings
     return settings.notifications.prolongedDowntimeEmailSubjectTemplate;
   }
 
+  if (context.kind === "recovery") {
+    return settings.notifications.recoveryEmailSubjectTemplate;
+  }
+
   return context.monitor.emailSubject || settings.notifications.defaultEmailSubjectTemplate;
 }
 
@@ -84,12 +88,20 @@ function resolveEmailBodyTemplate(context: NotificationContext, settings: Settin
     return settings.notifications.prolongedDowntimeEmailBodyTemplate;
   }
 
+  if (context.kind === "recovery") {
+    return settings.notifications.recoveryEmailBodyTemplate;
+  }
+
   return context.monitor.emailBody || settings.notifications.defaultEmailBodyTemplate;
 }
 
 function resolveTelegramTemplate(context: NotificationContext, settings: SettingsPayload) {
   if (context.kind === "downtime-reminder") {
     return settings.notifications.prolongedDowntimeTelegramTemplate;
+  }
+
+  if (context.kind === "recovery") {
+    return settings.notifications.recoveryTelegramTemplate;
   }
 
   return context.monitor.telegramTemplate || settings.notifications.defaultTelegramTemplate;

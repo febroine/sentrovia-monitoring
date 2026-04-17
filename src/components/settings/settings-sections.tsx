@@ -238,6 +238,28 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           onChange={(value) => updateSetting("notifications.defaultTelegramTemplate", value)}
         />
         <Field
+          label="Recovery email subject"
+          hint="Used for UP / recovered notifications when a monitor returns healthy after a confirmed outage."
+        >
+          <Input
+            value={settings.notifications.recoveryEmailSubjectTemplate}
+            onChange={(event) => updateSetting("notifications.recoveryEmailSubjectTemplate", event.target.value)}
+          />
+        </Field>
+        <TemplateEditor
+          label="Recovery email body"
+          hint="Customize the message sent when a monitor recovers. Monitor-level overrides still apply only to the generic down template."
+          value={settings.notifications.recoveryEmailBodyTemplate}
+          onChange={(value) => updateSetting("notifications.recoveryEmailBodyTemplate", value)}
+        />
+        <TemplateEditor
+          label="Recovery Telegram template"
+          hint="This text is sent to Telegram when the worker confirms a recovery event."
+          rows={6}
+          value={settings.notifications.recoveryTelegramTemplate}
+          onChange={(value) => updateSetting("notifications.recoveryTelegramTemplate", value)}
+        />
+        <Field
           label="Prolonged downtime email subject"
           hint="Use this template for 'still down' reminder emails. Tokens like {downtime_duration} and {downtime_started_at_local} are available here."
         >
