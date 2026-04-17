@@ -13,6 +13,11 @@ type DatabaseErrorShape = {
 };
 
 type TableName = "users" | "user_settings";
+type ColumnName<T extends Record<string, string>> = T[keyof T];
+type SelectableColumn<T extends Record<string, string>> = {
+  propertyName: keyof T & string;
+  columnName: ColumnName<T>;
+};
 
 const USERS_COLUMN_MAP = {
   id: "id",
@@ -264,20 +269,19 @@ async function readUserSettingsCompat(userId: string) {
 
 async function readCompatRow<T extends Record<string, string>, R extends Partial<Record<keyof T, unknown>>>(
   tableName: TableName,
-  lookupColumn: string,
+  lookupColumn: ColumnName<T>,
   lookupValue: string,
   columnMap: T,
   existingColumns: Set<string>
 ) {
-  const selectClause = buildSelectClause(columnMap, existingColumns);
-  if (!selectClause) {
+  const selectableColumns = getSelectableColumns(columnMap, existingColumns);
+  if (selectableColumns.length === 0) {
     return null;
   }
 
   try {
-    const query = `select ${selectClause} from ${tableName} where ${lookupColumn} = $1 limit 1`;
-    const rows = await sql.unsafe<R[]>(query, [lookupValue]);
-    return rows[0] ?? null;
+    const row = await readCompatRowValues(tableName, lookupColumn, lookupValue, selectableColumns);
+    return row ? mapCompatRow<T, R>(row, selectableColumns) : null;
   } catch (error) {
     if (isSchemaDriftError(error)) {
       return null;
@@ -298,11 +302,47 @@ async function getTableColumns(tableName: TableName) {
   return new Set(rows.map((row) => row.column_name));
 }
 
-function buildSelectClause<T extends Record<string, string>>(columnMap: T, existingColumns: Set<string>) {
-  return Object.entries(columnMap)
+async function readCompatRowValues<T extends Record<string, string>>(
+  tableName: TableName,
+  lookupColumn: ColumnName<T>,
+  lookupValue: string,
+  selectableColumns: SelectableColumn<T>[]
+) {
+  const rows = await sql<Record<string, unknown>[]>`
+    select ${buildSelectIdentifiers(selectableColumns)}
+    from ${sql(tableName)}
+    where ${sql(lookupColumn as string)} = ${lookupValue}
+    limit 1
+  `;
+
+  return rows[0] ?? null;
+}
+
+function getSelectableColumns<T extends Record<string, string>>(
+  columnMap: T,
+  existingColumns: Set<string>
+): SelectableColumn<T>[] {
+  return (Object.entries(columnMap) as Array<[keyof T & string, ColumnName<T>]>)
     .filter(([, columnName]) => existingColumns.has(columnName))
-    .map(([propertyName, columnName]) => `${columnName} as "${propertyName}"`)
-    .join(", ");
+    .map(([propertyName, columnName]) => ({ propertyName, columnName }));
+}
+
+function buildSelectIdentifiers<T extends Record<string, string>>(columns: SelectableColumn<T>[]) {
+  const [firstColumn, ...restColumns] = columns.map((column) => column.columnName as string);
+  if (!firstColumn) {
+    throw new Error("At least one compatible column must be selected.");
+  }
+
+  return sql(firstColumn, ...restColumns);
+}
+
+function mapCompatRow<T extends Record<string, string>, R extends Partial<Record<keyof T, unknown>>>(
+  row: Record<string, unknown>,
+  selectableColumns: SelectableColumn<T>[]
+) {
+  return Object.fromEntries(
+    selectableColumns.map(({ propertyName, columnName }) => [propertyName, row[columnName]])
+  ) as R;
 }
 
 function filterValuesForColumns<T extends Record<string, unknown>>(
