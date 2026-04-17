@@ -1,8 +1,10 @@
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import type Mail from "nodemailer/lib/mailer";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
 import { companies, monitorChecks, monitorEvents, monitors, reportSchedules } from "@/lib/db/schema";
 import { sendEmailDelivery } from "@/lib/delivery/service";
+import { buildPrintableReportHtml, buildReportCsv, buildReportFileSlug } from "@/lib/reports/export";
 import { getSettings } from "@/lib/settings/service";
 import type {
   GeneratedReport,
@@ -211,7 +213,7 @@ export async function generateReportPreview(
     statusCodes: statusCodeSummary,
     slowMonitors: slowMonitors.slice(0, REPORT_PREVIEW_LIMIT),
     failingMonitors: failingMonitors.slice(0, REPORT_PREVIEW_LIMIT),
-    monitorBreakdown: monitorBreakdown.slice(0, REPORT_PREVIEW_LIMIT),
+    monitorBreakdown,
   };
 }
 
@@ -234,6 +236,7 @@ export async function dispatchReportNow(
     subject: message.subject,
     textBody: message.textBody,
     htmlBody: message.htmlBody,
+    attachments: buildReportAttachments(report),
   });
 
   return {
@@ -585,6 +588,10 @@ function buildReportMessage(report: GeneratedReport) {
     "",
     "Top failing monitors:",
     ...report.failingMonitors.slice(0, 5).map((monitor) => `- ${monitor.name}: ${monitor.failures} failures`),
+    "",
+    "Attachments:",
+    "- CSV report package for spreadsheets and handoff",
+    "- Print-ready HTML report for PDF export",
   ];
 
   const htmlBody = `
@@ -610,6 +617,10 @@ function buildReportMessage(report: GeneratedReport) {
         ${renderMetricCard("Checks", String(report.summary.totalChecks))}
         ${renderMetricCard("Failures", String(report.summary.failureEvents))}
       </div>
+      <div style="border:1px solid #dbeafe;border-radius:16px;padding:14px 16px;background:#eff6ff;margin-top:18px">
+        <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#1d4ed8">Attached report package</p>
+        <p style="margin:0;color:#475569">This delivery includes a CSV breakdown plus a print-ready HTML file for PDF export or archival.</p>
+      </div>
       ${renderSimpleList("Top slow monitors", report.slowMonitors.slice(0, 5).map((monitor) => `${monitor.name} - ${monitor.averageLatencyMs}ms avg`))}
       ${renderSimpleList("Top failing monitors", report.failingMonitors.slice(0, 5).map((monitor) => `${monitor.name} - ${monitor.failures} failures`))}
     </div>
@@ -620,6 +631,23 @@ function buildReportMessage(report: GeneratedReport) {
     textBody: lines.join("\n"),
     htmlBody,
   };
+}
+
+function buildReportAttachments(report: GeneratedReport): Mail.Attachment[] {
+  const fileSlug = buildReportFileSlug(report);
+
+  return [
+    {
+      filename: `${fileSlug}.csv`,
+      content: buildReportCsv(report),
+      contentType: "text/csv; charset=utf-8",
+    },
+    {
+      filename: `${fileSlug}.html`,
+      content: buildPrintableReportHtml(report),
+      contentType: "text/html; charset=utf-8",
+    },
+  ];
 }
 
 function renderMetricCard(label: string, value: string) {

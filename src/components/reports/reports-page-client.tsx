@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CompanyRecord } from "@/lib/companies/types";
+import { buildPrintableReportHtml, buildReportCsv, buildReportFileSlug } from "@/lib/reports/export";
 import type {
   GeneratedReport,
   ReportCadence,
@@ -248,7 +249,7 @@ export default function ReportsPageClient() {
         reportTitle: data.report?.title ?? "Manual report",
         recipients: parseRecipients(previewDraft.recipients),
       });
-      setMessage("Report sent successfully.");
+      setMessage("Report sent successfully with CSV and print-ready HTML attachments.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to send the report.");
     } finally {
@@ -328,7 +329,7 @@ export default function ReportsPageClient() {
         throw new Error(data.message ?? "Unable to send the scheduled report.");
       }
 
-      setMessage("Scheduled report sent successfully.");
+      setMessage("Scheduled report sent successfully with CSV and print-ready HTML attachments.");
       await refreshPage();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to send the scheduled report.");
@@ -411,30 +412,7 @@ export default function ReportsPageClient() {
       return;
     }
 
-    const rows = [
-      ["Report", preview.title],
-      ["Workspace", preview.workspaceName],
-      ["Template", preview.templateLabel],
-      ["Scope", preview.scope === "company" ? preview.companyName ?? "Company" : "Global workspace"],
-      ["Period", preview.periodLabel],
-      ["Generated", new Date(preview.generatedAt).toLocaleString()],
-      ["Monitors", String(preview.summary.monitorCount)],
-      ["Uptime", `${preview.summary.uptimePct.toFixed(2)}%`],
-      ["Average latency", `${preview.summary.averageLatencyMs}ms`],
-      ["Failures", String(preview.summary.failureEvents)],
-      [""],
-      ["Monitor", "Status", "Uptime", "Avg latency", "Checks", "Failures"],
-      ...preview.monitorBreakdown.map((monitor) => [
-        monitor.name,
-        monitor.status,
-        `${monitor.uptimePct.toFixed(2)}%`,
-        `${monitor.averageLatencyMs}ms`,
-        String(monitor.totalChecks),
-        String(monitor.failures),
-      ]),
-    ];
-
-    downloadFile(toCsv(rows), `${slugify(preview.title)}.csv`, "text/csv;charset=utf-8");
+    downloadFile(buildReportCsv(preview), `${buildReportFileSlug(preview)}.csv`, "text/csv;charset=utf-8");
   }
 
   function exportPreviewPdf() {
@@ -442,7 +420,7 @@ export default function ReportsPageClient() {
       return;
     }
 
-    const printDocument = buildPrintableReportHtml(preview);
+    const printDocument = buildPrintableReportHtml(preview, { autoPrint: true });
     const printBlob = new Blob([printDocument], { type: "text/html;charset=utf-8" });
     const printUrl = URL.createObjectURL(printBlob);
     const printWindow = window.open(printUrl, "_blank", "width=960,height=720");
@@ -1488,16 +1466,6 @@ function toLocalDateTime(value: string) {
   return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
 }
 
-function toCsv(rows: Array<Array<string>>) {
-  return rows
-    .map((row) =>
-      row
-        .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
-        .join(",")
-    )
-    .join("\n");
-}
-
 function downloadFile(content: string, filename: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -1506,108 +1474,4 @@ function downloadFile(content: string, filename: string, mimeType: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function buildPrintableReportHtml(report: GeneratedReport) {
-  const breakdownRows = report.monitorBreakdown
-    .map(
-      (monitor) => `
-        <tr>
-          <td>${escapeHtml(reportValue(monitor.name))}</td>
-          <td>${escapeHtml(reportValue(monitor.status))}</td>
-          <td>${escapeHtml(`${monitor.uptimePct.toFixed(2)}%`)}</td>
-          <td>${escapeHtml(`${monitor.averageLatencyMs}ms`)}</td>
-          <td>${escapeHtml(String(monitor.totalChecks))}</td>
-          <td>${escapeHtml(String(monitor.failures))}</td>
-        </tr>
-      `
-    )
-    .join("");
-
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(report.title)}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 32px; color: #111827; }
-          .hero { border: 1px solid #e5e7eb; border-radius: 20px; padding: 24px; margin-bottom: 24px; }
-          .eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; margin-bottom: 8px; }
-          .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
-          .stat { border: 1px solid #e5e7eb; border-radius: 16px; padding: 14px; }
-          .stat-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; }
-          .stat-value { font-size: 24px; font-weight: 700; margin-top: 8px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-          th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
-          th { color: #475569; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
-          .section-title { font-size: 18px; font-weight: 700; margin: 28px 0 12px; }
-          @media print {
-            body { margin: 16px; }
-          }
-        </style>
-        <script>
-          window.addEventListener("load", () => {
-            window.setTimeout(() => window.print(), 150);
-          });
-        </script>
-      </head>
-      <body>
-        <div class="hero">
-          <div class="eyebrow">${escapeHtml(report.templateLabel)}</div>
-          <h1>${escapeHtml(report.title)}</h1>
-          <p>${escapeHtml(report.workspaceName)} · ${escapeHtml(report.periodLabel)} · ${escapeHtml(
-            new Date(report.generatedAt).toLocaleString()
-          )}</p>
-        </div>
-
-        <div class="stats">
-          <div class="stat"><div class="stat-label">Monitors</div><div class="stat-value">${report.summary.monitorCount}</div></div>
-          <div class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${report.summary.uptimePct.toFixed(
-            2
-          )}%</div></div>
-          <div class="stat"><div class="stat-label">Avg latency</div><div class="stat-value">${report.summary.averageLatencyMs}ms</div></div>
-          <div class="stat"><div class="stat-label">Failures</div><div class="stat-value">${report.summary.failureEvents}</div></div>
-        </div>
-
-        <div class="section-title">Monitor breakdown</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Monitor</th>
-              <th>Status</th>
-              <th>Uptime</th>
-              <th>Avg latency</th>
-              <th>Checks</th>
-              <th>Failures</th>
-            </tr>
-          </thead>
-          <tbody>${breakdownRows}</tbody>
-        </table>
-      </body>
-    </html>
-  `;
-}
-
-function reportValue(value: string | number | null | undefined) {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-
-  return String(value);
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

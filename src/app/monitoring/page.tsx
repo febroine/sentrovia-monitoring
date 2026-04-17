@@ -444,7 +444,10 @@ export default function MonitoringPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Bulk monitor settings</DialogTitle>
-            <DialogDescription>Apply the same monitor configuration to all selected sites.</DialogDescription>
+            <DialogDescription>
+              Update shared schedule, notification, tag, and template settings for the selected monitors. Identity
+              fields stay unchanged.
+            </DialogDescription>
           </DialogHeader>
           {selectedIds.size > 0 ? (
             <MonitorForm
@@ -453,6 +456,7 @@ export default function MonitoringPage() {
               savedEmails={savedEmails}
               submitting={saving}
               submitLabel="Apply to selected monitors"
+              mode="bulk"
               onCancel={() => setBulkEditOpen(false)}
               onSubmit={handleBulkUpdate}
             />

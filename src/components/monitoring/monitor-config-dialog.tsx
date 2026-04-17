@@ -66,49 +66,53 @@ export function MonitorConfigDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b px-6 py-5">
           <DialogTitle>Monitoring as Code</DialogTitle>
-          <DialogDescription>Export the current monitor fleet or paste a JSON/YAML bundle to restore declarative monitor definitions.</DialogDescription>
+          <DialogDescription>
+            Export the current monitor fleet or paste a JSON/YAML bundle to restore declarative monitor definitions.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-end">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="grid gap-4">
+            <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-end">
+              <div className="space-y-2">
+                <Label>Format</Label>
+                <Select value={format} onValueChange={(value) => setFormat(value as "json" | "yaml")}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="json">JSON</SelectItem>
+                    <SelectItem value="yaml">YAML</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <Button variant="outline" className="h-10 min-w-[140px]" onClick={() => void handleExport()}>
+                  <Download data-icon="inline-start" />
+                  Export bundle
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label>Format</Label>
-              <Select value={format} onValueChange={(value) => setFormat(value as "json" | "yaml")}>
-                <SelectTrigger className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="json">JSON</SelectItem>
-                  <SelectItem value="yaml">YAML</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Import bundle</Label>
+              <Textarea
+                rows={16}
+                value={content}
+                onChange={(event) => setContent(event.target.value)}
+                placeholder="Paste a Sentrovia monitor bundle in JSON or YAML format."
+                className="min-h-[22rem] max-h-[48vh] resize-none overflow-y-auto font-mono text-xs"
+              />
             </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <Button variant="outline" className="h-10 min-w-[140px]" onClick={() => void handleExport()}>
-                <Download data-icon="inline-start" />
-                Export bundle
-              </Button>
-            </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label>Import bundle</Label>
-            <Textarea
-              rows={16}
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="Paste a Sentrovia monitor bundle in JSON or YAML format."
-              className="font-mono text-xs"
-            />
+            {message ? <div className="rounded-lg border px-3 py-2 text-sm">{message}</div> : null}
           </div>
-
-          {message ? <div className="rounded-lg border px-3 py-2 text-sm">{message}</div> : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t bg-background px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           <Button onClick={() => void handleImport()} disabled={submitting || !content.trim()}>
             <Upload data-icon="inline-start" />
