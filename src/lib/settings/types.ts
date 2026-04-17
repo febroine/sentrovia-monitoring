@@ -31,6 +31,9 @@ export interface SettingsPayload {
     defaultEmailSubjectTemplate: string;
     defaultEmailBodyTemplate: string;
     defaultTelegramTemplate: string;
+    recoveryEmailSubjectTemplate: string;
+    recoveryEmailBodyTemplate: string;
+    recoveryTelegramTemplate: string;
     prolongedDowntimeEmailSubjectTemplate: string;
     prolongedDowntimeEmailBodyTemplate: string;
     prolongedDowntimeTelegramTemplate: string;
@@ -105,6 +108,11 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
       "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
     defaultTelegramTemplate:
       "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
+    recoveryEmailSubjectTemplate: "[Sentrovia] {domain} recovered ({status_code})",
+    recoveryEmailBodyTemplate:
+      "Monitor: {domain} ({url_link}) has recovered and is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    recoveryTelegramTemplate:
+      "{domain} ({url}) has recovered and is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
     prolongedDowntimeEmailSubjectTemplate: "[Sentrovia] {domain} has been DOWN for {downtime_duration}",
     prolongedDowntimeEmailBodyTemplate:
       "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",

@@ -355,6 +355,24 @@ npm run dev
 npm run worker:dev
 ```
 
+## Windows PM2 update flow
+
+If Sentrovia is already running in production with PM2, you can now update it with:
+
+```bat
+scripts\update-production-windows-pm2.bat
+```
+
+That script will:
+
+- run `git pull`
+- install updated dependencies
+- apply the latest schema
+- build the production app
+- restart existing PM2 processes if they exist
+- or recreate them from [ecosystem.config.cjs](./ecosystem.config.cjs) if they do not
+- save the PM2 process list again
+
 ## Scripts
 
 - `npm run dev` starts the Next.js dev server

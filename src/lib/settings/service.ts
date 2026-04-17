@@ -55,6 +55,9 @@ const USER_SETTINGS_COLUMN_MAP = {
   defaultEmailSubjectTemplate: "default_email_subject_template",
   defaultEmailBodyTemplate: "default_email_body_template",
   defaultTelegramTemplate: "default_telegram_template",
+  recoveryEmailSubjectTemplate: "recovery_email_subject_template",
+  recoveryEmailBodyTemplate: "recovery_email_body_template",
+  recoveryTelegramTemplate: "recovery_telegram_template",
   prolongedDowntimeEmailSubjectTemplate: "prolonged_downtime_email_subject_template",
   prolongedDowntimeEmailBodyTemplate: "prolonged_downtime_email_body_template",
   prolongedDowntimeTelegramTemplate: "prolonged_downtime_telegram_template",
@@ -177,6 +180,14 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         stringOrEmpty(settings?.defaultEmailBodyTemplate) || DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
       defaultTelegramTemplate:
         stringOrEmpty(settings?.defaultTelegramTemplate) || DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+      recoveryEmailSubjectTemplate:
+        stringOrEmpty(settings?.recoveryEmailSubjectTemplate) ||
+        DEFAULT_SETTINGS.notifications.recoveryEmailSubjectTemplate,
+      recoveryEmailBodyTemplate:
+        stringOrEmpty(settings?.recoveryEmailBodyTemplate) ||
+        DEFAULT_SETTINGS.notifications.recoveryEmailBodyTemplate,
+      recoveryTelegramTemplate:
+        stringOrEmpty(settings?.recoveryTelegramTemplate) || DEFAULT_SETTINGS.notifications.recoveryTelegramTemplate,
       prolongedDowntimeEmailSubjectTemplate:
         stringOrEmpty(settings?.prolongedDowntimeEmailSubjectTemplate) ||
         DEFAULT_SETTINGS.notifications.prolongedDowntimeEmailSubjectTemplate,
@@ -423,6 +434,9 @@ export async function upsertSettings(
     defaultEmailSubjectTemplate: emptyToNull(input.notifications.defaultEmailSubjectTemplate),
     defaultEmailBodyTemplate: emptyToNull(input.notifications.defaultEmailBodyTemplate),
     defaultTelegramTemplate: emptyToNull(input.notifications.defaultTelegramTemplate),
+    recoveryEmailSubjectTemplate: emptyToNull(input.notifications.recoveryEmailSubjectTemplate),
+    recoveryEmailBodyTemplate: emptyToNull(input.notifications.recoveryEmailBodyTemplate),
+    recoveryTelegramTemplate: emptyToNull(input.notifications.recoveryTelegramTemplate),
     prolongedDowntimeEmailSubjectTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailSubjectTemplate),
     prolongedDowntimeEmailBodyTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailBodyTemplate),
     prolongedDowntimeTelegramTemplate: emptyToNull(input.notifications.prolongedDowntimeTelegramTemplate),
