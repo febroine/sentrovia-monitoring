@@ -35,6 +35,7 @@ export async function checkPingMonitor(monitor: Monitor): Promise<CheckResult> {
 }
 
 async function measurePingLatency(host: string, timeoutMs: number) {
+  assertSafePingHost(host);
   const { command, args } = buildPingCommand(host, timeoutMs);
   const { stdout, stderr } = await execFileAsync(command, args, {
     timeout: Math.max(timeoutMs + 1_000, 2_000),
@@ -48,6 +49,14 @@ async function measurePingLatency(host: string, timeoutMs: number) {
   }
 
   return latencyMs;
+}
+
+function assertSafePingHost(host: string) {
+  const normalizedHost = host.trim();
+
+  if (!normalizedHost || normalizedHost.startsWith("-") || /[\s/?#]/.test(normalizedHost)) {
+    throw new Error("Ping monitor host is invalid.");
+  }
 }
 
 function buildPingCommand(host: string, timeoutMs: number) {
