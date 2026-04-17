@@ -4,7 +4,14 @@ import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, userSettings, workerState } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import type { MonitorInput } from "@/lib/monitors/schemas";
-import { buildCanonicalMonitorTarget, buildMonitorIdentityKey } from "@/lib/monitors/targets";
+import {
+  buildCanonicalMonitorTarget,
+  buildMonitorIdentityKey,
+  parseHeartbeatMonitorTarget,
+  parsePingMonitorTarget,
+  parsePortMonitorTarget,
+  parsePostgresMonitorTarget,
+} from "@/lib/monitors/targets";
 import { encryptValue } from "@/lib/security/encryption";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
@@ -50,8 +57,33 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
 }
 
 export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {
-  const updated = await Promise.all(ids.map((monitorId) => updateMonitor(userId, monitorId, input)));
-  return updated.filter((monitor): monitor is NonNullable<typeof monitor> => Boolean(monitor));
+  return db.transaction(async (tx) => {
+    const existingMonitors = await tx
+      .select()
+      .from(monitors)
+      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)));
+    const updated: Array<typeof monitors.$inferSelect> = [];
+
+    for (const existingMonitor of existingMonitors) {
+      const mergedInput = buildBulkUpdatePayload(existingMonitor, input);
+      const values = await buildMonitorValues(userId, mergedInput, existingMonitor, tx);
+      const [monitor] = await tx
+        .update(monitors)
+        .set({
+          ...values,
+          userId,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(monitors.id, existingMonitor.id), eq(monitors.userId, userId)))
+        .returning();
+
+      if (monitor) {
+        updated.push(monitor);
+      }
+    }
+
+    return updated;
+  });
 }
 
 export async function updateMonitorTags(
@@ -569,12 +601,78 @@ async function getMonitorById(userId: string, monitorId: string, database: Datab
   return monitor ?? null;
 }
 
+function buildBulkUpdatePayload(
+  existingMonitor: typeof monitors.$inferSelect,
+  input: MonitorInput
+): MonitorInput {
+  const monitorType = normalizeMonitorType(existingMonitor.monitorType);
+  const payload: MonitorInput = {
+    ...input,
+    name: existingMonitor.name,
+    monitorType,
+    companyId: existingMonitor.companyId,
+    company: existingMonitor.company,
+    heartbeatLastReceivedAt: existingMonitor.heartbeatLastReceivedAt?.toISOString() ?? null,
+    databasePassword: "",
+    databasePasswordConfigured: Boolean(existingMonitor.databasePasswordEncrypted),
+  };
+
+  if (monitorType === "http" || monitorType === "keyword" || monitorType === "json") {
+    payload.url = existingMonitor.url.split("#")[0];
+  }
+
+  if (monitorType === "keyword") {
+    payload.keywordQuery = existingMonitor.keywordQuery ?? "";
+    payload.keywordInvert = existingMonitor.keywordInvert;
+  }
+
+  if (monitorType === "json") {
+    payload.jsonPath = existingMonitor.jsonPath ?? "";
+    payload.jsonExpectedValue = existingMonitor.jsonExpectedValue ?? "";
+    payload.jsonMatchMode = normalizeJsonMatchMode(existingMonitor.jsonMatchMode);
+  }
+
+  if (monitorType === "ping") {
+    payload.portHost = parsePingMonitorTarget(existingMonitor.url).host;
+  }
+
+  if (monitorType === "port") {
+    const target = parsePortMonitorTarget(existingMonitor.url);
+    payload.portHost = target.host;
+    payload.portNumber = target.port;
+  }
+
+  if (monitorType === "heartbeat") {
+    payload.heartbeatToken =
+      existingMonitor.heartbeatToken ?? parseHeartbeatMonitorTarget(existingMonitor.url).token;
+  }
+
+  if (monitorType === "postgres") {
+    const target = parsePostgresMonitorTarget(existingMonitor.url);
+    payload.databaseHost = target.host;
+    payload.databasePort = target.port;
+    payload.databaseName = target.databaseName;
+    payload.databaseUsername = target.databaseUsername;
+    payload.databaseSsl = existingMonitor.databaseSsl;
+  }
+
+  return payload;
+}
+
 function normalizeMonitorType(value: string | null | undefined): MonitorInput["monitorType"] {
   if (value === "port" || value === "postgres" || value === "keyword" || value === "json" || value === "ping" || value === "heartbeat") {
     return value;
   }
 
   return "http";
+}
+
+function normalizeJsonMatchMode(value: string | null | undefined): MonitorInput["jsonMatchMode"] {
+  if (value === "contains" || value === "exists") {
+    return value;
+  }
+
+  return "equals";
 }
 
 function resolveDatabasePassword(

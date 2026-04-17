@@ -10,12 +10,15 @@ import {
   TemplateMonitorSettings,
 } from "@/components/monitoring/monitor-form-notification-sections";
 
+type MonitorFormMode = "single" | "bulk";
+
 export function MonitorForm({
   initialValue,
   companies,
   savedEmails,
   submitting,
   submitLabel,
+  mode = "single",
   onCancel,
   onSubmit,
 }: {
@@ -24,6 +27,7 @@ export function MonitorForm({
   savedEmails: string[];
   submitting: boolean;
   submitLabel: string;
+  mode?: MonitorFormMode;
   onCancel: () => void;
   onSubmit: (payload: MonitorPayload) => Promise<void>;
 }) {
@@ -52,7 +56,7 @@ export function MonitorForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <Tabs defaultValue="general" className="flex-col">
+      <Tabs defaultValue={mode === "bulk" ? "check" : "general"} className="flex-col">
         <TabsList className="mb-6 grid h-9 w-full grid-cols-4 bg-surface-high">
           <TabsTrigger value="general" className="text-xs">
             General
@@ -73,6 +77,7 @@ export function MonitorForm({
             values={values}
             companies={companies}
             tagsText={tagsText}
+            mode={mode}
             onFieldChange={setField}
             onTagsTextChange={setTagsText}
           />

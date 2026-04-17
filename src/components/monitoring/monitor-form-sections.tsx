@@ -61,15 +61,18 @@ export function GeneralMonitorSettings({
   values,
   companies,
   tagsText,
+  mode = "single",
   onFieldChange,
   onTagsTextChange,
 }: {
   values: MonitorPayload;
   companies: CompanyRecord[];
   tagsText: string;
+  mode?: "single" | "bulk";
   onFieldChange: OnFieldChange;
   onTagsTextChange: (value: string) => void;
 }) {
+  const isBulkEditMode = mode === "bulk";
   const selectedMonitorType = MONITOR_TYPE_OPTIONS.find((option) => option.value === values.monitorType);
   const isHttpMonitor = values.monitorType === "http";
   const isKeywordMonitor = values.monitorType === "keyword";
@@ -81,242 +84,255 @@ export function GeneralMonitorSettings({
 
   return (
     <div className="space-y-4">
-      <Field label="Monitor type">
-        <Select value={values.monitorType} onValueChange={(value) => onFieldChange("monitorType", value as MonitorType)}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MONITOR_TYPE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {getMonitorTypeLabel(option.value)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-
-      {selectedMonitorType ? (
-        <div className="rounded-lg border border-border/80 bg-muted/10 px-4 py-3">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-md border border-border/70 bg-background p-2">
-              <selectedMonitorType.icon className="size-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">{getMonitorTypeLabel(selectedMonitorType.value)}</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedMonitorType.description}</p>
-            </div>
-          </div>
+      {isBulkEditMode ? (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+          <p className="text-sm font-medium text-foreground">Bulk edit keeps each monitor target intact.</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Monitor type, name, company, URL or host, and monitor-specific keyword, JSON, heartbeat, or database fields
+            stay unchanged for every selected monitor. Use this screen for shared tags, schedule, notification, and
+            template updates.
+          </p>
         </div>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Monitor name">
-          <Input value={values.name} onChange={(event) => onFieldChange("name", event.target.value)} required />
-        </Field>
-        <Field label="Company">
-          <Select
-            value={values.companyId || "none"}
-            onValueChange={(value) => {
-              const companyId = value === "none" ? "" : String(value);
-              const company = companies.find((item) => item.id === companyId);
-              onFieldChange("companyId", companyId);
-              onFieldChange("company", company?.name ?? "");
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select company" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No company</SelectItem>
-              {companies.map((company) => (
-                <SelectItem key={company.id} value={company.id}>
-                  {company.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
-
-      {isHttpMonitor || isKeywordMonitor || isJsonMonitor ? (
-        <Field label="URL">
-          <Input
-            type="url"
-            value={values.url}
-            onChange={(event) => onFieldChange("url", event.target.value)}
-            placeholder="https://example.com/health"
-            required
-          />
-        </Field>
-      ) : null}
-
-      {isKeywordMonitor ? (
-        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
-          <Field label="Keyword or phrase">
-            <Input
-              value={values.keywordQuery}
-              onChange={(event) => onFieldChange("keywordQuery", event.target.value)}
-              placeholder="All systems nominal"
-              required
-            />
+      ) : (
+        <>
+          <Field label="Monitor type">
+            <Select value={values.monitorType} onValueChange={(value) => onFieldChange("monitorType", value as MonitorType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONITOR_TYPE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {getMonitorTypeLabel(option.value)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <CheckRow
-            label="Invert match"
-            description="Mark the monitor as healthy only when this keyword does not appear in the response body."
-            checked={values.keywordInvert}
-            onChange={(checked) => onFieldChange("keywordInvert", checked)}
-          />
-        </div>
-      ) : null}
 
-      {isJsonMonitor ? (
-        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+          {selectedMonitorType ? (
+            <div className="rounded-lg border border-border/80 bg-muted/10 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-md border border-border/70 bg-background p-2">
+                  <selectedMonitorType.icon className="size-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{getMonitorTypeLabel(selectedMonitorType.value)}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedMonitorType.description}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-4">
-            <Field label="JSON path">
-              <Input
-                value={values.jsonPath}
-                onChange={(event) => onFieldChange("jsonPath", event.target.value)}
-                placeholder="data.status"
-                required
-              />
+            <Field label="Monitor name">
+              <Input value={values.name} onChange={(event) => onFieldChange("name", event.target.value)} required />
             </Field>
-            <Field label="Match mode">
-              <Select value={values.jsonMatchMode} onValueChange={(value) => onFieldChange("jsonMatchMode", value as MonitorPayload["jsonMatchMode"])}>
+            <Field label="Company">
+              <Select
+                value={values.companyId || "none"}
+                onValueChange={(value) => {
+                  const companyId = value === "none" ? "" : String(value);
+                  const company = companies.find((item) => item.id === companyId);
+                  onFieldChange("companyId", companyId);
+                  onFieldChange("company", company?.name ?? "");
+                }}
+              >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select company" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="equals">Equals</SelectItem>
-                  <SelectItem value="contains">Contains</SelectItem>
-                  <SelectItem value="exists">Exists</SelectItem>
+                  <SelectItem value="none">No company</SelectItem>
+                  {companies.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
           </div>
-          <Field label="Expected value">
-            <Input
-              value={values.jsonExpectedValue}
-              onChange={(event) => onFieldChange("jsonExpectedValue", event.target.value)}
-              placeholder='healthy'
-              disabled={values.jsonMatchMode === "exists"}
-            />
-          </Field>
-        </div>
-      ) : null}
 
-      {isPingMonitor ? (
-        <Field label="Host">
-          <Input
-            value={values.portHost}
-            onChange={(event) => onFieldChange("portHost", event.target.value)}
-            placeholder="example.com"
-            required
-          />
-        </Field>
-      ) : null}
-
-      {isPortMonitor ? (
-        <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4">
-          <Field label="Host">
-            <Input
-              value={values.portHost}
-              onChange={(event) => onFieldChange("portHost", event.target.value)}
-              placeholder="example.com"
-              required
-            />
-          </Field>
-          <Field label="Port">
-            <Input
-              type="number"
-              min={1}
-              max={65535}
-              value={values.portNumber}
-              onChange={(event) => onFieldChange("portNumber", Number(event.target.value) || 1)}
-              required
-            />
-          </Field>
-        </div>
-      ) : null}
-
-      {isHeartbeatMonitor ? (
-        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
-          <div className="rounded-lg border border-border/80 bg-background px-4 py-3 text-xs leading-6 text-muted-foreground">
-            Save the monitor once to generate its dedicated heartbeat endpoint. Your cron job can then call that endpoint with
-            `GET` or `POST` on every successful run.
-          </div>
-          <Field label="Heartbeat endpoint">
-            <HeartbeatEndpointTools token={values.heartbeatToken} intervalValue={values.intervalValue} intervalUnit={values.intervalUnit} />
-          </Field>
-          <Field label="Last heartbeat">
-            <Input value={values.heartbeatLastReceivedAt ?? "No heartbeat received yet"} readOnly />
-          </Field>
-        </div>
-      ) : null}
-
-      {isPostgresMonitor ? (
-        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4">
-            <Field label="Database host">
+          {isHttpMonitor || isKeywordMonitor || isJsonMonitor ? (
+            <Field label="URL">
               <Input
-                value={values.databaseHost}
-                onChange={(event) => onFieldChange("databaseHost", event.target.value)}
-                placeholder="db.example.internal"
+                type="url"
+                value={values.url}
+                onChange={(event) => onFieldChange("url", event.target.value)}
+                placeholder="https://example.com/health"
                 required
               />
             </Field>
-            <Field label="Port">
+          ) : null}
+
+          {isKeywordMonitor ? (
+            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+              <Field label="Keyword or phrase">
+                <Input
+                  value={values.keywordQuery}
+                  onChange={(event) => onFieldChange("keywordQuery", event.target.value)}
+                  placeholder="All systems nominal"
+                  required
+                />
+              </Field>
+              <CheckRow
+                label="Invert match"
+                description="Mark the monitor as healthy only when this keyword does not appear in the response body."
+                checked={values.keywordInvert}
+                onChange={(checked) => onFieldChange("keywordInvert", checked)}
+              />
+            </div>
+          ) : null}
+
+          {isJsonMonitor ? (
+            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="JSON path">
+                  <Input
+                    value={values.jsonPath}
+                    onChange={(event) => onFieldChange("jsonPath", event.target.value)}
+                    placeholder="data.status"
+                    required
+                  />
+                </Field>
+                <Field label="Match mode">
+                  <Select value={values.jsonMatchMode} onValueChange={(value) => onFieldChange("jsonMatchMode", value as MonitorPayload["jsonMatchMode"])}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="equals">Equals</SelectItem>
+                      <SelectItem value="contains">Contains</SelectItem>
+                      <SelectItem value="exists">Exists</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+              <Field label="Expected value">
+                <Input
+                  value={values.jsonExpectedValue}
+                  onChange={(event) => onFieldChange("jsonExpectedValue", event.target.value)}
+                  placeholder="healthy"
+                  disabled={values.jsonMatchMode === "exists"}
+                />
+              </Field>
+            </div>
+          ) : null}
+
+          {isPingMonitor ? (
+            <Field label="Host">
               <Input
-                type="number"
-                min={1}
-                max={65535}
-                value={values.databasePort}
-                onChange={(event) => onFieldChange("databasePort", Number(event.target.value) || 5432)}
+                value={values.portHost}
+                onChange={(event) => onFieldChange("portHost", event.target.value)}
+                placeholder="example.com"
                 required
               />
             </Field>
-          </div>
+          ) : null}
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Database name">
-              <Input
-                value={values.databaseName}
-                onChange={(event) => onFieldChange("databaseName", event.target.value)}
-                placeholder="production"
-                required
+          {isPortMonitor ? (
+            <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4">
+              <Field label="Host">
+                <Input
+                  value={values.portHost}
+                  onChange={(event) => onFieldChange("portHost", event.target.value)}
+                  placeholder="example.com"
+                  required
+                />
+              </Field>
+              <Field label="Port">
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={values.portNumber}
+                  onChange={(event) => onFieldChange("portNumber", Number(event.target.value) || 1)}
+                  required
+                />
+              </Field>
+            </div>
+          ) : null}
+
+          {isHeartbeatMonitor ? (
+            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+              <div className="rounded-lg border border-border/80 bg-background px-4 py-3 text-xs leading-6 text-muted-foreground">
+                Save the monitor once to generate its dedicated heartbeat endpoint. Your cron job can then call that
+                endpoint with `GET` or `POST` on every successful run.
+              </div>
+              <Field label="Heartbeat endpoint">
+                <HeartbeatEndpointTools token={values.heartbeatToken} intervalValue={values.intervalValue} intervalUnit={values.intervalUnit} />
+              </Field>
+              <Field label="Last heartbeat">
+                <Input value={values.heartbeatLastReceivedAt ?? "No heartbeat received yet"} readOnly />
+              </Field>
+            </div>
+          ) : null}
+
+          {isPostgresMonitor ? (
+            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+              <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4">
+                <Field label="Database host">
+                  <Input
+                    value={values.databaseHost}
+                    onChange={(event) => onFieldChange("databaseHost", event.target.value)}
+                    placeholder="db.example.internal"
+                    required
+                  />
+                </Field>
+                <Field label="Port">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={values.databasePort}
+                    onChange={(event) => onFieldChange("databasePort", Number(event.target.value) || 5432)}
+                    required
+                  />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Database name">
+                  <Input
+                    value={values.databaseName}
+                    onChange={(event) => onFieldChange("databaseName", event.target.value)}
+                    placeholder="production"
+                    required
+                  />
+                </Field>
+                <Field label="Username">
+                  <Input
+                    value={values.databaseUsername}
+                    onChange={(event) => onFieldChange("databaseUsername", event.target.value)}
+                    placeholder="monitor_user"
+                    required
+                  />
+                </Field>
+              </div>
+
+              <Field label={values.databasePasswordConfigured ? "Password (leave blank to keep current value)" : "Password"}>
+                <Input
+                  type="password"
+                  value={values.databasePassword}
+                  onChange={(event) => onFieldChange("databasePassword", event.target.value)}
+                  placeholder={
+                    values.databasePasswordConfigured
+                      ? "Stored securely. Enter a new password only to rotate it."
+                      : "Database password"
+                  }
+                />
+              </Field>
+
+              <CheckRow
+                label="Require SSL for the database connection"
+                description="Use a TLS-secured PostgreSQL session when connecting to the target database."
+                checked={values.databaseSsl}
+                onChange={(checked) => onFieldChange("databaseSsl", checked)}
               />
-            </Field>
-            <Field label="Username">
-              <Input
-                value={values.databaseUsername}
-                onChange={(event) => onFieldChange("databaseUsername", event.target.value)}
-                placeholder="monitor_user"
-                required
-              />
-            </Field>
-          </div>
-
-          <Field label={values.databasePasswordConfigured ? "Password (leave blank to keep current value)" : "Password"}>
-            <Input
-              type="password"
-              value={values.databasePassword}
-              onChange={(event) => onFieldChange("databasePassword", event.target.value)}
-              placeholder={
-                values.databasePasswordConfigured
-                  ? "Stored securely. Enter a new password only to rotate it."
-                  : "Database password"
-              }
-            />
-          </Field>
-
-          <CheckRow
-            label="Require SSL for the database connection"
-            description="Use a TLS-secured PostgreSQL session when connecting to the target database."
-            checked={values.databaseSsl}
-            onChange={(checked) => onFieldChange("databaseSsl", checked)}
-          />
-        </div>
-      ) : null}
+            </div>
+          ) : null}
+        </>
+      )}
 
       <Field label="Tags">
         <Input
