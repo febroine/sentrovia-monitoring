@@ -6,6 +6,7 @@ export const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
 export const ipFamilySchema = z.enum(["auto", "ipv4", "ipv6"]);
 export const methodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 export const jsonMatchModeSchema = z.enum(["equals", "contains", "exists"]);
+const INVALID_HOST_INPUT_PATTERN = /[\s/?#]/;
 
 function optionalString(maxLength: number) {
   return z
@@ -22,6 +23,12 @@ function optionalRequiredString(maxLength: number) {
     .trim()
     .max(maxLength)
     .default("");
+}
+
+function isSafeHostInput(value: string) {
+  const normalized = value.trim();
+
+  return normalized.length > 0 && !normalized.startsWith("-") && !INVALID_HOST_INPUT_PATTERN.test(normalized);
 }
 
 export const monitorInputSchema = z
@@ -139,6 +146,12 @@ export const monitorInputSchema = z
               ? "Enter a hostname or IP address for the ping monitor."
               : "Enter a hostname or IP address for the port monitor.",
         });
+      } else if (!isSafeHostInput(value.portHost)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["portHost"],
+          message: "Enter a valid hostname or IP address without spaces, URL prefixes, or leading dashes.",
+        });
       }
       return;
     }
@@ -159,6 +172,12 @@ export const monitorInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ["databaseHost"],
         message: "Enter the database host.",
+      });
+    } else if (!isSafeHostInput(value.databaseHost)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["databaseHost"],
+        message: "Enter a valid database host without spaces, URL prefixes, or leading dashes.",
       });
     }
 
