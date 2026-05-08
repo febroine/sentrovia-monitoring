@@ -15,14 +15,24 @@ export function buildReportCsv(report: GeneratedReport) {
     ["Scope", report.scope === "company" ? report.companyName ?? "Company" : "Global workspace"],
     ["Period", report.periodLabel],
     ["Generated", new Date(report.generatedAt).toLocaleString()],
+    ["Health score", `${report.summary.healthScore}/100 (${report.summary.healthStatus})`],
     ["Monitors", String(report.summary.monitorCount)],
     ["Currently up", String(report.summary.currentlyUp)],
     ["Currently down", String(report.summary.currentlyDown)],
     ["Currently pending", String(report.summary.currentlyPending)],
     ["Checks", String(report.summary.totalChecks)],
+    ["Up checks", String(report.summary.upChecks)],
+    ["Down checks", String(report.summary.downChecks)],
+    ["Pending checks", String(report.summary.pendingChecks)],
     ["Uptime", `${report.summary.uptimePct.toFixed(2)}%`],
     ["Average latency", `${report.summary.averageLatencyMs}ms`],
+    ["P95 latency", `${report.summary.p95LatencyMs}ms`],
     ["Failures", String(report.summary.failureEvents)],
+    ["Failure rate", `${report.summary.failureRatePct.toFixed(2)}%`],
+    ["Impacted monitors", String(report.summary.impactedMonitors)],
+    [""],
+    ["Recommended actions"],
+    ...report.recommendations.map((item) => [item]),
     [""],
     ["Status code", "Count"],
     ...buildStatusCodeRows(report),
@@ -33,14 +43,27 @@ export function buildReportCsv(report: GeneratedReport) {
     ["Top failing monitors", "Failures", "Last failure"],
     ...buildFailingMonitorRows(report),
     [""],
-    ["Monitor", "Status", "Uptime", "Avg latency", "Checks", "Failures"],
+    ["Recent failures", "Status code", "Time", "Detail"],
+    ...buildRecentFailureRows(report),
+    [""],
+    ["Monitor", "Company", "URL", "Status", "Current code", "Uptime", "Avg latency", "P95 latency", "Checks", "Up checks", "Down checks", "Pending checks", "Failures", "Last checked", "Last failure", "Last error"],
     ...report.monitorBreakdown.map((monitor) => [
       monitor.name,
+      monitor.companyName ?? EMPTY_REPORT_VALUE,
+      monitor.url,
       monitor.status,
+      reportValue(monitor.currentStatusCode),
       `${monitor.uptimePct.toFixed(2)}%`,
       `${monitor.averageLatencyMs}ms`,
+      `${monitor.p95LatencyMs}ms`,
       String(monitor.totalChecks),
+      String(monitor.upChecks),
+      String(monitor.downChecks),
+      String(monitor.pendingChecks),
       String(monitor.failures),
+      monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : EMPTY_REPORT_VALUE,
+      monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE,
+      monitor.lastErrorMessage ?? EMPTY_REPORT_VALUE,
     ]),
   ];
 
@@ -56,11 +79,15 @@ export function buildPrintableReportHtml(
       (monitor) => `
         <tr>
           <td>${escapeHtml(reportValue(monitor.name))}</td>
+          <td>${escapeHtml(reportValue(monitor.companyName))}</td>
           <td>${escapeHtml(reportValue(monitor.status))}</td>
+          <td>${escapeHtml(reportValue(monitor.currentStatusCode))}</td>
           <td>${escapeHtml(`${monitor.uptimePct.toFixed(2)}%`)}</td>
           <td>${escapeHtml(`${monitor.averageLatencyMs}ms`)}</td>
+          <td>${escapeHtml(`${monitor.p95LatencyMs}ms`)}</td>
           <td>${escapeHtml(String(monitor.totalChecks))}</td>
           <td>${escapeHtml(String(monitor.failures))}</td>
+          <td>${escapeHtml(monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE)}</td>
         </tr>
       `
     )
@@ -71,6 +98,18 @@ export function buildPrintableReportHtml(
         <tr>
           <td>${escapeHtml(statusCode)}</td>
           <td>${escapeHtml(count)}</td>
+        </tr>
+      `
+    )
+    .join("");
+  const recentFailureRows = buildRecentFailureRows(report)
+    .map(
+      ([name, statusCode, time, detail]) => `
+        <tr>
+          <td>${escapeHtml(name)}</td>
+          <td>${escapeHtml(statusCode)}</td>
+          <td>${escapeHtml(time)}</td>
+          <td>${escapeHtml(detail)}</td>
         </tr>
       `
     )
@@ -120,8 +159,11 @@ export function buildPrintableReportHtml(
           .summary { color: #475569; margin: 8px 0 0; }
           .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
           .stat { border: 1px solid #e5e7eb; border-radius: 16px; padding: 14px; }
+          .stat.emphasis { border-color: #bfdbfe; background: #eff6ff; }
           .stat-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; }
           .stat-value { font-size: 24px; font-weight: 700; margin-top: 8px; }
+          .recommendations { border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 16px; padding: 16px 18px; margin-bottom: 24px; }
+          .recommendations li { margin: 6px 0; color: #1e3a8a; }
           .section-title { font-size: 18px; font-weight: 700; margin: 28px 0 12px; }
           table { width: 100%; border-collapse: collapse; margin-top: 12px; }
           th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
@@ -143,12 +185,25 @@ export function buildPrintableReportHtml(
         </div>
 
         <div class="stats">
+          <div class="stat emphasis"><div class="stat-label">Health score</div><div class="stat-value">${report.summary.healthScore}/100</div></div>
           <div class="stat"><div class="stat-label">Monitors</div><div class="stat-value">${report.summary.monitorCount}</div></div>
           <div class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${report.summary.uptimePct.toFixed(
             2
           )}%</div></div>
+          <div class="stat"><div class="stat-label">P95 latency</div><div class="stat-value">${report.summary.p95LatencyMs}ms</div></div>
           <div class="stat"><div class="stat-label">Avg latency</div><div class="stat-value">${report.summary.averageLatencyMs}ms</div></div>
           <div class="stat"><div class="stat-label">Failures</div><div class="stat-value">${report.summary.failureEvents}</div></div>
+          <div class="stat"><div class="stat-label">Failure rate</div><div class="stat-value">${report.summary.failureRatePct.toFixed(
+            2
+          )}%</div></div>
+          <div class="stat"><div class="stat-label">Impacted</div><div class="stat-value">${report.summary.impactedMonitors}</div></div>
+        </div>
+
+        <div class="recommendations">
+          <div class="eyebrow">Recommended actions</div>
+          <ul>
+            ${report.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+          </ul>
         </div>
 
         <div class="grid-two">
@@ -191,16 +246,33 @@ export function buildPrintableReportHtml(
           <tbody>${failingMonitorRows}</tbody>
         </table>
 
+        <div class="section-title">Recent failure events</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Monitor</th>
+              <th>Code</th>
+              <th>Time</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody>${recentFailureRows}</tbody>
+        </table>
+
         <div class="section-title">Monitor breakdown</div>
         <table>
           <thead>
             <tr>
               <th>Monitor</th>
+              <th>Company</th>
               <th>Status</th>
+              <th>Code</th>
               <th>Uptime</th>
               <th>Avg latency</th>
+              <th>P95</th>
               <th>Checks</th>
               <th>Failures</th>
+              <th>Last failure</th>
             </tr>
           </thead>
           <tbody>${breakdownRows}</tbody>
@@ -239,6 +311,19 @@ function buildFailingMonitorRows(report: GeneratedReport) {
     monitor.name,
     String(monitor.failures),
     monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE,
+  ]);
+}
+
+function buildRecentFailureRows(report: GeneratedReport) {
+  if (report.recentFailures.length === 0) {
+    return [["No data", EMPTY_REPORT_VALUE, EMPTY_REPORT_VALUE, "No failure events in this period."]];
+  }
+
+  return report.recentFailures.map((event) => [
+    event.name,
+    reportValue(event.statusCode),
+    new Date(event.createdAt).toLocaleString(),
+    event.rcaSummary ?? event.message ?? EMPTY_REPORT_VALUE,
   ]);
 }
 

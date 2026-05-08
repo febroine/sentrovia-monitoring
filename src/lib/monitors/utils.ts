@@ -1,6 +1,6 @@
 import type { IntervalUnit } from "@/lib/monitors/types";
 
-export function serializeMonitorDates<T extends Record<string, unknown>>(monitor: T) {
+function serializeMonitorDates<T extends Record<string, unknown>>(monitor: T) {
   return {
     ...monitor,
     createdAt: serializeDate(monitor.createdAt),

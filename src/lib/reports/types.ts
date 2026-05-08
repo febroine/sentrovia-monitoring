@@ -8,6 +8,14 @@ export interface ReportPreviewInput {
   cadence: ReportCadence;
   companyId?: string | null;
   template?: ReportTemplateVariant;
+  deliveryDetailLevel?: "summary" | "standard" | "full";
+  attachCsv?: boolean;
+  attachHtml?: boolean;
+  attachPdf?: boolean;
+  includeIncidentSummary?: boolean;
+  includeMonitorBreakdown?: boolean;
+  emailSubjectTemplate?: string | null;
+  emailIntroTemplate?: string | null;
 }
 
 export interface ReportScheduleInput extends ReportPreviewInput {
@@ -32,6 +40,14 @@ export interface ReportScheduleRecord {
   lastDeliveredAt: string | null;
   lastStatus: ReportScheduleStatus;
   lastErrorMessage: string | null;
+  deliveryDetailLevel: "summary" | "standard" | "full";
+  attachCsv: boolean;
+  attachHtml: boolean;
+  attachPdf: boolean;
+  includeIncidentSummary: boolean;
+  includeMonitorBreakdown: boolean;
+  emailSubjectTemplate: string | null;
+  emailIntroTemplate: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,10 +71,19 @@ export interface GeneratedReport {
     currentlyDown: number;
     currentlyPending: number;
     totalChecks: number;
+    upChecks: number;
+    downChecks: number;
+    pendingChecks: number;
     uptimePct: number;
     averageLatencyMs: number;
+    p95LatencyMs: number;
     failureEvents: number;
+    impactedMonitors: number;
+    failureRatePct: number;
+    healthScore: number;
+    healthStatus: string;
   };
+  recommendations: string[];
   statusCodes: Array<{
     statusCode: number;
     count: number;
@@ -75,13 +100,31 @@ export interface GeneratedReport {
     failures: number;
     lastFailureAt: string | null;
   }>;
+  recentFailures: Array<{
+    monitorId: string;
+    name: string;
+    statusCode: number | null;
+    message: string | null;
+    rcaSummary: string | null;
+    createdAt: string;
+  }>;
   monitorBreakdown: Array<{
     monitorId: string;
     name: string;
+    url: string;
+    companyName: string | null;
     status: string;
+    currentStatusCode: number | null;
+    lastCheckedAt: string | null;
+    lastFailureAt: string | null;
+    lastErrorMessage: string | null;
     uptimePct: number;
     averageLatencyMs: number;
+    p95LatencyMs: number;
     totalChecks: number;
+    upChecks: number;
+    downChecks: number;
+    pendingChecks: number;
     failures: number;
   }>;
 }

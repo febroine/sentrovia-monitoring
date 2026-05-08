@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { env, getAuthSecret } from "@/lib/env";
 
 export const SESSION_COOKIE_NAME = "sentrovia.session";
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_ISSUER = "sentrovia-auth";
 const SESSION_AUDIENCE = "sentrovia-session";
 

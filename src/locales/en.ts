@@ -484,6 +484,4 @@ export const en = {
   }
 };
 
-export type AppTranslations = typeof en;
-
 

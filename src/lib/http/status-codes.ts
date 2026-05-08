@@ -1,4 +1,4 @@
-export interface HttpStatusMeta {
+interface HttpStatusMeta {
   label: string;
   category: "informational" | "success" | "redirection" | "client-error" | "server-error" | "unknown";
   explanation: string;

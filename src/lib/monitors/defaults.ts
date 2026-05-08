@@ -24,9 +24,6 @@ export function buildDefaultMonitorForm(settings: SettingsPayload | null) {
     cacheBuster: settings.monitoring.cacheBuster,
     saveErrorPages: settings.monitoring.saveErrorPages,
     saveSuccessPages: settings.monitoring.saveSuccessPages,
-    telegramTemplate: settings.notifications.defaultTelegramTemplate,
-    emailSubject: settings.notifications.defaultEmailSubjectTemplate,
-    emailBody: settings.notifications.defaultEmailBodyTemplate,
   };
 }
 

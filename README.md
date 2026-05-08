@@ -49,7 +49,8 @@ This project is designed more like an operations console than a toy dashboard:
 - company rollups
 - members and settings
 - worker health visibility
-- reports and worker insights
+- public status pages
+- reports, PDF attachments, and worker insights
 
 ### ✅ Multiple monitor types
 
@@ -151,7 +152,8 @@ Sentrovia classifies failures into targeted RCA buckets such as:
 - Discord webhook delivery
 - generic webhook delivery
 - delivery history and retry visibility
-- workspace-level templates and recipient defaults
+- workspace-level templates, subject overrides, and recipient defaults
+- monitor-level notification template overrides
 - prolonged-downtime reminders with configurable timing
 - recovery alerts after a confirmed outage returns healthy
 
@@ -163,7 +165,8 @@ Sentrovia classifies failures into targeted RCA buckets such as:
 - event logs with filters
 - worker heartbeat and health status
 - worker observability dashboard
-- reports center with previews and schedules
+- reports center with previews, schedules, CSV/HTML/PDF delivery, and templates
+- public status pages for monitor availability
 
 ## How it works
 
@@ -251,8 +254,19 @@ Sentrovia includes a built-in reports center with:
 - global workspace reports
 - preview before send
 - scheduled report delivery
+- configurable email subject and intro templates
+- detail-level controls for summary, monitor breakdown, and incident context
+- HTML, CSV, and PDF report attachments
 
 Reports are not a side export anymore; the worker can pick up due report schedules and send them as part of the product runtime.
+
+The Reports v2 schema is covered by the latest manual migration:
+
+```bash
+drizzle/0030_reports_v2_indexes_manual.sql
+```
+
+If you update an existing server manually, make sure migrations `0029` and `0030` have both been applied before testing notification templates and scheduled reports.
 
 ## Quick Start
 
@@ -355,9 +369,91 @@ npm run dev
 npm run worker:dev
 ```
 
+## Windows PM2 first-time production setup
+
+If you want to run Sentrovia on Windows with PM2, use the bundled setup script. It starts two named processes:
+
+- `sentrovia-web`
+- `sentrovia-worker`
+
+### Prerequisites
+
+Before the first PM2 deployment, make sure the server already has:
+
+- Node.js 20+
+- npm
+- Git
+- PostgreSQL
+- PM2 installed globally with `npm install -g pm2`
+- a completed `.env.local` file in the project root
+
+### First-time setup flow
+
+1. Clone the repository and move into the project directory.
+2. Create and fill `.env.local` with your production values.
+3. Run:
+
+```bat
+scripts\setup-production-windows-pm2.bat
+```
+
+The setup script will:
+
+- verify `node`, `npm`, `pm2`, and `.env.local`
+- install dependencies with `npm install`
+- apply the latest schema with `npm run db:push`
+- build the production app with `npm run build`
+- start `sentrovia-web` with `npm run start`
+- start `sentrovia-worker` with `npm run worker:start`
+- save the PM2 process list with `pm2 save`
+
+### Manual fallback flow
+
+If you prefer to run the setup steps one by one:
+
+```bat
+npm install
+npm run db:push
+npm run build
+pm2 delete sentrovia-web
+pm2 delete sentrovia-worker
+pm2 start npm --name sentrovia-web -- run start
+pm2 start npm --name sentrovia-worker -- run worker:start
+pm2 save
+```
+
+### Verification
+
+After setup, verify the runtime with:
+
+```bat
+pm2 status
+pm2 logs sentrovia-web --lines 50
+pm2 logs sentrovia-worker --lines 50
+```
+
+Then open:
+
+- [http://localhost:3000](http://localhost:3000)
+
+### Production note
+
+On the Windows PM2 flow, use `npm install` as the supported default.
+
+This project runs the PM2 worker through `tsx` and applies schema changes with `npm run db:push` during deployment, so `--omit=dev` is not the default supported install path for the documented Windows production flow.
+
+### Optional startup note
+
+Automatic startup on Windows is intentionally out of scope for the bundled repo scripts.
+
+If you want PM2 to restore processes automatically after machine restart, follow the official PM2 guidance for startup behavior:
+
+- [Startup Hook](https://doc.pm2.io/en/runtime/guide/startup-hook/)
+- [Startup Script](https://pm2.keymetrics.io/docs/usage/startup/)
+
 ## Windows PM2 update flow
 
-If Sentrovia is already running in production with PM2, you can now update it with:
+If Sentrovia is already installed and running in production with PM2, you can update the existing deployment with:
 
 ```bat
 scripts\update-production-windows-pm2.bat
@@ -370,7 +466,7 @@ That script will:
 - apply the latest schema
 - build the production app
 - restart existing PM2 processes if they exist
-- or recreate them from [ecosystem.config.cjs](./ecosystem.config.cjs) if they do not
+- or recreate them from the npm start scripts if they do not
 - save the PM2 process list again
 
 ## Scripts
@@ -381,8 +477,11 @@ That script will:
 - `npm run worker:dev` starts the worker with file watching
 - `npm run worker:start` starts the worker once
 - `npm run lint` runs ESLint
+- `npm run test` runs the Vitest test suite
 - `npm run db:generate` generates Drizzle migrations
 - `npm run db:push` pushes the current schema to PostgreSQL
+- `scripts\setup-production-windows-pm2.bat` performs the first Windows PM2 production setup
+- `scripts\update-production-windows-pm2.bat` updates an existing Windows PM2 production deployment
 
 ## Tech stack
 
@@ -394,6 +493,8 @@ That script will:
 - **Zod** for validation
 - **Zustand** for focused UI state
 - **Nodemailer** for SMTP delivery
+- **PDFKit** for PDF report attachments
+- **Vitest** for focused service/export tests
 - **Docker Compose** for self-hosted orchestration
 
 ## Project status
@@ -403,7 +504,6 @@ Sentrovia is already strong as an internal monitoring and operations console, bu
 Natural next steps for the platform include:
 
 - additional monitor types like DNS and push monitors
-- public status pages
 - escalation policies
 - multi-region checks
 - richer HTTP assertion workflows

@@ -1,6 +1,6 @@
 import { getHttpStatusMeta } from "@/lib/http/status-codes";
 
-export type RcaType =
+type RcaType =
   | "healthy"
   | "dns"
   | "timeout"

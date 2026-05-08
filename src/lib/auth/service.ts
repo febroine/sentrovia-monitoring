@@ -25,7 +25,7 @@ type PasswordRecord = {
   passwordHash: string;
 };
 
-export interface PublicUser extends SessionUser {
+interface PublicUser extends SessionUser {
   fullName: string;
   createdAt: string;
 }

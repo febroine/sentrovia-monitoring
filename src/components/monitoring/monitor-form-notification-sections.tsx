@@ -99,7 +99,7 @@ export function TemplateMonitorSettings({
       <div className="rounded-lg border border-border bg-muted/15 p-3">
         <p className="text-sm font-medium">Template variables</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          These tokens are available in monitor-level Telegram and email templates.
+          Leave monitor-level templates blank to use the workspace templates from Settings.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {MONITOR_TEMPLATE_TOKENS.map((token) => (

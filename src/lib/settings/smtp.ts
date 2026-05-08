@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { userSettings } from "@/lib/db/schema";
 import { decryptValue } from "@/lib/security/encryption";
 
-export interface SmtpSettings {
+interface SmtpSettings {
   host: string;
   port: number;
   username: string;
