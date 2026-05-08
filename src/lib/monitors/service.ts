@@ -12,11 +12,13 @@ import {
   parsePortMonitorTarget,
   parsePostgresMonitorTarget,
 } from "@/lib/monitors/targets";
+import { intervalToMs } from "@/lib/monitors/utils";
 import { encryptValue } from "@/lib/security/encryption";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const WORKER_STATE_ID = "primary";
 const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
+const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
 
 export async function listMonitors(userId: string) {
   return db
@@ -150,12 +152,37 @@ export async function createManyMonitors(userId: string, inputs: MonitorInput[],
     return true;
   });
   const values = await Promise.all(filtered.map((input) => buildMonitorValues(userId, input, null, database)));
+  const valuesWithInitialSchedule = spreadInitialMonitorChecks(values, new Date());
 
+  if (valuesWithInitialSchedule.length === 0) {
+    return [];
+  }
+
+  return database.insert(monitors).values(valuesWithInitialSchedule).returning();
+}
+
+export function spreadInitialMonitorChecks<T extends { intervalValue: number; intervalUnit: string }>(
+  values: T[],
+  now = new Date()
+) {
   if (values.length === 0) {
     return [];
   }
 
-  return database.insert(monitors).values(values).returning();
+  const spreadWindowMs = resolveColdStartSpreadWindow(values);
+
+  return values.map((value, index) => ({
+    ...value,
+    nextCheckAt: new Date(now.getTime() + Math.floor((spreadWindowMs * index) / values.length)),
+  }));
+}
+
+function resolveColdStartSpreadWindow(values: Array<{ intervalValue: number; intervalUnit: string }>) {
+  const shortestIntervalMs = Math.min(
+    ...values.map((value) => intervalToMs(value.intervalValue, value.intervalUnit))
+  );
+
+  return Math.max(0, Math.min(shortestIntervalMs, MAX_COLD_START_SPREAD_MS));
 }
 
 export async function claimDueMonitors(now: Date) {

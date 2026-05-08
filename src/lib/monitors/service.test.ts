@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectDueMonitorsForCycle } from "@/lib/monitors/service";
+import { selectDueMonitorsForCycle, spreadInitialMonitorChecks } from "@/lib/monitors/service";
 
 describe("monitor due selection", () => {
   it("prioritizes verification checks before normal due monitors within the batch", () => {
@@ -29,6 +29,44 @@ describe("monitor due selection", () => {
     );
 
     expect(selected.map((monitor) => monitor.id)).toEqual(["user-1-verification", "user-2-normal"]);
+  });
+});
+
+describe("monitor cold start spread", () => {
+  it("spreads imported monitors across their first interval up to five minutes", () => {
+    const scheduled = spreadInitialMonitorChecks(
+      Array.from({ length: 5 }, (_, index) => ({
+        name: `Monitor ${index + 1}`,
+        intervalValue: 5,
+        intervalUnit: "dk",
+      })),
+      new Date("2026-05-08T07:00:00.000Z")
+    );
+
+    expect(scheduled.map((monitor) => monitor.nextCheckAt.toISOString())).toEqual([
+      "2026-05-08T07:00:00.000Z",
+      "2026-05-08T07:01:00.000Z",
+      "2026-05-08T07:02:00.000Z",
+      "2026-05-08T07:03:00.000Z",
+      "2026-05-08T07:04:00.000Z",
+    ]);
+  });
+
+  it("uses the shortest interval as the spread window for faster monitors", () => {
+    const scheduled = spreadInitialMonitorChecks(
+      [
+        { name: "Fast", intervalValue: 30, intervalUnit: "sn" },
+        { name: "Normal", intervalValue: 5, intervalUnit: "dk" },
+        { name: "Slow", intervalValue: 1, intervalUnit: "sa" },
+      ],
+      new Date("2026-05-08T07:00:00.000Z")
+    );
+
+    expect(scheduled.map((monitor) => monitor.nextCheckAt.toISOString())).toEqual([
+      "2026-05-08T07:00:00.000Z",
+      "2026-05-08T07:00:10.000Z",
+      "2026-05-08T07:00:20.000Z",
+    ]);
   });
 });
 
