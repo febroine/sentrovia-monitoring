@@ -184,19 +184,7 @@ export async function claimDueMonitors(now: Date) {
   const batchSizeMap = new Map(
     settingsRows.map((item) => [item.userId, item.batchSize ?? DEFAULT_SETTINGS.monitoring.batchSize])
   );
-  const counters = new Map<string, number>();
-
-  const selectedRows = dueRows.filter((monitor) => {
-    const batchSize = Math.max(1, batchSizeMap.get(monitor.userId) ?? DEFAULT_SETTINGS.monitoring.batchSize);
-    const current = counters.get(monitor.userId) ?? 0;
-
-    if (current >= batchSize) {
-      return false;
-    }
-
-    counters.set(monitor.userId, current + 1);
-    return true;
-  });
+  const selectedRows = selectDueMonitorsForCycle(dueRows, batchSizeMap);
 
   if (selectedRows.length === 0) {
     return [];
@@ -599,6 +587,61 @@ async function getMonitorById(userId: string, monitorId: string, database: Datab
     .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)));
 
   return monitor ?? null;
+}
+
+export function selectDueMonitorsForCycle<T extends {
+  userId: string;
+  verificationMode: boolean;
+  nextCheckAt: Date | null;
+  createdAt: Date;
+}>(dueRows: T[], batchSizeMap: Map<string, number>) {
+  const counters = new Map<string, number>();
+
+  return [...dueRows]
+    .sort(compareDueMonitorPriority)
+    .filter((monitor) => {
+      const batchSize = Math.max(1, batchSizeMap.get(monitor.userId) ?? DEFAULT_SETTINGS.monitoring.batchSize);
+      const current = counters.get(monitor.userId) ?? 0;
+
+      if (current >= batchSize) {
+        return false;
+      }
+
+      counters.set(monitor.userId, current + 1);
+      return true;
+    });
+}
+
+function compareDueMonitorPriority(
+  left: { verificationMode: boolean; nextCheckAt: Date | null; createdAt: Date },
+  right: { verificationMode: boolean; nextCheckAt: Date | null; createdAt: Date }
+) {
+  if (left.verificationMode !== right.verificationMode) {
+    return left.verificationMode ? -1 : 1;
+  }
+
+  const nextCheckDiff = compareNullableDates(left.nextCheckAt, right.nextCheckAt);
+  if (nextCheckDiff !== 0) {
+    return nextCheckDiff;
+  }
+
+  return left.createdAt.getTime() - right.createdAt.getTime();
+}
+
+function compareNullableDates(left: Date | null, right: Date | null) {
+  if (!left && !right) {
+    return 0;
+  }
+
+  if (!left) {
+    return -1;
+  }
+
+  if (!right) {
+    return 1;
+  }
+
+  return left.getTime() - right.getTime();
 }
 
 function buildBulkUpdatePayload(
