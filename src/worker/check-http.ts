@@ -37,6 +37,13 @@ export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
 }
 
 function evaluateHttpResponse(monitor: Monitor, statusCode: number, bodyText: string) {
+  if (statusCode >= 300 && statusCode < 400) {
+    return {
+      ok: false,
+      errorMessage: `HTTP ${statusCode} redirect response was not followed within the configured redirect limit.`,
+    };
+  }
+
   if (statusCode < 200 || statusCode >= 400) {
     return {
       ok: false,

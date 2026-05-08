@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, userSettings, workerState } from "@/lib/db/schema";
@@ -534,11 +534,19 @@ export async function updateWorkerState(values: Partial<typeof workerState.$infe
 }
 
 export async function incrementWorkerCheckedCount(amount = 1) {
-  const state = await getWorkerState();
+  await getWorkerState();
 
-  return updateWorkerState({
-    checkedCount: (state.checkedCount ?? 0) + amount,
-  });
+  const increment = Math.max(0, amount);
+  const [state] = await db
+    .update(workerState)
+    .set({
+      checkedCount: sql`${workerState.checkedCount} + ${increment}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(workerState.id, WORKER_STATE_ID))
+    .returning();
+
+  return state;
 }
 
 async function buildMonitorValues(
