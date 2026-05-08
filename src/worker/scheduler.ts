@@ -264,6 +264,7 @@ async function processMonitor(monitor: Monitor) {
 
   if (
     checkStatus !== "pending" &&
+    !hadConfirmedIncident &&
     !monitor.verificationMode &&
     previousStatusCode !== null &&
     result.statusCode !== null &&

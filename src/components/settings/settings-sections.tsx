@@ -3,10 +3,12 @@
 import type { ReactNode } from "react";
 import {
   BellRing,
+  ExternalLink,
   FileText,
   FolderArchive,
   Mail,
   Palette,
+  RadioTower,
   Radar,
   Rows3,
 } from "lucide-react";
@@ -534,6 +536,55 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
   );
 }
 
+export function PublicStatusSettingsTab({ settings, updateSetting }: TabProps) {
+  const statusPath = settings.publicStatus.slug ? `/status/${settings.publicStatus.slug}` : "/status/your-status-slug";
+
+  return (
+    <SectionCard
+      title="Public Status Page"
+      description="Publish a read-only status page that exposes active monitor health without requiring a login."
+      icon={RadioTower}
+      iconClassName="text-rose-600 dark:text-rose-300"
+    >
+      <ToggleRow
+        label="Publish public status page"
+        description="Anyone with the status URL can view active service health when this is enabled."
+        checked={settings.publicStatus.enabled}
+        onChange={(checked) => updateSetting("publicStatus.enabled", checked)}
+      />
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Status page slug" hint="Use lowercase letters, numbers, and hyphens. This becomes the public URL path.">
+          <Input
+            value={settings.publicStatus.slug}
+            onChange={(event) => updateSetting("publicStatus.slug", toSlugInput(event.target.value))}
+            placeholder="sentrovia-status"
+          />
+        </Field>
+        <Field label="Public URL">
+          <div className="flex min-h-10 items-center gap-2 rounded-md border bg-muted/20 px-3 text-sm text-muted-foreground">
+            <ExternalLink className="h-4 w-4 shrink-0" />
+            <span className="truncate">{statusPath}</span>
+          </div>
+        </Field>
+      </div>
+      <Field label="Page title" hint="Leave empty to use your organization name.">
+        <Input
+          value={settings.publicStatus.title}
+          onChange={(event) => updateSetting("publicStatus.title", event.target.value)}
+          placeholder="Sentrovia service status"
+        />
+      </Field>
+      <Field label="Summary" hint="Shown at the top of the public status page.">
+        <Input
+          value={settings.publicStatus.summary}
+          onChange={(event) => updateSetting("publicStatus.summary", event.target.value)}
+          placeholder="Live service availability and active incident summary."
+        />
+      </Field>
+    </SectionCard>
+  );
+}
+
 export function DataSettingsTab({ settings, updateSetting }: TabProps) {
   return (
     <SectionCard
@@ -674,4 +725,13 @@ function ToggleCard({
       </div>
     </div>
   );
+}
+
+function toSlugInput(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 120);
 }

@@ -65,6 +65,12 @@ export interface SettingsPayload {
     timeZone: string;
     use24HourClock: boolean;
   };
+  publicStatus: {
+    enabled: boolean;
+    slug: string;
+    title: string;
+    summary: string;
+  };
   data: {
     retentionDays: number;
     autoBackupEnabled: boolean;
@@ -150,6 +156,12 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     highContrastSurfaces: false,
     timeZone: "Europe/Istanbul",
     use24HourClock: true,
+  },
+  publicStatus: {
+    enabled: false,
+    slug: "",
+    title: "",
+    summary: "",
   },
   data: {
     retentionDays: 90,
