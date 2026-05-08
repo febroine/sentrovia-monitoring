@@ -120,6 +120,24 @@ async function processMonitor(monitor: Monitor) {
       verificationFailureCount: 0,
       latencyMs: result.latencyMs,
     });
+  } else if (hadConfirmedIncident) {
+    checkStatus = "down";
+    failureEventMessage = result.errorMessage ?? "Health check failed.";
+    await recordMonitorResult(monitor.id, {
+      status: "down",
+      statusCode: result.statusCode,
+      uptime: "0%",
+      lastCheckedAt: result.checkedAt,
+      nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt),
+      lastSuccessAt: monitor.lastSuccessAt,
+      lastFailureAt: monitor.lastFailureAt ?? result.checkedAt,
+      sslExpiresAt: result.sslExpiresAt,
+      lastErrorMessage: result.errorMessage,
+      consecutiveFailures: monitor.consecutiveFailures + 1,
+      verificationMode: false,
+      verificationFailureCount: 0,
+      latencyMs: result.latencyMs,
+    });
   } else if (wasVerifying || threshold === 1) {
     const verificationCount = wasVerifying ? monitor.verificationFailureCount + 1 : 1;
     const confirmedIncident = verificationCount >= threshold;
@@ -155,24 +173,6 @@ async function processMonitor(monitor: Monitor) {
         "pending"
       );
     }
-  } else if (hadConfirmedIncident) {
-    checkStatus = "down";
-    failureEventMessage = result.errorMessage ?? "Health check failed.";
-    await recordMonitorResult(monitor.id, {
-      status: "down",
-      statusCode: result.statusCode,
-      uptime: "0%",
-      lastCheckedAt: result.checkedAt,
-      nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt),
-      lastSuccessAt: monitor.lastSuccessAt,
-      lastFailureAt: monitor.lastFailureAt ?? result.checkedAt,
-      sslExpiresAt: result.sslExpiresAt,
-      lastErrorMessage: result.errorMessage,
-      consecutiveFailures: monitor.consecutiveFailures + 1,
-      verificationMode: false,
-      verificationFailureCount: 0,
-      latencyMs: result.latencyMs,
-    });
   } else {
     checkStatus = "pending";
     await recordMonitorResult(monitor.id, {
@@ -263,6 +263,7 @@ async function processMonitor(monitor: Monitor) {
   }
 
   if (
+    checkStatus !== "pending" &&
     !monitor.verificationMode &&
     previousStatusCode !== null &&
     result.statusCode !== null &&
