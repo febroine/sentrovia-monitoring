@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ElementType, type ReactNode } from "react";
-import { Bell, Clock3, Database, Globe, Mail, Palette, ShieldCheck } from "lucide-react";
+import { Bell, Clock3, Database, Globe, Mail, Palette, RadioTower, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,14 +10,16 @@ import {
   DataSettingsTab,
   MonitoringSettingsTab,
   NotificationSettingsTab,
+  PublicStatusSettingsTab,
 } from "@/components/settings/settings-sections";
 import { useSettingsStore } from "@/stores/use-settings-store";
 
-type TabId = "notifications" | "monitoring" | "appearance" | "data";
+type TabId = "notifications" | "monitoring" | "publicStatus" | "appearance" | "data";
 
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; tone: string }> = [
   { id: "notifications", label: "Notifications", icon: Bell, tone: "text-emerald-600 dark:text-emerald-400" },
   { id: "monitoring", label: "Monitoring", icon: Globe, tone: "text-sky-600 dark:text-sky-400" },
+  { id: "publicStatus", label: "Public Status", icon: RadioTower, tone: "text-rose-600 dark:text-rose-400" },
   { id: "appearance", label: "Appearance", icon: Palette, tone: "text-violet-600 dark:text-violet-400" },
   { id: "data", label: "Data", icon: Database, tone: "text-amber-600 dark:text-amber-400" },
 ];
@@ -55,7 +57,7 @@ export default function SettingsPageClient() {
       {error ? <Banner tone="error">{error}</Banner> : null}
       {message ? <Banner tone="success">{message}</Banner> : null}
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <SummaryCard
           tone="green"
           icon={Mail}
@@ -75,6 +77,18 @@ export default function SettingsPageClient() {
           value={`${settings.monitoring.timeout} ms`}
           description={`${settings.monitoring.retries} verification attempts · ${settings.monitoring.method}`}
           onClick={() => setActiveTab("monitoring")}
+        />
+        <SummaryCard
+          tone="rose"
+          icon={RadioTower}
+          label="Public Status"
+          value={settings.publicStatus.enabled ? "Published" : "Private"}
+          description={
+            settings.publicStatus.slug
+              ? `/status/${settings.publicStatus.slug}`
+              : "Choose a slug to publish a status page."
+          }
+          onClick={() => setActiveTab("publicStatus")}
         />
         <SummaryCard
           tone="red"
@@ -118,6 +132,9 @@ export default function SettingsPageClient() {
               <TabsContent value="monitoring">
                 <MonitoringSettingsTab settings={settings} updateSetting={updateSetting} />
               </TabsContent>
+              <TabsContent value="publicStatus">
+                <PublicStatusSettingsTab settings={settings} updateSetting={updateSetting} />
+              </TabsContent>
               <TabsContent value="appearance">
                 <AppearanceSettingsTab settings={settings} updateSetting={updateSetting} />
               </TabsContent>
@@ -156,7 +173,7 @@ function SummaryCard({
   description,
   onClick,
 }: {
-  tone: "green" | "amber" | "red";
+  tone: "green" | "amber" | "red" | "rose";
   icon: ElementType;
   label: string;
   value: string;
@@ -164,13 +181,21 @@ function SummaryCard({
   onClick: () => void;
 }) {
   const border =
-    tone === "green" ? "border-l-emerald-500" : tone === "amber" ? "border-l-amber-500" : "border-l-red-500";
+    tone === "green"
+      ? "border-l-emerald-500"
+      : tone === "amber"
+        ? "border-l-amber-500"
+        : tone === "rose"
+          ? "border-l-rose-500"
+          : "border-l-red-500";
   const iconTone =
     tone === "green"
       ? "text-emerald-600 dark:text-emerald-400"
       : tone === "amber"
         ? "text-amber-600 dark:text-amber-400"
-        : "text-red-600 dark:text-red-400";
+        : tone === "rose"
+          ? "text-rose-600 dark:text-rose-400"
+          : "text-red-600 dark:text-red-400";
 
   return (
     <button type="button" onClick={onClick} className="text-left">

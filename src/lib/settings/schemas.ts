@@ -8,6 +8,13 @@ const optionalString = (maxLength: number) =>
     .max(maxLength)
     .default("");
 
+const publicStatusSlug = z
+  .string()
+  .trim()
+  .max(120)
+  .default("")
+  .transform(normalizePublicStatusSlug);
+
 export const settingsSchema = z.object({
   profile: z.object({
     firstName: z.string().trim().min(2).max(80),
@@ -75,6 +82,27 @@ export const settingsSchema = z.object({
     timeZone: z.string().trim().min(1).max(100).refine(isValidTimeZone, "Select a supported time zone."),
     use24HourClock: z.boolean(),
   }),
+  publicStatus: z
+    .object({
+      enabled: z.boolean(),
+      slug: publicStatusSlug,
+      title: optionalString(160),
+      summary: optionalString(500),
+    })
+    .superRefine((value, context) => {
+      if (!value.enabled) {
+        return;
+      }
+
+      if (value.slug.length < 3) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["slug"],
+          message: "Public status slug must be at least 3 characters when enabled.",
+        });
+      }
+    })
+    .default({ enabled: false, slug: "", title: "", summary: "" }),
   data: z.object({
     retentionDays: z.coerce.number().int().min(7).max(3650),
     autoBackupEnabled: z.boolean(),
@@ -85,3 +113,11 @@ export const settingsSchema = z.object({
 });
 
 export type SettingsInput = z.infer<typeof settingsSchema>;
+
+function normalizePublicStatusSlug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}

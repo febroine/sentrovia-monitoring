@@ -327,18 +327,22 @@ export async function runDueReportSchedules(now = new Date()) {
 
   for (const schedule of dueSchedules) {
     const nextRunAt = scheduleNextRunAfter(schedule.nextRunAt, schedule.cadence as ReportCadence, now);
+    const claimedSchedule = await claimDueReportSchedule(schedule, now, nextRunAt);
+    if (!claimedSchedule) {
+      continue;
+    }
 
     try {
       await dispatchReportNow(
-        schedule.userId,
+        claimedSchedule.userId,
         {
-          scope: schedule.scope as ReportPreviewInput["scope"],
-          cadence: schedule.cadence as ReportCadence,
-          template: schedule.template as ReportTemplateVariant,
-          companyId: schedule.companyId,
-          ...scheduleToDeliveryInput(schedule),
+          scope: claimedSchedule.scope as ReportPreviewInput["scope"],
+          cadence: claimedSchedule.cadence as ReportCadence,
+          template: claimedSchedule.template as ReportTemplateVariant,
+          companyId: claimedSchedule.companyId,
+          ...scheduleToDeliveryInput(claimedSchedule),
         },
-        schedule.recipientEmails
+        claimedSchedule.recipientEmails
       );
 
       await db
@@ -351,7 +355,7 @@ export async function runDueReportSchedules(now = new Date()) {
           nextRunAt,
           updatedAt: new Date(),
         })
-        .where(eq(reportSchedules.id, schedule.id));
+        .where(eq(reportSchedules.id, claimedSchedule.id));
     } catch (error) {
       await db
         .update(reportSchedules)
@@ -362,7 +366,7 @@ export async function runDueReportSchedules(now = new Date()) {
           nextRunAt,
           updatedAt: new Date(),
         })
-        .where(eq(reportSchedules.id, schedule.id));
+        .where(eq(reportSchedules.id, claimedSchedule.id));
     }
   }
 }
@@ -1262,6 +1266,30 @@ function scheduleNextRunAfter(currentRunAt: Date, cadence: ReportCadence, after:
   }
 
   return nextRunAt;
+}
+
+async function claimDueReportSchedule(
+  schedule: typeof reportSchedules.$inferSelect,
+  now: Date,
+  nextRunAt: Date
+) {
+  const [claimed] = await db
+    .update(reportSchedules)
+    .set({
+      lastRunAt: now,
+      nextRunAt,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(reportSchedules.id, schedule.id),
+        eq(reportSchedules.isActive, true),
+        eq(reportSchedules.nextRunAt, schedule.nextRunAt)
+      )
+    )
+    .returning();
+
+  return claimed ?? null;
 }
 
 async function updateScheduleDeliveryState(

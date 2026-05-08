@@ -212,7 +212,7 @@ export async function getWorkerObservability(
   const failingMonitors = monitorRows
     .map((monitor) => {
       const failures = failureByMonitor.get(monitor.id) ?? [];
-      const lastFailure = failures.length > 0 ? failures[failures.length - 1] : null;
+      const lastFailure = getLatestDate(failures);
       return {
         monitorId: monitor.id,
         name: monitor.name,
@@ -259,7 +259,7 @@ export async function getWorkerObservability(
       };
     })
     .filter((monitor) => monitor.stale)
-    .sort((left, right) => (right.minutesSinceLastCheck ?? 0) - (left.minutesSinceLastCheck ?? 0))
+    .sort((left, right) => staleSortValue(right.minutesSinceLastCheck) - staleSortValue(left.minutesSinceLastCheck))
     .slice(0, 5)
     .map((monitor) => ({
       monitorId: monitor.monitorId,
@@ -457,6 +457,17 @@ function formatFailureReason(reason: string | null) {
   return reason
     .replaceAll("_", " ")
     .replace(/\b\w/g, (value) => value.toUpperCase());
+}
+
+export function getLatestDate(values: Date[]) {
+  return values.reduce<Date | null>(
+    (latest, value) => (!latest || value.getTime() > latest.getTime() ? value : latest),
+    null
+  );
+}
+
+function staleSortValue(minutesSinceLastCheck: number | null) {
+  return minutesSinceLastCheck ?? Number.POSITIVE_INFINITY;
 }
 
 function averageValue(values: number[]) {
