@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimeZone } from "@/lib/time";
 
 const optionalString = (maxLength: number) =>
   z
@@ -71,6 +72,7 @@ export const settingsSchema = z.object({
     showIncidentBanner: z.boolean(),
     showChartsSection: z.boolean(),
     highContrastSurfaces: z.boolean(),
+    timeZone: z.string().trim().min(1).max(100).refine(isValidTimeZone, "Select a supported time zone."),
     use24HourClock: z.boolean(),
   }),
   data: z.object({

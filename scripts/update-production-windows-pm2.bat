@@ -100,12 +100,18 @@ if "%HAS_WEB%"=="0" if "%HAS_WORKER%"=="0" (
     goto :finish
   )
 ) else (
-  echo [INFO] PM2 surecleri bulunamadi. ecosystem.config.cjs ile yeniden baslatiliyor...
+  echo [INFO] PM2 surecleri bulunamadi. npm scriptleri ile yeniden baslatiliyor...
   call pm2 delete sentrovia-web >nul 2>nul
   call pm2 delete sentrovia-worker >nul 2>nul
-  call pm2 start ecosystem.config.cjs
+  call pm2 start npm --name sentrovia-web -- run start
   if errorlevel 1 (
-    echo [ERROR] PM2 surecleri ecosystem.config.cjs ile baslatilamadi.
+    echo [ERROR] sentrovia-web PM2 ile baslatilamadi.
+    set "EXIT_CODE=1"
+    goto :finish
+  )
+  call pm2 start npm --name sentrovia-worker -- run worker:start
+  if errorlevel 1 (
+    echo [ERROR] sentrovia-worker PM2 ile baslatilamadi.
     set "EXIT_CODE=1"
     goto :finish
   )

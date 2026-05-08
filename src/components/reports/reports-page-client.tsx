@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TemplateEditor } from "@/components/settings/template-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,6 +53,14 @@ type DraftReport = {
   template: ReportTemplateVariant;
   companyId: string;
   recipients: string;
+  deliveryDetailLevel: "summary" | "standard" | "full";
+  attachCsv: boolean;
+  attachHtml: boolean;
+  attachPdf: boolean;
+  includeIncidentSummary: boolean;
+  includeMonitorBreakdown: boolean;
+  emailSubjectTemplate: string;
+  emailIntroTemplate: string;
 };
 
 type DraftSchedule = {
@@ -63,6 +72,14 @@ type DraftSchedule = {
   recipients: string;
   nextRunAt: string;
   isActive: boolean;
+  deliveryDetailLevel: "summary" | "standard" | "full";
+  attachCsv: boolean;
+  attachHtml: boolean;
+  attachPdf: boolean;
+  includeIncidentSummary: boolean;
+  includeMonitorBreakdown: boolean;
+  emailSubjectTemplate: string;
+  emailIntroTemplate: string;
 };
 
 const EMPTY_REPORT_DRAFT: DraftReport = {
@@ -71,6 +88,14 @@ const EMPTY_REPORT_DRAFT: DraftReport = {
   template: "operations",
   companyId: "",
   recipients: "",
+  deliveryDetailLevel: "standard",
+  attachCsv: true,
+  attachHtml: true,
+  attachPdf: true,
+  includeIncidentSummary: true,
+  includeMonitorBreakdown: true,
+  emailSubjectTemplate: "",
+  emailIntroTemplate: "",
 };
 
 const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
@@ -82,6 +107,14 @@ const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
   recipients: "",
   nextRunAt: "",
   isActive: true,
+  deliveryDetailLevel: "standard",
+  attachCsv: true,
+  attachHtml: true,
+  attachPdf: true,
+  includeIncidentSummary: true,
+  includeMonitorBreakdown: true,
+  emailSubjectTemplate: "",
+  emailIntroTemplate: "",
 };
 
 const TEMPLATE_OPTIONS: Array<{
@@ -197,6 +230,7 @@ export default function ReportsPageClient() {
           cadence: previewDraft.cadence,
           template: previewDraft.template,
           companyId: previewDraft.scope === "company" ? previewDraft.companyId : null,
+          ...buildReportDeliveryPayload(previewDraft),
         }),
       });
       const data = (await response.json()) as PreviewResponse;
@@ -227,6 +261,7 @@ export default function ReportsPageClient() {
           template: previewDraft.template,
           companyId: previewDraft.scope === "company" ? previewDraft.companyId : null,
           recipientEmails: parseRecipients(previewDraft.recipients),
+          ...buildReportDeliveryPayload(previewDraft),
         }),
       });
       const data = (await response.json()) as {
@@ -273,6 +308,7 @@ export default function ReportsPageClient() {
           recipientEmails: parseRecipients(scheduleDraft.recipients),
           isActive: scheduleDraft.isActive,
           nextRunAt: scheduleDraft.nextRunAt ? new Date(scheduleDraft.nextRunAt).toISOString() : null,
+          ...buildReportDeliveryPayload(scheduleDraft),
         }),
       });
       const data = (await response.json()) as { schedule?: ReportScheduleRecord; message?: string };
@@ -323,16 +359,21 @@ export default function ReportsPageClient() {
 
     try {
       const response = await fetch(`/api/reports/${scheduleId}/send`, { method: "POST" });
-      const data = (await response.json()) as { message?: string };
+      const data = (await response.json()) as { message?: string; schedule?: ReportScheduleRecord };
 
+      if (data.schedule) {
+        setSchedules((current) =>
+          current.map((schedule) => (schedule.id === data.schedule?.id ? data.schedule : schedule))
+        );
+      }
       if (!response.ok) {
         throw new Error(data.message ?? "Unable to send the scheduled report.");
       }
 
       setMessage("Scheduled report sent successfully with CSV and print-ready HTML attachments.");
-      await refreshPage();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to send the scheduled report.");
+      await refreshPage();
     } finally {
       setSaving(false);
     }
@@ -403,6 +444,14 @@ export default function ReportsPageClient() {
       recipients: schedule.recipientEmails.join(", "),
       nextRunAt: toLocalDateTime(schedule.nextRunAt),
       isActive: schedule.isActive,
+      deliveryDetailLevel: schedule.deliveryDetailLevel,
+      attachCsv: schedule.attachCsv,
+      attachHtml: schedule.attachHtml,
+      attachPdf: schedule.attachPdf,
+      includeIncidentSummary: schedule.includeIncidentSummary,
+      includeMonitorBreakdown: schedule.includeMonitorBreakdown,
+      emailSubjectTemplate: schedule.emailSubjectTemplate ?? "",
+      emailIntroTemplate: schedule.emailIntroTemplate ?? "",
     });
     setActiveTab("schedules");
   }
@@ -557,6 +606,10 @@ export default function ReportsPageClient() {
                 value={previewDraft.template}
                 onChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
               />
+              <ReportDeliveryComposer
+                draft={previewDraft}
+                onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
+              />
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Field label="Scope">
@@ -680,6 +733,10 @@ export default function ReportsPageClient() {
               <TemplateStrip
                 value={scheduleDraft.template}
                 onChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
+              />
+              <ReportDeliveryComposer
+                draft={scheduleDraft}
+                onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
               />
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -970,6 +1027,100 @@ function TemplateStrip({
   );
 }
 
+type ReportDeliveryDraft = Pick<
+  DraftReport,
+  | "deliveryDetailLevel"
+  | "attachCsv"
+  | "attachHtml"
+  | "attachPdf"
+  | "includeIncidentSummary"
+  | "includeMonitorBreakdown"
+  | "emailSubjectTemplate"
+  | "emailIntroTemplate"
+>;
+
+function ReportDeliveryComposer({
+  draft,
+  onChange,
+}: {
+  draft: ReportDeliveryDraft;
+  onChange: (patch: Partial<ReportDeliveryDraft>) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/10 p-4">
+      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <Field label="Detail level">
+            <Select
+              value={draft.deliveryDetailLevel}
+              onValueChange={(value) =>
+                onChange({ deliveryDetailLevel: value as ReportDeliveryDraft["deliveryDetailLevel"] })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="summary">Summary</SelectItem>
+                <SelectItem value="standard">Standard</SelectItem>
+                <SelectItem value="full">Full</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <div className="grid gap-2">
+            <CompactToggle label="CSV" checked={draft.attachCsv} onChange={(attachCsv) => onChange({ attachCsv })} />
+            <CompactToggle label="HTML" checked={draft.attachHtml} onChange={(attachHtml) => onChange({ attachHtml })} />
+            <CompactToggle label="PDF" checked={draft.attachPdf} onChange={(attachPdf) => onChange({ attachPdf })} />
+            <CompactToggle
+              label="Failures"
+              checked={draft.includeIncidentSummary}
+              onChange={(includeIncidentSummary) => onChange({ includeIncidentSummary })}
+            />
+            <CompactToggle
+              label="Breakdown"
+              checked={draft.includeMonitorBreakdown}
+              onChange={(includeMonitorBreakdown) => onChange({ includeMonitorBreakdown })}
+            />
+          </div>
+        </div>
+        <div className="space-y-4">
+          <Field label="Email subject template">
+            <Input
+              value={draft.emailSubjectTemplate}
+              onChange={(event) => onChange({ emailSubjectTemplate: event.target.value })}
+              placeholder="[Sentrovia Report] {title} - {health_status}"
+            />
+          </Field>
+          <TemplateEditor
+            label="Email intro template"
+            hint="Tokens: {title}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {failure_rate}, {failures}, {down_now}, {p95_latency}"
+            rows={4}
+            value={draft.emailIntroTemplate}
+            onChange={(emailIntroTemplate) => onChange({ emailIntroTemplate })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/80 px-3 py-2">
+      <span className="text-xs font-medium">{label}</span>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
 function BuilderEmptyState({
   title,
   description,
@@ -1118,10 +1269,11 @@ function ScheduleCard({
             </Badge>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <DetailBlock label="Next run" value={new Date(schedule.nextRunAt).toLocaleString()} />
             <DetailBlock label="Last delivery" value={schedule.lastDeliveredAt ? new Date(schedule.lastDeliveredAt).toLocaleString() : "No delivery yet"} />
             <DetailBlock label="Recipients" value={schedule.recipientEmails.join(", ") || "No recipients"} />
+            <DetailBlock label="Package" value={buildSchedulePackageLabel(schedule)} />
           </div>
 
           {schedule.lastErrorMessage ? (
@@ -1224,10 +1376,14 @@ function ReportPreviewPanel({
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <PreviewMetric label="Health" value={`${report.summary.healthScore}/100`} detail={report.summary.healthStatus} />
             <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} />
             <PreviewMetric label="Uptime" value={`${report.summary.uptimePct.toFixed(2)}%`} />
-            <PreviewMetric label="Avg latency" value={`${report.summary.averageLatencyMs}ms`} />
+            <PreviewMetric label="P95 latency" value={`${report.summary.p95LatencyMs}ms`} detail={`${report.summary.averageLatencyMs}ms avg`} />
             <PreviewMetric label="Failures" value={String(report.summary.failureEvents)} />
+            <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failures" />
+            <PreviewMetric label="Failure rate" value={`${report.summary.failureRatePct.toFixed(2)}%`} />
+            <PreviewMetric label="Checks" value={String(report.summary.totalChecks)} detail={`${report.summary.upChecks} up / ${report.summary.downChecks} down`} />
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
@@ -1249,6 +1405,20 @@ function ReportPreviewPanel({
               ))
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden border-sky-500/15">
+        <CardHeader className="border-b bg-sky-500/5">
+          <CardTitle className="text-base">Operational recommendations</CardTitle>
+          <CardDescription>Generated from current status, failure frequency, latency, and status code distribution.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 pt-4 md:grid-cols-2">
+          {report.recommendations.map((item, index) => (
+            <div key={`${item}-${index}`} className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3">
+              <p className="text-sm leading-6">{item}</p>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
@@ -1309,6 +1479,34 @@ function ReportPreviewPanel({
 
       <Card className="overflow-hidden border-border/70">
         <CardHeader className="border-b bg-muted/10">
+          <CardTitle className="text-base">Recent failure events</CardTitle>
+          <CardDescription>Latest failure signals included in the emailed report.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-4">
+          {report.recentFailures.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No failure events during the selected period.</p>
+          ) : (
+            report.recentFailures.map((event) => (
+              <div key={`${event.monitorId}-${event.createdAt}`} className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{event.name}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {new Date(event.createdAt).toLocaleString()} / HTTP {event.statusCode ?? "N/A"}
+                    </p>
+                  </div>
+                  <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                    {event.rcaSummary ?? event.message ?? "No RCA detail recorded."}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden border-border/70">
+        <CardHeader className="border-b bg-muted/10">
           <CardTitle>Monitor breakdown</CardTitle>
           <CardDescription>Ranked by failures first, then average latency.</CardDescription>
         </CardHeader>
@@ -1319,12 +1517,21 @@ function ReportPreviewPanel({
                 <div>
                   <p className="text-sm font-medium">{monitor.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Status {monitor.status} / {monitor.totalChecks} checks / {monitor.failures} failures
+                    {monitor.companyName ?? "No company"} / {monitor.url}
                   </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Status {monitor.status} / HTTP {monitor.currentStatusCode ?? "N/A"} / {monitor.totalChecks} checks / {monitor.failures} failures
+                  </p>
+                  {monitor.lastErrorMessage ? (
+                    <p className="mt-2 text-xs leading-5 text-destructive">{monitor.lastErrorMessage}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <Badge variant="outline" className="border-border/70">Uptime {monitor.uptimePct.toFixed(2)}%</Badge>
                   <Badge variant="outline" className="border-border/70">Avg latency {monitor.averageLatencyMs}ms</Badge>
+                  <Badge variant="outline" className="border-border/70">P95 {monitor.p95LatencyMs}ms</Badge>
+                  <Badge variant="outline" className="border-border/70">{monitor.upChecks} up / {monitor.downChecks} down</Badge>
+                  <Badge variant="outline" className="border-border/70">Last checked {monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : "N/A"}</Badge>
                 </div>
               </div>
             </div>
@@ -1335,11 +1542,12 @@ function ReportPreviewPanel({
   );
 }
 
-function PreviewMetric({ label, value }: { label: string; value: string }) {
+function PreviewMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-muted/10 px-4 py-3">
       <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+      {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
     </div>
   );
 }
@@ -1438,6 +1646,29 @@ function buildScheduleName(scope: ReportScope, cadence: ReportCadence, companyId
 
   const company = companies.find((item) => item.id === companyId);
   return company ? `${cadenceLabel} ${company.name} Report` : `${cadenceLabel} Company Report`;
+}
+
+function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {
+  return {
+    deliveryDetailLevel: draft.deliveryDetailLevel,
+    attachCsv: draft.attachCsv,
+    attachHtml: draft.attachHtml,
+    attachPdf: draft.attachPdf,
+    includeIncidentSummary: draft.includeIncidentSummary,
+    includeMonitorBreakdown: draft.includeMonitorBreakdown,
+    emailSubjectTemplate: draft.emailSubjectTemplate.trim() || null,
+    emailIntroTemplate: draft.emailIntroTemplate.trim() || null,
+  };
+}
+
+function buildSchedulePackageLabel(schedule: ReportScheduleRecord) {
+  const attachments = [
+    schedule.attachCsv ? "CSV" : null,
+    schedule.attachHtml ? "HTML" : null,
+    schedule.attachPdf ? "PDF" : null,
+  ].filter(Boolean);
+
+  return `${schedule.deliveryDetailLevel} / ${attachments.join(", ") || "no attachments"}`;
 }
 
 function resolveAccentClass(tone: "violet" | "sky" | "amber" | "emerald" | "slate") {

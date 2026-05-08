@@ -62,6 +62,7 @@ export interface SettingsPayload {
     showIncidentBanner: boolean;
     showChartsSection: boolean;
     highContrastSurfaces: boolean;
+    timeZone: string;
     use24HourClock: boolean;
   };
   data: {
@@ -72,6 +73,24 @@ export interface SettingsPayload {
     lastBackupAt: string | null;
   };
 }
+
+export const DEFAULT_NOTIFICATION_TEMPLATES = {
+  defaultEmailSubjectTemplate: "[Sentrovia] {domain} is {event_state} ({status_code})",
+  defaultEmailBodyTemplate:
+    "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+  defaultTelegramTemplate:
+    "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
+  recoveryEmailSubjectTemplate: "[Sentrovia] {domain} recovered ({status_code})",
+  recoveryEmailBodyTemplate:
+    "Monitor: {domain} ({url_link}) recovered\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+  recoveryTelegramTemplate:
+    "{domain} ({url}) recovered\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
+  prolongedDowntimeEmailSubjectTemplate: "[Sentrovia] {domain} has been DOWN for {downtime_duration}",
+  prolongedDowntimeEmailBodyTemplate:
+    "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+  prolongedDowntimeTelegramTemplate:
+    "{domain} ({url}) is still DOWN\n\nDURATION: {downtime_duration}\nSTARTED: {downtime_started_at_local}\nLAST CHECK: {checked_at_local}\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
+} as const;
 
 export const DEFAULT_SETTINGS: SettingsPayload = {
   profile: {
@@ -103,21 +122,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     smtpInsecureSkipVerify: true,
     discordWebhookUrl: "",
     discordEnabled: false,
-    defaultEmailSubjectTemplate: "[Sentrovia] {domain} is {event_state} ({status_code})",
-    defaultEmailBodyTemplate:
-      "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-    defaultTelegramTemplate:
-      "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
-    recoveryEmailSubjectTemplate: "[Sentrovia] {domain} recovered ({status_code})",
-    recoveryEmailBodyTemplate:
-      "Monitor: {domain} ({url_link}) has recovered and is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-    recoveryTelegramTemplate:
-      "{domain} ({url}) has recovered and is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
-    prolongedDowntimeEmailSubjectTemplate: "[Sentrovia] {domain} has been DOWN for {downtime_duration}",
-    prolongedDowntimeEmailBodyTemplate:
-      "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-    prolongedDowntimeTelegramTemplate:
-      "{domain} ({url}) is still DOWN\n\nDURATION: {downtime_duration}\nSTARTED: {downtime_started_at_local}\nLAST CHECK: {checked_at_local}\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
+    ...DEFAULT_NOTIFICATION_TEMPLATES,
     statusCodeAlertCodes: "500,502,503,504",
     savedEmailRecipients: [],
   },
@@ -143,6 +148,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     showIncidentBanner: true,
     showChartsSection: true,
     highContrastSurfaces: false,
+    timeZone: "Europe/Istanbul",
     use24HourClock: true,
   },
   data: {

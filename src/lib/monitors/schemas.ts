@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-export const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
-export const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
-export const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
-export const ipFamilySchema = z.enum(["auto", "ipv4", "ipv6"]);
-export const methodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
-export const jsonMatchModeSchema = z.enum(["equals", "contains", "exists"]);
+const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
+const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
+const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
+const ipFamilySchema = z.enum(["auto", "ipv4", "ipv6"]);
+const methodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+const jsonMatchModeSchema = z.enum(["equals", "contains", "exists"]);
 const INVALID_HOST_INPUT_PATTERN = /[\s/?#]/;
 
 function optionalString(maxLength: number) {
