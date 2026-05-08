@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, sql, type DatabaseExecutor } from "@/lib/db";
-import { userSettings, users } from "@/lib/db/schema";
+import { monitors, userSettings, users } from "@/lib/db/schema";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-safety";
 import type { SettingsInput } from "@/lib/settings/schemas";
@@ -14,6 +14,12 @@ type DatabaseErrorShape = {
 
 type TableName = "users" | "user_settings";
 type ColumnName<T extends Record<string, string>> = T[keyof T];
+type ExistingNotificationTemplates = {
+  defaultEmailSubjectTemplate?: unknown;
+  defaultEmailBodyTemplate?: unknown;
+  defaultTelegramTemplate?: unknown;
+};
+type MonitorTemplateKey = "emailSubject" | "emailBody" | "telegramTemplate";
 type SelectableColumn<T extends Record<string, string>> = {
   propertyName: keyof T & string;
   columnName: ColumnName<T>;
@@ -82,6 +88,7 @@ const USER_SETTINGS_COLUMN_MAP = {
   showIncidentBanner: "show_incident_banner",
   showChartsSection: "show_charts_section",
   highContrastSurfaces: "high_contrast_surfaces",
+  timeZone: "time_zone",
   use24HourClock: "use_24_hour_clock",
   dataRetentionDays: "data_retention_days",
   autoBackupEnabled: "auto_backup_enabled",
@@ -248,6 +255,7 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         settings?.highContrastSurfaces,
         DEFAULT_SETTINGS.appearance.highContrastSurfaces
       ),
+      timeZone: stringOrEmpty(settings?.timeZone) || DEFAULT_SETTINGS.appearance.timeZone,
       use24HourClock: booleanOrDefault(settings?.use24HourClock, DEFAULT_SETTINGS.appearance.use24HourClock),
     },
     data: {
@@ -461,6 +469,7 @@ export async function upsertSettings(
     showIncidentBanner: input.appearance.showIncidentBanner,
     showChartsSection: input.appearance.showChartsSection,
     highContrastSurfaces: input.appearance.highContrastSurfaces,
+    timeZone: input.appearance.timeZone,
     use24HourClock: input.appearance.use24HourClock,
     dataRetentionDays: input.data.retentionDays,
     autoBackupEnabled: input.data.autoBackupEnabled,
@@ -479,6 +488,8 @@ export async function upsertSettings(
       .insert(userSettings)
       .values(filteredValues as typeof values & { userId: string });
   }
+
+  await clearInheritedMonitorTemplates(executor, userId, existing);
 
   if (skipReadback) {
     return null;
@@ -511,4 +522,54 @@ async function updateUserCompat(
   }
 
   await executor.update(users).set(filteredValues).where(eq(users.id, userId));
+}
+
+async function clearInheritedMonitorTemplates(
+  executor: DatabaseExecutor,
+  userId: string,
+  existing: ExistingNotificationTemplates | null
+) {
+  if (!existing) {
+    return;
+  }
+
+  await clearInheritedMonitorTemplate(
+    executor,
+    userId,
+    "emailSubject",
+    monitors.emailSubject,
+    stringOrEmpty(existing.defaultEmailSubjectTemplate)
+  );
+  await clearInheritedMonitorTemplate(
+    executor,
+    userId,
+    "emailBody",
+    monitors.emailBody,
+    stringOrEmpty(existing.defaultEmailBodyTemplate)
+  );
+  await clearInheritedMonitorTemplate(
+    executor,
+    userId,
+    "telegramTemplate",
+    monitors.telegramTemplate,
+    stringOrEmpty(existing.defaultTelegramTemplate)
+  );
+}
+
+async function clearInheritedMonitorTemplate(
+  executor: DatabaseExecutor,
+  userId: string,
+  key: MonitorTemplateKey,
+  column: typeof monitors.emailSubject | typeof monitors.emailBody | typeof monitors.telegramTemplate,
+  inheritedTemplate: string
+) {
+  const template = inheritedTemplate.trim();
+  if (!template) {
+    return;
+  }
+
+  await executor
+    .update(monitors)
+    .set({ [key]: null })
+    .where(and(eq(monitors.userId, userId), eq(column, inheritedTemplate)));
 }

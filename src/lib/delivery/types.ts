@@ -1,4 +1,4 @@
-export type DeliveryChannel = "email" | "telegram" | "webhook" | "discord";
+type DeliveryChannel = "email" | "telegram" | "webhook" | "discord";
 export type DeliveryKind =
   | "failure"
   | "recovery"
@@ -9,7 +9,7 @@ export type DeliveryKind =
   | "check"
   | "report"
   | "test";
-export type DeliveryStatus = "pending" | "retrying" | "delivered" | "failed";
+type DeliveryStatus = "pending" | "retrying" | "delivered" | "failed";
 
 export interface DeliveryHistoryRecord {
   id: string;

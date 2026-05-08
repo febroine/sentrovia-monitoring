@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { SettingsPayload } from "@/lib/settings/types";
+import { TIME_ZONE_OPTIONS } from "@/lib/time";
 
 const TEMPLATE_TOKENS = [
   "{domain}",
@@ -238,8 +239,8 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           onChange={(value) => updateSetting("notifications.defaultTelegramTemplate", value)}
         />
         <Field
-          label="Recovery email subject"
-          hint="Used for UP / recovered notifications when a monitor returns healthy after a confirmed outage."
+          label="Recovery (UP) email subject"
+          hint="Used when a previously down monitor becomes healthy again."
         >
           <Input
             value={settings.notifications.recoveryEmailSubjectTemplate}
@@ -247,14 +248,14 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           />
         </Field>
         <TemplateEditor
-          label="Recovery email body"
-          hint="Customize the message sent when a monitor recovers. Monitor-level overrides still apply only to the generic down template."
+          label="Recovery (UP) email body"
+          hint="This template is used only for UP/recovery notifications."
           value={settings.notifications.recoveryEmailBodyTemplate}
           onChange={(value) => updateSetting("notifications.recoveryEmailBodyTemplate", value)}
         />
         <TemplateEditor
-          label="Recovery Telegram template"
-          hint="This text is sent to Telegram when the worker confirms a recovery event."
+          label="Recovery (UP) Telegram template"
+          hint="Customize the Telegram message sent when the monitor recovers."
           rows={6}
           value={settings.notifications.recoveryTelegramTemplate}
           onChange={(value) => updateSetting("notifications.recoveryTelegramTemplate", value)}
@@ -459,6 +460,23 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
         checked={settings.appearance.highContrastSurfaces}
         onChange={(checked) => updateSetting("appearance.highContrastSurfaces", checked)}
       />
+      <Field label="Timezone">
+        <Select
+          value={settings.appearance.timeZone}
+          onValueChange={(value) => updateSetting("appearance.timeZone", String(value))}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TIME_ZONE_OPTIONS.map((timeZone) => (
+              <SelectItem key={timeZone} value={timeZone}>
+                {timeZone}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
       <ToggleRow
         label="24-hour clock"
         description="Show dashboard timestamps in 24-hour format instead of locale AM/PM formatting."

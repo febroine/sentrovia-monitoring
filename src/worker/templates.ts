@@ -1,8 +1,15 @@
-import { format } from "date-fns";
 import { getHttpStatusMeta } from "@/lib/http/status-codes";
 import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
-import type { SettingsPayload } from "@/lib/settings/types";
+import { DEFAULT_NOTIFICATION_TEMPLATES, type SettingsPayload } from "@/lib/settings/types";
 import type { NotificationContext } from "@/worker/types";
+
+const LEGACY_DEFAULT_EMAIL_SUBJECTS = new Set([
+  normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultEmailSubjectTemplate),
+]);
+const LEGACY_DEFAULT_EMAIL_BODIES = new Set([normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultEmailBodyTemplate)]);
+const LEGACY_DEFAULT_TELEGRAM_TEMPLATES = new Set([
+  normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultTelegramTemplate),
+]);
 
 export function renderNotificationTemplates(
   context: NotificationContext,
@@ -15,7 +22,7 @@ export function renderNotificationTemplates(
   const organization = settings.profile.organization || "Sentrovia Monitoring";
   const statusCode = String(context.result.statusCode ?? "N/A");
   const statusLabel = statusMeta?.label ?? (context.result.ok ? "Healthy Response" : "Unavailable");
-  const localTime = format(context.result.checkedAt, "dd.MM.yyyy HH:mm:ss");
+  const localTime = formatLocalDateTime(context.result.checkedAt);
   const eventState = context.kind === "downtime-reminder" ? "DOWN" : context.result.status === "up" ? "UP" : "DOWN";
   const downtimeStartedAt = context.monitor.lastFailureAt ? new Date(context.monitor.lastFailureAt) : context.result.checkedAt;
   const downtimeDuration = formatDuration(context.result.checkedAt.getTime() - downtimeStartedAt.getTime());
@@ -39,7 +46,7 @@ export function renderNotificationTemplates(
     "{checked_at}": context.result.checkedAt.toISOString(),
     "{checked_at_local}": localTime,
     "{downtime_started_at}": downtimeStartedAt.toISOString(),
-    "{downtime_started_at_local}": format(downtimeStartedAt, "dd.MM.yyyy HH:mm:ss"),
+    "{downtime_started_at_local}": formatLocalDateTime(downtimeStartedAt),
     "{downtime_duration}": downtimeDuration,
     "{downtime_minutes}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 60_000))),
     "{downtime_hours}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 3_600_000))),
@@ -76,11 +83,12 @@ function resolveSubjectTemplate(context: NotificationContext, settings: Settings
     return settings.notifications.prolongedDowntimeEmailSubjectTemplate;
   }
 
-  if (context.kind === "recovery") {
-    return settings.notifications.recoveryEmailSubjectTemplate;
-  }
+  const fallback =
+    context.kind === "recovery"
+      ? settings.notifications.recoveryEmailSubjectTemplate
+      : settings.notifications.defaultEmailSubjectTemplate;
 
-  return context.monitor.emailSubject || settings.notifications.defaultEmailSubjectTemplate;
+  return resolveMonitorTemplate(context.monitor.emailSubject, fallback, LEGACY_DEFAULT_EMAIL_SUBJECTS);
 }
 
 function resolveEmailBodyTemplate(context: NotificationContext, settings: SettingsPayload) {
@@ -88,11 +96,12 @@ function resolveEmailBodyTemplate(context: NotificationContext, settings: Settin
     return settings.notifications.prolongedDowntimeEmailBodyTemplate;
   }
 
-  if (context.kind === "recovery") {
-    return settings.notifications.recoveryEmailBodyTemplate;
-  }
+  const fallback =
+    context.kind === "recovery"
+      ? settings.notifications.recoveryEmailBodyTemplate
+      : settings.notifications.defaultEmailBodyTemplate;
 
-  return context.monitor.emailBody || settings.notifications.defaultEmailBodyTemplate;
+  return resolveMonitorTemplate(context.monitor.emailBody, fallback, LEGACY_DEFAULT_EMAIL_BODIES);
 }
 
 function resolveTelegramTemplate(context: NotificationContext, settings: SettingsPayload) {
@@ -100,11 +109,21 @@ function resolveTelegramTemplate(context: NotificationContext, settings: Setting
     return settings.notifications.prolongedDowntimeTelegramTemplate;
   }
 
-  if (context.kind === "recovery") {
-    return settings.notifications.recoveryTelegramTemplate;
+  const fallback =
+    context.kind === "recovery"
+      ? settings.notifications.recoveryTelegramTemplate
+      : settings.notifications.defaultTelegramTemplate;
+
+  return resolveMonitorTemplate(context.monitor.telegramTemplate, fallback, LEGACY_DEFAULT_TELEGRAM_TEMPLATES);
+}
+
+function resolveMonitorTemplate(template: string | null, fallback: string, legacyDefaults: Set<string>) {
+  const normalized = normalizeForComparison(template);
+  if (!normalized || legacyDefaults.has(normalized)) {
+    return fallback;
   }
 
-  return context.monitor.telegramTemplate || settings.notifications.defaultTelegramTemplate;
+  return template ?? fallback;
 }
 
 function applyTemplate(template: string, replacements: Record<string, string>) {
@@ -135,6 +154,10 @@ function toHtml(text: string, htmlFragments: Record<string, string>) {
 
 function normalizeTemplate(template: string) {
   return template.replaceAll("\r\n", "\n").replaceAll("\\n", "\n");
+}
+
+function normalizeForComparison(template: string | null) {
+  return template ? normalizeTemplate(template).trim() : "";
 }
 
 function toPlainText(text: string) {
@@ -176,6 +199,17 @@ function formatDuration(durationMs: number) {
   }
 
   return parts.join(" ");
+}
+
+function formatLocalDateTime(date: Date) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
+  return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
 }
 
 function escapeHtml(value: string) {

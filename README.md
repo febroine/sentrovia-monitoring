@@ -355,9 +355,88 @@ npm run dev
 npm run worker:dev
 ```
 
+## Windows PM2 first-time production setup
+
+If you want to run Sentrovia on Windows with PM2, use the bundled PM2 manifest:
+
+- `ecosystem.config.cjs`
+- `sentrovia-web`
+- `sentrovia-worker`
+
+### Prerequisites
+
+Before the first PM2 deployment, make sure the server already has:
+
+- Node.js 20+
+- npm
+- Git
+- PostgreSQL
+- PM2 installed globally with `npm install -g pm2`
+- a completed `.env.local` file in the project root
+
+### First-time setup flow
+
+1. Clone the repository and move into the project directory.
+2. Create and fill `.env.local` with your production values.
+3. Run:
+
+```bat
+scripts\setup-production-windows-pm2.bat
+```
+
+The setup script will:
+
+- verify `node`, `npm`, `pm2`, and `.env.local`
+- install dependencies with `npm install`
+- apply the latest schema with `npm run db:push`
+- build the production app with `npm run build`
+- start `sentrovia-web` and `sentrovia-worker` from [ecosystem.config.cjs](./ecosystem.config.cjs)
+- save the PM2 process list with `pm2 save`
+
+### Manual fallback flow
+
+If you prefer to run the setup steps one by one:
+
+```bat
+npm install
+npm run db:push
+npm run build
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+### Verification
+
+After setup, verify the runtime with:
+
+```bat
+pm2 status
+pm2 logs sentrovia-web --lines 50
+pm2 logs sentrovia-worker --lines 50
+```
+
+Then open:
+
+- [http://localhost:3000](http://localhost:3000)
+
+### Production note
+
+On the Windows PM2 flow, use `npm install` as the supported default.
+
+This project runs the PM2 worker through `tsx` and applies schema changes with `npm run db:push` during deployment, so `--omit=dev` is not the default supported install path for the documented Windows production flow.
+
+### Optional startup note
+
+Automatic startup on Windows is intentionally out of scope for the bundled repo scripts.
+
+If you want PM2 to restore processes automatically after machine restart, follow the official PM2 guidance for startup behavior:
+
+- [Startup Hook](https://doc.pm2.io/en/runtime/guide/startup-hook/)
+- [Startup Script](https://pm2.keymetrics.io/docs/usage/startup/)
+
 ## Windows PM2 update flow
 
-If Sentrovia is already running in production with PM2, you can now update it with:
+If Sentrovia is already installed and running in production with PM2, you can update the existing deployment with:
 
 ```bat
 scripts\update-production-windows-pm2.bat
@@ -383,6 +462,8 @@ That script will:
 - `npm run lint` runs ESLint
 - `npm run db:generate` generates Drizzle migrations
 - `npm run db:push` pushes the current schema to PostgreSQL
+- `scripts\setup-production-windows-pm2.bat` performs the first Windows PM2 production setup
+- `scripts\update-production-windows-pm2.bat` updates an existing Windows PM2 production deployment
 
 ## Tech stack
 

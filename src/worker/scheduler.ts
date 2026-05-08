@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { openOrUpdateIncident, resolveIncident } from "@/lib/incidents/service";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
 import {
   appendMonitorCheck,
@@ -219,6 +220,14 @@ async function processMonitor(monitor: Monitor) {
 
   if (!result.ok && failureEventMessage) {
     await appendDetailedEvent(monitor, result, "failure", failureEventMessage, rca, checkStatus);
+    await openOrUpdateIncident({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      checkedAt: result.checkedAt,
+      statusCode: result.statusCode,
+      errorMessage: failureEventMessage,
+    });
+
     if (incidentConfirmedThisCycle) {
       await sendMonitorNotifications({ kind: "failure", message: failureEventMessage, monitor, result, rca });
     }
@@ -244,6 +253,12 @@ async function processMonitor(monitor: Monitor) {
   if (result.ok && hadConfirmedIncident) {
     const message = "Service recovered and is responding again.";
     await appendDetailedEvent(monitor, result, "recovery", message, rca, "up");
+    await resolveIncident({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      checkedAt: result.checkedAt,
+      statusCode: result.statusCode,
+    });
     await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
   }
 

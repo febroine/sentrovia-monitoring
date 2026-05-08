@@ -6,12 +6,7 @@ export type IntervalUnit = "sn" | "dk" | "sa";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 export type IpFamily = "auto" | "ipv4" | "ipv6";
 export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres" | "ping" | "heartbeat";
-export type JsonMatchMode = "equals" | "contains" | "exists";
-
-export interface MonitorTagPatch {
-  action: "add" | "remove" | "replace";
-  tags: string[];
-}
+type JsonMatchMode = "equals" | "contains" | "exists";
 
 export interface MonitorConfigBundle {
   version: 1;
@@ -31,22 +26,6 @@ export interface WorkspaceBackupBundle {
     isActive: boolean;
   }>;
   monitors: MonitorPayload[];
-}
-
-export interface IncidentRecord {
-  id: string;
-  monitorId: string;
-  monitorName: string;
-  monitorType: MonitorType;
-  company: string | null;
-  status: "open" | "resolved";
-  startedAt: string;
-  resolvedAt: string | null;
-  lastCheckedAt: string | null;
-  statusCode: number | null;
-  errorMessage: string | null;
-  notes: string;
-  postmortem: string;
 }
 
 export interface MonitorRecord {
@@ -140,7 +119,7 @@ export interface CompanyMonthlyReport {
   }>;
 }
 
-export interface WorkerCycleMetricRecord {
+interface WorkerCycleMetricRecord {
   id: string;
   cycleStartedAt: string;
   cycleFinishedAt: string;
@@ -328,10 +307,8 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   saveErrorPages: false,
   saveSuccessPages: false,
   responseMaxLength: 1024,
-  telegramTemplate:
-    "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}",
-  emailSubject: "[Sentrovia] {domain} is {event_state} ({status_code})",
-  emailBody:
-    "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+  telegramTemplate: "",
+  emailSubject: "",
+  emailBody: "",
   isActive: true,
 };

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
-import { dispatchReportNow, getReportScheduleById } from "@/lib/reports/service";
+import { sendReportScheduleNow } from "@/lib/reports/service";
 
 export const runtime = "nodejs";
 
@@ -15,21 +15,14 @@ export async function POST(_request: NextRequest, context: { params: Params }) {
     }
 
     const { id } = await context.params;
-    const schedule = await getReportScheduleById(session.id, id);
-    if (!schedule) {
+    const result = await sendReportScheduleNow(session.id, id);
+    if (!result) {
       return NextResponse.json({ message: "Report schedule not found." }, { status: 404 });
     }
 
-    const result = await dispatchReportNow(
-      session.id,
-      {
-        scope: schedule.scope,
-        cadence: schedule.cadence,
-        template: schedule.template,
-        companyId: schedule.companyId,
-      },
-      schedule.recipientEmails
-    );
+    if (!result.report) {
+      return NextResponse.json(result, { status: 502 });
+    }
 
     return NextResponse.json(result);
   } catch (error) {

@@ -2,7 +2,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorIncidents, monitors } from "@/lib/db/schema";
 
-export async function listIncidents(userId: string, status?: "open" | "resolved") {
+async function listIncidents(userId: string, status?: "open" | "resolved") {
   return db
     .select({
       id: monitorIncidents.id,
@@ -28,6 +28,23 @@ export async function listIncidents(userId: string, status?: "open" | "resolved"
       )
     )
     .orderBy(desc(monitorIncidents.startedAt));
+}
+
+export async function getIncidentOverview(userId: string) {
+  const [openIncidents, resolvedIncidents] = await Promise.all([
+    listIncidents(userId, "open"),
+    listIncidents(userId, "resolved"),
+  ]);
+
+  return {
+    summary: {
+      open: openIncidents.length,
+      resolved: resolvedIncidents.length,
+      total: openIncidents.length + resolvedIncidents.length,
+    },
+    openIncidents,
+    recentResolvedIncidents: resolvedIncidents.slice(0, 5),
+  };
 }
 
 export async function openOrUpdateIncident(input: {
@@ -95,25 +112,6 @@ export async function resolveIncident(input: {
     .returning();
 
   return incident;
-}
-
-export async function updateIncidentDetails(input: {
-  userId: string;
-  incidentId: string;
-  notes: string;
-  postmortem: string;
-}) {
-  const [incident] = await db
-    .update(monitorIncidents)
-    .set({
-      notes: input.notes.trim(),
-      postmortem: input.postmortem.trim(),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(monitorIncidents.id, input.incidentId), eq(monitorIncidents.userId, input.userId)))
-    .returning();
-
-  return incident ?? null;
 }
 
 async function getOpenIncident(userId: string, monitorId: string) {
