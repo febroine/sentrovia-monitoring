@@ -15,6 +15,7 @@ export async function listCompanies(userId: string) {
       id: monitors.id,
       companyId: monitors.companyId,
       status: monitors.status,
+      isActive: monitors.isActive,
     })
     .from(monitors)
     .where(eq(monitors.userId, userId));
@@ -24,7 +25,7 @@ export async function listCompanies(userId: string) {
     return {
       ...company,
       monitorsCount: related.length,
-      activeMonitors: related.filter((monitor) => monitor.status === "up").length,
+      activeMonitors: related.filter((monitor) => monitor.isActive && monitor.status === "up").length,
     };
   });
 }

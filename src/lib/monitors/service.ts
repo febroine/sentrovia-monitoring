@@ -3,6 +3,7 @@ import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, userSettings, workerState } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { resolveIncident } from "@/lib/incidents/service";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import {
   buildCanonicalMonitorTarget,
@@ -45,16 +46,20 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
   }
 
   const values = await buildMonitorValues(userId, input, existingMonitor);
+  const now = new Date();
+  const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
   const [monitor] = await db
     .update(monitors)
     .set({
       ...values,
-      ...buildActiveStateUpdate(existingMonitor.isActive, values.isActive),
+      ...activeStateUpdate,
       userId,
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
     .returning();
+
+  await resolveIncidentOnPause(existingMonitor, values.isActive, now);
 
   return monitor;
 }
@@ -65,36 +70,42 @@ export async function updateMonitorActiveState(userId: string, monitorId: string
     return null;
   }
 
+  const now = new Date();
   const [monitor] = await db
     .update(monitors)
     .set({
       isActive,
-      ...buildActiveStateUpdate(existingMonitor.isActive, isActive),
-      updatedAt: new Date(),
+      ...buildActiveStateUpdate(existingMonitor.isActive, isActive, now),
+      updatedAt: now,
     })
     .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
     .returning();
+
+  await resolveIncidentOnPause(existingMonitor, isActive, now);
 
   return monitor;
 }
 
 export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const existingMonitors = await tx
       .select()
       .from(monitors)
       .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)));
     const updated: Array<typeof monitors.$inferSelect> = [];
+    const pausedIncidents: Array<Parameters<typeof resolveIncident>[0]> = [];
 
     for (const existingMonitor of existingMonitors) {
       const mergedInput = buildBulkUpdatePayload(existingMonitor, input);
       const values = await buildMonitorValues(userId, mergedInput, existingMonitor, tx);
+      const now = new Date();
       const [monitor] = await tx
         .update(monitors)
         .set({
           ...values,
+          ...buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now),
           userId,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(and(eq(monitors.id, existingMonitor.id), eq(monitors.userId, userId)))
         .returning();
@@ -102,10 +113,23 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
       if (monitor) {
         updated.push(monitor);
       }
+
+      if (existingMonitor.isActive && !values.isActive) {
+        pausedIncidents.push({
+          monitorId: existingMonitor.id,
+          userId: existingMonitor.userId,
+          checkedAt: now,
+          statusCode: existingMonitor.statusCode,
+        });
+      }
     }
 
-    return updated;
+    return { updated, pausedIncidents };
   });
+
+  await Promise.all(result.pausedIncidents.map((incident) => resolveIncident(incident)));
+
+  return result.updated;
 }
 
 export async function updateMonitorTags(
@@ -205,18 +229,52 @@ function resolveColdStartSpreadWindow(values: Array<{ intervalValue: number; int
   return Math.max(0, Math.min(shortestIntervalMs, MAX_COLD_START_SPREAD_MS));
 }
 
-function buildActiveStateUpdate(wasActive: boolean, isActive: boolean) {
+function buildActiveStateUpdate(wasActive: boolean, isActive: boolean, now: Date) {
   if (wasActive && isActive) {
     return {};
   }
 
+  if (!isActive) {
+    return {
+      status: "pending",
+      statusCode: null,
+      uptime: "--",
+      nextCheckAt: null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      lastFailureAt: null,
+      lastErrorMessage: null,
+      consecutiveFailures: 0,
+      verificationMode: false,
+      verificationFailureCount: 0,
+      latencyMs: null,
+    };
+  }
+
   return {
-    nextCheckAt: isActive ? new Date() : null,
+    nextCheckAt: now,
     leaseToken: null,
     leaseExpiresAt: null,
     verificationMode: false,
     verificationFailureCount: 0,
   };
+}
+
+async function resolveIncidentOnPause(
+  monitor: typeof monitors.$inferSelect,
+  nextActiveState: boolean,
+  resolvedAt: Date
+) {
+  if (!monitor.isActive || nextActiveState) {
+    return;
+  }
+
+  await resolveIncident({
+    monitorId: monitor.id,
+    userId: monitor.userId,
+    checkedAt: resolvedAt,
+    statusCode: monitor.statusCode,
+  });
 }
 
 export async function claimDueMonitors(now: Date) {
@@ -338,6 +396,25 @@ export async function recordMonitorResult(
 }
 
 export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
+  const [existingMonitor] = await db
+    .select()
+    .from(monitors)
+    .where(and(eq(monitors.monitorType, "heartbeat"), eq(monitors.heartbeatToken, token)))
+    .limit(1);
+
+  if (!existingMonitor) {
+    return null;
+  }
+
+  if (!existingMonitor.isActive) {
+    return {
+      accepted: false,
+      paused: true,
+      monitor: existingMonitor,
+      receivedAt,
+    };
+  }
+
   const [monitor] = await db
     .update(monitors)
     .set({
@@ -347,11 +424,16 @@ export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
       leaseExpiresAt: null,
       updatedAt: new Date(),
     })
-    .where(and(eq(monitors.monitorType, "heartbeat"), eq(monitors.heartbeatToken, token)))
+    .where(and(eq(monitors.id, existingMonitor.id), eq(monitors.isActive, true)))
     .returning();
 
   if (!monitor) {
-    return null;
+    return {
+      accepted: false,
+      paused: true,
+      monitor: existingMonitor,
+      receivedAt,
+    };
   }
 
   await appendMonitorEvent({
@@ -364,7 +446,12 @@ export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
     message: "Heartbeat ping received from the external job.",
   });
 
-  return monitor;
+  return {
+    accepted: true,
+    paused: false,
+    monitor,
+    receivedAt,
+  };
 }
 
 export async function appendMonitorEvent(input: {

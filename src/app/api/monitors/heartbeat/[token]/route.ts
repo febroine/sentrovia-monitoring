@@ -17,15 +17,19 @@ export async function POST(_request: NextRequest, context: HeartbeatRouteContext
 
 async function handleHeartbeat(context: HeartbeatRouteContext) {
   const { token } = await context.params;
-  const monitor = await receiveHeartbeat(token);
+  const receipt = await receiveHeartbeat(token);
 
-  if (!monitor) {
+  if (!receipt) {
     return NextResponse.json({ message: "Heartbeat monitor not found." }, { status: 404 });
   }
 
-  return NextResponse.json({
-    message: "Heartbeat received.",
-    monitorId: monitor.id,
-    receivedAt: new Date().toISOString(),
-  });
+  return NextResponse.json(
+    {
+      message: receipt.paused ? "Heartbeat monitor is paused." : "Heartbeat received.",
+      monitorId: receipt.monitor.id,
+      accepted: receipt.accepted,
+      receivedAt: receipt.receivedAt.toISOString(),
+    },
+    { status: receipt.paused ? 202 : 200 }
+  );
 }
