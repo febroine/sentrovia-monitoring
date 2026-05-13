@@ -4,29 +4,46 @@ import { getSession } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
-function getCpuUsage(): Promise<number> {
+const CPU_SAMPLE_WINDOW_MS = 1000;
+const CPU_SAMPLE_POLL_MS = 250;
+
+type CpuSnapshot = ReturnType<typeof captureCpuSnapshot>;
+
+function captureCpuSnapshot() {
+  return os.cpus().map((cpu) => ({
+    idle: cpu.times.idle,
+    total: Object.values(cpu.times).reduce((total, current) => total + current, 0),
+  }));
+}
+
+function calculateCpuUsage(before: CpuSnapshot, after: CpuSnapshot) {
+  let totalIdle = 0;
+  let totalTick = 0;
+
+  before.forEach((cpu, index) => {
+    const nextCpu = after[index];
+    if (!nextCpu) {
+      return;
+    }
+
+    totalIdle += Math.max(0, nextCpu.idle - cpu.idle);
+    totalTick += Math.max(0, nextCpu.total - cpu.total);
+  });
+
+  const usage = totalTick > 0 ? 100 - (100 * totalIdle) / totalTick : 0;
+  return Math.max(0, Math.min(100, Math.round(usage * 10) / 10));
+}
+
+async function getCpuUsage(): Promise<number> {
   return new Promise((resolve) => {
-    const cpusBefore = os.cpus();
+    const samples = [captureCpuSnapshot()];
 
+    const intervalId = setInterval(() => samples.push(captureCpuSnapshot()), CPU_SAMPLE_POLL_MS);
     setTimeout(() => {
-      const cpusAfter = os.cpus();
-      let totalIdle = 0;
-      let totalTick = 0;
-
-      cpusBefore.forEach((cpu, index) => {
-        const nextCpu = cpusAfter[index];
-        const idleBefore = cpu.times.idle;
-        const idleAfter = nextCpu.times.idle;
-        const totalBefore = Object.values(cpu.times).reduce((total, current) => total + current, 0);
-        const totalAfter = Object.values(nextCpu.times).reduce((total, current) => total + current, 0);
-
-        totalIdle += idleAfter - idleBefore;
-        totalTick += totalAfter - totalBefore;
-      });
-
-      const usage = totalTick > 0 ? 100 - (100 * totalIdle) / totalTick : 0;
-      resolve(Math.round(usage * 10) / 10);
-    }, 200);
+      clearInterval(intervalId);
+      samples.push(captureCpuSnapshot());
+      resolve(calculateCpuUsage(samples[0], samples[samples.length - 1]));
+    }, CPU_SAMPLE_WINDOW_MS);
   });
 }
 
