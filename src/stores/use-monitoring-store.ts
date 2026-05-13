@@ -11,6 +11,7 @@ interface MonitoringState {
   loadMonitors: () => Promise<void>;
   createMonitor: (payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitor: (id: string, payload: MonitorPayload) => Promise<MonitorRecord | null>;
+  updateMonitorActiveState: (id: string, isActive: boolean) => Promise<MonitorRecord | null>;
   bulkUpdateMonitors: (ids: string[], payload: MonitorPayload) => Promise<MonitorRecord[]>;
   deleteMonitors: (ids: string[]) => Promise<string[]>;
   importMonitors: (items: MonitorRecord[]) => void;
@@ -98,6 +99,37 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return monitor;
     } catch (error) {
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to update monitor." });
+      return null;
+    }
+  },
+  updateMonitorActiveState: async (id, isActive) => {
+    set({ saving: true });
+
+    try {
+      const response = await fetch(`/api/monitors/${id}/active`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      });
+      const data = await readJson<{ message?: string; monitor?: MonitorRecord }>(response);
+
+      if (!response.ok || !data.monitor) {
+        throw new Error(data.message ?? "Unable to update monitor active state.");
+      }
+
+      const monitor = data.monitor;
+      set((state) => ({
+        monitors: state.monitors.map((item) => (item.id === id ? monitor : item)),
+        saving: false,
+        error: null,
+      }));
+
+      return monitor;
+    } catch (error) {
+      set({
+        saving: false,
+        error: error instanceof Error ? error.message : "Unable to update monitor active state.",
+      });
       return null;
     }
   },

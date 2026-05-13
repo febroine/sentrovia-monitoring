@@ -48,7 +48,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       {
         label: "Total monitors",
         value: String(data.summary.total),
-        sub: `${data.summary.pending} pending`,
+        sub: `${data.summary.active} active / ${data.summary.paused} paused`,
         icon: Server,
         tone: "text-slate-700 dark:text-slate-100",
         border: "border-l-slate-400",
@@ -198,7 +198,9 @@ function PanelCompanyHealth({
                   </div>
                   <div>
                     <p className="text-sm font-medium">{company.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{company.total} monitors</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {company.active} active / {company.paused} paused
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -213,12 +215,13 @@ function PanelCompanyHealth({
                     </Badge>
                   ) : null}
                   {company.pending > 0 ? <Badge variant="outline">{company.pending} pending</Badge> : null}
+                  {company.paused > 0 ? <Badge variant="outline">{company.paused} paused</Badge> : null}
                 </div>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full bg-emerald-500"
-                  style={{ width: `${company.total > 0 ? (company.up / company.total) * 100 : 0}%` }}
+                  style={{ width: `${company.active > 0 ? (company.up / company.active) * 100 : 0}%` }}
                 />
               </div>
             </div>

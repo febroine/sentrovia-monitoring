@@ -4,16 +4,17 @@ import type { MonitorRecord } from "@/lib/monitors/types";
 
 export function MonitorStats({ monitors }: { monitors: MonitorRecord[] }) {
   const total = monitors.length;
-  const online = monitors.filter((monitor) => monitor.status === "up").length;
-  const offline = monitors.filter((monitor) => monitor.status === "down").length;
-  const pending = monitors.filter((monitor) => monitor.status === "pending").length;
-  const coverage = total > 0 ? (online / total) * 100 : 0;
+  const activeMonitors = monitors.filter((monitor) => monitor.isActive);
+  const paused = total - activeMonitors.length;
+  const online = activeMonitors.filter((monitor) => monitor.status === "up").length;
+  const offline = activeMonitors.filter((monitor) => monitor.status === "down").length;
+  const pending = activeMonitors.filter((monitor) => monitor.status === "pending").length;
 
   const items = [
-    { label: "Total monitors", value: String(total), sub: pending > 0 ? `${pending} awaiting first check` : "Inventory in scope", icon: Globe, tone: "text-slate-700 dark:text-slate-200", bar: "bg-slate-500" },
+    { label: "Total monitors", value: String(total), sub: `${activeMonitors.length} active / ${paused} paused`, icon: Globe, tone: "text-slate-700 dark:text-slate-200", bar: "bg-slate-500" },
     { label: "Online", value: String(online), sub: "Responding normally", icon: CheckCircle2, tone: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500" },
     { label: "Offline", value: String(offline), sub: "Require attention", icon: XCircle, tone: "text-destructive", bar: "bg-destructive" },
-    { label: "Coverage", value: `${coverage.toFixed(1)}%`, sub: "Healthy monitor ratio", icon: Activity, tone: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500" },
+    { label: "Paused", value: String(paused), sub: pending > 0 ? `${pending} awaiting first check` : "Excluded from checks", icon: Activity, tone: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500" },
   ];
 
   return (
@@ -37,7 +38,7 @@ export function MonitorStats({ monitors }: { monitors: MonitorRecord[] }) {
               <div className="h-2 rounded-full bg-muted">
                 <div
                   className={`h-full rounded-full ${item.bar}`}
-                  style={{ width: `${item.label === "Coverage" ? coverage : total > 0 ? (Number(item.value) / total) * 100 : 0}%` }}
+                  style={{ width: `${total > 0 ? (Number(item.value) / total) * 100 : 0}%` }}
                 />
               </div>
             </div>

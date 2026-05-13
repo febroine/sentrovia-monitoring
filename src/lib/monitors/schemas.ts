@@ -215,4 +215,8 @@ export const monitorBulkUpdateSchema = z.object({
   payload: monitorInputSchema,
 });
 
+export const monitorActiveStateSchema = z.object({
+  isActive: z.boolean(),
+});
+
 export type MonitorInput = z.infer<typeof monitorInputSchema>;

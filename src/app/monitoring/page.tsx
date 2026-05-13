@@ -47,6 +47,7 @@ export default function MonitoringPage() {
     loadMonitors,
     createMonitor,
     updateMonitor,
+    updateMonitorActiveState,
     bulkUpdateMonitors,
     deleteMonitors,
     importMonitors,
@@ -69,6 +70,7 @@ export default function MonitoringPage() {
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, MonitorHistoryPoint[]>>({});
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
+  const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
 
   const companyFilters = useMemo(
     () => ["all", ...Array.from(new Set(monitors.map((monitor) => monitor.company).filter(Boolean)))],
@@ -90,7 +92,7 @@ export default function MonitoringPage() {
     [companyFilter, monitors, search]
   );
   const problematicCount = useMemo(
-    () => monitors.filter((monitor) => monitor.status === "down" || monitor.verificationMode).length,
+    () => monitors.filter((monitor) => monitor.isActive && (monitor.status === "down" || monitor.verificationMode)).length,
     [monitors]
   );
 
@@ -172,6 +174,19 @@ export default function MonitoringPage() {
       await refreshMonitoring();
       setBulkEditOpen(false);
       setSelectedIds(new Set());
+    }
+  }
+
+  async function handleToggleMonitorActive(monitor: MonitorRecord) {
+    setActiveTogglePendingId(monitor.id);
+
+    try {
+      const updated = await updateMonitorActiveState(monitor.id, !monitor.isActive);
+      if (updated) {
+        await Promise.all([loadMonitorHistory(), loadSupportingData()]);
+      }
+    } finally {
+      setActiveTogglePendingId(null);
     }
   }
 
@@ -341,10 +356,12 @@ export default function MonitoringPage() {
         loading={loading}
         historyByMonitor={historyByMonitor}
         selectedIds={selectedIds}
+        activeTogglePendingId={activeTogglePendingId}
         allPageSelected={allPageSelected}
         somePageSelected={somePageSelected}
         onToggleAll={toggleAll}
         onToggleOne={toggleOne}
+        onToggleActive={(monitor) => void handleToggleMonitorActive(monitor)}
         onEdit={setEditingMonitor}
         onSelectTimelinePoint={handleSelectTimelinePoint}
       />

@@ -1,4 +1,4 @@
-import { CheckSquare, Clock, Globe, Mail, Send, Settings2, Square, XCircle, CheckCircle2 } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Globe, Mail, Power, Send, Settings2, Square, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MonitorHistoryStrip } from "@/components/monitoring/monitor-history-strip";
@@ -10,16 +10,22 @@ import { formatLastChecked } from "@/components/monitoring/utils";
 function StatusBadge({
   status,
   code,
+  isActive,
   verificationMode,
   verificationFailureCount,
   threshold,
 }: {
   status: SiteStatus;
   code: number | null;
+  isActive: boolean;
   verificationMode: boolean;
   verificationFailureCount: number;
   threshold: number;
 }) {
+  if (!isActive) {
+    return <Badge variant="outline" className="text-muted-foreground">PAUSED</Badge>;
+  }
+
   if (verificationMode) {
     return (
       <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400">
@@ -50,10 +56,12 @@ export function MonitorTable({
   loading,
   historyByMonitor,
   selectedIds,
+  activeTogglePendingId,
   allPageSelected,
   somePageSelected,
   onToggleAll,
   onToggleOne,
+  onToggleActive,
   onEdit,
   onSelectTimelinePoint,
 }: {
@@ -61,10 +69,12 @@ export function MonitorTable({
   loading: boolean;
   historyByMonitor: Record<string, MonitorHistoryPoint[]>;
   selectedIds: Set<string>;
+  activeTogglePendingId: string | null;
   allPageSelected: boolean;
   somePageSelected: boolean;
   onToggleAll: () => void;
   onToggleOne: (id: string) => void;
+  onToggleActive: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
   onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
 }) {
@@ -143,6 +153,7 @@ export function MonitorTable({
                     <StatusBadge
                       status={monitor.status}
                       code={monitor.statusCode}
+                      isActive={monitor.isActive}
                       verificationMode={monitor.verificationMode}
                       verificationFailureCount={monitor.verificationFailureCount}
                       threshold={Math.max(1, monitor.retries)}
@@ -152,7 +163,24 @@ export function MonitorTable({
                     ) : null}
                   </div>
                 </TableCell>
-                <TableCell><span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${monitor.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>{monitor.isActive ? "On" : "Off"}</span></TableCell>
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${monitor.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+                      {monitor.isActive ? "On" : "Off"}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={activeTogglePendingId === monitor.id}
+                      aria-label={monitor.isActive ? `Disable ${monitor.name}` : `Enable ${monitor.name}`}
+                      title={monitor.isActive ? "Disable monitor" : "Enable monitor"}
+                      onClick={() => onToggleActive(monitor)}
+                    >
+                      <Power className={`size-3.5 ${monitor.isActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
+                    </Button>
+                  </div>
+                </TableCell>
                 <TableCell>{monitor.statusCode ?? "--"}</TableCell>
                 <TableCell>{monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"}</TableCell>
                 <TableCell><NotificationBadge pref={monitor.notificationPref} /></TableCell>

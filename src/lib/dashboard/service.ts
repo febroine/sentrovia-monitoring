@@ -16,26 +16,37 @@ export async function getDashboardData(userId: string) {
   ]);
 
   const total = monitorRows.length;
-  const online = monitorRows.filter((monitor) => monitor.status === "up").length;
-  const offline = monitorRows.filter((monitor) => monitor.status === "down").length;
-  const pending = monitorRows.filter((monitor) => monitor.status === "pending").length;
-  const latencyRows = monitorRows.filter((monitor) => typeof monitor.latencyMs === "number");
+  const activeRows = monitorRows.filter((monitor) => monitor.isActive);
+  const activeMonitorIds = new Set(activeRows.map((monitor) => monitor.id));
+  const activeCheckRows = checkRows.filter((check) => activeMonitorIds.has(check.monitorId));
+  const active = activeRows.length;
+  const paused = total - active;
+  const online = activeRows.filter((monitor) => monitor.status === "up").length;
+  const offline = activeRows.filter((monitor) => monitor.status === "down").length;
+  const pending = activeRows.filter((monitor) => monitor.status === "pending").length;
+  const latencyRows = activeRows.filter((monitor) => typeof monitor.latencyMs === "number");
   const avgLatency = latencyRows.length > 0 ? Math.round(latencyRows.reduce((sum, item) => sum + (item.latencyMs ?? 0), 0) / latencyRows.length) : 0;
-  const certificateWatch = monitorRows.filter((monitor) => {
+  const certificateWatch = activeRows.filter((monitor) => {
     if (!monitor.sslExpiresAt) {
       return false;
     }
 
     return monitor.sslExpiresAt.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 30;
   }).length;
-  const configuredNotifications = monitorRows.filter((monitor) => monitor.notificationPref !== "none").length;
-  const silentMonitors = total - configuredNotifications;
+  const configuredNotifications = activeRows.filter((monitor) => monitor.notificationPref !== "none").length;
+  const silentMonitors = active - configuredNotifications;
 
   const companyHealth = Object.values(
-    monitorRows.reduce<Record<string, { name: string; total: number; up: number; down: number; pending: number }>>((acc, monitor) => {
+    monitorRows.reduce<Record<string, { name: string; total: number; active: number; paused: number; up: number; down: number; pending: number }>>((acc, monitor) => {
       const key = monitor.company ?? "Unassigned";
-      acc[key] ??= { name: key, total: 0, up: 0, down: 0, pending: 0 };
+      acc[key] ??= { name: key, total: 0, active: 0, paused: 0, up: 0, down: 0, pending: 0 };
       acc[key].total += 1;
+      if (!monitor.isActive) {
+        acc[key].paused += 1;
+        return acc;
+      }
+
+      acc[key].active += 1;
       if (monitor.status === "up") acc[key].up += 1;
       if (monitor.status === "down") acc[key].down += 1;
       if (monitor.status === "pending") acc[key].pending += 1;
@@ -43,11 +54,11 @@ export async function getDashboardData(userId: string) {
     }, {})
   );
 
-  const recent24hChecks = checkRows.filter((check) => check.createdAt.getTime() >= Date.now() - 1000 * 60 * 60 * 24);
-  const recent7dChecks = checkRows.filter((check) => check.createdAt.getTime() >= Date.now() - 1000 * 60 * 60 * 24 * 7);
+  const recent24hChecks = activeCheckRows.filter((check) => check.createdAt.getTime() >= Date.now() - 1000 * 60 * 60 * 24);
+  const recent7dChecks = activeCheckRows.filter((check) => check.createdAt.getTime() >= Date.now() - 1000 * 60 * 60 * 24 * 7);
 
   return {
-    summary: { total, online, offline, pending, coverage: total > 0 ? (online / total) * 100 : 0, avgLatency },
+    summary: { total, active, paused, online, offline, pending, coverage: active > 0 ? (online / active) * 100 : 0, avgLatency },
     companyHealth,
     monitors: monitorRows.slice(0, 6),
     events: eventRows,
@@ -57,8 +68,8 @@ export async function getDashboardData(userId: string) {
       silentMonitors,
       certificateWatch,
       averageIntervalMinutes:
-        total > 0
-          ? Math.round(monitorRows.reduce((sum, monitor) => sum + monitor.intervalValue, 0) / total)
+        active > 0
+          ? Math.round(activeRows.reduce((sum, monitor) => sum + monitor.intervalValue, 0) / active)
           : 0,
       statusCodeWatchCount:
         settings?.notifications.statusCodeAlertCodes

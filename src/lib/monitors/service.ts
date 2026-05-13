@@ -58,6 +58,29 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
   return monitor;
 }
 
+export async function updateMonitorActiveState(userId: string, monitorId: string, isActive: boolean) {
+  const existingMonitor = await getMonitorById(userId, monitorId);
+  if (!existingMonitor) {
+    return null;
+  }
+
+  const [monitor] = await db
+    .update(monitors)
+    .set({
+      isActive,
+      nextCheckAt: isActive ? new Date() : null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      verificationMode: false,
+      verificationFailureCount: 0,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
+    .returning();
+
+  return monitor;
+}
+
 export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {
   return db.transaction(async (tx) => {
     const existingMonitors = await tx
