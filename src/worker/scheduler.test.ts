@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     checkedAt: Date;
     sslExpiresAt: Date | null;
   }>,
+  checkMonitor: vi.fn(),
   appendMonitorCheck: vi.fn(),
   appendMonitorEvent: vi.fn(),
   claimDueMonitors: vi.fn(),
@@ -73,14 +74,14 @@ vi.mock("@/worker/checker", () => ({
   calculateNextCheckAt: (monitor: Monitor, checkedAt: Date) =>
     new Date(checkedAt.getTime() + monitor.intervalValue * 60_000),
   calculateVerificationCheckAt: (checkedAt: Date) => new Date(checkedAt.getTime() + 60_000),
-  checkMonitor: vi.fn(() => Promise.resolve(mocks.checkResults.shift() ?? mocks.checkResult)),
+  checkMonitor: mocks.checkMonitor,
 }));
 
 vi.mock("@/worker/notifier", () => ({
   sendMonitorNotifications: mocks.sendMonitorNotifications,
 }));
 
-import { runMonitoringCycle } from "@/worker/scheduler";
+import { calculateVerificationTimeout, runMonitoringCycle } from "@/worker/scheduler";
 
 describe("monitoring scheduler verification flow", () => {
   beforeEach(() => {
@@ -97,6 +98,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.checkResults = [];
     mocks.dueMonitors = [];
     mocks.claimDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors));
+    mocks.checkMonitor.mockImplementation(() => Promise.resolve(mocks.checkResults.shift() ?? mocks.checkResult));
     mocks.countDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors.length));
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
     mocks.recordMonitorResult.mockResolvedValue(null);
@@ -225,6 +227,53 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
     );
+  });
+
+  it("uses longer timeouts for verification rechecks", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        timeout: 5000,
+        retries: 3,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.checkMonitor).toHaveBeenCalledWith(expect.objectContaining({ timeout: 7500 }));
+  });
+
+  it("uses a capped longer timeout for final outage confirmation", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        timeout: 5000,
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(1, expect.objectContaining({ timeout: 7500 }));
+    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(2, expect.objectContaining({ timeout: 10000 }));
+  });
+});
+
+describe("verification timeout escalation", () => {
+  it("keeps normal checks at their configured timeout", () => {
+    expect(calculateVerificationTimeout(5000, 0)).toBe(5000);
+  });
+
+  it("increases verification timeout and caps it", () => {
+    expect(calculateVerificationTimeout(5000, 1)).toBe(7500);
+    expect(calculateVerificationTimeout(5000, 2)).toBe(10000);
+    expect(calculateVerificationTimeout(100000, 2)).toBe(120000);
   });
 });
 
