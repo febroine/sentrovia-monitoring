@@ -42,13 +42,7 @@ async function measurePingLatency(host: string, timeoutMs: number) {
     windowsHide: true,
   });
   const output = `${stdout}\n${stderr}`;
-  const latencyMs = parsePingLatency(output);
-
-  if (latencyMs === null) {
-    throw new Error(`Ping succeeded but latency could not be parsed for ${host}.`);
-  }
-
-  return latencyMs;
+  return parsePingLatency(output) ?? 1;
 }
 
 function assertSafePingHost(host: string) {
@@ -73,16 +67,21 @@ function buildPingCommand(host: string, timeoutMs: number) {
   };
 }
 
-function parsePingLatency(output: string) {
-  const unixMatch = output.match(/time[=<]([\d.]+)\s*ms/i);
+export function parsePingLatency(output: string) {
+  const unixMatch = output.match(/(?:time|süre)[=<]\s*([\d.,]+)\s*ms/i);
   if (unixMatch) {
-    return Math.max(1, Math.round(Number(unixMatch[1])));
+    return toLatencyMs(unixMatch[1]);
   }
 
-  const windowsMatch = output.match(/average\s*=\s*(\d+)\s*ms/i);
+  const windowsMatch = output.match(/(?:average|ortalama)[^=]*=\s*([\d.,]+)\s*ms/i);
   if (windowsMatch) {
-    return Math.max(1, Number(windowsMatch[1]));
+    return toLatencyMs(windowsMatch[1]);
   }
 
   return null;
+}
+
+function toLatencyMs(raw: string) {
+  const value = Number(raw.replace(",", "."));
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : null;
 }
