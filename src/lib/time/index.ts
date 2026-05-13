@@ -18,12 +18,12 @@ const COMMON_TIME_ZONES = [
   "Australia/Sydney",
 ] as const;
 
-interface TimeDisplaySettings {
+export interface TimeDisplaySettings {
   timeZone: string;
   use24HourClock: boolean;
 }
 
-const DEFAULT_TIME_DISPLAY_SETTINGS: TimeDisplaySettings = {
+export const DEFAULT_TIME_DISPLAY_SETTINGS: TimeDisplaySettings = {
   timeZone: DEFAULT_TIME_ZONE,
   use24HourClock: true,
 };
