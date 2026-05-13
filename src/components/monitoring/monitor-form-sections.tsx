@@ -342,15 +342,17 @@ export function GeneralMonitorSettings({
         />
       </Field>
 
-      <div className="rounded-lg border border-border px-3 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium">Active monitor</p>
-            <p className="text-xs text-muted-foreground">Worker will only check monitors that are marked active.</p>
+      {!isBulkEditMode ? (
+        <div className="rounded-lg border border-border px-3 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Active monitor</p>
+              <p className="text-xs text-muted-foreground">Worker will only check monitors that are marked active.</p>
+            </div>
+            <Switch checked={values.isActive} onCheckedChange={(checked) => onFieldChange("isActive", checked)} />
           </div>
-          <Switch checked={values.isActive} onCheckedChange={(checked) => onFieldChange("isActive", checked)} />
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
