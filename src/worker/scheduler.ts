@@ -15,6 +15,10 @@ import { recordWorkerCycleMetric } from "@/lib/worker/observability";
 import { calculateNextCheckAt, calculateVerificationCheckAt, checkMonitor } from "@/worker/checker";
 import { sendMonitorNotifications } from "@/worker/notifier";
 
+const VERIFICATION_TIMEOUT_STEP_RATIO = 0.5;
+const MAX_VERIFICATION_TIMEOUT_MULTIPLIER = 2;
+const MAX_VERIFICATION_TIMEOUT_MS = 120_000;
+
 export async function runMonitoringCycle() {
   const cycleStartedAt = new Date();
   const backlogAtStart = await countDueMonitors(cycleStartedAt);
@@ -93,13 +97,14 @@ export async function runMonitoringCycle() {
 }
 
 async function processMonitor(monitor: Monitor) {
-  let result = await checkMonitor(monitor);
-  let rca = analyzeRootCause(result);
   const threshold = Math.max(1, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
   const hadConfirmedIncident = previousStatus === "down" && !monitor.verificationMode;
   const wasVerifying = monitor.verificationMode;
+  const verificationAttempt = wasVerifying ? monitor.verificationFailureCount : 0;
+  let result = await checkMonitor(withVerificationTimeout(monitor, verificationAttempt));
+  let rca = analyzeRootCause(result);
   let checksPerformed = 1;
   let incidentConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
@@ -144,7 +149,7 @@ async function processMonitor(monitor: Monitor) {
     let confirmedIncident = verificationCount >= threshold;
 
     if (confirmedIncident) {
-      const finalConfirmation = await checkMonitor(monitor);
+      const finalConfirmation = await checkMonitor(withVerificationTimeout(monitor, verificationCount));
       checksPerformed += 1;
       result = finalConfirmation;
       rca = analyzeRootCause(finalConfirmation);
@@ -305,6 +310,32 @@ async function processMonitor(monitor: Monitor) {
   return {
     finalStatus: checkStatus,
     latencyMs: result.latencyMs,
+  };
+}
+
+export function calculateVerificationTimeout(baseTimeoutMs: number, verificationAttempt: number) {
+  if (verificationAttempt <= 0) {
+    return baseTimeoutMs;
+  }
+
+  const multiplier = Math.min(
+    MAX_VERIFICATION_TIMEOUT_MULTIPLIER,
+    1 + verificationAttempt * VERIFICATION_TIMEOUT_STEP_RATIO
+  );
+
+  return Math.min(MAX_VERIFICATION_TIMEOUT_MS, Math.round(baseTimeoutMs * multiplier));
+}
+
+function withVerificationTimeout(monitor: Monitor, verificationAttempt: number) {
+  const timeout = calculateVerificationTimeout(monitor.timeout, verificationAttempt);
+
+  if (timeout === monitor.timeout) {
+    return monitor;
+  }
+
+  return {
+    ...monitor,
+    timeout,
   };
 }
 
