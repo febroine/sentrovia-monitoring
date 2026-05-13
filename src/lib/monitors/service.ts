@@ -52,6 +52,8 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
     .update(monitors)
     .set({
       ...values,
+      leaseToken: null,
+      leaseExpiresAt: null,
       ...activeStateUpdate,
       userId,
       updatedAt: now,
@@ -103,6 +105,8 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
         .update(monitors)
         .set({
           ...values,
+          leaseToken: null,
+          leaseExpiresAt: null,
           ...buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now),
           userId,
           updatedAt: now,
@@ -234,29 +238,19 @@ function buildActiveStateUpdate(wasActive: boolean, isActive: boolean, now: Date
     return {};
   }
 
-  if (!isActive) {
-    return {
-      status: "pending",
-      statusCode: null,
-      uptime: "--",
-      nextCheckAt: null,
-      leaseToken: null,
-      leaseExpiresAt: null,
-      lastFailureAt: null,
-      lastErrorMessage: null,
-      consecutiveFailures: 0,
-      verificationMode: false,
-      verificationFailureCount: 0,
-      latencyMs: null,
-    };
-  }
-
   return {
-    nextCheckAt: now,
+    status: "pending",
+    statusCode: null,
+    uptime: "--",
+    nextCheckAt: isActive ? now : null,
     leaseToken: null,
     leaseExpiresAt: null,
+    lastFailureAt: null,
+    lastErrorMessage: null,
+    consecutiveFailures: 0,
     verificationMode: false,
     verificationFailureCount: 0,
+    latencyMs: null,
   };
 }
 
@@ -748,8 +742,6 @@ async function buildMonitorValues(
     emailBody: input.emailBody,
     sendIncidentScreenshot: false,
     isActive: input.isActive,
-    verificationMode: false,
-    verificationFailureCount: 0,
   };
 }
 
@@ -831,6 +823,7 @@ function buildBulkUpdatePayload(
     heartbeatLastReceivedAt: existingMonitor.heartbeatLastReceivedAt?.toISOString() ?? null,
     databasePassword: "",
     databasePasswordConfigured: Boolean(existingMonitor.databasePasswordEncrypted),
+    isActive: existingMonitor.isActive,
   };
 
   if (monitorType === "http" || monitorType === "keyword" || monitorType === "json") {
