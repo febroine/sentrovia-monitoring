@@ -163,14 +163,16 @@ export function CompanyMonitorsPanel({
                     <Badge
                       variant="outline"
                       className={
-                        monitor.status === "up"
+                        !monitor.isActive
+                          ? "text-muted-foreground"
+                          : monitor.status === "up"
                           ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                           : monitor.status === "down"
                             ? "border-destructive/30 text-destructive"
                             : ""
                       }
                     >
-                      {monitor.status}
+                      {monitor.isActive ? monitor.status : "paused"}
                     </Badge>
                     <Badge variant="secondary">
                       {monitor.lastCheckedAt
