@@ -97,7 +97,7 @@ async function shouldSendNotification(context: NotificationContext) {
   }
 
   if (context.kind === "recovery") {
-    return await shouldSendByKind(settings.notifications.notifyOnRecovery, settings.notifications.alertDedupMinutes, context);
+    return settings.notifications.notifyOnRecovery;
   }
 
   return false;
