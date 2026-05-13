@@ -12,6 +12,15 @@ const mocks = vi.hoisted(() => ({
     checkedAt: new Date("2026-05-08T07:00:00.000Z"),
     sslExpiresAt: null,
   },
+  checkResults: [] as Array<{
+    ok: boolean;
+    status: "up" | "down";
+    statusCode: number | null;
+    latencyMs: number | null;
+    errorMessage: string | null;
+    checkedAt: Date;
+    sslExpiresAt: Date | null;
+  }>,
   appendMonitorCheck: vi.fn(),
   appendMonitorEvent: vi.fn(),
   claimDueMonitors: vi.fn(),
@@ -64,7 +73,7 @@ vi.mock("@/worker/checker", () => ({
   calculateNextCheckAt: (monitor: Monitor, checkedAt: Date) =>
     new Date(checkedAt.getTime() + monitor.intervalValue * 60_000),
   calculateVerificationCheckAt: (checkedAt: Date) => new Date(checkedAt.getTime() + 60_000),
-  checkMonitor: vi.fn(() => Promise.resolve(mocks.checkResult)),
+  checkMonitor: vi.fn(() => Promise.resolve(mocks.checkResults.shift() ?? mocks.checkResult)),
 }));
 
 vi.mock("@/worker/notifier", () => ({
@@ -85,6 +94,7 @@ describe("monitoring scheduler verification flow", () => {
       checkedAt: new Date("2026-05-08T07:00:00.000Z"),
       sslExpiresAt: null,
     };
+    mocks.checkResults = [];
     mocks.dueMonitors = [];
     mocks.claimDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors));
     mocks.countDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors.length));
@@ -164,6 +174,56 @@ describe("monitoring scheduler verification flow", () => {
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "status-change" })
+    );
+  });
+
+  it("does not send a down alert when final verification already recovered", async () => {
+    mocks.checkResults = [
+      {
+        ok: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: 120,
+        errorMessage: "HTTP 500",
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+        sslExpiresAt: null,
+      },
+      {
+        ok: true,
+        status: "up",
+        statusCode: 200,
+        latencyMs: 80,
+        errorMessage: null,
+        checkedAt: new Date("2026-05-08T07:00:01.000Z"),
+        sslExpiresAt: null,
+      },
+    ];
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+        lastFailureAt: new Date("2026-05-08T06:59:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "up",
+        nextCheckAt: new Date("2026-05-08T07:05:01.000Z"),
+        verificationMode: false,
+        verificationFailureCount: 0,
+        consecutiveFailures: 0,
+      })
+    );
+    expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(2);
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "failure" })
     );
   });
 });

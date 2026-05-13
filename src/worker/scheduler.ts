@@ -93,13 +93,14 @@ export async function runMonitoringCycle() {
 }
 
 async function processMonitor(monitor: Monitor) {
-  const result = await checkMonitor(monitor);
-  const rca = analyzeRootCause(result);
+  let result = await checkMonitor(monitor);
+  let rca = analyzeRootCause(result);
   const threshold = Math.max(1, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
   const hadConfirmedIncident = previousStatus === "down" && !monitor.verificationMode;
   const wasVerifying = monitor.verificationMode;
+  let checksPerformed = 1;
   let incidentConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
   let checkStatus: "up" | "down" | "pending" = result.ok ? "up" : "pending";
@@ -140,30 +141,56 @@ async function processMonitor(monitor: Monitor) {
     });
   } else if (wasVerifying || threshold === 1) {
     const verificationCount = wasVerifying ? monitor.verificationFailureCount + 1 : 1;
-    const confirmedIncident = verificationCount >= threshold;
+    let confirmedIncident = verificationCount >= threshold;
+
+    if (confirmedIncident) {
+      const finalConfirmation = await checkMonitor(monitor);
+      checksPerformed += 1;
+      result = finalConfirmation;
+      rca = analyzeRootCause(finalConfirmation);
+
+      if (result.ok) {
+        confirmedIncident = false;
+      }
+    }
+
     incidentConfirmedThisCycle = confirmedIncident;
     checkStatus = confirmedIncident ? "down" : "pending";
     failureEventMessage = confirmedIncident ? result.errorMessage ?? "Health check failed." : null;
 
     await recordMonitorResult(monitor.id, {
-      status: confirmedIncident ? "down" : "pending",
+      status: result.ok ? "up" : confirmedIncident ? "down" : "pending",
       statusCode: result.statusCode,
-      uptime: confirmedIncident ? "0%" : monitor.uptime,
+      uptime: result.ok ? "100%" : confirmedIncident ? "0%" : monitor.uptime,
       lastCheckedAt: result.checkedAt,
-      nextCheckAt: confirmedIncident
+      nextCheckAt: result.ok || confirmedIncident
         ? calculateNextCheckAt(monitor, result.checkedAt)
         : calculateVerificationCheckAt(result.checkedAt),
-      lastSuccessAt: monitor.lastSuccessAt,
-      lastFailureAt: previousStatus === "up" ? result.checkedAt : monitor.lastFailureAt ?? result.checkedAt,
+      lastSuccessAt: result.ok ? result.checkedAt : monitor.lastSuccessAt,
+      lastFailureAt: result.ok
+        ? monitor.lastFailureAt
+        : previousStatus === "up"
+          ? result.checkedAt
+          : monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
       lastErrorMessage: result.errorMessage,
-      consecutiveFailures: verificationCount,
-      verificationMode: !confirmedIncident,
-      verificationFailureCount: confirmedIncident ? 0 : verificationCount,
+      consecutiveFailures: result.ok ? 0 : verificationCount,
+      verificationMode: !result.ok && !confirmedIncident,
+      verificationFailureCount: result.ok || confirmedIncident ? 0 : verificationCount,
       latencyMs: result.latencyMs,
     });
 
-    if (!confirmedIncident) {
+    if (result.ok) {
+      checkStatus = "up";
+      await appendDetailedEvent(
+        monitor,
+        result,
+        "verification",
+        "Final verification recovered before outage confirmation.",
+        rca,
+        "up"
+      );
+    } else if (!confirmedIncident) {
       await appendDetailedEvent(
         monitor,
         result,
@@ -204,7 +231,7 @@ async function processMonitor(monitor: Monitor) {
   await updateWorkerState({
     heartbeatAt: new Date(),
   });
-  await incrementWorkerCheckedCount();
+  await incrementWorkerCheckedCount(checksPerformed);
   await appendMonitorCheck({
     monitorId: monitor.id,
     userId: monitor.userId,
