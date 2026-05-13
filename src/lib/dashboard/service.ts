@@ -60,7 +60,7 @@ export async function getDashboardData(userId: string) {
   return {
     summary: { total, active, paused, online, offline, pending, coverage: active > 0 ? (online / active) * 100 : 0, avgLatency },
     companyHealth,
-    monitors: monitorRows.slice(0, 6),
+    monitors: activeRows.slice(0, 6),
     events: eventRows,
     delivery: delivery.summary,
     posture: {

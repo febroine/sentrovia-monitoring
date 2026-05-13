@@ -49,6 +49,7 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
     .update(monitors)
     .set({
       ...values,
+      ...buildActiveStateUpdate(existingMonitor.isActive, values.isActive),
       userId,
       updatedAt: new Date(),
     })
@@ -68,11 +69,7 @@ export async function updateMonitorActiveState(userId: string, monitorId: string
     .update(monitors)
     .set({
       isActive,
-      nextCheckAt: isActive ? new Date() : null,
-      leaseToken: null,
-      leaseExpiresAt: null,
-      verificationMode: false,
-      verificationFailureCount: 0,
+      ...buildActiveStateUpdate(existingMonitor.isActive, isActive),
       updatedAt: new Date(),
     })
     .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
@@ -208,6 +205,20 @@ function resolveColdStartSpreadWindow(values: Array<{ intervalValue: number; int
   return Math.max(0, Math.min(shortestIntervalMs, MAX_COLD_START_SPREAD_MS));
 }
 
+function buildActiveStateUpdate(wasActive: boolean, isActive: boolean) {
+  if (wasActive && isActive) {
+    return {};
+  }
+
+  return {
+    nextCheckAt: isActive ? new Date() : null,
+    leaseToken: null,
+    leaseExpiresAt: null,
+    verificationMode: false,
+    verificationFailureCount: 0,
+  };
+}
+
 export async function claimDueMonitors(now: Date) {
   const dueRows = await db
     .select()
@@ -277,6 +288,16 @@ export async function countDueMonitors(now: Date) {
   return rows.length;
 }
 
+export async function isMonitorActive(monitorId: string) {
+  const [monitor] = await db
+    .select({ isActive: monitors.isActive })
+    .from(monitors)
+    .where(eq(monitors.id, monitorId))
+    .limit(1);
+
+  return monitor?.isActive === true;
+}
+
 export async function recordMonitorResult(
   monitorId: string,
   update: {
@@ -293,7 +314,8 @@ export async function recordMonitorResult(
     verificationMode: boolean;
     verificationFailureCount: number;
     latencyMs?: number | null;
-  }
+  },
+  expectedLeaseToken?: string | null
 ) {
   const [monitor] = await db
     .update(monitors)
@@ -303,7 +325,13 @@ export async function recordMonitorResult(
       leaseExpiresAt: null,
       updatedAt: new Date(),
     })
-    .where(eq(monitors.id, monitorId))
+    .where(
+      and(
+        eq(monitors.id, monitorId),
+        eq(monitors.isActive, true),
+        expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
+      )
+    )
     .returning();
 
   return monitor;
@@ -443,7 +471,7 @@ export async function getCompanySlaReport(userId: string, companyId: string) {
       status: monitors.status,
     })
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId), eq(monitors.isActive, true)));
 
   const monitorIds = companyMonitors.map((monitor) => monitor.id);
   const windows = [
@@ -486,7 +514,7 @@ export async function getCompanyMonthlyUptimeReport(userId: string, companyId: s
   const companyMonitors = await db
     .select({ id: monitors.id })
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId), eq(monitors.isActive, true)));
   const monitorIds = companyMonitors.map((monitor) => monitor.id);
 
   if (monitorIds.length === 0) {

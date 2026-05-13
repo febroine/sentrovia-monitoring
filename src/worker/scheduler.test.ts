@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   claimDueMonitors: vi.fn(),
   countDueMonitors: vi.fn(),
   incrementWorkerCheckedCount: vi.fn(),
+  isMonitorActive: vi.fn(),
   openOrUpdateIncident: vi.fn(),
   recordMonitorResult: vi.fn(),
   recordWorkerCycleMetric: vi.fn(),
@@ -62,6 +63,7 @@ vi.mock("@/lib/monitors/service", () => ({
   claimDueMonitors: mocks.claimDueMonitors,
   countDueMonitors: mocks.countDueMonitors,
   incrementWorkerCheckedCount: mocks.incrementWorkerCheckedCount,
+  isMonitorActive: mocks.isMonitorActive,
   recordMonitorResult: mocks.recordMonitorResult,
   updateWorkerState: mocks.updateWorkerState,
 }));
@@ -101,7 +103,8 @@ describe("monitoring scheduler verification flow", () => {
     mocks.checkMonitor.mockImplementation(() => Promise.resolve(mocks.checkResults.shift() ?? mocks.checkResult));
     mocks.countDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors.length));
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
-    mocks.recordMonitorResult.mockResolvedValue(null);
+    mocks.isMonitorActive.mockResolvedValue(true);
+    mocks.recordMonitorResult.mockResolvedValue({ id: "monitor-1" } as Monitor);
     mocks.recordWorkerCycleMetric.mockResolvedValue(null);
     mocks.updateWorkerState.mockResolvedValue(null);
     mocks.sendMonitorNotifications.mockResolvedValue(false);
@@ -119,7 +122,8 @@ describe("monitoring scheduler verification flow", () => {
         nextCheckAt: new Date("2026-05-08T07:01:00.000Z"),
         verificationMode: true,
         verificationFailureCount: 1,
-      })
+      }),
+      "lease-1"
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
   });
@@ -143,7 +147,8 @@ describe("monitoring scheduler verification flow", () => {
         nextCheckAt: new Date("2026-05-08T07:05:00.000Z"),
         verificationMode: false,
         verificationFailureCount: 0,
-      })
+      }),
+      "lease-1"
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
@@ -221,7 +226,8 @@ describe("monitoring scheduler verification flow", () => {
         verificationMode: false,
         verificationFailureCount: 0,
         consecutiveFailures: 0,
-      })
+      }),
+      "lease-1"
     );
     expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(2);
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
@@ -263,6 +269,32 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.checkMonitor).toHaveBeenNthCalledWith(1, expect.objectContaining({ timeout: 7500 }));
     expect(mocks.checkMonitor).toHaveBeenNthCalledWith(2, expect.objectContaining({ timeout: 10000 }));
   });
+
+  it("does not write events or notifications when a claimed monitor was paused mid-cycle", async () => {
+    mocks.recordMonitorResult.mockResolvedValue(null);
+    mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
+    expect(mocks.appendMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+    expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ claimedMonitors: 1, completedMonitors: 0 })
+    );
+  });
+
+  it("does not write side effects when a monitor is paused after result persistence", async () => {
+    mocks.isMonitorActive.mockResolvedValue(false);
+    mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.recordMonitorResult).toHaveBeenCalled();
+    expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
+    expect(mocks.appendMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+  });
 });
 
 describe("verification timeout escalation", () => {
@@ -294,7 +326,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     isActive: true,
     lastCheckedAt: now,
     nextCheckAt: now,
-    leaseToken: null,
+    leaseToken: "lease-1",
     leaseExpiresAt: null,
     lastSuccessAt: now,
     lastFailureAt: null,
