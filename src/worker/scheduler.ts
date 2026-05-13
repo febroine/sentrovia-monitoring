@@ -7,6 +7,7 @@ import {
   incrementWorkerCheckedCount,
   countDueMonitors,
   claimDueMonitors,
+  isMonitorActive,
   recordMonitorResult,
   updateWorkerState,
 } from "@/lib/monitors/service";
@@ -19,11 +20,18 @@ const VERIFICATION_TIMEOUT_STEP_RATIO = 0.5;
 const MAX_VERIFICATION_TIMEOUT_MULTIPLIER = 2;
 const MAX_VERIFICATION_TIMEOUT_MS = 120_000;
 
+type MonitorCycleResult = {
+  finalStatus: "up" | "down" | "pending";
+  latencyMs: number | null;
+};
+
+type MonitorResultUpdate = Parameters<typeof recordMonitorResult>[1];
+
 export async function runMonitoringCycle() {
   const cycleStartedAt = new Date();
   const backlogAtStart = await countDueMonitors(cycleStartedAt);
   const dueMonitors = await claimDueMonitors(cycleStartedAt);
-  const cycleResults: Array<{ finalStatus: "up" | "down" | "pending"; latencyMs: number | null }> = [];
+  const cycleResults: MonitorCycleResult[] = [];
   const cycleErrors: string[] = [];
 
   await updateWorkerState({
@@ -34,7 +42,10 @@ export async function runMonitoringCycle() {
 
   await runWithConcurrency(dueMonitors, env.workerConcurrency, async (monitor) => {
     try {
-      cycleResults.push(await processMonitor(monitor));
+      const result = await processMonitor(monitor);
+      if (result) {
+        cycleResults.push(result);
+      }
     } catch (error) {
       cycleErrors.push(error instanceof Error ? error.message : "A monitor check failed unexpectedly.");
       await updateWorkerState({
@@ -96,7 +107,7 @@ export async function runMonitoringCycle() {
   return dueMonitors.length;
 }
 
-async function processMonitor(monitor: Monitor) {
+async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
   const threshold = Math.max(1, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
@@ -111,7 +122,7 @@ async function processMonitor(monitor: Monitor) {
   let checkStatus: "up" | "down" | "pending" = result.ok ? "up" : "pending";
 
   if (result.ok) {
-    await recordMonitorResult(monitor.id, {
+    const recorded = await recordActiveMonitorResult(monitor, {
       status: "up",
       statusCode: result.statusCode,
       uptime: "100%",
@@ -126,10 +137,13 @@ async function processMonitor(monitor: Monitor) {
       verificationFailureCount: 0,
       latencyMs: result.latencyMs,
     });
+    if (!recorded) {
+      return null;
+    }
   } else if (hadConfirmedIncident) {
     checkStatus = "down";
     failureEventMessage = result.errorMessage ?? "Health check failed.";
-    await recordMonitorResult(monitor.id, {
+    const recorded = await recordActiveMonitorResult(monitor, {
       status: "down",
       statusCode: result.statusCode,
       uptime: "0%",
@@ -144,6 +158,9 @@ async function processMonitor(monitor: Monitor) {
       verificationFailureCount: 0,
       latencyMs: result.latencyMs,
     });
+    if (!recorded) {
+      return null;
+    }
   } else if (wasVerifying || threshold === 1) {
     const verificationCount = wasVerifying ? monitor.verificationFailureCount + 1 : 1;
     let confirmedIncident = verificationCount >= threshold;
@@ -163,7 +180,7 @@ async function processMonitor(monitor: Monitor) {
     checkStatus = confirmedIncident ? "down" : "pending";
     failureEventMessage = confirmedIncident ? result.errorMessage ?? "Health check failed." : null;
 
-    await recordMonitorResult(monitor.id, {
+    const recorded = await recordActiveMonitorResult(monitor, {
       status: result.ok ? "up" : confirmedIncident ? "down" : "pending",
       statusCode: result.statusCode,
       uptime: result.ok ? "100%" : confirmedIncident ? "0%" : monitor.uptime,
@@ -184,6 +201,9 @@ async function processMonitor(monitor: Monitor) {
       verificationFailureCount: result.ok || confirmedIncident ? 0 : verificationCount,
       latencyMs: result.latencyMs,
     });
+    if (!recorded) {
+      return null;
+    }
 
     if (result.ok) {
       checkStatus = "up";
@@ -207,7 +227,7 @@ async function processMonitor(monitor: Monitor) {
     }
   } else {
     checkStatus = "pending";
-    await recordMonitorResult(monitor.id, {
+    const recorded = await recordActiveMonitorResult(monitor, {
       status: "pending",
       statusCode: result.statusCode,
       uptime: monitor.uptime,
@@ -222,6 +242,9 @@ async function processMonitor(monitor: Monitor) {
       verificationFailureCount: 1,
       latencyMs: result.latencyMs,
     });
+    if (!recorded) {
+      return null;
+    }
 
     await appendDetailedEvent(
       monitor,
@@ -311,6 +334,15 @@ async function processMonitor(monitor: Monitor) {
     finalStatus: checkStatus,
     latencyMs: result.latencyMs,
   };
+}
+
+async function recordActiveMonitorResult(monitor: Monitor, update: MonitorResultUpdate) {
+  const recorded = await recordMonitorResult(monitor.id, update, monitor.leaseToken);
+  if (!recorded) {
+    return false;
+  }
+
+  return isMonitorActive(monitor.id);
 }
 
 export function calculateVerificationTimeout(baseTimeoutMs: number, verificationAttempt: number) {

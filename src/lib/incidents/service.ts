@@ -24,6 +24,7 @@ async function listIncidents(userId: string, status?: "open" | "resolved") {
     .where(
       and(
         eq(monitorIncidents.userId, userId),
+        eq(monitors.isActive, true),
         status ? eq(monitorIncidents.status, status) : undefined
       )
     )
