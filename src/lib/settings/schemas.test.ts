@@ -43,6 +43,30 @@ describe("settings schema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it("rejects invalid SMTP email addresses", () => {
+    const parsed = settingsSchema.safeParse({
+      ...buildSettingsPayload(),
+      notifications: {
+        ...buildSettingsPayload().notifications,
+        smtpFromEmail: "not-an-email",
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("normalizes saved notification recipients", () => {
+    const parsed = settingsSchema.parse({
+      ...buildSettingsPayload(),
+      notifications: {
+        ...buildSettingsPayload().notifications,
+        savedEmailRecipients: ["Ops@Example.com", "ops@example.com", "noc@example.com"],
+      },
+    });
+
+    expect(parsed.notifications.savedEmailRecipients).toEqual(["ops@example.com", "noc@example.com"]);
+  });
 });
 
 function buildSettingsPayload() {
