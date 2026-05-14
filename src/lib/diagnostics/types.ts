@@ -5,6 +5,7 @@ export type DiagnosticFailureCategory =
   | "connection_refused"
   | "tls_error"
   | "http_error"
+  | "redirect_error"
   | "timeout"
   | "content_mismatch"
   | "network_error";
