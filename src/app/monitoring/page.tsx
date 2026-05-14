@@ -28,7 +28,9 @@ import type { CompanyRecord } from "@/lib/companies/types";
 import { buildDefaultMonitorForm } from "@/lib/monitors/defaults";
 import {
   DEFAULT_MONITOR_FORM,
+  type MonitorDiagnosticRecord,
   type MonitorHistoryPoint,
+  type MonitorIncidentEventRecord,
   type MonitorPayload,
   type MonitorRecord,
 } from "@/lib/monitors/types";
@@ -68,6 +70,8 @@ export default function MonitoringPage() {
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
   const [defaultForm, setDefaultForm] = useState(DEFAULT_MONITOR_FORM);
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, MonitorHistoryPoint[]>>({});
+  const [diagnosticsByMonitor, setDiagnosticsByMonitor] = useState<Record<string, MonitorDiagnosticRecord[]>>({});
+  const [incidentEventsByMonitor, setIncidentEventsByMonitor] = useState<Record<string, MonitorIncidentEventRecord[]>>({});
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
   const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
@@ -122,8 +126,14 @@ export default function MonitoringPage() {
 
   const loadMonitorHistory = useCallback(async () => {
     const response = await fetch("/api/monitors/history", { cache: "no-store" });
-    const data = (await response.json()) as { history?: Record<string, MonitorHistoryPoint[]> };
+    const data = (await response.json()) as {
+      history?: Record<string, MonitorHistoryPoint[]>;
+      diagnostics?: Record<string, MonitorDiagnosticRecord[]>;
+      incidentEvents?: Record<string, MonitorIncidentEventRecord[]>;
+    };
     setHistoryByMonitor(data.history ?? {});
+    setDiagnosticsByMonitor(data.diagnostics ?? {});
+    setIncidentEventsByMonitor(data.incidentEvents ?? {});
   }, []);
 
   const refreshMonitoring = useCallback(async () => {
@@ -485,6 +495,8 @@ export default function MonitoringPage() {
         open={Boolean(timelineMonitor && selectedTimelinePointId)}
         monitor={timelineMonitor}
         points={timelineMonitor ? historyByMonitor[timelineMonitor.id] ?? [] : []}
+        diagnostics={timelineMonitor ? diagnosticsByMonitor[timelineMonitor.id] ?? [] : []}
+        incidentEvents={timelineMonitor ? incidentEventsByMonitor[timelineMonitor.id] ?? [] : []}
         selectedPointId={selectedTimelinePointId}
         onOpenChange={(open) => {
           if (!open) {
