@@ -11,6 +11,8 @@ import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
 
+type NotificationDeliveryResult = { status: string } | null | undefined;
+
 export async function sendMonitorNotifications(context: NotificationContext) {
   if (!(await shouldSendNotification(context))) {
     return false;
@@ -22,30 +24,37 @@ export async function sendMonitorNotifications(context: NotificationContext) {
   }
 
   const rendered = renderNotificationTemplates(context, settings, env.appUrl);
+  const deliveryResults: NotificationDeliveryResult[] = [];
 
   if (context.monitor.notificationPref === "email" || context.monitor.notificationPref === "both") {
-    await sendEmailDelivery({
-      userId: context.monitor.userId,
-      kind: context.kind,
-      destinationOverride: context.monitor.notifEmail,
-      subject: rendered.subject,
-      textBody: rendered.textBody,
-      htmlBody: rendered.htmlBody,
-    });
+    deliveryResults.push(
+      await sendEmailDelivery({
+        userId: context.monitor.userId,
+        kind: context.kind,
+        destinationOverride: context.monitor.notifEmail,
+        subject: rendered.subject,
+        textBody: rendered.textBody,
+        htmlBody: rendered.htmlBody,
+      })
+    );
   }
 
   if (context.monitor.notificationPref === "telegram" || context.monitor.notificationPref === "both") {
-    await sendTelegramDelivery({
-      userId: context.monitor.userId,
-      kind: context.kind,
-      botToken: context.monitor.telegramBotToken ?? "",
-      chatId: context.monitor.telegramChatId ?? "",
-      body: rendered.telegramBody,
-    });
+    deliveryResults.push(
+      await sendTelegramDelivery({
+        userId: context.monitor.userId,
+        kind: context.kind,
+        botToken: context.monitor.telegramBotToken ?? "",
+        chatId: context.monitor.telegramChatId ?? "",
+        body: rendered.telegramBody,
+      })
+    );
   }
 
   if (settings.notifications.discordEnabled && settings.notifications.discordWebhookUrl) {
-    await sendChannelWebhookDelivery(context.monitor.userId, "discord", context.kind, rendered.textBody);
+    deliveryResults.push(
+      await sendChannelWebhookDelivery(context.monitor.userId, "discord", context.kind, rendered.textBody)
+    );
   }
 
   const webhookPayload = await buildNotificationWebhookPayload({
@@ -60,8 +69,13 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     rcaTitle: context.rca.title,
     rcaSummary: context.rca.summary,
   });
-  await sendWebhookDelivery(context.monitor.userId, context.kind, webhookPayload);
-  return true;
+  deliveryResults.push(await sendWebhookDelivery(context.monitor.userId, context.kind, webhookPayload));
+
+  return deliveryResults.some(isDeliveredDelivery);
+}
+
+function isDeliveredDelivery(result: NotificationDeliveryResult) {
+  return result?.status === "delivered";
 }
 
 async function shouldSendNotification(context: NotificationContext) {
