@@ -232,6 +232,39 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("sends confirmed failure without a duplicate status-change notification", async () => {
+    mocks.checkResults = [
+      {
+        ok: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: 120,
+        errorMessage: "HTTP 500",
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+        sslExpiresAt: null,
+      },
+      {
+        ok: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: 130,
+        errorMessage: "HTTP 500",
+        checkedAt: new Date("2026-05-08T07:00:01.000Z"),
+        sslExpiresAt: null,
+      },
+    ];
+    mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, retries: 1 })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "failure" })
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "status-change" })
+    );
+  });
+
   it("does not send a down alert when final verification already recovered", async () => {
     mocks.checkResults = [
       {

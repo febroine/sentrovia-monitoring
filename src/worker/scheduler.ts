@@ -371,6 +371,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   if (
     checkStatus !== "pending" &&
     !hadConfirmedIncident &&
+    !incidentConfirmedThisCycle &&
     !monitor.verificationMode &&
     previousStatusCode !== null &&
     result.statusCode !== null &&
