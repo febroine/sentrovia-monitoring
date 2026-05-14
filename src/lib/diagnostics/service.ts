@@ -144,6 +144,10 @@ function resolveDiagnosticTarget(monitor: Monitor): DiagnosticTarget | null {
       return null;
     }
 
+    if (monitor.cacheBuster) {
+      parsed.searchParams.set("_monitor_ts", String(Date.now()));
+    }
+
     return {
       host: parsed.hostname,
       port: Number(parsed.port || (isHttps ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT)),
@@ -219,9 +223,7 @@ function checkTls(
   });
 }
 
-function checkHttp(url: string, monitor: Monitor, timeoutMs: number) {
-  const startedAt = Date.now();
-
+function checkHttp(url: string, monitor: Monitor, timeoutMs: number, redirectCount = 0, startedAt = Date.now()) {
   return new Promise<DiagnosticStepResult & { statusCode: number | null; responseTimeMs: number | null }>((resolve) => {
     const parsed = new URL(url);
     const transport = parsed.protocol === "https:" ? https : http;
@@ -233,13 +235,22 @@ function checkHttp(url: string, monitor: Monitor, timeoutMs: number) {
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
       (response) => {
-        response.resume();
         const statusCode = response.statusCode ?? null;
+        const location = response.headers.location;
+
+        if (statusCode && statusCode >= 300 && statusCode < 400 && location && redirectCount < monitor.maxRedirects) {
+          response.resume();
+          const nextUrl = new URL(location, parsed).toString();
+          resolve(checkHttp(nextUrl, monitor, timeoutMs, redirectCount + 1, startedAt));
+          return;
+        }
+
+        response.resume();
         resolve({
-          status: statusCode && statusCode >= 200 && statusCode < 400 ? "ok" : "failed",
+          status: statusCode && statusCode >= 200 && statusCode < 300 ? "ok" : "failed",
           statusCode,
           responseTimeMs: Math.max(1, Date.now() - startedAt),
-          errorMessage: statusCode && statusCode >= 400 ? `HTTP ${statusCode}` : null,
+          errorMessage: buildHttpDiagnosticError(statusCode),
         });
       }
     );
@@ -250,6 +261,18 @@ function checkHttp(url: string, monitor: Monitor, timeoutMs: number) {
     );
     request.end();
   });
+}
+
+function buildHttpDiagnosticError(statusCode: number | null) {
+  if (!statusCode || (statusCode >= 200 && statusCode < 300)) {
+    return null;
+  }
+
+  if (statusCode >= 300 && statusCode < 400) {
+    return `HTTP ${statusCode} redirect response was not followed within the configured redirect limit.`;
+  }
+
+  return `HTTP ${statusCode}`;
 }
 
 function resolveDiagnosticTimeout(baseTimeoutMs: number) {
@@ -297,6 +320,10 @@ function buildSummary(httpResult: (DiagnosticStepResult & { statusCode: number |
 function categorizeHttpFailure(result: DiagnosticStepResult & { statusCode: number | null }): DiagnosticFailureCategory {
   if ((result.errorMessage ?? "").toLowerCase().includes("timed out")) {
     return "timeout";
+  }
+
+  if (result.statusCode && result.statusCode >= 300 && result.statusCode < 400) {
+    return "redirect_error";
   }
 
   return result.statusCode && result.statusCode >= 400 ? "http_error" : "network_error";

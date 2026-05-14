@@ -33,6 +33,27 @@ describe("runMonitorDiagnostics", () => {
     expect(diagnostic.httpStatus).toBe("ok");
     expect(diagnostic.httpStatusCode).toBe(200);
   });
+
+  it("treats an unfollowed redirect as a failed HTTP diagnostic", async () => {
+    const { server, url } = await startRedirectServer();
+    activeServer = server;
+
+    const diagnostic = await runMonitorDiagnostics(buildMonitor({ url, maxRedirects: 0 }));
+
+    expect(diagnostic.httpStatus).toBe("failed");
+    expect(diagnostic.httpStatusCode).toBe(302);
+    expect(diagnostic.failureCategory).toBe("redirect_error");
+  });
+
+  it("follows redirects within the monitor redirect limit", async () => {
+    const { server, url } = await startRedirectServer();
+    activeServer = server;
+
+    const diagnostic = await runMonitorDiagnostics(buildMonitor({ url, maxRedirects: 1 }));
+
+    expect(diagnostic.httpStatus).toBe("ok");
+    expect(diagnostic.httpStatusCode).toBe(200);
+  });
 });
 
 function startMethodAwareServer() {
@@ -51,6 +72,33 @@ function startMethodAwareServer() {
       }
 
       resolve({ server, url: `http://127.0.0.1:${address.port}/health` });
+    });
+  });
+}
+
+function startRedirectServer() {
+  const server = http.createServer((request, response) => {
+    if (request.url === "/redirect") {
+      response.statusCode = 302;
+      response.setHeader("Location", "/ok");
+      response.end();
+      return;
+    }
+
+    response.statusCode = 200;
+    response.end("ok");
+  });
+
+  return new Promise<{ server: http.Server; url: string }>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Test server did not expose a TCP port."));
+        return;
+      }
+
+      resolve({ server, url: `http://127.0.0.1:${address.port}/redirect` });
     });
   });
 }
