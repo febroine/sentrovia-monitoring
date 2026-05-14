@@ -7,6 +7,8 @@ const ipFamilySchema = z.enum(["auto", "ipv4", "ipv6"]);
 const methodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const jsonMatchModeSchema = z.enum(["equals", "contains", "exists"]);
 const INVALID_HOST_INPUT_PATTERN = /[\s/?#]/;
+const MAX_MONITOR_EMAIL_RECIPIENTS = 25;
+const MAX_MONITOR_EMAIL_RECIPIENTS_LENGTH = 2000;
 
 function optionalString(maxLength: number) {
   return z
@@ -29,6 +31,17 @@ function isSafeHostInput(value: string) {
   const normalized = value.trim();
 
   return normalized.length > 0 && !normalized.startsWith("-") && !INVALID_HOST_INPUT_PATTERN.test(normalized);
+}
+
+function normalizeEmailRecipients(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[,;\n]/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
 }
 
 export const monitorInputSchema = z
@@ -62,10 +75,13 @@ export const monitorInputSchema = z
     notifEmail: z
       .string()
       .trim()
-      .email()
+      .max(MAX_MONITOR_EMAIL_RECIPIENTS_LENGTH)
       .optional()
       .or(z.literal(""))
-      .transform((value) => (value && value.length > 0 ? value : null)),
+      .transform((value) => {
+        const recipients = normalizeEmailRecipients(value ?? "");
+        return recipients.length > 0 ? recipients.join(", ") : null;
+      }),
     telegramBotToken: optionalString(500),
     telegramChatId: optionalString(120),
     intervalValue: z.coerce.number().int().min(1).max(1440),
@@ -99,6 +115,27 @@ export const monitorInputSchema = z
           path: ["url"],
           message: "Enter a valid URL for this monitor type.",
         });
+      }
+    }
+
+    if (value.notificationPref === "email" || value.notificationPref === "both") {
+      const recipients = normalizeEmailRecipients(value.notifEmail ?? "");
+      if (recipients.length > MAX_MONITOR_EMAIL_RECIPIENTS) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["notifEmail"],
+          message: `Enter at most ${MAX_MONITOR_EMAIL_RECIPIENTS} email recipients.`,
+        });
+      }
+
+      for (const recipient of recipients) {
+        if (!z.string().email().safeParse(recipient).success) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["notifEmail"],
+            message: `Invalid email recipient: ${recipient}`,
+          });
+        }
       }
     }
 

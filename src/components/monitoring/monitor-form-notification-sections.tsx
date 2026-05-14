@@ -17,6 +17,7 @@ const MONITOR_TEMPLATE_TOKENS = [
 ];
 
 type OnFieldChange = <K extends keyof MonitorPayload>(key: K, value: MonitorPayload[K]) => void;
+const EMAIL_RECIPIENT_SPLIT_PATTERN = /[,;\n]/;
 
 export function NotificationMonitorSettings({
   values,
@@ -45,20 +46,20 @@ export function NotificationMonitorSettings({
 
       {(values.notificationPref === "email" || values.notificationPref === "both") && (
         <div className="space-y-4">
-          <Field label="Saved recipient">
+          <Field label="Add saved recipient">
             <Select
-              value={savedEmails.includes(values.notifEmail) ? values.notifEmail || "custom" : "custom"}
+              value="custom"
               onValueChange={(value) => {
                 if (value !== "custom") {
-                  onFieldChange("notifEmail", String(value));
+                  onFieldChange("notifEmail", appendEmailRecipient(values.notifEmail, String(value)));
                 }
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Choose a saved recipient" />
+                <SelectValue placeholder="Choose a saved recipient to add" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="custom">Custom email</SelectItem>
+                <SelectItem value="custom">Choose recipient</SelectItem>
                 {savedEmails.map((email) => (
                   <SelectItem key={email} value={email}>
                     {email}
@@ -67,8 +68,14 @@ export function NotificationMonitorSettings({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Alert email">
-            <Input type="email" value={values.notifEmail} onChange={(event) => onFieldChange("notifEmail", event.target.value)} />
+          <Field label="Alert recipients">
+            <Textarea
+              rows={3}
+              value={values.notifEmail}
+              onChange={(event) => onFieldChange("notifEmail", event.target.value)}
+              placeholder="ops@example.com, noc@example.com"
+            />
+            <p className="text-xs text-muted-foreground">Use commas, semicolons, or new lines for multiple email recipients.</p>
           </Field>
         </div>
       )}
@@ -124,6 +131,18 @@ export function TemplateMonitorSettings({
       </Field>
     </div>
   );
+}
+
+function appendEmailRecipient(currentValue: string, email: string) {
+  const recipients = new Set(
+    currentValue
+      .split(EMAIL_RECIPIENT_SPLIT_PATTERN)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  );
+  recipients.add(email.trim().toLowerCase());
+
+  return Array.from(recipients).join(", ");
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
