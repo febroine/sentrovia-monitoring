@@ -16,10 +16,10 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const [history, diagnostics, incidentEvents] = await Promise.all([
-      listRecentMonitorChecks(session.id, 5),
-      listRecentMonitorDiagnostics(session.id, 3),
-      listRecentIncidentEvents(session.id, 8),
+    const history = await listRecentMonitorChecks(session.id, 5);
+    const [diagnostics, incidentEvents] = await Promise.all([
+      loadOptionalHistorySection(() => listRecentMonitorDiagnostics(session.id, 3)),
+      loadOptionalHistorySection(() => listRecentIncidentEvents(session.id, 8)),
     ]);
 
     return NextResponse.json({
@@ -90,5 +90,13 @@ function parseMetadata(value: string | null) {
     return JSON.parse(value) as Record<string, unknown>;
   } catch {
     return null;
+  }
+}
+
+async function loadOptionalHistorySection<T>(loader: () => Promise<Record<string, T[]>>) {
+  try {
+    return await loader();
+  } catch {
+    return {};
   }
 }
