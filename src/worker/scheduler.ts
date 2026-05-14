@@ -1,8 +1,11 @@
 import { env } from "@/lib/env";
+import { runMonitorDiagnostics } from "@/lib/diagnostics/service";
 import { openOrUpdateIncident, resolveIncident } from "@/lib/incidents/service";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
 import {
   appendMonitorCheck,
+  appendIncidentEvent as persistIncidentEvent,
+  appendMonitorDiagnostic,
   appendMonitorEvent,
   incrementWorkerCheckedCount,
   countDueMonitors,
@@ -114,7 +117,8 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   const hadConfirmedIncident = previousStatus === "down" && !monitor.verificationMode;
   const wasVerifying = monitor.verificationMode;
   const verificationAttempt = wasVerifying ? monitor.verificationFailureCount : 0;
-  let result = await checkMonitor(withVerificationTimeout(monitor, verificationAttempt));
+  let diagnosticMonitor = withVerificationTimeout(monitor, verificationAttempt);
+  let result = await checkMonitor(diagnosticMonitor);
   let rca = analyzeRootCause(result);
   let checksPerformed = 1;
   let incidentConfirmedThisCycle = false;
@@ -166,7 +170,8 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     let confirmedIncident = verificationCount >= threshold;
 
     if (confirmedIncident) {
-      const finalConfirmation = await checkMonitor(withVerificationTimeout(monitor, verificationCount));
+      diagnosticMonitor = withVerificationTimeout(monitor, verificationCount);
+      const finalConfirmation = await checkMonitor(diagnosticMonitor);
       checksPerformed += 1;
       result = finalConfirmation;
       rca = analyzeRootCause(finalConfirmation);
@@ -224,8 +229,19 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
         rca,
         "pending"
       );
+      await appendTimelineEvent({
+        monitorId: monitor.id,
+        userId: monitor.userId,
+        eventType: "verification_attempt_failed",
+        title: `Verification attempt ${verificationCount}/${threshold} failed`,
+        detail: result.errorMessage ?? "The worker is still confirming the outage.",
+        metadata: buildAttemptMetadata(result, verificationCount, threshold),
+        createdAt: result.checkedAt,
+      });
+      await recordFailureDiagnostics(diagnosticMonitor);
     }
   } else {
+    diagnosticMonitor = withVerificationTimeout(monitor, 1);
     checkStatus = "pending";
     const recorded = await recordActiveMonitorResult(monitor, {
       status: "pending",
@@ -254,6 +270,16 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
       rca,
       "pending"
     );
+    await appendTimelineEvent({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: "verification_started",
+      title: `Verification started (1/${threshold})`,
+      detail: result.errorMessage ?? "The first failure is pending confirmation.",
+      metadata: buildAttemptMetadata(result, 1, threshold),
+      createdAt: result.checkedAt,
+    });
+    await recordFailureDiagnostics(diagnosticMonitor);
   }
 
   await updateWorkerState({
@@ -275,12 +301,27 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
 
   if (!result.ok && failureEventMessage) {
     await appendDetailedEvent(monitor, result, "failure", failureEventMessage, rca, checkStatus);
-    await openOrUpdateIncident({
+    const diagnostic = await recordFailureDiagnostics(diagnosticMonitor);
+    const incident = await openOrUpdateIncident({
       monitorId: monitor.id,
       userId: monitor.userId,
       checkedAt: result.checkedAt,
       statusCode: result.statusCode,
       errorMessage: failureEventMessage,
+    });
+    await appendTimelineEvent({
+      incidentId: incident?.id ?? null,
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: incidentConfirmedThisCycle ? "outage_confirmed" : "outage_still_down",
+      title: incidentConfirmedThisCycle ? "Outage confirmed" : "Outage still active",
+      detail: failureEventMessage,
+      metadata: {
+        statusCode: result.statusCode,
+        latencyMs: result.latencyMs,
+        diagnosticSummary: diagnostic?.summary ?? null,
+      },
+      createdAt: result.checkedAt,
     });
 
     if (incidentConfirmedThisCycle) {
@@ -308,11 +349,21 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   if (result.ok && hadConfirmedIncident) {
     const message = "Service recovered and is responding again.";
     await appendDetailedEvent(monitor, result, "recovery", message, rca, "up");
-    await resolveIncident({
+    const incident = await resolveIncident({
       monitorId: monitor.id,
       userId: monitor.userId,
       checkedAt: result.checkedAt,
       statusCode: result.statusCode,
+    });
+    await appendTimelineEvent({
+      incidentId: incident?.id ?? null,
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: "recovery_detected",
+      title: "Recovery detected",
+      detail: message,
+      metadata: { statusCode: result.statusCode, latencyMs: result.latencyMs },
+      createdAt: result.checkedAt,
     });
     await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
   }
@@ -333,6 +384,68 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   return {
     finalStatus: checkStatus,
     latencyMs: result.latencyMs,
+  };
+}
+
+async function recordFailureDiagnostics(monitor: Monitor) {
+  try {
+    const diagnostic = await runMonitorDiagnostics(monitor);
+    await appendMonitorDiagnostic({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      diagnostic,
+    });
+    await appendTimelineEvent({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: "diagnostic_completed",
+      title: "Network diagnostics completed",
+      detail: diagnostic.summary,
+      metadata: {
+        failedPhase: diagnostic.failedPhase,
+        failureCategory: diagnostic.failureCategory,
+        resolvedIps: diagnostic.resolvedIps,
+        timeoutMs: diagnostic.timeoutMs,
+      },
+      createdAt: diagnostic.createdAt,
+    });
+
+    return diagnostic;
+  } catch (error) {
+    await appendTimelineEvent({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: "diagnostic_failed",
+      title: "Network diagnostics failed",
+      detail: error instanceof Error ? error.message : "Diagnostics failed unexpectedly.",
+    });
+    return null;
+  }
+}
+
+type IncidentTimelineInput = Parameters<typeof persistIncidentEvent>[0];
+
+async function appendTimelineEvent(input: IncidentTimelineInput) {
+  try {
+    await persistIncidentEvent(input);
+  } catch (error) {
+    await appendMonitorEvent({
+      monitorId: input.monitorId,
+      userId: input.userId,
+      eventType: "timeline-write-failed",
+      status: null,
+      message: error instanceof Error ? error.message : "Incident timeline event could not be stored.",
+    });
+  }
+}
+
+function buildAttemptMetadata(result: Awaited<ReturnType<typeof checkMonitor>>, attempt: number, threshold: number) {
+  return {
+    attempt,
+    threshold,
+    statusCode: result.statusCode,
+    latencyMs: result.latencyMs,
+    errorMessage: result.errorMessage,
   };
 }
 

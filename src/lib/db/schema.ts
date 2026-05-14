@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  index,
   integer,
   pgTable,
   text,
@@ -381,6 +382,67 @@ export const reportSchedules = pgTable("report_schedules", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const monitorDiagnostics = pgTable(
+  "monitor_diagnostics",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    monitorId: text("monitor_id")
+      .notNull()
+      .references(() => monitors.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: varchar("status", { length: 16 }).notNull(),
+    failedPhase: varchar("failed_phase", { length: 24 }),
+    failureCategory: varchar("failure_category", { length: 40 }),
+    summary: text("summary").notNull(),
+    dnsStatus: varchar("dns_status", { length: 16 }),
+    resolvedIps: text("resolved_ips")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    tcpStatus: varchar("tcp_status", { length: 16 }),
+    tlsStatus: varchar("tls_status", { length: 16 }),
+    httpStatus: varchar("http_status", { length: 16 }),
+    httpStatusCode: integer("http_status_code"),
+    responseTimeMs: integer("response_time_ms"),
+    timeoutMs: integer("timeout_ms").notNull(),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("monitor_diagnostics_user_monitor_created_idx").on(table.userId, table.monitorId, table.createdAt),
+    index("monitor_diagnostics_monitor_created_idx").on(table.monitorId, table.createdAt),
+  ]
+);
+
+export const incidentEvents = pgTable(
+  "incident_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    incidentId: text("incident_id").references(() => monitorIncidents.id, { onDelete: "set null" }),
+    monitorId: text("monitor_id")
+      .notNull()
+      .references(() => monitors.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    eventType: varchar("event_type", { length: 48 }).notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    detail: text("detail"),
+    metadataJson: text("metadata_json"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("incident_events_user_monitor_created_idx").on(table.userId, table.monitorId, table.createdAt),
+    index("incident_events_incident_created_idx").on(table.incidentId, table.createdAt),
+  ]
+);
 
 export const maintenanceWindows = pgTable("maintenance_windows", {
   id: text("id")

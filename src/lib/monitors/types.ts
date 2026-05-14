@@ -91,6 +91,36 @@ export interface MonitorHistoryPoint {
   createdAt: string;
 }
 
+export interface MonitorDiagnosticRecord {
+  id: string;
+  monitorId: string;
+  status: "ok" | "failed" | "partial";
+  failedPhase: string | null;
+  failureCategory: string | null;
+  summary: string;
+  dnsStatus: string | null;
+  resolvedIps: string[];
+  tcpStatus: string | null;
+  tlsStatus: string | null;
+  httpStatus: string | null;
+  httpStatusCode: number | null;
+  responseTimeMs: number | null;
+  timeoutMs: number;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface MonitorIncidentEventRecord {
+  id: string;
+  incidentId: string | null;
+  monitorId: string;
+  eventType: string;
+  title: string;
+  detail: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface CompanySlaReport {
   companyId: string;
   companyName: string;

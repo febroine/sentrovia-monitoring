@@ -1,7 +1,16 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
-import { monitorChecks, monitorEvents, monitors, userSettings, workerState } from "@/lib/db/schema";
+import {
+  incidentEvents,
+  monitorChecks,
+  monitorDiagnostics,
+  monitorEvents,
+  monitors,
+  userSettings,
+  workerState,
+} from "@/lib/db/schema";
+import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
 import { env } from "@/lib/env";
 import { resolveIncident } from "@/lib/incidents/service";
 import type { MonitorInput } from "@/lib/monitors/schemas";
@@ -515,6 +524,53 @@ export async function appendMonitorCheck(input: {
   });
 }
 
+export async function appendMonitorDiagnostic(input: {
+  monitorId: string;
+  userId: string;
+  diagnostic: MonitorDiagnosticResult;
+}) {
+  await db.insert(monitorDiagnostics).values({
+    monitorId: input.monitorId,
+    userId: input.userId,
+    status: input.diagnostic.status,
+    failedPhase: input.diagnostic.failedPhase,
+    failureCategory: input.diagnostic.failureCategory,
+    summary: input.diagnostic.summary,
+    dnsStatus: input.diagnostic.dnsStatus,
+    resolvedIps: input.diagnostic.resolvedIps,
+    tcpStatus: input.diagnostic.tcpStatus,
+    tlsStatus: input.diagnostic.tlsStatus,
+    httpStatus: input.diagnostic.httpStatus,
+    httpStatusCode: input.diagnostic.httpStatusCode,
+    responseTimeMs: input.diagnostic.responseTimeMs,
+    timeoutMs: input.diagnostic.timeoutMs,
+    errorMessage: input.diagnostic.errorMessage,
+    createdAt: input.diagnostic.createdAt,
+  });
+}
+
+export async function appendIncidentEvent(input: {
+  incidentId?: string | null;
+  monitorId: string;
+  userId: string;
+  eventType: string;
+  title: string;
+  detail?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: Date;
+}) {
+  await db.insert(incidentEvents).values({
+    incidentId: input.incidentId ?? null,
+    monitorId: input.monitorId,
+    userId: input.userId,
+    eventType: input.eventType,
+    title: input.title,
+    detail: input.detail ?? null,
+    metadataJson: input.metadata ? JSON.stringify(input.metadata) : null,
+    createdAt: input.createdAt ?? new Date(),
+  });
+}
+
 export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 12) {
   const rows = await db
     .select()
@@ -523,7 +579,33 @@ export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 
     .orderBy(desc(monitorChecks.createdAt))
     .limit(Math.max(limitPerMonitor, 1) * 500);
 
-  const grouped = new Map<string, typeof rows>();
+  return groupRecentRowsByMonitor(rows, limitPerMonitor);
+}
+
+export async function listRecentMonitorDiagnostics(userId: string, limitPerMonitor = 3) {
+  const rows = await db
+    .select()
+    .from(monitorDiagnostics)
+    .where(eq(monitorDiagnostics.userId, userId))
+    .orderBy(desc(monitorDiagnostics.createdAt))
+    .limit(Math.max(limitPerMonitor, 1) * 500);
+
+  return groupRecentRowsByMonitor(rows, limitPerMonitor);
+}
+
+export async function listRecentIncidentEvents(userId: string, limitPerMonitor = 8) {
+  const rows = await db
+    .select()
+    .from(incidentEvents)
+    .where(eq(incidentEvents.userId, userId))
+    .orderBy(desc(incidentEvents.createdAt))
+    .limit(Math.max(limitPerMonitor, 1) * 500);
+
+  return groupRecentRowsByMonitor(rows, limitPerMonitor);
+}
+
+function groupRecentRowsByMonitor<T extends { monitorId: string }>(rows: T[], limitPerMonitor: number) {
+  const grouped = new Map<string, T[]>();
 
   for (const row of rows) {
     const current = grouped.get(row.monitorId) ?? [];
@@ -536,7 +618,7 @@ export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 
   }
 
   return Object.fromEntries(
-    Array.from(grouped.entries()).map(([monitorId, checks]) => [monitorId, checks.reverse()])
+    Array.from(grouped.entries()).map(([monitorId, items]) => [monitorId, items.reverse()])
   );
 }
 

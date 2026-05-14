@@ -131,6 +131,8 @@ All monitor types use the same core pipeline for verification, RCA, event creati
 - per-monitor timeout, retries, method, redirects, SSL behavior, and response settings
 - verification mode for delayed outage confirmation
 - check history with timeline surfaces
+- failure diagnostics with DNS, TCP, TLS, and HTTP phase visibility
+- incident timeline events for verification attempts, diagnostics, confirmed outages, and recoveries
 
 ### 🧠 Root cause analysis
 
@@ -223,6 +225,8 @@ PostgreSQL is not just storage; it is the operational backbone. It persists:
 - monitors
 - monitor checks
 - monitor events
+- monitor diagnostics
+- incident timeline events
 - delivery events
 - worker state
 - worker cycle metrics
@@ -244,6 +248,21 @@ One of the most important behaviors in Sentrovia is the verification flow:
 
 This is a major difference from many lighter monitoring tools that alert on the first transient failure.
 
+## Failure Diagnostics And Timeline
+
+When a check fails or enters verification mode, Sentrovia records a diagnostic snapshot alongside the normal monitor history.
+
+The diagnostic snapshot can show:
+
+- whether DNS resolved from the server running the worker
+- which IP addresses were returned
+- whether TCP connectivity worked
+- whether TLS negotiation succeeded for HTTPS targets
+- whether the HTTP probe returned a healthy status
+- the failed phase, failure category, timeout used, and raw error message
+
+The same flow also writes incident timeline events such as verification start, failed verification attempts, diagnostic completion, outage confirmation, prolonged downtime, and recovery detection. These details appear in the monitoring timeline dialog so operators can understand why an alert fired without leaving the product.
+
 ## Reports
 
 Sentrovia includes a built-in reports center with:
@@ -260,13 +279,14 @@ Sentrovia includes a built-in reports center with:
 
 Reports are not a side export anymore; the worker can pick up due report schedules and send them as part of the product runtime.
 
-The Reports v2 schema is covered by the latest manual migration:
+The Reports v2 and diagnostics schemas are covered by the latest manual migrations:
 
 ```bash
 drizzle/0030_reports_v2_indexes_manual.sql
+drizzle/0031_diagnostics_incident_timeline_manual.sql
 ```
 
-If you update an existing server manually, make sure migrations `0029` and `0030` have both been applied before testing notification templates and scheduled reports.
+If you update an existing server manually, make sure migrations `0029`, `0030`, and `0031` have been applied before testing notification templates, scheduled reports, and diagnostics.
 
 ## Quick Start
 

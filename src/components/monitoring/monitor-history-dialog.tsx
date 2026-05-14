@@ -1,23 +1,33 @@
 "use client";
 
-import { Activity, ArrowRight, CheckCircle2, Clock3, ShieldAlert, TimerReset } from "lucide-react";
+import { Activity, ArrowRight, CheckCircle2, Clock3, ListChecks, Network, ShieldAlert, TimerReset } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { MonitorHistoryPoint, MonitorRecord } from "@/lib/monitors/types";
+import type {
+  MonitorDiagnosticRecord,
+  MonitorHistoryPoint,
+  MonitorIncidentEventRecord,
+  MonitorRecord,
+} from "@/lib/monitors/types";
 
 export function MonitorHistoryDialog({
   open,
   monitor,
   points,
+  diagnostics,
+  incidentEvents,
   selectedPointId,
   onOpenChange,
 }: {
   open: boolean;
   monitor: MonitorRecord | null;
   points: MonitorHistoryPoint[];
+  diagnostics: MonitorDiagnosticRecord[];
+  incidentEvents: MonitorIncidentEventRecord[];
   selectedPointId: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
   const selection = buildSelection(points, selectedPointId);
+  const latestDiagnostic = diagnostics.length > 0 ? diagnostics[diagnostics.length - 1] : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,6 +123,52 @@ export function MonitorHistoryDialog({
               </div>
             </div>
 
+            {latestDiagnostic ? (
+              <div className="rounded-xl border border-border/70 bg-background/70 p-4">
+                <div className="flex items-center gap-2">
+                  <Network className="h-4 w-4 text-sky-500" />
+                  <p className="text-sm font-medium">Latest diagnostics</p>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{latestDiagnostic.summary}</p>
+                <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <DiagnosticPill label="DNS" value={formatStepStatus(latestDiagnostic.dnsStatus)} />
+                  <DiagnosticPill label="TCP" value={formatStepStatus(latestDiagnostic.tcpStatus)} />
+                  <DiagnosticPill label="TLS" value={formatStepStatus(latestDiagnostic.tlsStatus)} />
+                  <DiagnosticPill
+                    label="HTTP"
+                    value={latestDiagnostic.httpStatusCode ? `HTTP ${latestDiagnostic.httpStatusCode}` : formatStepStatus(latestDiagnostic.httpStatus)}
+                  />
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
+                  <span>Failed phase: {latestDiagnostic.failedPhase ?? "--"}</span>
+                  <span>Category: {latestDiagnostic.failureCategory ?? "--"}</span>
+                  <span>Timeout: {latestDiagnostic.timeoutMs}ms</span>
+                  <span className="md:col-span-3">Resolved IPs: {latestDiagnostic.resolvedIps.length > 0 ? latestDiagnostic.resolvedIps.join(", ") : "--"}</span>
+                  {latestDiagnostic.errorMessage ? <span className="md:col-span-3">Error: {latestDiagnostic.errorMessage}</span> : null}
+                </div>
+              </div>
+            ) : null}
+
+            {incidentEvents.length > 0 ? (
+              <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+                <div className="flex items-center gap-2">
+                  <ListChecks className="h-4 w-4 text-amber-500" />
+                  <p className="text-sm font-medium">Incident timeline</p>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {incidentEvents.map((event) => (
+                    <div key={event.id} className="rounded-lg border border-border/70 bg-background/70 px-3 py-2">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm font-medium">{event.title}</p>
+                        <span className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</span>
+                      </div>
+                      {event.detail ? <p className="mt-1 text-xs text-muted-foreground">{event.detail}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
               <div className="flex items-center gap-2">
                 <ArrowRight className="h-4 w-4 text-sky-500" />
@@ -189,6 +245,15 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-2 last:border-b-0 last:pb-0">
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right font-medium">{value}</span>
+    </div>
+  );
+}
+
+function DiagnosticPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/15 px-3 py-2">
+      <p className="font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -289,6 +354,14 @@ function getStateAccent(status: MonitorHistoryPoint["status"]) {
   }
 
   return status === "up" ? "before:bg-emerald-500" : "before:bg-destructive";
+}
+
+function formatStepStatus(status: string | null) {
+  if (!status) {
+    return "--";
+  }
+
+  return status.toUpperCase();
 }
 
 function formatDateTime(value: string) {

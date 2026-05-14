@@ -22,7 +22,9 @@ const mocks = vi.hoisted(() => ({
     sslExpiresAt: Date | null;
   }>,
   checkMonitor: vi.fn(),
+  appendIncidentEvent: vi.fn(),
   appendMonitorCheck: vi.fn(),
+  appendMonitorDiagnostic: vi.fn(),
   appendMonitorEvent: vi.fn(),
   claimDueMonitors: vi.fn(),
   countDueMonitors: vi.fn(),
@@ -34,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   resolveIncident: vi.fn(),
   sendMonitorNotifications: vi.fn(),
   updateWorkerState: vi.fn(),
+  runMonitorDiagnostics: vi.fn(),
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -48,6 +51,10 @@ vi.mock("@/lib/incidents/service", () => ({
   resolveIncident: mocks.resolveIncident,
 }));
 
+vi.mock("@/lib/diagnostics/service", () => ({
+  runMonitorDiagnostics: mocks.runMonitorDiagnostics,
+}));
+
 vi.mock("@/lib/monitoring/rca", () => ({
   analyzeRootCause: () => ({
     type: "http-server",
@@ -58,7 +65,9 @@ vi.mock("@/lib/monitoring/rca", () => ({
 }));
 
 vi.mock("@/lib/monitors/service", () => ({
+  appendIncidentEvent: mocks.appendIncidentEvent,
   appendMonitorCheck: mocks.appendMonitorCheck,
+  appendMonitorDiagnostic: mocks.appendMonitorDiagnostic,
   appendMonitorEvent: mocks.appendMonitorEvent,
   claimDueMonitors: mocks.claimDueMonitors,
   countDueMonitors: mocks.countDueMonitors,
@@ -102,10 +111,28 @@ describe("monitoring scheduler verification flow", () => {
     mocks.claimDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors));
     mocks.checkMonitor.mockImplementation(() => Promise.resolve(mocks.checkResults.shift() ?? mocks.checkResult));
     mocks.countDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors.length));
+    mocks.appendIncidentEvent.mockResolvedValue(null);
+    mocks.appendMonitorDiagnostic.mockResolvedValue(null);
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
     mocks.isMonitorActive.mockResolvedValue(true);
     mocks.recordMonitorResult.mockResolvedValue({ id: "monitor-1" } as Monitor);
     mocks.recordWorkerCycleMetric.mockResolvedValue(null);
+    mocks.runMonitorDiagnostics.mockResolvedValue({
+      status: "failed",
+      failedPhase: "http",
+      failureCategory: "http_error",
+      summary: "HTTP diagnostics failed.",
+      dnsStatus: "ok",
+      resolvedIps: ["203.0.113.10"],
+      tcpStatus: "ok",
+      tlsStatus: "ok",
+      httpStatus: "failed",
+      httpStatusCode: 500,
+      responseTimeMs: 100,
+      timeoutMs: 3000,
+      errorMessage: "HTTP 500",
+      createdAt: new Date("2026-05-08T07:00:00.000Z"),
+    });
     mocks.updateWorkerState.mockResolvedValue(null);
     mocks.sendMonitorNotifications.mockResolvedValue(false);
   });
@@ -126,6 +153,27 @@ describe("monitoring scheduler verification flow", () => {
       "lease-1"
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+  });
+
+  it("records diagnostics and incident timeline events for failed verification attempts", async () => {
+    mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.runMonitorDiagnostics).toHaveBeenCalledWith(expect.objectContaining({ id: "monitor-1" }));
+    expect(mocks.appendMonitorDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        monitorId: "monitor-1",
+        userId: "user-1",
+        diagnostic: expect.objectContaining({ failedPhase: "http" }),
+      })
+    );
+    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "verification_started" })
+    );
+    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "diagnostic_completed" })
+    );
   });
 
   it("does not re-confirm an already down monitor when retries is one", async () => {
