@@ -33,6 +33,15 @@ function isSafeHostInput(value: string) {
   return normalized.length > 0 && !normalized.startsWith("-") && !INVALID_HOST_INPUT_PATTERN.test(normalized);
 }
 
+function isHttpMonitorUrl(value: string) {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function normalizeEmailRecipients(value: string) {
   return Array.from(
     new Set(
@@ -108,12 +117,11 @@ export const monitorInputSchema = z
   })
   .superRefine((value, context) => {
     if (value.monitorType === "http" || value.monitorType === "keyword" || value.monitorType === "json") {
-      const parsed = z.string().trim().url().safeParse(value.url);
-      if (!parsed.success) {
+      if (!isHttpMonitorUrl(value.url)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["url"],
-          message: "Enter a valid URL for this monitor type.",
+          message: "Enter a valid HTTP or HTTPS URL for this monitor type.",
         });
       }
     }

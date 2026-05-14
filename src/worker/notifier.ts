@@ -92,7 +92,7 @@ async function shouldSendNotification(context: NotificationContext) {
   if (
     hasWatchedCodes &&
     context.result.statusCode !== null &&
-    (context.kind === "failure" || context.kind === "status-change" || context.kind === "downtime-reminder") &&
+    context.kind === "status-change" &&
     !matchesWatchedStatusCode(settings.notifications.statusCodeAlertCodes, context.result.statusCode)
   ) {
     return false;
@@ -103,7 +103,7 @@ async function shouldSendNotification(context: NotificationContext) {
   }
 
   if (context.kind === "failure") {
-    return await shouldSendByKind(settings.notifications.notifyOnDown, settings.notifications.alertDedupMinutes, context);
+    return settings.notifications.notifyOnDown;
   }
 
   if (context.kind === "downtime-reminder") {

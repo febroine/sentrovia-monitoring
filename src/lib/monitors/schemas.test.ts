@@ -24,4 +24,14 @@ describe("monitor input schema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it("rejects non-http URLs for HTTP-based monitors", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "ftp://api.example.com/health",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
 });

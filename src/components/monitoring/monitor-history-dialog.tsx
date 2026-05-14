@@ -31,7 +31,7 @@ export function MonitorHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="max-h-[86vh] overflow-y-auto border-r-2 border-r-primary/45 pr-5 shadow-[inset_-10px_0_18px_-18px_rgba(99,102,241,0.75)] sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Timeline details</DialogTitle>
           <DialogDescription>

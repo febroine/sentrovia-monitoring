@@ -83,6 +83,50 @@ describe("worker notifier", () => {
     expect(mocks.sendEmailDelivery).toHaveBeenCalled();
     expect(mocks.sendWebhookDelivery).toHaveBeenCalled();
   });
+
+  it("does not suppress down notifications for non-watched status codes", async () => {
+    const context = buildNotificationContext("failure");
+    context.message = "Service returned HTTP 404.";
+    context.result = {
+      ...context.result,
+      ok: false,
+      status: "down",
+      statusCode: 404,
+      errorMessage: "HTTP 404",
+    };
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(true);
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "failure",
+      })
+    );
+    expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not deduplicate a newly confirmed down notification after recovery", async () => {
+    const context = buildNotificationContext("failure");
+    context.message = "Service is down again.";
+    context.result = {
+      ...context.result,
+      ok: false,
+      status: "down",
+      statusCode: 500,
+      errorMessage: "HTTP 500",
+    };
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(true);
+    expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "failure",
+      })
+    );
+  });
 });
 
 function buildDeliveryResult(status: "delivered" | "failed" | "retrying") {

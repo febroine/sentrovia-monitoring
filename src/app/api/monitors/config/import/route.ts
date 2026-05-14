@@ -4,6 +4,7 @@ import { toAuthError } from "@/lib/auth/errors";
 import { parseMonitorConfigBundle } from "@/lib/monitors/config-service";
 import { createManyMonitors } from "@/lib/monitors/service";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
+import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
 import { getSettings } from "@/lib/settings/service";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
@@ -35,11 +36,19 @@ export async function POST(request: NextRequest) {
       }
       return parsed.data;
     });
+    assertRestorablePostgresMonitorPasswords(parsedMonitors);
 
     const created = await createManyMonitors(session.id, parsedMonitors);
     return NextResponse.json({ monitors: created.map((monitor) => serializeMonitorRecord(monitor)) });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Monitor ")) {
+    if (
+      error instanceof Error
+      && (
+        error.message.startsWith("Monitor ")
+        || error.message.includes("monitor config bundle")
+        || error.message.includes("PostgreSQL monitor passwords are not included")
+      )
+    ) {
       return NextResponse.json({ message: error.message }, { status: 400 });
     }
 
