@@ -7,6 +7,11 @@ const optionalString = (maxLength: number) =>
     .trim()
     .max(maxLength)
     .default("");
+const optionalEmailString = (maxLength: number) =>
+  optionalString(maxLength).refine(
+    (value) => value.length === 0 || z.string().email().safeParse(value).success,
+    "Enter a valid email address."
+  );
 
 const publicStatusSlug = z
   .string()
@@ -38,8 +43,8 @@ export const settingsSchema = z.object({
     smtpUsername: optionalString(255),
     smtpPassword: optionalString(255),
     smtpPasswordConfigured: z.boolean().default(false),
-    smtpFromEmail: optionalString(255),
-    smtpDefaultToEmail: optionalString(255),
+    smtpFromEmail: optionalEmailString(255),
+    smtpDefaultToEmail: optionalEmailString(255),
     smtpSecure: z.boolean(),
     smtpRequireTls: z.boolean(),
     smtpInsecureSkipVerify: z.boolean(),
@@ -55,7 +60,11 @@ export const settingsSchema = z.object({
     prolongedDowntimeEmailBodyTemplate: optionalString(4000),
     prolongedDowntimeTelegramTemplate: optionalString(4000),
     statusCodeAlertCodes: optionalString(500),
-    savedEmailRecipients: z.array(z.string().trim().email()).default([]),
+    savedEmailRecipients: z
+      .array(z.string().trim().toLowerCase().email())
+      .max(25)
+      .default([])
+      .transform((recipients) => Array.from(new Set(recipients))),
   }),
   monitoring: z.object({
     interval: z.string().trim().min(2).max(16),

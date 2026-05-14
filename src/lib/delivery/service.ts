@@ -19,6 +19,7 @@ import type {
 const HISTORY_LIMIT = 40;
 const MAX_WEBHOOK_ATTEMPTS = 5;
 const WEBHOOK_RETRY_DELAY_MS = 5 * 60 * 1000;
+const DELIVERY_REQUEST_TIMEOUT_MS = 15_000;
 
 export async function getDeliveryOverview(userId: string): Promise<DeliveryOverview> {
   const [endpoint, historyRows] = await Promise.all([
@@ -47,7 +48,7 @@ export async function getDeliveryOverview(userId: string): Promise<DeliveryOverv
       failed: historyRows.filter((item) => item.status === "failed").length,
       retrying: historyRows.filter((item) => item.status === "retrying").length,
       pendingWebhookRetries: historyRows.filter(
-        (item) => item.channel === "webhook" && item.status !== "delivered"
+        (item) => item.channel === "webhook" && (item.status === "pending" || item.status === "retrying")
       ).length,
     },
   };
@@ -143,6 +144,9 @@ export async function sendEmailDelivery(input: {
       requireTLS: smtp.requireTls,
       auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
       tls: { rejectUnauthorized: !smtp.insecureSkipVerify },
+      connectionTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
+      greetingTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
+      socketTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
     });
 
     await transporter.sendMail(buildEmailMessage(input, smtp.fromEmail, destination));
@@ -252,6 +256,7 @@ export async function sendChannelWebhookDelivery(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: buildDeliveryAbortSignal(),
     });
 
     if (!response.ok) {
@@ -397,6 +402,7 @@ async function attemptWebhookDelivery(
       method: "POST",
       headers: buildWebhookHeaders(body, secret),
       body,
+      signal: buildDeliveryAbortSignal(),
     });
 
     if (response.ok) {
@@ -524,10 +530,25 @@ function postTelegramMessage(botToken: string, chatId: string, body: string) {
   return fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: buildDeliveryAbortSignal(),
     body: JSON.stringify({
       chat_id: chatId,
       text: body,
       disable_web_page_preview: false,
     }),
   });
+}
+
+function buildDeliveryAbortSignal() {
+  const timeout = (AbortSignal as typeof AbortSignal & {
+    timeout?: (milliseconds: number) => AbortSignal;
+  }).timeout;
+
+  if (timeout) {
+    return timeout(DELIVERY_REQUEST_TIMEOUT_MS);
+  }
+
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), DELIVERY_REQUEST_TIMEOUT_MS);
+  return controller.signal;
 }

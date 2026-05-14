@@ -1,5 +1,6 @@
 import os from "os";
 import { NextResponse } from "next/server";
+import { toAuthError } from "@/lib/auth/errors";
 import { getSession } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -48,39 +49,45 @@ async function getCpuUsage(): Promise<number> {
 }
 
 export async function GET() {
-  const session = await getSession();
+  try {
+    const session = await getSession();
 
-  if (!session) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const cpuUsage = await getCpuUsage();
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+    const memUsagePct = Math.round((usedMem / totalMem) * 1000) / 10;
+    const cpus = os.cpus();
+
+    return NextResponse.json({
+      cpu: {
+        usage: cpuUsage,
+        model: cpus[0]?.model ?? "Unknown",
+        cores: cpus.length,
+      },
+      memory: {
+        total: totalMem,
+        used: usedMem,
+        free: freeMem,
+        usagePct: memUsagePct,
+      },
+      uptime: {
+        process: Math.floor(process.uptime()),
+        os: Math.floor(os.uptime()),
+      },
+      system: {
+        platform: os.platform(),
+        arch: os.arch(),
+        hostname: os.hostname(),
+        nodeVersion: process.version,
+      },
+    });
+  } catch (error) {
+    const authError = toAuthError(error, "Unable to load system telemetry right now.");
+    return NextResponse.json({ message: authError.message }, { status: authError.status });
   }
-
-  const cpuUsage = await getCpuUsage();
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = totalMem - freeMem;
-  const memUsagePct = Math.round((usedMem / totalMem) * 1000) / 10;
-
-  return NextResponse.json({
-    cpu: {
-      usage: cpuUsage,
-      model: os.cpus()[0]?.model ?? "Unknown",
-      cores: os.cpus().length,
-    },
-    memory: {
-      total: totalMem,
-      used: usedMem,
-      free: freeMem,
-      usagePct: memUsagePct,
-    },
-    uptime: {
-      process: Math.floor(process.uptime()),
-      os: Math.floor(os.uptime()),
-    },
-    system: {
-      platform: os.platform(),
-      arch: os.arch(),
-      hostname: os.hostname(),
-      nodeVersion: process.version,
-    },
-  });
 }

@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 }
 
 function isBackupPayloadError(error: unknown) {
-  if (error instanceof SyntaxError || error instanceof ZodError) {
+  if (error instanceof ZodError) {
     return true;
   }
 

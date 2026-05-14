@@ -26,6 +26,10 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
     return error;
   }
 
+  if (error instanceof SyntaxError) {
+    return new AuthError("Invalid JSON request body.", 400);
+  }
+
   const databaseError = unwrapDatabaseError(error);
   const message = databaseError.message?.toLowerCase() ?? "";
 

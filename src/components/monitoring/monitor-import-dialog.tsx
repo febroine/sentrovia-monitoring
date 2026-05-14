@@ -224,6 +224,15 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
 
   const read = (target: string) => values[mapping.get(target) ?? target] ?? "";
   const booleanValue = (target: string) => read(target).toLowerCase() === "true";
+  const numberValue = (target: string, fallback: number) => {
+    const raw = read(target);
+    if (raw.length === 0) {
+      return fallback;
+    }
+
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
 
   return {
     ...DEFAULT_MONITOR_FORM,
@@ -231,9 +240,9 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     monitorType: (read("monitorType") || DEFAULT_MONITOR_FORM.monitorType) as MonitorPayload["monitorType"],
     url: read("url"),
     portHost: read("portHost"),
-    portNumber: Number(read("portNumber")) || DEFAULT_MONITOR_FORM.portNumber,
+    portNumber: numberValue("portNumber", DEFAULT_MONITOR_FORM.portNumber),
     databaseHost: read("databaseHost"),
-    databasePort: Number(read("databasePort")) || DEFAULT_MONITOR_FORM.databasePort,
+    databasePort: numberValue("databasePort", DEFAULT_MONITOR_FORM.databasePort),
     databaseName: read("databaseName"),
     databaseUsername: read("databaseUsername"),
     databasePassword: read("databasePassword"),
@@ -249,21 +258,21 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     notifEmail: read("notifEmail"),
     telegramBotToken: read("telegramBotToken"),
     telegramChatId: read("telegramChatId"),
-    intervalValue: Number(read("intervalValue")) || DEFAULT_MONITOR_FORM.intervalValue,
+    intervalValue: numberValue("intervalValue", DEFAULT_MONITOR_FORM.intervalValue),
     intervalUnit: (read("intervalUnit") || DEFAULT_MONITOR_FORM.intervalUnit) as MonitorPayload["intervalUnit"],
-    timeout: Number(read("timeout")) || DEFAULT_MONITOR_FORM.timeout,
-    retries: Number(read("retries")) || DEFAULT_MONITOR_FORM.retries,
+    timeout: numberValue("timeout", DEFAULT_MONITOR_FORM.timeout),
+    retries: numberValue("retries", DEFAULT_MONITOR_FORM.retries),
     method: (read("method") || DEFAULT_MONITOR_FORM.method) as MonitorPayload["method"],
     tags: read("tags").split("|").map((tag) => tag.trim()).filter(Boolean),
     renotifyCount: read("renotifyCount") ? Number(read("renotifyCount")) : null,
-    maxRedirects: Number(read("maxRedirects")) || DEFAULT_MONITOR_FORM.maxRedirects,
+    maxRedirects: numberValue("maxRedirects", DEFAULT_MONITOR_FORM.maxRedirects),
     ipFamily: (read("ipFamily") || DEFAULT_MONITOR_FORM.ipFamily) as MonitorPayload["ipFamily"],
     checkSslExpiry: booleanValue("checkSslExpiry"),
-    ignoreSslErrors: booleanValue("ignoreSslErrors"),
+    ignoreSslErrors: read("ignoreSslErrors") ? booleanValue("ignoreSslErrors") : DEFAULT_MONITOR_FORM.ignoreSslErrors,
     cacheBuster: booleanValue("cacheBuster"),
     saveErrorPages: booleanValue("saveErrorPages"),
     saveSuccessPages: booleanValue("saveSuccessPages"),
-    responseMaxLength: Number(read("responseMaxLength")) || DEFAULT_MONITOR_FORM.responseMaxLength,
+    responseMaxLength: numberValue("responseMaxLength", DEFAULT_MONITOR_FORM.responseMaxLength),
     telegramTemplate: read("telegramTemplate") || DEFAULT_MONITOR_FORM.telegramTemplate,
     emailSubject: read("emailSubject") || DEFAULT_MONITOR_FORM.emailSubject,
     emailBody: read("emailBody") || DEFAULT_MONITOR_FORM.emailBody,
