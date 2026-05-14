@@ -340,9 +340,9 @@ export default function MonitoringPage() {
       </div>
 
       {selectedIds.size > 0 ? (
-        <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/10 px-4 py-2.5">
+        <div className="flex flex-col gap-3 rounded-lg border border-primary/20 border-r-2 border-r-primary/45 bg-primary/10 px-4 py-2.5 shadow-[inset_-10px_0_18px_-18px_rgba(99,102,241,0.75)] sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">{selectedIds.size} monitor selected</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
               Bulk Edit
             </Button>

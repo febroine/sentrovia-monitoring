@@ -116,6 +116,7 @@ export async function updateReportSchedule(
     return null;
   }
 
+  const hasNextRunAtUpdate = Object.prototype.hasOwnProperty.call(input, "nextRunAt");
   const scope = input.scope ?? (existing.scope as ReportPreviewInput["scope"]);
   const cadence = input.cadence ?? (existing.cadence as ReportCadence);
   const template = input.template ?? (existing.template as ReportTemplateVariant);
@@ -127,7 +128,7 @@ export async function updateReportSchedule(
     name: input.name ?? existing.name,
     recipientEmails: input.recipientEmails ?? existing.recipientEmails,
     isActive: input.isActive ?? existing.isActive,
-    nextRunAt: input.nextRunAt ?? existing.nextRunAt?.toISOString() ?? null,
+    nextRunAt: hasNextRunAtUpdate ? input.nextRunAt : existing.nextRunAt?.toISOString() ?? null,
   });
 
   const [updated] = await db
@@ -140,7 +141,7 @@ export async function updateReportSchedule(
       companyId,
       recipientEmails: input.recipientEmails ? normalizeEmails(input.recipientEmails) : existing.recipientEmails,
       isActive: input.isActive ?? existing.isActive,
-      nextRunAt: input.nextRunAt ? new Date(input.nextRunAt) : existing.nextRunAt,
+      nextRunAt: hasNextRunAtUpdate ? resolveNextRunAt(input.nextRunAt) : existing.nextRunAt,
       ...normalizeReportDeliveryOptions({ ...existing, ...input }),
       updatedAt: new Date(),
     })

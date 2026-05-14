@@ -6,13 +6,14 @@ import { createManyMonitors, listMonitors } from "@/lib/monitors/service";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { toMonitorPayload } from "@/lib/monitors/targets";
 import { buildCanonicalMonitorTarget, buildMonitorIdentityKey } from "@/lib/monitors/targets";
+import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
 import type { MonitorRecord, WorkspaceBackupBundle } from "@/lib/monitors/types";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { createCompany, listCompanies } from "@/lib/companies/service";
 import { db } from "@/lib/db";
-import { companies, logFilterPresets, monitorChecks, monitorEvents, monitorIncidents, monitors } from "@/lib/db/schema";
+import { companies, monitorChecks, monitorEvents, monitorIncidents, monitors } from "@/lib/db/schema";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 
 export async function buildWorkspaceBackupBundle(userId: string): Promise<WorkspaceBackupBundle> {
@@ -41,7 +42,13 @@ export function serializeWorkspaceBackup(bundle: WorkspaceBackupBundle, format: 
 }
 
 export function parseWorkspaceBackup(raw: string, format: "json" | "yaml") {
-  const parsed = format === "yaml" ? parse(raw) : JSON.parse(raw);
+  let parsed: unknown;
+
+  try {
+    parsed = format === "yaml" ? parse(raw) : JSON.parse(raw);
+  } catch {
+    throw new Error("The backup file is invalid.");
+  }
 
   if (!parsed || typeof parsed !== "object") {
     throw new Error("The uploaded backup file is invalid.");
@@ -66,7 +73,6 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
       },
     }, tx, true);
 
-    await tx.delete(logFilterPresets).where(eq(logFilterPresets.userId, userId));
     await tx.delete(monitorChecks).where(eq(monitorChecks.userId, userId));
     await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));
     await tx.delete(monitorIncidents).where(eq(monitorIncidents.userId, userId));
@@ -92,11 +98,12 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
   };
 }
 
-function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
+export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   const settings = settingsSchema.parse(bundle.settings);
   const companies = companyInputSchema.array().parse(bundle.companies);
   const monitors = monitorInputSchema.array().parse(bundle.monitors);
 
+  assertRestorablePostgresMonitorPasswords(monitors);
   assertUniqueCompanyNames(companies);
   assertMonitorCompanyReferences(monitors, companies);
   assertUniqueMonitorTargets(monitors);

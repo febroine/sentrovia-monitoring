@@ -29,16 +29,17 @@ export async function listLogs(
   const conditions = [eq(monitorEvents.userId, userId)];
   const monitorConditions = [eq(monitors.userId, userId)];
 
-  if (filters.from) {
-    const fromDate = new Date(filters.from);
+  const fromDate = parseDateFilter(filters.from);
+  if (fromDate) {
     conditions.push(gte(monitorEvents.createdAt, fromDate));
     monitorConditions.push(
       or(gte(monitors.lastCheckedAt, fromDate), gte(monitors.lastSuccessAt, fromDate))!
     );
   }
 
-  if (filters.to) {
-    const end = new Date(filters.to);
+  const toDate = parseDateFilter(filters.to);
+  if (toDate) {
+    const end = new Date(toDate);
     end.setHours(23, 59, 59, 999);
     conditions.push(lte(monitorEvents.createdAt, end));
   }
@@ -85,8 +86,8 @@ export async function listLogs(
   appendLevelConditions(conditions, filters.level);
   appendMonitorLevelConditions(monitorConditions, filters.level);
 
-  const page = Math.max(1, filters.page ?? 1);
-  const pageSize = Math.min(100, Math.max(10, filters.pageSize ?? 10));
+  const page = toBoundedInteger(filters.page, 1, 1);
+  const pageSize = toBoundedInteger(filters.pageSize, 10, 10, 100);
   const offset = (page - 1) * pageSize;
   const [eventRows, monitorRows] = await Promise.all([
     db
@@ -152,6 +153,24 @@ export async function listLogs(
     page,
     pageSize,
   };
+}
+
+function parseDateFilter(value: string | undefined) {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toBoundedInteger(value: number | undefined, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  const parsed = Math.trunc(value);
+  return Math.min(max, Math.max(min, parsed));
 }
 
 export async function getLogFilterOptions(userId: string) {

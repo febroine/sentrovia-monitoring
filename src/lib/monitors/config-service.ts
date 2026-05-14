@@ -20,7 +20,13 @@ export function serializeMonitorConfigBundle(bundle: MonitorConfigBundle, format
 }
 
 export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
-  const parsed = format === "yaml" ? parse(raw) : JSON.parse(raw);
+  let parsed: unknown;
+
+  try {
+    parsed = format === "yaml" ? parse(raw) : JSON.parse(raw);
+  } catch {
+    throw new Error("The uploaded monitor config bundle is invalid.");
+  }
 
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { monitors?: unknown[] }).monitors)) {
     throw new Error("The uploaded monitor config bundle is invalid.");

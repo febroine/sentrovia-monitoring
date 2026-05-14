@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
+import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
 import { createManyMonitors } from "@/lib/monitors/service";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { getSettings } from "@/lib/settings/service";
@@ -40,13 +41,20 @@ export async function POST(request: NextRequest) {
       return result.data;
     });
 
+    assertRestorablePostgresMonitorPasswords(parsed);
     const created = await createManyMonitors(session.id, parsed);
 
     return NextResponse.json({
       monitors: created.map(serializeMonitor),
     });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Row ")) {
+    if (
+      error instanceof Error
+      && (
+        error.message.startsWith("Row ")
+        || error.message.includes("PostgreSQL monitor passwords are not included")
+      )
+    ) {
       return NextResponse.json({ message: error.message }, { status: 400 });
     }
 
