@@ -284,9 +284,10 @@ The Reports v2 and diagnostics schemas are covered by the latest manual migratio
 ```bash
 drizzle/0030_reports_v2_indexes_manual.sql
 drizzle/0031_diagnostics_incident_timeline_manual.sql
+drizzle/0032_monitor_email_recipients_manual.sql
 ```
 
-If you update an existing server manually, make sure migrations `0029`, `0030`, and `0031` have been applied before testing notification templates, scheduled reports, and diagnostics.
+If you update an existing server manually, make sure migrations `0029`, `0030`, `0031`, and `0032` have been applied before testing notification templates, scheduled reports, diagnostics, and multi-recipient monitor alerts.
 
 ## Quick Start
 
