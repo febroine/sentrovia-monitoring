@@ -228,7 +228,7 @@ function checkHttp(url: string, monitor: Monitor, timeoutMs: number) {
     const request = transport.request(
       parsed,
       {
-        method: monitor.method === "HEAD" ? "HEAD" : "GET",
+        method: monitor.method,
         timeout: timeoutMs,
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
