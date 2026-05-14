@@ -111,6 +111,10 @@ function stringOrEmpty(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+function stringOrDefault(value: unknown, fallback: string) {
+  return typeof value === "string" ? value : fallback;
+}
+
 function booleanOrDefault(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -208,8 +212,10 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       prolongedDowntimeTelegramTemplate:
         stringOrEmpty(settings?.prolongedDowntimeTelegramTemplate) ||
         DEFAULT_SETTINGS.notifications.prolongedDowntimeTelegramTemplate,
-      statusCodeAlertCodes:
-        stringOrEmpty(settings?.statusCodeAlertCodes) || DEFAULT_SETTINGS.notifications.statusCodeAlertCodes,
+      statusCodeAlertCodes: stringOrDefault(
+        settings?.statusCodeAlertCodes,
+        DEFAULT_SETTINGS.notifications.statusCodeAlertCodes
+      ),
       savedEmailRecipients: arrayOrDefault(
         settings?.savedEmailRecipients,
         DEFAULT_SETTINGS.notifications.savedEmailRecipients
@@ -458,7 +464,7 @@ export async function upsertSettings(
     prolongedDowntimeEmailSubjectTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailSubjectTemplate),
     prolongedDowntimeEmailBodyTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailBodyTemplate),
     prolongedDowntimeTelegramTemplate: emptyToNull(input.notifications.prolongedDowntimeTelegramTemplate),
-    statusCodeAlertCodes: emptyToNull(input.notifications.statusCodeAlertCodes),
+    statusCodeAlertCodes: input.notifications.statusCodeAlertCodes.trim(),
     savedEmailRecipients: input.notifications.savedEmailRecipients,
     monitoringInterval: input.monitoring.interval,
     monitoringTimeout: input.monitoring.timeout,

@@ -310,10 +310,11 @@ export async function dispatchReportNow(
     htmlBody: message.htmlBody,
     attachments: await buildReportAttachments(report, deliveryOptions),
   });
+  assertReportEmailDelivered(delivery);
 
   return {
     report,
-    delivery: delivery ? serializeDeliveryResult(delivery) : null,
+    delivery: serializeDeliveryResult(delivery),
   };
 }
 
@@ -403,7 +404,6 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
   } catch (error) {
     const updatedSchedule = await updateScheduleDeliveryState(scheduleId, {
       lastRunAt: now,
-      lastDeliveredAt: null,
       lastStatus: "failed",
       lastErrorMessage: toMessage(error),
     });
@@ -1296,7 +1296,7 @@ async function updateScheduleDeliveryState(
   scheduleId: string,
   values: {
     lastRunAt: Date;
-    lastDeliveredAt: Date | null;
+    lastDeliveredAt?: Date | null;
     lastStatus: ReportScheduleStatus;
     lastErrorMessage: string | null;
   }
@@ -1329,6 +1329,16 @@ function serializeDeliveryResult(delivery: {
         ? delivery.deliveredAt.toISOString()
         : delivery.deliveredAt ?? null,
   };
+}
+
+function assertReportEmailDelivered(
+  delivery: { status: string; errorMessage?: string | null } | null
+): asserts delivery is { status: string; deliveredAt?: Date | string | null } {
+  if (delivery?.status === "delivered") {
+    return;
+  }
+
+  throw new Error(delivery?.errorMessage || "Report email delivery failed.");
 }
 
 function renderReportTemplate(template: string | null, report: GeneratedReport) {

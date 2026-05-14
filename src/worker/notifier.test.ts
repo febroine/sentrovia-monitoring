@@ -57,6 +57,8 @@ describe("worker notifier", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasRecentMonitorEvent.mockResolvedValue(true);
+    mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
+    mocks.sendWebhookDelivery.mockResolvedValue(null);
   });
 
   it("does not suppress recovery notifications with the generic dedup window", async () => {
@@ -71,7 +73,21 @@ describe("worker notifier", () => {
       })
     );
   });
+
+  it("reports notification as unsent when every attempted delivery fails", async () => {
+    mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("failed"));
+
+    const sent = await sendMonitorNotifications(buildNotificationContext("recovery"));
+
+    expect(sent).toBe(false);
+    expect(mocks.sendEmailDelivery).toHaveBeenCalled();
+    expect(mocks.sendWebhookDelivery).toHaveBeenCalled();
+  });
 });
+
+function buildDeliveryResult(status: "delivered" | "failed" | "retrying") {
+  return { status };
+}
 
 function buildNotificationContext(kind: NotificationContext["kind"]): NotificationContext {
   return {
