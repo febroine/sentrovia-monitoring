@@ -158,7 +158,7 @@ export function MonitorTable({
                       verificationFailureCount={monitor.verificationFailureCount}
                       threshold={Math.max(1, monitor.retries)}
                     />
-                    {monitor.verificationMode ? (
+                    {monitor.isActive && monitor.verificationMode ? (
                       <p className="text-[11px] text-muted-foreground">Pending confirmation</p>
                     ) : null}
                   </div>

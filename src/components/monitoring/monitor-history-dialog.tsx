@@ -76,7 +76,7 @@ export function MonitorHistoryDialog({
                   <DetailRow label="Started at" value={formatDateTime(selection.windowStart.createdAt)} />
                   <DetailRow label="Ended at" value={selection.windowEnd ? formatDateTime(selection.windowEnd.createdAt) : "Current latest check"} />
                   <DetailRow label="Checks in window" value={String(selection.windowPoints.length)} />
-                  <DetailRow label="Current monitor status" value={monitor.verificationMode ? "Verification mode" : monitor.status.toUpperCase()} />
+                  <DetailRow label="Current monitor status" value={getCurrentMonitorStatusLabel(monitor)} />
                 </div>
               </div>
 
@@ -234,6 +234,10 @@ function buildStateSummary(
   selection: NonNullable<ReturnType<typeof buildSelection>>,
   monitor: MonitorRecord
 ) {
+  if (!monitor.isActive) {
+    return `This monitor is paused. The selected historical window lasted ${selection.durationLabel}.`;
+  }
+
   if (selection.point.status === "pending") {
     return `This check landed in verification mode for ${selection.durationLabel}. ${
       monitor.verificationMode
@@ -253,6 +257,14 @@ function buildStateSummary(
       ? `Verification is still running (${monitor.verificationFailureCount}/${Math.max(1, monitor.retries)} attempts).`
       : "This state has already been confirmed as an outage."
   }`;
+}
+
+function getCurrentMonitorStatusLabel(monitor: MonitorRecord) {
+  if (!monitor.isActive) {
+    return "Paused";
+  }
+
+  return monitor.verificationMode ? "Verification mode" : monitor.status.toUpperCase();
 }
 
 function getStateLabel(status: MonitorHistoryPoint["status"]) {
