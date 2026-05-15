@@ -10,6 +10,7 @@ import {
   userSettings,
   workerState,
 } from "@/lib/db/schema";
+import { AuthError } from "@/lib/auth/errors";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
 import { env } from "@/lib/env";
 import { resolveIncident } from "@/lib/incidents/service";
@@ -40,6 +41,7 @@ export async function listMonitors(userId: string) {
 
 export async function createMonitor(userId: string, input: MonitorInput) {
   const values = await buildMonitorValues(userId, input, null);
+  await assertMonitorTargetAvailable(userId, values.monitorType, values.url, null);
   const [monitor] = await db
     .insert(monitors)
     .values(values)
@@ -55,6 +57,7 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
   }
 
   const values = await buildMonitorValues(userId, input, existingMonitor);
+  await assertMonitorTargetAvailable(userId, values.monitorType, values.url, monitorId);
   const now = new Date();
   const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
   const [monitor] = await db
@@ -73,6 +76,35 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
   await resolveIncidentOnPause(existingMonitor, values.isActive, now);
 
   return monitor;
+}
+
+async function assertMonitorTargetAvailable(
+  userId: string,
+  monitorType: MonitorInput["monitorType"],
+  url: string,
+  excludedMonitorId: string | null,
+  database: DatabaseExecutor = db
+) {
+  const targetKey = buildMonitorIdentityKey({ monitorType, url });
+  const existing = await database
+    .select({ id: monitors.id, monitorType: monitors.monitorType, url: monitors.url })
+    .from(monitors)
+    .where(eq(monitors.userId, userId));
+
+  const conflict = existing.some((monitor) => {
+    if (monitor.id === excludedMonitorId) {
+      return false;
+    }
+
+    return targetKey === buildMonitorIdentityKey({
+      monitorType: normalizeMonitorType(monitor.monitorType),
+      url: monitor.url,
+    });
+  });
+
+  if (conflict) {
+    throw new AuthError("A monitor with this target already exists.", 409);
+  }
 }
 
 export async function updateMonitorActiveState(userId: string, monitorId: string, isActive: boolean) {

@@ -1,4 +1,5 @@
 import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { AuthError } from "@/lib/auth/errors";
 
 const BLOCKED_HOSTNAMES = new Set([
@@ -44,10 +45,17 @@ function parseWebhookUrl(value: string) {
 }
 
 async function assertPublicHostname(hostname: string) {
-  const normalizedHostname = hostname.trim().toLowerCase();
+  const normalizedHostname = stripIpv6Brackets(hostname.trim().toLowerCase());
 
   if (isBlockedHostname(normalizedHostname)) {
     throw new AuthError("Webhook targets must point to a public webhook endpoint.", 400);
+  }
+
+  if (isIP(normalizedHostname)) {
+    if (isPrivateAddress(normalizedHostname)) {
+      throw new AuthError("Webhook targets must point to a public webhook endpoint.", 400);
+    }
+    return;
   }
 
   const resolved = await resolveHostname(normalizedHostname);
@@ -104,7 +112,11 @@ function isPrivateIpv4(address: string) {
 }
 
 function isPrivateIpv6(address: string) {
-  const normalized = address.toLowerCase();
+  const normalized = stripIpv6Brackets(address.toLowerCase());
+  const mappedIpv4 = parseIpv4MappedIpv6(normalized);
+  if (mappedIpv4) {
+    return isPrivateIpv4(mappedIpv4);
+  }
 
   return (
     normalized === "::" ||
@@ -116,4 +128,37 @@ function isPrivateIpv6(address: string) {
     normalized.startsWith("fea") ||
     normalized.startsWith("feb")
   );
+}
+
+function parseIpv4MappedIpv6(address: string) {
+  if (!address.startsWith("::ffff:")) {
+    return null;
+  }
+
+  const suffix = address.slice("::ffff:".length);
+  if (suffix.includes(".")) {
+    return suffix;
+  }
+
+  const parts = suffix.split(":");
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const high = Number.parseInt(parts[0], 16);
+  const low = Number.parseInt(parts[1], 16);
+  if (![high, low].every((part) => Number.isInteger(part) && part >= 0 && part <= 0xffff)) {
+    return null;
+  }
+
+  return [
+    (high >> 8) & 0xff,
+    high & 0xff,
+    (low >> 8) & 0xff,
+    low & 0xff,
+  ].join(".");
+}
+
+function stripIpv6Brackets(value: string) {
+  return value.replace(/^\[/, "").replace(/\]$/, "");
 }

@@ -54,5 +54,6 @@ function isBackupPayloadError(error: unknown) {
     "Monitor references a missing company",
     "Duplicate monitor target",
     "PostgreSQL monitor passwords are not included",
+    "SMTP password is not included",
   ].some((message) => error.message.includes(message));
 }
