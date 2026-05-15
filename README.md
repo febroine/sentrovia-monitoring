@@ -283,50 +283,14 @@ Production notes:
 - Set `AUTH_ALLOW_PUBLIC_SIGNUP=true` only temporarily if you intentionally want to reopen public registration.
 - `PLAYWRIGHT_BROWSERS_PATH=0` keeps the Chromium browser inside the project dependencies so NSSM services can find it reliably.
 
-## 🧱 Database Updates
-
-For a normal schema sync:
-
-```bash
-npm run db:push
-```
-
-Manual migrations that may be needed on older servers:
-
-```bash
-drizzle/0028_public_status_reports_manual.sql
-drizzle/0029_notification_template_overrides_manual.sql
-drizzle/0030_reports_v2_indexes_manual.sql
-drizzle/0031_diagnostics_incident_timeline_manual.sql
-drizzle/0032_monitor_email_recipients_manual.sql
-```
-
-If you copied only part of the project to a server, make sure the `drizzle` folder is updated too. Reports v2, diagnostics, timeline entries, and multi-recipient monitor alerts depend on those migration files.
-
-If a release only changes application code and does not add a new file under `drizzle`, no manual SQL file is required. Running `npm run db:push` after updating the full project is still safe for a normal schema sync.
-
-### DB health check
-
-Run this from the production project root to verify that `.env.local` is loaded and PostgreSQL accepts connections:
-
-```bat
-node -e "require('@next/env').loadEnvConfig(process.cwd()); const postgres=require('postgres'); const db=postgres(process.env.DATABASE_URL,{max:1}); (async()=>{ if(!process.env.DATABASE_URL) throw new Error('DATABASE_URL not found'); const rows=await db.unsafe('select now() as now, current_database() as database, current_user as user_name'); console.log(rows[0]); await db.end(); })().catch(async e=>{ console.error(e.message || e); await db.end().catch(()=>{}); process.exit(1); });"
-```
-
-Good signs after an update:
-
-- the command above returns `now`, `database`, and `user_name`
-- the web app opens and Monitoring data loads
-- the worker panel heartbeat updates
-- new checks appear in Logs or Monitoring history
-- creating or editing a monitor survives a page refresh
-
 ## 🪟 Windows Production With NSSM
 
-NSSM runs Sentrovia as two Windows services:
+NSSM runs Sentrovia as two Windows services. The actual NSSM service names are:
 
 - `sentrovia-web`
 - `sentrovia-worker`
+
+Their Windows display names are `Sentrovia Web` and `Sentrovia Worker`.
 
 The web service runs the Next.js production server. The worker service runs monitor checks, verification rechecks, notification delivery, webhook retries, and scheduled reports.
 
@@ -425,53 +389,6 @@ Check status:
 nssm status sentrovia-web
 nssm status sentrovia-worker
 ```
-
-## 🔄 Updating An NSSM Server
-
-Use this flow when Sentrovia is already running on another Windows server and active monitors exist.
-
-1. Back up PostgreSQL or take a VM/server snapshot.
-2. Stop the worker first so no checks are running while files and schema change.
-3. Update the full project folder, not only `src`.
-4. Install dependencies.
-5. Apply schema changes.
-6. Build.
-7. Start the web service.
-8. Start the worker service.
-
-Commands:
-
-```bat
-nssm stop sentrovia-worker
-nssm stop sentrovia-web
-
-npm install
-set PLAYWRIGHT_BROWSERS_PATH=0
-npx playwright install chromium
-npm run db:push
-npm run build
-
-nssm start sentrovia-web
-nssm start sentrovia-worker
-```
-
-Or use the bundled update script after the files are updated:
-
-```bat
-scripts\update-production-windows-nssm.bat
-```
-
-Important update notes:
-
-- Do not copy only `src`; dependency, migration, script, and lockfile changes can be required.
-- Copy or pull `package.json`, `package-lock.json`, `drizzle`, `scripts`, `public`, `src`, and config files together.
-- Run `npm install` after updates because dependencies such as PDF/report tooling can change.
-- Run `set PLAYWRIGHT_BROWSERS_PATH=0` and `npx playwright install chromium` when screenshot evidence is enabled or after a fresh dependency install on a new server.
-- Run `npm run build` before starting services.
-- Start the worker last. The web app can be available while the worker catches up.
-- If the worker was disabled in the UI before the update, it will remain logically paused through database state.
-- If a new `drizzle/*.sql` file exists in the update, apply it before starting the worker.
-- If no new `drizzle` file exists, no extra manual SQL is needed beyond `npm run db:push`.
 
 ## 🧰 Useful Commands
 
