@@ -431,10 +431,11 @@ export async function upsertSettings(
     throw buildMissingSettingsTableError();
   }
 
-  const encryptedPassword =
-    input.notifications.smtpPassword.trim().length > 0
-      ? encryptValue(input.notifications.smtpPassword)
-      : stringOrEmpty(existing?.smtpPasswordEncrypted) || null;
+  const encryptedPassword = resolveSmtpPasswordEncrypted(
+    input.notifications.smtpPassword,
+    input.notifications.smtpPasswordConfigured,
+    stringOrEmpty(existing?.smtpPasswordEncrypted)
+  );
 
   const values = {
     userId,
@@ -592,4 +593,21 @@ async function clearInheritedMonitorTemplate(
     .update(monitors)
     .set({ [key]: null })
     .where(and(eq(monitors.userId, userId), eq(column, inheritedTemplate)));
+}
+
+export function resolveSmtpPasswordEncrypted(
+  nextPassword: string,
+  passwordConfigured: boolean,
+  existingEncryptedPassword: string
+) {
+  const trimmedPassword = nextPassword.trim();
+  if (trimmedPassword.length > 0) {
+    return encryptValue(trimmedPassword);
+  }
+
+  if (passwordConfigured) {
+    return existingEncryptedPassword || null;
+  }
+
+  return null;
 }

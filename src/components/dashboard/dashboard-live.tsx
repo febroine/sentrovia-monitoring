@@ -270,8 +270,8 @@ function PanelRecentEvents({
                 <div>
                   <p className="text-sm font-medium leading-5">{event.message || event.eventType}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {event.statusCode ? `HTTP ${event.statusCode}` : "No status code"}
-                    {event.latencyMs ? ` · ${event.latencyMs}ms` : ""}
+                    {event.statusCode !== null ? `HTTP ${event.statusCode}` : "No status code"}
+                    {event.latencyMs !== null ? ` / ${event.latencyMs}ms` : ""}
                   </p>
                 </div>
               </div>

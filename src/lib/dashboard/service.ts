@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors } from "@/lib/db/schema";
 import { getDeliveryOverview } from "@/lib/delivery/service";
@@ -8,7 +8,12 @@ import { getWorkerState } from "@/lib/monitors/service";
 export async function getDashboardData(userId: string) {
   const [monitorRows, eventRows, checkRows, settings, worker, delivery] = await Promise.all([
     db.select().from(monitors).where(eq(monitors.userId, userId)),
-    db.select().from(monitorEvents).where(eq(monitorEvents.userId, userId)).orderBy(desc(monitorEvents.createdAt)).limit(10),
+    db
+      .select()
+      .from(monitorEvents)
+      .where(and(eq(monitorEvents.userId, userId), ne(monitorEvents.eventType, "check")))
+      .orderBy(desc(monitorEvents.createdAt))
+      .limit(10),
     db.select().from(monitorChecks).where(eq(monitorChecks.userId, userId)).orderBy(desc(monitorChecks.createdAt)).limit(4000),
     getSettings(userId),
     getWorkerState(),

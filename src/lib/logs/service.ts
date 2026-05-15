@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, monitorEvents, monitors } from "@/lib/db/schema";
 import type { LogLevel } from "@/lib/logs/types";
@@ -26,7 +26,7 @@ export async function listLogs(
     pageSize?: number;
   }
 ) {
-  const conditions = [eq(monitorEvents.userId, userId)];
+  const conditions = [eq(monitorEvents.userId, userId), ne(monitorEvents.eventType, "check")];
   const monitorConditions = [eq(monitors.userId, userId)];
 
   const fromDate = parseDateFilter(filters.from);
@@ -141,7 +141,7 @@ export async function listLogs(
     .filter((row) => row.status === "up" && row.createdAt)
     .map((row) => buildUpSummaryRow(row));
 
-  const rows = [...summaryRows, ...eventRows.filter((row) => row.eventType !== "check")]
+  const rows = [...summaryRows, ...eventRows]
     .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   const pagedRows = rows.slice(offset, offset + pageSize);
 
