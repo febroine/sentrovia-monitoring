@@ -2,69 +2,33 @@
   <img src="docs/screenshots/banner.png" alt="Sentrovia" width="100%">
 </p>
 
-
-> A verification-aware monitoring platform for teams that want cleaner alerts, durable runtime state, and a control plane that stays readable under real operational load.
+> Sentrovia is a self-hosted monitoring and operations console for teams that need verified alerts, durable runtime state, scheduled reports, and a readable control plane for internal services.
 
 <p align="left">
-  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" />
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16.2-black?style=flat-square&logo=next.js" />
   <img alt="React" src="https://img.shields.io/badge/React-19-0f172a?style=flat-square&logo=react" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-First-2563eb?style=flat-square&logo=typescript&logoColor=white" />
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-0f172a?style=flat-square&logo=postgresql" />
-  <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-0891b2?style=flat-square&logo=docker" />
-  <img alt="Worker Runtime" src="https://img.shields.io/badge/Worker-DB%20Backed-059669?style=flat-square" />
+  <img alt="Windows Service" src="https://img.shields.io/badge/Windows-NSSM-059669?style=flat-square" />
+  <img alt="Worker Runtime" src="https://img.shields.io/badge/Worker-DB%20Backed-0f766e?style=flat-square" />
 </p>
 
-## What Sentrovia is
+## Overview
 
-Sentrovia is built for self-hosted teams that want more than a simple "ping and alert" tool.
+Sentrovia is designed for internal IT and operations teams that want more than a simple "ping and alert" tool. It combines a Next.js web console, a dedicated worker runtime, and PostgreSQL-backed state so the dashboard, logs, notifications, reports, and worker status all read from the same durable source of truth.
 
-It combines:
+The product focuses on practical production behavior:
 
-- a **Next.js web console** for configuration, operations, logs, delivery testing, reports, and user workflows
-- a **dedicated worker runtime** for actual monitor execution and scheduled jobs
-- **PostgreSQL** as the source of truth for configuration and runtime state
-- a **verification mode** that reduces noisy first-failure alerting
-- **company-aware visibility** for grouped monitors and operational ownership
-- **delivery history** so teams can see what the system actually tried to send
-
-## Why teams would pick Sentrovia
-
-### ✅ Verification-aware incident handling
-
-Sentrovia does not immediately treat the first failure as a real outage.  
-The worker can move a monitor into **verification mode**, re-check at one-minute intervals, and only confirm the outage after the configured threshold is reached.
-
-### ✅ Durable, database-first state
-
-Checks, monitor history, worker heartbeat, worker metrics, companies, settings, templates, report schedules, and delivery attempts are stored in PostgreSQL so every page reads the same persisted truth.
-
-### ✅ Internal control plane feel
-
-This project is designed more like an operations console than a toy dashboard:
-
-- dashboard summaries
-- monitor timelines
-- event logs
-- delivery history
-- company rollups
-- members and settings
-- worker health visibility
-- public status pages
-- reports, PDF attachments, and worker insights
-
-### ✅ Multiple monitor types
-
-Sentrovia currently supports:
-
-- `HTTP / HTTPS`
-- `Keyword`
-- `JSON Assertion`
-- `TCP / Port`
-- `PostgreSQL`
-- `Ping / ICMP`
-- `Cron / Heartbeat`
-
-All monitor types use the same core pipeline for verification, RCA, event creation, and delivery.
+- verified outage confirmation before noisy first-failure alerts
+- one-minute rechecks while a failure is being confirmed
+- escalating verification timeouts to reduce false positives
+- recovery notifications after confirmed outages return healthy
+- multi-recipient monitor notifications
+- SMTP, Telegram, Discord, and generic webhook delivery
+- delivery history, retry visibility, and report delivery tracking
+- company-aware monitor ownership
+- reports with HTML, CSV, and PDF attachments
+- public status pages for selected monitor visibility
 
 ## Product Screens
 
@@ -81,15 +45,15 @@ All monitor types use the same core pipeline for verification, RCA, event creati
   </tr>
   <tr>
     <td>
-      <sub>Live operational summaries, worker visibility, and recent event context.</sub>
+      <sub>Live operational summaries, worker visibility, runtime state, and recent event context.</sub>
     </td>
     <td>
-      <sub>Monitor inventory with verification state, bulk actions, history strips, and company assignment.</sub>
+      <sub>Monitor inventory with verification state, bulk actions, history strips, active toggles, and company assignment.</sub>
     </td>
   </tr>
 </table>
 
-### Delivery + Documentation
+### Delivery + Help
 
 <table>
   <tr>
@@ -102,7 +66,7 @@ All monitor types use the same core pipeline for verification, RCA, event creati
   </tr>
   <tr>
     <td>
-      <sub>Delivery testing, history inspection, retry workflows, and outbound channel visibility.</sub>
+      <sub>Delivery testing, immutable delivery history, webhook retries, and outbound channel visibility.</sub>
     </td>
     <td>
       <sub>In-product operational documentation that explains how the runtime behaves in production.</sub>
@@ -115,183 +79,126 @@ All monitor types use the same core pipeline for verification, RCA, event creati
 </p>
 
 <p align="center">
-  <sub>About Sentrovia explains the architecture, runtime model, worker behavior, reports flow, notifications engine, and the actual execution path from browser input to persisted result.</sub>
+  <sub>The About page explains the architecture, worker behavior, report flow, notifications engine, and the execution path from browser input to persisted result.</sub>
 </p>
 
 ## Core Capabilities
 
-### 🔎 Monitoring engine
+### Monitoring engine
 
-- HTTP/HTTPS monitor execution
-- keyword and JSON assertion checks
-- TCP/port reachability checks
+- HTTP and HTTPS availability checks
+- keyword and JSON assertion monitors
+- TCP port reachability checks
 - PostgreSQL connectivity checks
-- ICMP reachability checks
-- heartbeat endpoint monitoring
-- per-monitor timeout, retries, method, redirects, SSL behavior, and response settings
+- ICMP ping checks
+- cron and heartbeat endpoint monitoring
+- per-monitor interval, timeout, retry, method, redirect, SSL, cache, and response-size controls
+- per-monitor active or disabled state
 - verification mode for delayed outage confirmation
-- check history with timeline surfaces
-- failure diagnostics with DNS, TCP, TLS, and HTTP phase visibility
-- incident timeline events for verification attempts, diagnostics, confirmed outages, and recoveries
+- cold-start spread for imported monitors
+- check history, event history, and timeline details
+- diagnostics for DNS, TCP, TLS, HTTP, timeout, and status-code failures
 
-### 🧠 Root cause analysis
-
-Sentrovia classifies failures into targeted RCA buckets such as:
-
-- DNS resolution failures
-- timeout failures
-- connection refused
-- SSL/TLS issues
-- HTTP 4xx
-- HTTP 5xx
-- redirect anomalies
-- generic network failures
-
-### 🔔 Delivery and notification routing
+### Notification routing
 
 - SMTP email delivery
+- multiple email recipients per monitor
+- saved recipient shortcuts in Settings
 - Telegram delivery
 - Discord webhook delivery
 - generic webhook delivery
-- delivery history and retry visibility
-- workspace-level templates, subject overrides, and recipient defaults
-- monitor-level notification template overrides
-- prolonged-downtime reminders with configurable timing
-- recovery alerts after a confirmed outage returns healthy
+- workspace-level notification templates
+- monitor-level template overrides
+- separate down, recovery, status-change, and prolonged-downtime templates
+- delivery history with status, attempt count, response code, and error details
 
-### 🧰 Operations and governance
+### Reports
 
-- companies and grouped monitor ownership
-- members directory
-- settings with defaults and templates
-- event logs with filters
-- worker heartbeat and health status
-- worker observability dashboard
-- reports center with previews, schedules, CSV/HTML/PDF delivery, and templates
-- public status pages for monitor availability
+- weekly and monthly reports
+- workspace-wide and company-scoped reports
+- manual preview before send
+- scheduled report delivery through the worker
+- report template editor
+- configurable subject and intro templates
+- summary, monitor breakdown, incident context, and detail-level controls
+- HTML, CSV, and PDF attachments
 
-## How it works
+### Operations and governance
+
+- company records and grouped monitor ownership
+- member directory
+- settings and appearance controls
+- filtered event logs and saved log presets
+- worker heartbeat, backlog, cycle metrics, and health state
+- public status pages
+- workspace backup and restore
+
+## Runtime Model
 
 ```mermaid
 flowchart LR
     A["Operator uses Web Console"] --> B["Validated Route Handlers"]
-    B --> C["PostgreSQL stores monitor + settings state"]
-    C --> D["Worker polls due monitors and report schedules"]
+    B --> C["PostgreSQL stores settings and monitor state"]
+    C --> D["Worker claims due monitors and report schedules"]
     D --> E["HTTP / Keyword / JSON / TCP / PostgreSQL / ICMP / Heartbeat checks"]
-    E --> F{"Failure?"}
-    F -- "No" --> G["Persist UP result + history"]
-    F -- "Yes" --> H["Enter verification mode"]
-    H --> I{"Threshold reached?"}
-    I -- "No" --> J["Schedule 1-minute confirmation check"]
-    I -- "Yes" --> K["Persist outage + RCA + events"]
-    K --> L["Render templates + route delivery"]
-    G --> M["Dashboard / Logs / Timelines / Reports"]
+    E --> F{"Check failed?"}
+    F -- "No" --> G["Persist UP result and clear failure state"]
+    F -- "Yes" --> H["Enter or continue verification mode"]
+    H --> I{"Verification threshold reached?"}
+    I -- "No" --> J["Schedule one-minute recheck"]
+    I -- "Yes" --> K["Run final confirmation with longer timeout"]
+    K --> L["Persist confirmed outage, RCA, diagnostics, and timeline"]
+    L --> M["Render templates and send notifications"]
+    G --> N["Dashboard / Logs / Reports / Public Status"]
     J --> D
-    L --> M
+    M --> N
 ```
-
-## Runtime model
 
 ### Web console
 
-The web layer is the control plane. It is responsible for:
-
-- creating and updating monitors
-- reading dashboards and logs
-- editing settings, templates, members, and companies
-- rendering live operational views
-- exposing authenticated APIs for the worker and the UI
+The web layer is the control plane. It handles authentication, monitor configuration, settings, companies, members, logs, delivery tools, reports, public status pages, and dashboard reads.
 
 ### Worker
 
-The worker is the execution engine. It is responsible for:
+The worker is the execution engine. It claims due monitors, applies batch and concurrency rules, performs checks, handles verification mode, records results, sends notifications, retries delivery queues, and dispatches scheduled reports.
 
-- selecting due monitors
-- building checks from saved monitor settings
-- applying batch size and concurrency rules
-- running verification mode
-- writing history, status, and event records
-- sending notifications through enabled channels
-- sending prolonged downtime reminders
-- dispatching scheduled reports
-- writing heartbeat and worker state back to the database
+### PostgreSQL
 
-### Database
+PostgreSQL persists users, companies, monitors, checks, events, diagnostics, incident timeline entries, delivery events, worker state, cycle metrics, report schedules, public status settings, templates, and notification preferences.
 
-PostgreSQL is not just storage; it is the operational backbone. It persists:
+## Verification Mode
 
-- users
-- companies
-- monitors
-- monitor checks
-- monitor events
-- monitor diagnostics
-- incident timeline events
-- delivery events
-- worker state
-- worker cycle metrics
-- report schedules
-- settings and templates
-
-## Verification mode
-
-One of the most important behaviors in Sentrovia is the verification flow:
+Sentrovia avoids alerting on the first transient failure:
 
 1. A monitor fails once.
-2. The worker does **not** immediately open a real outage.
-3. The monitor enters **verification mode**.
-4. Follow-up checks run at one-minute intervals.
-5. If the failure repeats until the threshold is reached, the outage is confirmed.
-6. If the monitor comes back up before the threshold is reached, the verification state is cleared and the monitor returns to its normal schedule.
-7. If the service stays down after confirmation, Sentrovia can continue sending repeated "still down" reminders on the interval you configure.
-8. When the service returns healthy, a recovery notification is sent.
+2. The monitor moves into verification mode.
+3. Follow-up checks run at one-minute intervals.
+4. Recheck timeout increases during verification to reduce false positives.
+5. If the configured threshold is reached, Sentrovia runs a final confirmation check.
+6. If the final confirmation still fails, the outage is confirmed and a down notification is sent.
+7. If the monitor recovers before confirmation, no down notification is sent.
+8. After a confirmed outage recovers, a recovery notification is sent.
 
-This is a major difference from many lighter monitoring tools that alert on the first transient failure.
+This means "down" and "recovered" emails are tied to confirmed state transitions instead of raw single checks.
 
-## Failure Diagnostics And Timeline
+## Failure Diagnostics
 
-When a check fails or enters verification mode, Sentrovia records a diagnostic snapshot alongside the normal monitor history.
+When a monitor fails or enters verification mode, Sentrovia can record a diagnostic snapshot with:
 
-The diagnostic snapshot can show:
+- DNS resolution result
+- resolved IP addresses
+- TCP connection result
+- TLS negotiation result
+- HTTP response result
+- failed phase and failure category
+- timeout used for the diagnostic
+- operator-facing summary and raw error message
 
-- whether DNS resolved from the server running the worker
-- which IP addresses were returned
-- whether TCP connectivity worked
-- whether TLS negotiation succeeded for HTTPS targets
-- whether the HTTP probe returned a healthy status
-- the failed phase, failure category, timeout used, and raw error message
-
-The same flow also writes incident timeline events such as verification start, failed verification attempts, diagnostic completion, outage confirmation, prolonged downtime, and recovery detection. These details appear in the monitoring timeline dialog so operators can understand why an alert fired without leaving the product.
-
-## Reports
-
-Sentrovia includes a built-in reports center with:
-
-- weekly reports
-- monthly reports
-- company-scoped reports
-- global workspace reports
-- preview before send
-- scheduled report delivery
-- configurable email subject and intro templates
-- detail-level controls for summary, monitor breakdown, and incident context
-- HTML, CSV, and PDF report attachments
-
-Reports are not a side export anymore; the worker can pick up due report schedules and send them as part of the product runtime.
-
-The Reports v2 and diagnostics schemas are covered by the latest manual migrations:
-
-```bash
-drizzle/0030_reports_v2_indexes_manual.sql
-drizzle/0031_diagnostics_incident_timeline_manual.sql
-drizzle/0032_monitor_email_recipients_manual.sql
-```
-
-If you update an existing server manually, make sure migrations `0029`, `0030`, `0031`, and `0032` have been applied before testing notification templates, scheduled reports, diagnostics, and multi-recipient monitor alerts.
+These records appear alongside monitor history and incident timeline events so operators can understand why an alert fired from the server's point of view.
 
 ## Quick Start
 
-### 🚀 Full Docker setup
+### Docker Compose
 
 Run the full stack:
 
@@ -301,46 +208,28 @@ docker compose up --build
 
 This starts:
 
-- `db` for PostgreSQL
-- `web` for the Next.js application
-- `worker` for background monitoring execution
+- PostgreSQL
+- the Next.js web console
+- the background worker
 
-The Docker boot flow is self-initializing:
-
-- waits for PostgreSQL to become reachable
-- applies the latest Drizzle schema automatically
-- starts the web runtime
-- starts the worker only after the web container is healthy
-
-That means a fresh clone should not require a separate `npm run db:push` when you use Docker Compose.
+The Docker boot flow waits for PostgreSQL, applies the schema, starts the web runtime, and starts the worker after the web container is healthy.
 
 Open:
 
 - [http://localhost:3000](http://localhost:3000)
 
-### 🧪 Local development
+### Local development
 
 If you want PostgreSQL in Docker but run the app locally:
 
-1. Start the database:
-
 ```bash
 docker compose up -d db
-```
-
-2. Apply the schema:
-
-```bash
+npm install
 npm run db:push
-```
-
-3. Start the web app:
-
-```bash
 npm run dev
 ```
 
-4. Start the worker in another terminal:
+Start the worker in a second terminal:
 
 ```bash
 npm run worker:dev
@@ -348,185 +237,249 @@ npm run worker:dev
 
 ## Environment
 
-Start from `.env.example` and create `.env.local`.
+Create `.env.local` in the project root.
 
-Typical local values:
+Typical values:
 
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5433/uptimemonitoring
 APP_URL=http://localhost:3000
-AUTH_SECRET=local-dev-auth-secret-change-before-public-deploy-2026
-APP_ENCRYPTION_SECRET=local-dev-encryption-secret-change-before-public-deploy-2026
+AUTH_SECRET=replace-with-a-strong-32-character-secret
+APP_ENCRYPTION_SECRET=replace-with-a-strong-32-character-encryption-secret
 WORKER_CONCURRENCY=20
 WORKER_POLL_INTERVAL_MS=10000
 WORKER_AUTO_START=false
 DISABLE_EMBEDDED_WORKER_SPAWN=false
 ```
 
-For Docker Compose, the services already inject the internal database host and worker flags they need.
-The compose file also ships with local-only default secrets so a fresh clone can boot without extra setup. Override them in any real server deployment.
+Production notes:
 
-## Self-hosted reliability notes
+- `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be strong non-placeholder values.
+- `APP_URL` should match the URL operators use to open Sentrovia.
+- The web and worker processes must use the same `.env.local` values.
+- `WORKER_AUTO_START=true` is useful when the worker should begin checking immediately after first boot.
 
-If someone clones the public repository and starts it with:
+## Database Updates
 
-```bash
-docker compose up --build
-```
-
-they should get:
-
-- PostgreSQL booted automatically
-- schema applied automatically
-- web console on `http://localhost:3000`
-- worker attached automatically
-
-If they run the app outside Docker, they still need to:
+For a normal schema sync:
 
 ```bash
-docker compose up -d db
 npm run db:push
-npm run dev
-npm run worker:dev
 ```
 
-## Windows PM2 first-time production setup
+Manual migrations that may be needed on older servers:
 
-If you want to run Sentrovia on Windows with PM2, use the bundled setup script. It starts two named processes:
+```bash
+drizzle/0029_notification_template_overrides_manual.sql
+drizzle/0030_reports_v2_indexes_manual.sql
+drizzle/0031_diagnostics_incident_timeline_manual.sql
+drizzle/0032_monitor_email_recipients_manual.sql
+```
+
+If you copied only part of the project to a server, make sure the `drizzle` folder is updated too. Reports v2, diagnostics, timeline entries, and multi-recipient monitor alerts depend on those migration files.
+
+## Windows Production With NSSM
+
+NSSM runs Sentrovia as two Windows services:
 
 - `sentrovia-web`
 - `sentrovia-worker`
 
+The web service runs the Next.js production server. The worker service runs monitor checks, verification rechecks, notification delivery, webhook retries, and scheduled reports.
+
 ### Prerequisites
 
-Before the first PM2 deployment, make sure the server already has:
+Install these on the Windows server:
 
-- Node.js 20+
+- Node.js 20.9 or newer
 - npm
-- Git
-- PostgreSQL
-- PM2 installed globally with `npm install -g pm2`
-- a completed `.env.local` file in the project root
+- PostgreSQL access
+- NSSM, with `nssm.exe` available in `PATH`
+- a complete `.env.local` file in the project root
 
-### First-time setup flow
-
-1. Clone the repository and move into the project directory.
-2. Create and fill `.env.local` with your production values.
-3. Run:
+Verify from `cmd`:
 
 ```bat
-scripts\setup-production-windows-pm2.bat
+node -v
+npm -v
+nssm version
+```
+
+### First-time setup
+
+From the project root:
+
+```bat
+scripts\setup-production-windows-nssm.bat
 ```
 
 The setup script will:
 
-- verify `node`, `npm`, `pm2`, and `.env.local`
-- install dependencies with `npm install`
-- apply the latest schema with `npm run db:push`
-- build the production app with `npm run build`
-- start `sentrovia-web` with `npm run start`
-- start `sentrovia-worker` with `npm run worker:start`
-- save the PM2 process list with `pm2 save`
+- check `node`, `npm`, `nssm`, and `.env.local`
+- install dependencies
+- apply the database schema
+- build the production app
+- create `sentrovia-web`
+- create `sentrovia-worker`
+- configure service working directories and log files
+- start both services
 
-### Manual fallback flow
-
-If you prefer to run the setup steps one by one:
+Logs are written to:
 
 ```bat
+logs\sentrovia-web.log
+logs\sentrovia-web-error.log
+logs\sentrovia-worker.log
+logs\sentrovia-worker-error.log
+```
+
+### Manual NSSM setup
+
+If you prefer to create services manually, run these commands from the project root after `npm install`, `npm run db:push`, and `npm run build`.
+
+Find the Node path:
+
+```bat
+where node
+```
+
+Create the web service:
+
+```bat
+nssm install sentrovia-web "C:\Program Files\nodejs\node.exe"
+nssm set sentrovia-web AppDirectory "C:\path\to\sentrovia-monitoring-main"
+nssm set sentrovia-web AppParameters "scripts\bootstrap-runtime.mjs web"
+nssm set sentrovia-web AppEnvironmentExtra NODE_ENV=production
+nssm set sentrovia-web Start SERVICE_AUTO_START
+nssm set sentrovia-web AppStdout "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-web.log"
+nssm set sentrovia-web AppStderr "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-web-error.log"
+```
+
+Create the worker service:
+
+```bat
+nssm install sentrovia-worker "C:\Program Files\nodejs\node.exe"
+nssm set sentrovia-worker AppDirectory "C:\path\to\sentrovia-monitoring-main"
+nssm set sentrovia-worker AppParameters "scripts\bootstrap-runtime.mjs worker"
+nssm set sentrovia-worker AppEnvironmentExtra NODE_ENV=production
+nssm set sentrovia-worker Start SERVICE_AUTO_START
+nssm set sentrovia-worker AppStdout "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-worker.log"
+nssm set sentrovia-worker AppStderr "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-worker-error.log"
+```
+
+Start both services:
+
+```bat
+nssm start sentrovia-web
+nssm start sentrovia-worker
+```
+
+Check status:
+
+```bat
+nssm status sentrovia-web
+nssm status sentrovia-worker
+```
+
+## Updating An NSSM Server
+
+Use this flow when Sentrovia is already running on another Windows server and active monitors exist.
+
+1. Back up PostgreSQL or take a VM/server snapshot.
+2. Stop the worker first so no checks are running while files and schema change.
+3. Update the full project folder, not only `src`.
+4. Install dependencies.
+5. Apply schema changes.
+6. Build.
+7. Start the web service.
+8. Start the worker service.
+
+Commands:
+
+```bat
+nssm stop sentrovia-worker
+nssm stop sentrovia-web
+
 npm install
 npm run db:push
 npm run build
-pm2 delete sentrovia-web
-pm2 delete sentrovia-worker
-pm2 start npm --name sentrovia-web -- run start
-pm2 start npm --name sentrovia-worker -- run worker:start
-pm2 save
+
+nssm start sentrovia-web
+nssm start sentrovia-worker
 ```
 
-### Verification
-
-After setup, verify the runtime with:
+Or use the bundled update script after the files are updated:
 
 ```bat
-pm2 status
-pm2 logs sentrovia-web --lines 50
-pm2 logs sentrovia-worker --lines 50
+scripts\update-production-windows-nssm.bat
 ```
 
-Then open:
+Important update notes:
 
-- [http://localhost:3000](http://localhost:3000)
+- Do not copy only `src`; dependency, migration, script, and lockfile changes can be required.
+- Copy or pull `package.json`, `package-lock.json`, `drizzle`, `scripts`, `public`, `src`, and config files together.
+- Run `npm install` after updates because dependencies such as PDF/report tooling can change.
+- Run `npm run build` before starting services.
+- Start the worker last. The web app can be available while the worker catches up.
+- If the worker was disabled in the UI before the update, it will remain logically paused through database state.
 
-### Production note
-
-On the Windows PM2 flow, use `npm install` as the supported default.
-
-This project runs the PM2 worker through `tsx` and applies schema changes with `npm run db:push` during deployment, so `--omit=dev` is not the default supported install path for the documented Windows production flow.
-
-### Optional startup note
-
-Automatic startup on Windows is intentionally out of scope for the bundled repo scripts.
-
-If you want PM2 to restore processes automatically after machine restart, follow the official PM2 guidance for startup behavior:
-
-- [Startup Hook](https://doc.pm2.io/en/runtime/guide/startup-hook/)
-- [Startup Script](https://pm2.keymetrics.io/docs/usage/startup/)
-
-## Windows PM2 update flow
-
-If Sentrovia is already installed and running in production with PM2, you can update the existing deployment with:
+## Useful Commands
 
 ```bat
-scripts\update-production-windows-pm2.bat
+nssm status sentrovia-web
+nssm status sentrovia-worker
+nssm restart sentrovia-web
+nssm restart sentrovia-worker
+nssm stop sentrovia-worker
+nssm start sentrovia-worker
 ```
 
-That script will:
+Application checks:
 
-- run `git pull`
-- install updated dependencies
-- apply the latest schema
-- build the production app
-- restart existing PM2 processes if they exist
-- or recreate them from the npm start scripts if they do not
-- save the PM2 process list again
+```bash
+npm run test
+npm run lint
+npm run build
+npm audit --audit-level=high --omit=dev
+```
 
 ## Scripts
 
 - `npm run dev` starts the Next.js dev server
 - `npm run build` creates a production build
-- `npm run start` starts the production server
+- `npm run start` starts the production web server
 - `npm run worker:dev` starts the worker with file watching
-- `npm run worker:start` starts the worker once
+- `npm run worker:start` starts the worker process
 - `npm run lint` runs ESLint
 - `npm run test` runs the Vitest test suite
 - `npm run db:generate` generates Drizzle migrations
 - `npm run db:push` pushes the current schema to PostgreSQL
-- `scripts\setup-production-windows-pm2.bat` performs the first Windows PM2 production setup
-- `scripts\update-production-windows-pm2.bat` updates an existing Windows PM2 production deployment
+- `scripts\setup-production-windows-nssm.bat` creates the Windows NSSM services
+- `scripts\update-production-windows-nssm.bat` updates an existing Windows NSSM deployment
 
-## Tech stack
+## Tech Stack
 
-- **Next.js 16** for the app shell, pages, and route handlers
-- **React 19** for client-side interfaces
-- **TypeScript** across web, worker, and services
-- **Drizzle ORM** for schema and queries
-- **PostgreSQL** for durable state
-- **Zod** for validation
-- **Zustand** for focused UI state
-- **Nodemailer** for SMTP delivery
-- **PDFKit** for PDF report attachments
-- **Vitest** for focused service/export tests
-- **Docker Compose** for self-hosted orchestration
+- Next.js 16
+- React 19
+- TypeScript
+- Drizzle ORM
+- PostgreSQL
+- Zod
+- Zustand
+- Nodemailer
+- PDFKit
+- Vitest
+- Docker Compose
+- NSSM for Windows service hosting
 
-## Project status
+## Project Status
 
-Sentrovia is already strong as an internal monitoring and operations console, but it is still evolving.
+Sentrovia is already usable as an internal monitoring and operations console. Good next steps for the platform include:
 
-Natural next steps for the platform include:
-
-- additional monitor types like DNS and push monitors
 - escalation policies
-- multi-region checks
-- richer HTTP assertion workflows
-
----
+- maintenance windows
+- DNS-specific monitors
+- multi-region worker checks
+- richer HTTP assertions
+- audit export tools
+- role-based access controls

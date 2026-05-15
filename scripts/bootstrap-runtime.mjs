@@ -1,10 +1,14 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
+import { loadEnvConfig } from "@next/env";
 import postgres from "postgres";
 
 const mode = process.argv[2];
 const MAX_DB_ATTEMPTS = 30;
 const RETRY_DELAY_MS = 2_000;
+
+loadEnvConfig(process.cwd());
+
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!mode || !["web", "worker"].includes(mode)) {
