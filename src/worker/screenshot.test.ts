@@ -58,6 +58,12 @@ describe("failure screenshot request isolation", () => {
   it("allows browser-local data URLs for inline assets", () => {
     expect(shouldAllowScreenshotRequest("https://status.example.com/down", "data:image/png;base64,AA==")).toBe(true);
   });
+
+  it("allows Chromium error pages after a failed navigation", () => {
+    expect(
+      shouldAllowScreenshotRequest("https://status.example.com/down", "chrome-error://chromewebdata/")
+    ).toBe(true);
+  });
 });
 
 function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {

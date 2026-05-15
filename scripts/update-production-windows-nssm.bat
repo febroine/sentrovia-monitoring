@@ -9,6 +9,7 @@ echo ============================================================
 echo.
 
 cd /d "%~dp0.."
+set "PLAYWRIGHT_BROWSERS_PATH=0"
 
 echo [STEP 1/8] Checking Node.js, npm, NSSM, and services...
 where node >nul 2>nul
@@ -93,6 +94,9 @@ if errorlevel 1 (
   goto :restart
 )
 echo [OK] Production build completed.
+
+call nssm set sentrovia-web AppEnvironmentExtra NODE_ENV=production PLAYWRIGHT_BROWSERS_PATH=0
+call nssm set sentrovia-worker AppEnvironmentExtra NODE_ENV=production PLAYWRIGHT_BROWSERS_PATH=0
 
 echo [STEP 7/8] Starting services...
 
