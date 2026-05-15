@@ -230,6 +230,14 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "status-change" })
     );
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "up",
+        lastFailureAt: null,
+      }),
+      "lease-1"
+    );
   });
 
   it("sends confirmed failure without a duplicate status-change notification", async () => {
@@ -304,6 +312,7 @@ describe("monitoring scheduler verification flow", () => {
       expect.objectContaining({
         status: "up",
         nextCheckAt: new Date("2026-05-08T07:05:01.000Z"),
+        lastFailureAt: null,
         verificationMode: false,
         verificationFailureCount: 0,
         consecutiveFailures: 0,

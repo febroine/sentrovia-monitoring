@@ -133,7 +133,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
       lastCheckedAt: result.checkedAt,
       nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt),
       lastSuccessAt: result.checkedAt,
-      lastFailureAt: monitor.lastFailureAt,
+      lastFailureAt: null,
       sslExpiresAt: result.sslExpiresAt,
       lastErrorMessage: null,
       consecutiveFailures: 0,
@@ -195,7 +195,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
         : calculateVerificationCheckAt(result.checkedAt),
       lastSuccessAt: result.ok ? result.checkedAt : monitor.lastSuccessAt,
       lastFailureAt: result.ok
-        ? monitor.lastFailureAt
+        ? null
         : previousStatus === "up"
           ? result.checkedAt
           : monitor.lastFailureAt ?? result.checkedAt,
