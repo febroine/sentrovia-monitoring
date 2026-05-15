@@ -27,6 +27,13 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await sendDeliveryTest(session.id, parsed.data);
+    if (result?.status !== "delivered") {
+      return NextResponse.json(
+        { delivery: result, message: result?.errorMessage ?? "Delivery test failed." },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({ delivery: result });
   } catch (error) {
     const authError = toAuthError(error, "Unable to send the test delivery right now.");

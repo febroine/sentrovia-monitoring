@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { toAuthError } from "@/lib/auth/errors";
+import { z } from "zod";
+import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { getSession } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { updateWorkerState, getWorkerState } from "@/lib/monitors/service";
@@ -8,6 +9,10 @@ import { getWorkerObservability } from "@/lib/worker/observability";
 import { isPidAlive, spawnWorkerProcess } from "@/lib/worker/process";
 
 export const runtime = "nodejs";
+
+const workerActionSchema = z.object({
+  action: z.enum(["start", "stop"]),
+});
 
 function resolveProcessAlive(
   pid: number | null | undefined,
@@ -122,8 +127,12 @@ export async function POST(request: NextRequest) {
 }
 
 async function readWorkerAction(request: NextRequest) {
-  const body = (await request.json()) as { action?: unknown };
-  return body?.action === "stop" ? "stop" : "start";
+  const parsed = workerActionSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    throw new AuthError("Worker action must be start or stop.", 400);
+  }
+
+  return parsed.data.action;
 }
 
 function resolveObservabilityRange(request: NextRequest): WorkerObservabilityRange {

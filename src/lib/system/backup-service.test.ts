@@ -29,6 +29,23 @@ describe("workspace backup validation", () => {
     );
   });
 
+  it("rejects SMTP settings whose password was not included in the backup", () => {
+    const bundle = buildBackupBundle({
+      settings: {
+        ...buildSettingsPayload(),
+        notifications: {
+          ...buildSettingsPayload().notifications,
+          smtpPassword: "",
+          smtpPasswordConfigured: true,
+        },
+      },
+    });
+
+    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
+      "SMTP password is not included in workspace backups"
+    );
+  });
+
   it("accepts a backup with restorable monitor secrets", () => {
     const bundle = buildBackupBundle({
       monitors: [
@@ -55,16 +72,22 @@ function buildBackupBundle(overrides: Partial<WorkspaceBackupBundle> = {}): Work
     exportedAt: new Date().toISOString(),
     source: "sentrovia",
     settings: {
-      ...DEFAULT_SETTINGS,
-      profile: {
-        ...DEFAULT_SETTINGS.profile,
-        firstName: "Aykut",
-        lastName: "Bayram",
-        email: "aykut@example.com",
-      },
+      ...buildSettingsPayload(),
     },
     companies: [],
     monitors: [],
     ...overrides,
+  };
+}
+
+function buildSettingsPayload() {
+  return {
+    ...DEFAULT_SETTINGS,
+    profile: {
+      ...DEFAULT_SETTINGS.profile,
+      firstName: "Aykut",
+      lastName: "Bayram",
+      email: "aykut@example.com",
+    },
   };
 }

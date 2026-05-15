@@ -103,12 +103,22 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   const companies = companyInputSchema.array().parse(bundle.companies);
   const monitors = monitorInputSchema.array().parse(bundle.monitors);
 
+  assertRestorableSettingsSecrets(settings);
   assertRestorablePostgresMonitorPasswords(monitors);
   assertUniqueCompanyNames(companies);
   assertMonitorCompanyReferences(monitors, companies);
   assertUniqueMonitorTargets(monitors);
 
   return { settings, companies, monitors };
+}
+
+function assertRestorableSettingsSecrets(settings: ReturnType<typeof settingsSchema.parse>) {
+  if (
+    settings.notifications.smtpPasswordConfigured
+    && settings.notifications.smtpPassword.trim().length === 0
+  ) {
+    throw new Error("SMTP password is not included in workspace backups. Re-enter it before restoring.");
+  }
 }
 
 function assertUniqueCompanyNames(companies: Array<{ name: string }>) {

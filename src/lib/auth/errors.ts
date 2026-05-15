@@ -11,6 +11,7 @@ function isAuthError(error: unknown): error is AuthError {
 
 type DatabaseErrorShape = {
   code?: string;
+  constraint?: string;
   errno?: string | number;
   message?: string;
   cause?: DatabaseErrorShape;
@@ -76,7 +77,7 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
   }
 
   if (databaseError?.code === "23505") {
-    return new AuthError("An account with this email already exists.", 409);
+    return mapUniqueConstraintError(databaseError);
   }
 
   if (message.includes("connect econnrefused") || message.includes("connection refused")) {
@@ -94,4 +95,22 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
   }
 
   return new AuthError(fallbackMessage, 500);
+}
+
+function mapUniqueConstraintError(error: DatabaseErrorShape) {
+  const constraint = error.constraint?.toLowerCase() ?? "";
+
+  if (constraint.includes("public_status_slug")) {
+    return new AuthError("Public status slug is already in use.", 409);
+  }
+
+  if (constraint.includes("users_username")) {
+    return new AuthError("An account with this username already exists.", 409);
+  }
+
+  if (constraint.includes("users_email") || constraint.length === 0) {
+    return new AuthError("An account with this email already exists.", 409);
+  }
+
+  return new AuthError("A record with this value already exists.", 409);
 }
