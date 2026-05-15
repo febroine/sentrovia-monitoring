@@ -24,6 +24,7 @@ The product focuses on practical production behavior:
 - 🧠 escalating verification timeouts to reduce false positives
 - 📬 recovery notifications after confirmed outages return healthy
 - 👥 multi-recipient monitor notifications
+- 🖼️ native Chromium error-page screenshots for confirmed HTTP outages
 - 🔔 SMTP, Telegram, Discord, and generic webhook delivery
 - 🧾 delivery history, retry visibility, and report delivery tracking
 - 🏢 company-aware monitor ownership
@@ -96,7 +97,7 @@ The product focuses on practical production behavior:
 - per-monitor active or disabled state
 - verification mode for delayed outage confirmation
 - cold-start spread for imported monitors
-- optional screenshot evidence on confirmed HTTP, keyword, and JSON outages
+- optional native Chromium screenshot evidence on confirmed HTTP, keyword, and JSON outages
 - check history, event history, and timeline details
 - diagnostics for DNS, TCP, TLS, HTTP, timeout, and status-code failures
 
@@ -197,6 +198,23 @@ When a monitor fails or enters verification mode, Sentrovia can record a diagnos
 
 These records appear alongside monitor history and incident timeline events so operators can understand why an alert fired from the server's point of view.
 
+## 🖼️ Screenshot Evidence
+
+Sentrovia can attach screenshot evidence to confirmed HTTP, keyword, and JSON outage emails.
+
+- Screenshots are captured only after verification confirms the monitor is really down.
+- The worker captures the browser-rendered page, including Chromium's own network error page when the target cannot be reached.
+- Screenshot capture is best-effort: if Chromium fails, the email still goes out without blocking the alert.
+- Screenshot capture is rate-limited per monitor to avoid loading the worker.
+- Enable it per monitor with the incident screenshot option.
+
+Production note: install Playwright Chromium on each server that runs the worker:
+
+```bat
+set PLAYWRIGHT_BROWSERS_PATH=0
+npx playwright install chromium
+```
+
 ## ⚡ Quick Start
 
 ### Docker Compose
@@ -276,6 +294,7 @@ npm run db:push
 Manual migrations that may be needed on older servers:
 
 ```bash
+drizzle/0028_public_status_reports_manual.sql
 drizzle/0029_notification_template_overrides_manual.sql
 drizzle/0030_reports_v2_indexes_manual.sql
 drizzle/0031_diagnostics_incident_timeline_manual.sql
@@ -283,6 +302,24 @@ drizzle/0032_monitor_email_recipients_manual.sql
 ```
 
 If you copied only part of the project to a server, make sure the `drizzle` folder is updated too. Reports v2, diagnostics, timeline entries, and multi-recipient monitor alerts depend on those migration files.
+
+If a release only changes application code and does not add a new file under `drizzle`, no manual SQL file is required. Running `npm run db:push` after updating the full project is still safe for a normal schema sync.
+
+### DB health check
+
+Run this from the production project root to verify that `.env.local` is loaded and PostgreSQL accepts connections:
+
+```bat
+node -e "require('@next/env').loadEnvConfig(process.cwd()); const postgres=require('postgres'); const db=postgres(process.env.DATABASE_URL,{max:1}); (async()=>{ if(!process.env.DATABASE_URL) throw new Error('DATABASE_URL not found'); const rows=await db.unsafe('select now() as now, current_database() as database, current_user as user_name'); console.log(rows[0]); await db.end(); })().catch(async e=>{ console.error(e.message || e); await db.end().catch(()=>{}); process.exit(1); });"
+```
+
+Good signs after an update:
+
+- the command above returns `now`, `database`, and `user_name`
+- the web app opens and Monitoring data loads
+- the worker panel heartbeat updates
+- new checks appear in Logs or Monitoring history
+- creating or editing a monitor survives a page refresh
 
 ## 🪟 Windows Production With NSSM
 
@@ -433,6 +470,8 @@ Important update notes:
 - Run `npm run build` before starting services.
 - Start the worker last. The web app can be available while the worker catches up.
 - If the worker was disabled in the UI before the update, it will remain logically paused through database state.
+- If a new `drizzle/*.sql` file exists in the update, apply it before starting the worker.
+- If no new `drizzle` file exists, no extra manual SQL is needed beyond `npm run db:push`.
 
 ## 🧰 Useful Commands
 
