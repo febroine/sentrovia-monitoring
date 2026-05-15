@@ -1,5 +1,9 @@
 const DEFAULT_WORKER_CONCURRENCY = 20;
 const DEFAULT_WORKER_POLL_INTERVAL_MS = 10_000;
+const MIN_WORKER_CONCURRENCY = 1;
+const MAX_WORKER_CONCURRENCY = 500;
+const MIN_WORKER_POLL_INTERVAL_MS = 1_000;
+const MAX_WORKER_POLL_INTERVAL_MS = 600_000;
 const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@localhost:5433/uptimemonitoring";
 const DEFAULT_AUTH_SECRET = "change-me-before-production";
 const DEFAULT_APP_ENCRYPTION_SECRET = "change-me-before-production-encryption";
@@ -12,6 +16,11 @@ function parseNumber(value: string | undefined, fallback: number) {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Math.trunc(parseNumber(value, fallback));
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function readString(value: string | undefined, fallback: string) {
@@ -90,8 +99,18 @@ export function getAppEncryptionSecret() {
 export const env = {
   appUrl: readString(process.env.APP_URL, "http://localhost:3000"),
   isProduction: process.env.NODE_ENV === "production",
-  workerConcurrency: parseNumber(process.env.WORKER_CONCURRENCY, DEFAULT_WORKER_CONCURRENCY),
-  workerPollIntervalMs: parseNumber(process.env.WORKER_POLL_INTERVAL_MS, DEFAULT_WORKER_POLL_INTERVAL_MS),
+  workerConcurrency: parseBoundedInteger(
+    process.env.WORKER_CONCURRENCY,
+    DEFAULT_WORKER_CONCURRENCY,
+    MIN_WORKER_CONCURRENCY,
+    MAX_WORKER_CONCURRENCY
+  ),
+  workerPollIntervalMs: parseBoundedInteger(
+    process.env.WORKER_POLL_INTERVAL_MS,
+    DEFAULT_WORKER_POLL_INTERVAL_MS,
+    MIN_WORKER_POLL_INTERVAL_MS,
+    MAX_WORKER_POLL_INTERVAL_MS
+  ),
   workerAutoStart: parseBoolean(process.env.WORKER_AUTO_START, false),
   disableEmbeddedWorkerSpawn: parseBoolean(process.env.DISABLE_EMBEDDED_WORKER_SPAWN, false),
 };
