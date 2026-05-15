@@ -50,8 +50,8 @@ export async function updateMember(
   return member ?? null;
 }
 
-export async function deleteMembers(ids: string[]) {
-  const memberIds = Array.from(new Set(ids.filter(Boolean)));
+export async function deleteMembers(currentUserId: string, ids: string[]) {
+  const memberIds = filterSelfMemberIds(currentUserId, ids);
   if (memberIds.length === 0) {
     return [];
   }
@@ -60,4 +60,8 @@ export async function deleteMembers(ids: string[]) {
     .delete(users)
     .where(inArray(users.id, memberIds))
     .returning({ id: users.id });
+}
+
+export function filterSelfMemberIds(currentUserId: string, ids: string[]) {
+  return Array.from(new Set(ids.filter((id) => id === currentUserId)));
 }

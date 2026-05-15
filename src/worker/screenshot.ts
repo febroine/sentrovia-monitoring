@@ -1,5 +1,5 @@
 import type Mail from "nodemailer/lib/mailer";
-import type { BrowserContext, Route } from "playwright";
+import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
@@ -9,6 +9,7 @@ const SCREENSHOT_RATE_LIMIT_MS = 30 * 60_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
 const MAX_CONCURRENT_SCREENSHOTS = 1;
+const CHROMIUM_HEADLESS_ARGS = ["--headless=new"];
 
 let activeScreenshots = 0;
 const screenshotQueue: Array<() => void> = [];
@@ -26,7 +27,10 @@ export async function buildFailureScreenshotAttachment(
 
   try {
     return await withScreenshotSlot(() => captureScreenshotAttachment(monitor, capturedAt));
-  } catch {
+  } catch (error) {
+    console.warn(
+      `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${toScreenshotErrorMessage(error)}`
+    );
     return null;
   }
 }
@@ -47,7 +51,12 @@ export function shouldCaptureScreenshot(monitor: Monitor, capturedAt = new Date(
 
 async function captureScreenshotAttachment(monitor: Monitor, capturedAt: Date): Promise<Mail.Attachment | null> {
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true, timeout: SCREENSHOT_TIMEOUT_MS });
+  const browser = await chromium.launch({
+    // Playwright's default headless path can capture Chromium error pages as blank.
+    args: CHROMIUM_HEADLESS_ARGS,
+    headless: false,
+    timeout: SCREENSHOT_TIMEOUT_MS,
+  });
 
   try {
     const context = await browser.newContext({
@@ -55,41 +64,65 @@ async function captureScreenshotAttachment(monitor: Monitor, capturedAt: Date): 
       viewport: SCREENSHOT_VIEWPORT,
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
-    let page = await createScreenshotPage(context, screenshotUrl);
+    const page = await createScreenshotPage(context, screenshotUrl);
 
     try {
       await page.goto(screenshotUrl, {
         waitUntil: "domcontentloaded",
         timeout: SCREENSHOT_TIMEOUT_MS,
       });
-    } catch (error) {
-      await page.close().catch(() => undefined);
-      page = await createScreenshotPage(context, screenshotUrl);
-      await page.setContent(buildNavigationFailureHtml(monitor, screenshotUrl, error), {
-        waitUntil: "domcontentloaded",
-        timeout: SCREENSHOT_TIMEOUT_MS,
-      });
+    } catch {
+      await waitForNativeErrorPage(page);
     }
 
-    const content = await page.screenshot({
-      type: "jpeg",
-      quality: SCREENSHOT_JPEG_QUALITY,
-      fullPage: false,
-      timeout: SCREENSHOT_TIMEOUT_MS,
-    });
-
-    if (content.byteLength > SCREENSHOT_MAX_BYTES) {
+    const content = await capturePageScreenshot(monitor, page);
+    if (!content) {
       return null;
     }
 
-    return {
-      filename: buildScreenshotFilename(monitor, capturedAt),
-      content,
-      contentType: "image/jpeg",
-    };
+    return buildScreenshotAttachment(monitor, capturedAt, content);
   } finally {
     await browser.close().catch(() => undefined);
   }
+}
+
+async function waitForNativeErrorPage(page: Page) {
+  await page
+    .waitForFunction(() => document.body.innerText.trim().length > 0, undefined, {
+      timeout: 2_000,
+    })
+    .catch(() => undefined);
+  await page.waitForTimeout(250).catch(() => undefined);
+}
+
+async function capturePageScreenshot(monitor: Monitor, page: Page) {
+  const content = await page.screenshot({
+    type: "jpeg",
+    quality: SCREENSHOT_JPEG_QUALITY,
+    fullPage: false,
+    timeout: SCREENSHOT_TIMEOUT_MS,
+  });
+
+  if (content.byteLength > SCREENSHOT_MAX_BYTES) {
+    console.warn(
+      `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes.`
+    );
+    return null;
+  }
+
+  return content;
+}
+
+function buildScreenshotAttachment(
+  monitor: Monitor,
+  capturedAt: Date,
+  content: Buffer
+): Mail.Attachment {
+  return {
+    filename: buildScreenshotFilename(monitor, capturedAt),
+    content,
+    contentType: "image/jpeg",
+  };
 }
 
 async function createScreenshotPage(context: BrowserContext, targetUrl: string) {
@@ -178,7 +211,12 @@ function resolveScreenshotUrl(monitor: Monitor) {
 }
 
 function isBrowserLocalUrl(value: string) {
-  return value.startsWith("data:") || value.startsWith("blob:") || value.startsWith("about:");
+  return (
+    value.startsWith("data:") ||
+    value.startsWith("blob:") ||
+    value.startsWith("about:") ||
+    value.startsWith("chrome-error:")
+  );
 }
 
 function isSameOrigin(left: string, right: string) {
@@ -228,39 +266,6 @@ function slugify(value: string) {
   return slug || "monitor";
 }
 
-function buildNavigationFailureHtml(monitor: Monitor, targetUrl: string, error: unknown) {
-  const message = error instanceof Error ? error.message : "Browser navigation failed.";
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Sentrovia failure evidence</title>
-  <style>
-    body { margin: 0; background: #0a0a0a; color: #f5f5f5; font-family: Arial, sans-serif; }
-    main { min-height: 100vh; box-sizing: border-box; padding: 48px; display: grid; align-content: center; gap: 18px; }
-    .eyebrow { color: #f87171; font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-    h1 { margin: 0; font-size: 34px; line-height: 1.15; }
-    dl { display: grid; gap: 12px; max-width: 980px; }
-    dt { color: #a3a3a3; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-    dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 16px; }
-    .box { border: 1px solid #333; border-radius: 8px; background: #111; padding: 18px; }
-  </style>
-</head>
-<body>
-  <main>
-    <div class="eyebrow">Sentrovia screenshot evidence</div>
-    <h1>The browser could not load the monitored target.</h1>
-    <dl>
-      <div class="box"><dt>Monitor</dt><dd>${escapeHtml(monitor.name)}</dd></div>
-      <div class="box"><dt>Target URL</dt><dd>${escapeHtml(targetUrl)}</dd></div>
-      <div class="box"><dt>Navigation error</dt><dd>${escapeHtml(message)}</dd></div>
-    </dl>
-  </main>
-</body>
-</html>`;
-}
-
-function escapeHtml(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+function toScreenshotErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown screenshot error.";
 }

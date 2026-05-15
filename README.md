@@ -252,6 +252,7 @@ WORKER_POLL_INTERVAL_MS=10000
 WORKER_AUTO_START=false
 DISABLE_EMBEDDED_WORKER_SPAWN=false
 AUTH_ALLOW_PUBLIC_SIGNUP=false
+PLAYWRIGHT_BROWSERS_PATH=0
 ```
 
 Production notes:
@@ -262,6 +263,7 @@ Production notes:
 - `WORKER_AUTO_START=true` is useful when the worker should begin checking immediately after first boot.
 - `AUTH_ALLOW_PUBLIC_SIGNUP=false` is recommended for production. In production, Sentrovia allows the first account to be created, then blocks public signup once a user exists.
 - Set `AUTH_ALLOW_PUBLIC_SIGNUP=true` only temporarily if you intentionally want to reopen public registration.
+- `PLAYWRIGHT_BROWSERS_PATH=0` keeps the Chromium browser inside the project dependencies so NSSM services can find it reliably.
 
 ## 🧱 Database Updates
 
@@ -341,7 +343,7 @@ logs\sentrovia-worker-error.log
 
 ### Manual NSSM setup
 
-If you prefer to create services manually, run these commands from the project root after `npm install`, `npx playwright install chromium`, `npm run db:push`, and `npm run build`.
+If you prefer to create services manually, run these commands from the project root after `npm install`, `set PLAYWRIGHT_BROWSERS_PATH=0`, `npx playwright install chromium`, `npm run db:push`, and `npm run build`.
 
 Find the Node path:
 
@@ -355,7 +357,7 @@ Create the web service:
 nssm install sentrovia-web "C:\Program Files\nodejs\node.exe"
 nssm set sentrovia-web AppDirectory "C:\path\to\sentrovia-monitoring-main"
 nssm set sentrovia-web AppParameters "scripts\bootstrap-runtime.mjs web"
-nssm set sentrovia-web AppEnvironmentExtra NODE_ENV=production
+nssm set sentrovia-web AppEnvironmentExtra NODE_ENV=production PLAYWRIGHT_BROWSERS_PATH=0
 nssm set sentrovia-web Start SERVICE_AUTO_START
 nssm set sentrovia-web AppStdout "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-web.log"
 nssm set sentrovia-web AppStderr "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-web-error.log"
@@ -367,7 +369,7 @@ Create the worker service:
 nssm install sentrovia-worker "C:\Program Files\nodejs\node.exe"
 nssm set sentrovia-worker AppDirectory "C:\path\to\sentrovia-monitoring-main"
 nssm set sentrovia-worker AppParameters "scripts\bootstrap-runtime.mjs worker"
-nssm set sentrovia-worker AppEnvironmentExtra NODE_ENV=production
+nssm set sentrovia-worker AppEnvironmentExtra NODE_ENV=production PLAYWRIGHT_BROWSERS_PATH=0
 nssm set sentrovia-worker Start SERVICE_AUTO_START
 nssm set sentrovia-worker AppStdout "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-worker.log"
 nssm set sentrovia-worker AppStderr "C:\path\to\sentrovia-monitoring-main\logs\sentrovia-worker-error.log"
@@ -407,6 +409,7 @@ nssm stop sentrovia-worker
 nssm stop sentrovia-web
 
 npm install
+set PLAYWRIGHT_BROWSERS_PATH=0
 npx playwright install chromium
 npm run db:push
 npm run build
@@ -426,7 +429,7 @@ Important update notes:
 - Do not copy only `src`; dependency, migration, script, and lockfile changes can be required.
 - Copy or pull `package.json`, `package-lock.json`, `drizzle`, `scripts`, `public`, `src`, and config files together.
 - Run `npm install` after updates because dependencies such as PDF/report tooling can change.
-- Run `npx playwright install chromium` when screenshot evidence is enabled or after a fresh dependency install on a new server.
+- Run `set PLAYWRIGHT_BROWSERS_PATH=0` and `npx playwright install chromium` when screenshot evidence is enabled or after a fresh dependency install on a new server.
 - Run `npm run build` before starting services.
 - Start the worker last. The web app can be available while the worker catches up.
 - If the worker was disabled in the UI before the update, it will remain logically paused through database state.

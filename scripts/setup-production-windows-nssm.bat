@@ -9,6 +9,7 @@ echo ============================================================
 echo.
 
 cd /d "%~dp0.."
+set "PLAYWRIGHT_BROWSERS_PATH=0"
 
 echo [STEP 1/8] Checking Node.js, npm, and NSSM...
 where node >nul 2>nul
@@ -90,7 +91,7 @@ call nssm remove sentrovia-worker confirm >nul 2>nul
 call nssm install sentrovia-web "%NODE_EXE%"
 call nssm set sentrovia-web AppDirectory "%CD%"
 call nssm set sentrovia-web AppParameters "scripts\bootstrap-runtime.mjs web"
-call nssm set sentrovia-web AppEnvironmentExtra NODE_ENV=production
+call nssm set sentrovia-web AppEnvironmentExtra NODE_ENV=production PLAYWRIGHT_BROWSERS_PATH=0
 call nssm set sentrovia-web DisplayName "Sentrovia Web"
 call nssm set sentrovia-web Description "Sentrovia Next.js web console"
 call nssm set sentrovia-web Start SERVICE_AUTO_START
@@ -103,7 +104,7 @@ call nssm set sentrovia-web AppRotateBytes 10485760
 call nssm install sentrovia-worker "%NODE_EXE%"
 call nssm set sentrovia-worker AppDirectory "%CD%"
 call nssm set sentrovia-worker AppParameters "scripts\bootstrap-runtime.mjs worker"
-call nssm set sentrovia-worker AppEnvironmentExtra NODE_ENV=production
+call nssm set sentrovia-worker AppEnvironmentExtra NODE_ENV=production PLAYWRIGHT_BROWSERS_PATH=0
 call nssm set sentrovia-worker DisplayName "Sentrovia Worker"
 call nssm set sentrovia-worker Description "Sentrovia monitoring worker"
 call nssm set sentrovia-worker Start SERVICE_AUTO_START

@@ -45,7 +45,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Select at least one member." }, { status: 400 });
     }
 
-    const deleted = await deleteMembers(parsed.data.ids);
+    if (parsed.data.ids.some((id) => id !== session.id)) {
+      return NextResponse.json({ message: "You can only delete your own account." }, { status: 403 });
+    }
+
+    const deleted = await deleteMembers(session.id, parsed.data.ids);
     const deletedIds = deleted.map((member) => member.id);
     const response = NextResponse.json({
       ids: deletedIds,

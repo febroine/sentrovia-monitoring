@@ -50,7 +50,9 @@ export default function MembersPageClient() {
     departments: new Set(members.map((member) => member.department).filter(Boolean)).size,
     organizations: new Set(members.map((member) => member.organization).filter(Boolean)).size,
   };
-  const selectableFilteredIds = filtered.map((member) => member.id);
+  const selectableFilteredIds = filtered
+    .filter((member) => member.id === currentUserId)
+    .map((member) => member.id);
 
   const allFilteredSelected = selectableFilteredIds.length > 0 && selectableFilteredIds.every((id) => selectedIds.has(id));
   const singleSelected = selectedIds.size === 1 ? members.find((member) => selectedIds.has(member.id)) ?? null : null;
@@ -181,11 +183,13 @@ export default function MembersPageClient() {
 
   function openDeleteConfirmation(memberIds: string[]) {
     const uniqueIds = Array.from(new Set(memberIds.filter(Boolean)));
-    if (uniqueIds.length === 0) {
+    const ownIds = uniqueIds.filter((id) => id === currentUserId);
+    if (ownIds.length === 0) {
+      setError("You can only delete your own account.");
       return;
     }
 
-    setDeleteTargetIds(uniqueIds);
+    setDeleteTargetIds(ownIds);
   }
 
   function closeDeleteConfirmation() {
@@ -205,7 +209,7 @@ export default function MembersPageClient() {
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Members</h1>
           <p className="text-sm text-muted-foreground">
-            Review all registered users from one place. Account details stay self-editable, and workspace members can be removed from here.
+            Review all registered users from one place. Account details are self-editable, and account removal is limited to your own profile.
           </p>
         </div>
         <div className="flex w-full max-w-sm items-center gap-2">
@@ -231,7 +235,7 @@ export default function MembersPageClient() {
         <div className="flex flex-col gap-3 rounded-xl border border-sky-500/15 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
-            <p className="text-xs text-muted-foreground">Edit remains self-service, while deletion is available for selected workspace members.</p>
+            <p className="text-xs text-muted-foreground">Edit and deletion actions are limited to your own account.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => singleSelected && openEdit(singleSelected)} disabled={!singleSelected}>
@@ -252,7 +256,7 @@ export default function MembersPageClient() {
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/10 pb-4">
           <CardTitle className="text-base">Registered users</CardTitle>
-          <CardDescription>All members are visible here. Editing is limited to your own account, while member removal is available from the list.</CardDescription>
+          <CardDescription>All members are visible here. Editing and deletion are limited to your own account.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -294,7 +298,8 @@ export default function MembersPageClient() {
                     <button
                       type="button"
                       onClick={() => toggleSelect(member.id)}
-                      className="flex items-center justify-center text-muted-foreground"
+                      className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={member.id !== currentUserId}
                     >
                       {selectedIds.has(member.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                     </button>
@@ -335,7 +340,7 @@ export default function MembersPageClient() {
                         variant="ghost"
                         size="sm"
                         onClick={() => openDeleteConfirmation([member.id])}
-                        disabled={saving}
+                        disabled={saving || member.id !== currentUserId}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
