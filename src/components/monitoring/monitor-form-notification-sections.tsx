@@ -28,6 +28,8 @@ export function NotificationMonitorSettings({
   savedEmails: string[];
   onFieldChange: OnFieldChange;
 }) {
+  const canAttachScreenshot = values.monitorType === "http" || values.monitorType === "keyword" || values.monitorType === "json";
+
   return (
     <div className="space-y-4">
       <Field label="Notification preference">
@@ -77,6 +79,14 @@ export function NotificationMonitorSettings({
             />
             <p className="text-xs text-muted-foreground">Use commas, semicolons, or new lines for multiple email recipients.</p>
           </Field>
+          {canAttachScreenshot ? (
+            <CheckRow
+              label="Attach screenshot on confirmed down"
+              description="Capture a bounded browser screenshot after outage verification and attach it to the down email."
+              checked={values.sendIncidentScreenshot}
+              onChange={(checked) => onFieldChange("sendIncidentScreenshot", checked)}
+            />
+          ) : null}
         </div>
       )}
 
@@ -151,5 +161,27 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label>{label}</Label>
       {children}
     </div>
+  );
+}
+
+function CheckRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start gap-3 rounded-md border border-border px-3 py-2 text-sm">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 accent-primary" />
+      <span className="flex-1">
+        <span className="block">{label}</span>
+        <span className="mt-0.5 block text-[11px] text-muted-foreground">{description}</span>
+      </span>
+    </label>
   );
 }

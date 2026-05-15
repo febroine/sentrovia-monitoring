@@ -220,6 +220,7 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     telegramTemplate: record.telegramTemplate ?? "",
     emailSubject: record.emailSubject ?? "",
     emailBody: record.emailBody ?? "",
+    sendIncidentScreenshot: record.sendIncidentScreenshot,
     isActive: record.isActive,
   };
 }

@@ -14,6 +14,7 @@ import { AuthError } from "@/lib/auth/errors";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
 import { env } from "@/lib/env";
 import { resolveIncident } from "@/lib/incidents/service";
+import { MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import {
   buildCanonicalMonitorTarget,
@@ -854,7 +855,7 @@ async function buildMonitorValues(
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
     emailBody: input.emailBody,
-    sendIncidentScreenshot: false,
+    sendIncidentScreenshot: input.sendIncidentScreenshot,
     isActive: input.isActive,
   };
 }
@@ -1017,7 +1018,7 @@ function resolveHeartbeatToken(
     return existingMonitor.heartbeatToken;
   }
 
-  if (input.heartbeatToken.trim().length >= 8) {
+  if (input.heartbeatToken.trim().length >= MIN_HEARTBEAT_TOKEN_LENGTH) {
     return input.heartbeatToken.trim();
   }
 

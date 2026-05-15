@@ -1,11 +1,11 @@
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
 import type { ChangePasswordInput, LoginInput, RegisterInput } from "@/lib/auth/schemas";
 import { createSessionToken, type SessionUser } from "@/lib/auth/token";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { getAuthSecret } from "@/lib/env";
+import { env, getAuthSecret } from "@/lib/env";
 
 type AuthSessionRecord = {
   id: string;
@@ -77,6 +77,7 @@ function ensureAuthRuntimeReady() {
 
 export async function registerUser(input: RegisterInput) {
   ensureAuthRuntimeReady();
+  await assertRegistrationAllowed();
 
   const existingUser = await db
     .select({ id: users.id })
@@ -109,6 +110,17 @@ export async function registerUser(input: RegisterInput) {
     user: toPublicUser(createdUser),
     token: await createSessionToken(toSessionUser(createdUser)),
   };
+}
+
+async function assertRegistrationAllowed() {
+  if (env.authAllowPublicSignup) {
+    return;
+  }
+
+  const [row] = await db.select({ total: count() }).from(users);
+  if ((row?.total ?? 0) > 0) {
+    throw new AuthError("Registration is disabled for this installation.", 403);
+  }
 }
 
 export async function loginUser(input: LoginInput) {

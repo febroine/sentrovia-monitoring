@@ -18,6 +18,7 @@ import type { Monitor } from "@/lib/db/schema";
 import { recordWorkerCycleMetric } from "@/lib/worker/observability";
 import { calculateNextCheckAt, calculateVerificationCheckAt, checkMonitor } from "@/worker/checker";
 import { sendMonitorNotifications } from "@/worker/notifier";
+import { buildFailureScreenshotAttachment } from "@/worker/screenshot";
 
 const VERIFICATION_TIMEOUT_STEP_RATIO = 0.5;
 const MAX_VERIFICATION_TIMEOUT_MULTIPLIER = 2;
@@ -325,7 +326,15 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     });
 
     if (incidentConfirmedThisCycle) {
-      await sendMonitorNotifications({ kind: "failure", message: failureEventMessage, monitor, result, rca });
+      const screenshot = await buildFailureScreenshotAttachment(monitor, result.checkedAt);
+      await sendMonitorNotifications({
+        kind: "failure",
+        message: failureEventMessage,
+        monitor,
+        result,
+        rca,
+        emailAttachments: screenshot ? [screenshot] : undefined,
+      });
     }
   }
 

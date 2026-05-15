@@ -127,6 +127,26 @@ describe("worker notifier", () => {
       })
     );
   });
+
+  it("passes screenshot attachments to email delivery", async () => {
+    const attachment = {
+      filename: "sentrovia-api.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    const sent = await sendMonitorNotifications({
+      ...buildNotificationContext("failure"),
+      emailAttachments: [attachment],
+    });
+
+    expect(sent).toBe(true);
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "failure",
+        attachments: [attachment],
+      })
+    );
+  });
 });
 
 function buildDeliveryResult(status: "delivered" | "failed" | "retrying") {

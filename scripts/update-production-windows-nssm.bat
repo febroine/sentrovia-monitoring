@@ -10,7 +10,7 @@ echo.
 
 cd /d "%~dp0.."
 
-echo [STEP 1/7] Checking Node.js, npm, NSSM, and services...
+echo [STEP 1/8] Checking Node.js, npm, NSSM, and services...
 where node >nul 2>nul
 if errorlevel 1 (
   echo [ERROR] Node.js was not found. Install Node.js 20.9+ first.
@@ -53,12 +53,12 @@ if not exist ".env.local" (
   goto :finish
 )
 
-echo [STEP 2/7] Stopping services...
+echo [STEP 2/8] Stopping services...
 call nssm stop sentrovia-worker
 call nssm stop sentrovia-web
 echo [OK] Services stopped.
 
-echo [STEP 3/7] Installing updated dependencies...
+echo [STEP 3/8] Installing updated dependencies...
 call npm install
 if errorlevel 1 (
   echo [ERROR] npm install failed.
@@ -67,7 +67,16 @@ if errorlevel 1 (
 )
 echo [OK] Dependencies are ready.
 
-echo [STEP 4/7] Applying database schema...
+echo [STEP 4/8] Installing Playwright Chromium...
+call npx playwright install chromium
+if errorlevel 1 (
+  echo [ERROR] Playwright Chromium installation failed.
+  set "EXIT_CODE=1"
+  goto :restart
+)
+echo [OK] Playwright Chromium is ready.
+
+echo [STEP 5/8] Applying database schema...
 call npm run db:push
 if errorlevel 1 (
   echo [ERROR] Database schema update failed.
@@ -76,7 +85,7 @@ if errorlevel 1 (
 )
 echo [OK] Database schema is current.
 
-echo [STEP 5/7] Building production app...
+echo [STEP 6/8] Building production app...
 call npm run build
 if errorlevel 1 (
   echo [ERROR] Production build failed.
@@ -85,13 +94,13 @@ if errorlevel 1 (
 )
 echo [OK] Production build completed.
 
-echo [STEP 6/7] Starting services...
+echo [STEP 7/8] Starting services...
 
 :restart
 call nssm start sentrovia-web
 call nssm start sentrovia-worker
 
-echo [STEP 7/7] Current service status:
+echo [STEP 8/8] Current service status:
 call nssm status sentrovia-web
 call nssm status sentrovia-worker
 

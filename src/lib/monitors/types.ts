@@ -80,6 +80,7 @@ export interface MonitorRecord {
   telegramTemplate: string | null;
   emailSubject: string | null;
   emailBody: string | null;
+  sendIncidentScreenshot: boolean;
 }
 
 export interface MonitorHistoryPoint {
@@ -270,6 +271,7 @@ export interface MonitorPayload {
   telegramTemplate: string;
   emailSubject: string;
   emailBody: string;
+  sendIncidentScreenshot: boolean;
   isActive: boolean;
 }
 
@@ -340,5 +342,6 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   telegramTemplate: "",
   emailSubject: "",
   emailBody: "",
+  sendIncidentScreenshot: false,
   isActive: true,
 };
