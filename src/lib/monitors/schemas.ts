@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 
 const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
 const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
@@ -113,6 +114,7 @@ export const monitorInputSchema = z
     telegramTemplate: optionalString(4000),
     emailSubject: optionalString(500),
     emailBody: optionalString(4000),
+    sendIncidentScreenshot: z.boolean().default(false),
     isActive: z.boolean().default(true),
   })
   .superRefine((value, context) => {
@@ -202,11 +204,14 @@ export const monitorInputSchema = z
     }
 
     if (value.monitorType === "heartbeat") {
-      if (value.heartbeatToken.trim().length > 0 && value.heartbeatToken.trim().length < 8) {
+      if (
+        value.heartbeatToken.trim().length > 0 &&
+        value.heartbeatToken.trim().length < MIN_HEARTBEAT_TOKEN_LENGTH
+      ) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["heartbeatToken"],
-          message: "Heartbeat token must be at least 8 characters if you provide one.",
+          message: `Heartbeat token must be at least ${MIN_HEARTBEAT_TOKEN_LENGTH} characters if you provide one.`,
         });
       }
       return;

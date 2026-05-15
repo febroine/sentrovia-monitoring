@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   recordWorkerCycleMetric: vi.fn(),
   resolveIncident: vi.fn(),
   sendMonitorNotifications: vi.fn(),
+  buildFailureScreenshotAttachment: vi.fn(),
   updateWorkerState: vi.fn(),
   runMonitorDiagnostics: vi.fn(),
 }));
@@ -92,6 +93,10 @@ vi.mock("@/worker/notifier", () => ({
   sendMonitorNotifications: mocks.sendMonitorNotifications,
 }));
 
+vi.mock("@/worker/screenshot", () => ({
+  buildFailureScreenshotAttachment: mocks.buildFailureScreenshotAttachment,
+}));
+
 import { calculateVerificationTimeout, runMonitoringCycle } from "@/worker/scheduler";
 
 describe("monitoring scheduler verification flow", () => {
@@ -117,6 +122,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.isMonitorActive.mockResolvedValue(true);
     mocks.recordMonitorResult.mockResolvedValue({ id: "monitor-1" } as Monitor);
     mocks.recordWorkerCycleMetric.mockResolvedValue(null);
+    mocks.buildFailureScreenshotAttachment.mockResolvedValue(null);
     mocks.runMonitorDiagnostics.mockResolvedValue({
       status: "failed",
       failedPhase: "http",
@@ -270,6 +276,49 @@ describe("monitoring scheduler verification flow", () => {
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "status-change" })
+    );
+  });
+
+  it("attaches a screenshot to confirmed down notifications when capture succeeds", async () => {
+    const screenshot = {
+      filename: "sentrovia-api.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    mocks.buildFailureScreenshotAttachment.mockResolvedValue(screenshot);
+    mocks.checkResults = [
+      {
+        ok: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: 120,
+        errorMessage: "HTTP 500",
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+        sslExpiresAt: null,
+      },
+      {
+        ok: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: 130,
+        errorMessage: "HTTP 500",
+        checkedAt: new Date("2026-05-08T07:00:01.000Z"),
+        sslExpiresAt: null,
+      },
+    ];
+    mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, retries: 1 })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "monitor-1" }),
+      new Date("2026-05-08T07:00:01.000Z")
+    );
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "failure",
+        emailAttachments: [screenshot],
+      })
     );
   });
 

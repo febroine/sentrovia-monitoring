@@ -35,6 +35,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
         subject: rendered.subject,
         textBody: rendered.textBody,
         htmlBody: rendered.htmlBody,
+        attachments: context.emailAttachments,
       })
     );
   }

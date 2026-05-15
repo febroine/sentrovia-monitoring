@@ -1,5 +1,6 @@
 import type { Monitor } from "@/lib/db/schema";
 import type { RootCauseAnalysis } from "@/lib/monitoring/rca";
+import type Mail from "nodemailer/lib/mailer";
 
 export interface CheckResult {
   ok: boolean;
@@ -17,4 +18,5 @@ export interface NotificationContext {
   monitor: Monitor;
   result: CheckResult;
   rca: RootCauseAnalysis;
+  emailAttachments?: Mail.Attachment[];
 }

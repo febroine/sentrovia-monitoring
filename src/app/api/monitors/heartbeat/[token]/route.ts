@@ -26,7 +26,6 @@ async function handleHeartbeat(context: HeartbeatRouteContext) {
   return NextResponse.json(
     {
       message: receipt.paused ? "Heartbeat monitor is paused." : "Heartbeat received.",
-      monitorId: receipt.monitor.id,
       accepted: receipt.accepted,
       receivedAt: receipt.receivedAt.toISOString(),
     },

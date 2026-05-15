@@ -34,4 +34,15 @@ describe("monitor input schema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it("rejects short custom heartbeat tokens", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Nightly Job",
+      monitorType: "heartbeat",
+      heartbeatToken: "short123",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
 });

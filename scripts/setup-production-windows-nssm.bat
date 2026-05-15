@@ -10,7 +10,7 @@ echo.
 
 cd /d "%~dp0.."
 
-echo [STEP 1/7] Checking Node.js, npm, and NSSM...
+echo [STEP 1/8] Checking Node.js, npm, and NSSM...
 where node >nul 2>nul
 if errorlevel 1 (
   echo [ERROR] Node.js was not found. Install Node.js 20.9+ first.
@@ -45,7 +45,7 @@ echo [OK] .env.local found.
 
 if not exist "logs" mkdir "logs"
 
-echo [STEP 2/7] Installing dependencies...
+echo [STEP 2/8] Installing dependencies...
 call npm install
 if errorlevel 1 (
   echo [ERROR] npm install failed.
@@ -54,7 +54,16 @@ if errorlevel 1 (
 )
 echo [OK] Dependencies are ready.
 
-echo [STEP 3/7] Applying database schema...
+echo [STEP 3/8] Installing Playwright Chromium...
+call npx playwright install chromium
+if errorlevel 1 (
+  echo [ERROR] Playwright Chromium installation failed.
+  set "EXIT_CODE=1"
+  goto :finish
+)
+echo [OK] Playwright Chromium is ready.
+
+echo [STEP 4/8] Applying database schema...
 call npm run db:push
 if errorlevel 1 (
   echo [ERROR] Database schema update failed.
@@ -63,7 +72,7 @@ if errorlevel 1 (
 )
 echo [OK] Database schema is current.
 
-echo [STEP 4/7] Building production app...
+echo [STEP 5/8] Building production app...
 call npm run build
 if errorlevel 1 (
   echo [ERROR] Production build failed.
@@ -72,7 +81,7 @@ if errorlevel 1 (
 )
 echo [OK] Production build completed.
 
-echo [STEP 5/7] Recreating NSSM services...
+echo [STEP 6/8] Recreating NSSM services...
 call nssm stop sentrovia-web >nul 2>nul
 call nssm stop sentrovia-worker >nul 2>nul
 call nssm remove sentrovia-web confirm >nul 2>nul
@@ -105,7 +114,7 @@ call nssm set sentrovia-worker AppRotateOnline 1
 call nssm set sentrovia-worker AppRotateBytes 10485760
 echo [OK] NSSM services are configured.
 
-echo [STEP 6/7] Starting NSSM services...
+echo [STEP 7/8] Starting NSSM services...
 call nssm start sentrovia-web
 if errorlevel 1 (
   echo [ERROR] sentrovia-web could not be started.
@@ -121,7 +130,7 @@ if errorlevel 1 (
 )
 echo [OK] NSSM services started.
 
-echo [STEP 7/7] Setup verification commands:
+echo [STEP 8/8] Setup verification commands:
 echo [INFO]   - nssm status sentrovia-web
 echo [INFO]   - nssm status sentrovia-worker
 echo [INFO]   - type logs\sentrovia-web.log

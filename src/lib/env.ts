@@ -113,4 +113,5 @@ export const env = {
   ),
   workerAutoStart: parseBoolean(process.env.WORKER_AUTO_START, false),
   disableEmbeddedWorkerSpawn: parseBoolean(process.env.DISABLE_EMBEDDED_WORKER_SPAWN, false),
+  authAllowPublicSignup: parseBoolean(process.env.AUTH_ALLOW_PUBLIC_SIGNUP, process.env.NODE_ENV !== "production"),
 };

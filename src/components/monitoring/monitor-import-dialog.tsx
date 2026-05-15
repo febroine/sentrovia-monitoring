@@ -276,6 +276,9 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     telegramTemplate: read("telegramTemplate") || DEFAULT_MONITOR_FORM.telegramTemplate,
     emailSubject: read("emailSubject") || DEFAULT_MONITOR_FORM.emailSubject,
     emailBody: read("emailBody") || DEFAULT_MONITOR_FORM.emailBody,
+    sendIncidentScreenshot: read("sendIncidentScreenshot")
+      ? booleanValue("sendIncidentScreenshot")
+      : DEFAULT_MONITOR_FORM.sendIncidentScreenshot,
     isActive: read("isActive") ? booleanValue("isActive") : DEFAULT_MONITOR_FORM.isActive,
   };
 }

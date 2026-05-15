@@ -98,6 +98,7 @@ function buildRateLimitKeys(
   const keys = [`${action}:ip:${clientIp}`];
 
   if (normalizedIdentifier) {
+    keys.push(`${action}:id:${normalizedIdentifier}`);
     keys.push(`${action}:ip:${clientIp}:id:${normalizedIdentifier}`);
   }
 

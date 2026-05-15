@@ -1,0 +1,1 @@
+export const MIN_HEARTBEAT_TOKEN_LENGTH = 24;

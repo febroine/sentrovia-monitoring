@@ -27,6 +27,24 @@ describe("runtime environment parsing", () => {
     expect(env.workerConcurrency).toBe(500);
     expect(env.workerPollIntervalMs).toBe(600000);
   });
+
+  it("disables public signup by default in production", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.AUTH_ALLOW_PUBLIC_SIGNUP;
+
+    const { env } = await import("@/lib/env");
+
+    expect(env.authAllowPublicSignup).toBe(false);
+  });
+
+  it("allows explicit public signup override", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.AUTH_ALLOW_PUBLIC_SIGNUP = "true";
+
+    const { env } = await import("@/lib/env");
+
+    expect(env.authAllowPublicSignup).toBe(true);
+  });
 });
 
 function restoreEnvironment() {
