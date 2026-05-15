@@ -37,6 +37,24 @@ describe("failure screenshot request isolation", () => {
     ).toBe(false);
   });
 
+  it("allows same-host protocol upgrade navigation redirects", () => {
+    expect(
+      shouldAllowScreenshotRequest("http://status.example.com/down", "https://status.example.com/down", {
+        isNavigationRequest: true,
+        redirectedFromUrl: "http://status.example.com/down",
+      })
+    ).toBe(true);
+  });
+
+  it("blocks cross-host navigation redirects", () => {
+    expect(
+      shouldAllowScreenshotRequest("https://status.example.com/down", "http://127.0.0.1:8080/admin", {
+        isNavigationRequest: true,
+        redirectedFromUrl: "https://status.example.com/down",
+      })
+    ).toBe(false);
+  });
+
   it("allows browser-local data URLs for inline assets", () => {
     expect(shouldAllowScreenshotRequest("https://status.example.com/down", "data:image/png;base64,AA==")).toBe(true);
   });

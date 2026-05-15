@@ -102,7 +102,12 @@ async function createScreenshotPage(context: BrowserContext, targetUrl: string) 
 
 function handleScreenshotRoute(route: Route, targetUrl: string) {
   const request = route.request();
-  if (shouldAllowScreenshotRequest(targetUrl, request.url())) {
+  if (
+    shouldAllowScreenshotRequest(targetUrl, request.url(), {
+      isNavigationRequest: request.isNavigationRequest(),
+      redirectedFromUrl: request.redirectedFrom()?.url() ?? null,
+    })
+  ) {
     void route.continue();
     return;
   }
@@ -110,12 +115,20 @@ function handleScreenshotRoute(route: Route, targetUrl: string) {
   void route.abort("blockedbyclient");
 }
 
-export function shouldAllowScreenshotRequest(targetUrl: string, requestUrl: string) {
+export function shouldAllowScreenshotRequest(
+  targetUrl: string,
+  requestUrl: string,
+  requestContext: { isNavigationRequest?: boolean; redirectedFromUrl?: string | null } = {}
+) {
   if (isBrowserLocalUrl(requestUrl)) {
     return true;
   }
 
-  return isSameOrigin(targetUrl, requestUrl);
+  if (isSameOrigin(targetUrl, requestUrl)) {
+    return true;
+  }
+
+  return isSameHostNavigationRedirect(targetUrl, requestUrl, requestContext);
 }
 
 async function withScreenshotSlot<T>(task: () => Promise<T>) {
@@ -171,6 +184,30 @@ function isBrowserLocalUrl(value: string) {
 function isSameOrigin(left: string, right: string) {
   try {
     return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+function isSameHostNavigationRedirect(
+  targetUrl: string,
+  requestUrl: string,
+  requestContext: { isNavigationRequest?: boolean; redirectedFromUrl?: string | null }
+) {
+  if (!requestContext.isNavigationRequest || !requestContext.redirectedFromUrl) {
+    return false;
+  }
+
+  try {
+    const target = new URL(targetUrl);
+    const request = new URL(requestUrl);
+    const redirectedFrom = new URL(requestContext.redirectedFromUrl);
+
+    return (
+      target.hostname === request.hostname &&
+      target.hostname === redirectedFrom.hostname &&
+      (request.protocol === "http:" || request.protocol === "https:")
+    );
   } catch {
     return false;
   }
