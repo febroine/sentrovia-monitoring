@@ -147,6 +147,34 @@ describe("worker notifier", () => {
       })
     );
   });
+
+  it("passes lazy email attachments to email delivery without building them in the notifier", async () => {
+    const buildEmailAttachments = vi.fn();
+    const sent = await sendMonitorNotifications({
+      ...buildNotificationContext("failure"),
+      buildEmailAttachments,
+    });
+
+    expect(sent).toBe(true);
+    expect(buildEmailAttachments).not.toHaveBeenCalled();
+
+    const emailInput = mocks.sendEmailDelivery.mock.calls[0]?.[0];
+    expect(emailInput).toEqual(expect.objectContaining({ kind: "failure" }));
+    expect(emailInput.attachments).toBeUndefined();
+    expect(emailInput.buildAttachments).toBe(buildEmailAttachments);
+  });
+
+  it("does not build lazy email attachments when a notification is suppressed", async () => {
+    const buildEmailAttachments = vi.fn();
+    const sent = await sendMonitorNotifications({
+      ...buildNotificationContext("status-change"),
+      buildEmailAttachments,
+    });
+
+    expect(sent).toBe(false);
+    expect(buildEmailAttachments).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+  });
 });
 
 function buildDeliveryResult(status: "delivered" | "failed" | "retrying") {

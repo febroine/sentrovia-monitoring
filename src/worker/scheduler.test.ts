@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import type { NotificationContext } from "@/worker/types";
 
 const mocks = vi.hoisted(() => ({
   dueMonitors: [] as Monitor[],
@@ -310,15 +311,85 @@ describe("monitoring scheduler verification flow", () => {
 
     await runMonitoringCycle();
 
+    const notificationContext = getNotificationContext("failure");
+    expect(notificationContext.emailAttachments).toBeUndefined();
+    expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
+    expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
+
+    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:01.000Z")
     );
-    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "failure",
-        emailAttachments: [screenshot],
-      })
+  });
+
+  it("attaches a screenshot to downtime reminder notifications when capture succeeds", async () => {
+    const screenshot = {
+      filename: "sentrovia-api-reminder.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    mocks.buildFailureScreenshotAttachment.mockResolvedValue(screenshot);
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendIncidentScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    const notificationContext = getNotificationContext("downtime-reminder");
+    expect(notificationContext.emailAttachments).toBeUndefined();
+    expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
+    expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
+
+    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "monitor-1" }),
+      new Date("2026-05-08T07:00:00.000Z")
+    );
+  });
+
+  it("attaches a screenshot to status-change notifications when capture succeeds", async () => {
+    const screenshot = {
+      filename: "sentrovia-api-status-change.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    mocks.buildFailureScreenshotAttachment.mockResolvedValue(screenshot);
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 204,
+      latencyMs: 90,
+      errorMessage: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "up",
+        statusCode: 200,
+        notificationPref: "email",
+        sendIncidentScreenshot: true,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    const notificationContext = getNotificationContext("status-change");
+    expect(notificationContext.emailAttachments).toBeUndefined();
+    expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
+    expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
+
+    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "monitor-1" }),
+      new Date("2026-05-08T07:00:00.000Z")
     );
   });
 
@@ -511,4 +582,16 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     updatedAt: now,
     ...overrides,
   };
+}
+
+function getNotificationContext(kind: NotificationContext["kind"]) {
+  const call = mocks.sendMonitorNotifications.mock.calls.find(
+    ([context]) => (context as NotificationContext).kind === kind
+  );
+
+  if (!call) {
+    throw new Error(`Expected ${kind} notification to be sent.`);
+  }
+
+  return call[0] as NotificationContext;
 }

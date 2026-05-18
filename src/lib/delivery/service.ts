@@ -124,6 +124,7 @@ export async function sendEmailDelivery(input: {
   textBody: string;
   htmlBody: string;
   attachments?: Mail.Attachment[];
+  buildAttachments?: () => Promise<Mail.Attachment[] | undefined>;
 }) {
   const smtp = await getSmtpSettings(input.userId);
   const destination = input.destinationOverride || smtp?.defaultToEmail || "";
@@ -149,7 +150,8 @@ export async function sendEmailDelivery(input: {
       socketTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
     });
 
-    await transporter.sendMail(buildEmailMessage(input, smtp.fromEmail, destination));
+    const attachments = await resolveEmailAttachments(input);
+    await transporter.sendMail(buildEmailMessage({ ...input, attachments }, smtp.fromEmail, destination));
 
     return markDeliveryDelivered(event.id, 250);
   } catch (error) {
@@ -175,6 +177,26 @@ function buildEmailMessage(
     html: input.htmlBody,
     attachments: input.attachments,
   };
+}
+
+async function resolveEmailAttachments(input: {
+  attachments?: Mail.Attachment[];
+  buildAttachments?: () => Promise<Mail.Attachment[] | undefined>;
+}) {
+  if (input.attachments) {
+    return input.attachments;
+  }
+
+  if (!input.buildAttachments) {
+    return undefined;
+  }
+
+  try {
+    return await input.buildAttachments();
+  } catch (error) {
+    console.warn(`[sentrovia] Email attachments skipped: ${toMessage(error)}`);
+    return undefined;
+  }
 }
 
 export async function sendTelegramDelivery(input: {
@@ -336,7 +358,7 @@ export async function buildNotificationWebhookPayload(input: {
 
   return {
     event: input.kind,
-      organization: settings?.profile.organization || "Sentrovia Monitoring",
+    organization: settings?.profile.organization || "Sentrovia Monitoring",
     monitor: {
       name: input.monitorName,
       url: input.url,
