@@ -1,4 +1,5 @@
 import { parse, stringify } from "yaml";
+import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
 import { listMonitors } from "@/lib/monitors/service";
 import { toMonitorPayload } from "@/lib/monitors/targets";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
@@ -20,6 +21,7 @@ export function serializeMonitorConfigBundle(bundle: MonitorConfigBundle, format
 }
 
 export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
+  assertMonitorConfigSize(raw);
   let parsed: unknown;
 
   try {
@@ -32,5 +34,19 @@ export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
     throw new Error("The uploaded monitor config bundle is invalid.");
   }
 
-  return parsed as MonitorConfigBundle & { monitors: MonitorPayload[] };
+  const bundle = parsed as MonitorConfigBundle & { monitors: MonitorPayload[] };
+  assertMonitorConfigItemCount(bundle.monitors.length);
+  return bundle;
+}
+
+function assertMonitorConfigSize(raw: string) {
+  if (Buffer.byteLength(raw, "utf8") > MONITOR_CONFIG_IMPORT_LIMITS.maxBytes) {
+    throw new Error("The uploaded monitor config bundle is too large.");
+  }
+}
+
+function assertMonitorConfigItemCount(count: number) {
+  if (count > MONITOR_CONFIG_IMPORT_LIMITS.maxMonitors) {
+    throw new Error(`Import at most ${MONITOR_CONFIG_IMPORT_LIMITS.maxMonitors} monitors at a time.`);
+  }
 }

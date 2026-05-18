@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 
 export function BackupRestorePanel({
   lastBackupAt,
@@ -65,7 +66,12 @@ export function BackupRestorePanel({
           </div>
           <div className="space-y-1">
             <CardTitle className="text-base">Backup and Restore</CardTitle>
-            <CardDescription>Export the full workspace or paste a backup bundle to restore monitors, companies, and settings.</CardDescription>
+            <CardDescription>
+              Export the full workspace or paste a backup bundle to restore monitors, companies, and settings.
+              Restore accepts up to {WORKSPACE_BACKUP_IMPORT_LIMITS.maxBytesLabel},{" "}
+              {WORKSPACE_BACKUP_IMPORT_LIMITS.maxCompanies} companies, and{" "}
+              {WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors} monitors.
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -96,6 +102,11 @@ export function BackupRestorePanel({
 
         <div className="space-y-2">
           <Label>Restore bundle</Label>
+          <p className="text-xs text-muted-foreground">
+            Limit: {WORKSPACE_BACKUP_IMPORT_LIMITS.maxBytesLabel},{" "}
+            {WORKSPACE_BACKUP_IMPORT_LIMITS.maxCompanies} companies,{" "}
+            {WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors} monitors.
+          </p>
           <Textarea
             rows={10}
             value={content}

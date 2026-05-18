@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { selectDueMonitorsForCycle, spreadInitialMonitorChecks } from "@/lib/monitors/service";
+import {
+  normalizeHeartbeatTokenInput,
+  selectDueMonitorsForCycle,
+  spreadInitialMonitorChecks,
+} from "@/lib/monitors/service";
 
 describe("monitor due selection", () => {
   it("prioritizes verification checks before normal due monitors within the batch", () => {
@@ -29,6 +33,19 @@ describe("monitor due selection", () => {
     );
 
     expect(selected.map((monitor) => monitor.id)).toEqual(["user-1-verification", "user-2-normal"]);
+  });
+});
+
+describe("heartbeat token input", () => {
+  it("rejects invalid public heartbeat tokens before database lookup", () => {
+    expect(normalizeHeartbeatTokenInput("short")).toBeNull();
+    expect(normalizeHeartbeatTokenInput("x".repeat(256))).toBeNull();
+  });
+
+  it("trims and accepts valid public heartbeat tokens", () => {
+    const token = "a".repeat(24);
+
+    expect(normalizeHeartbeatTokenInput(` ${token} `)).toBe(token);
   });
 });
 

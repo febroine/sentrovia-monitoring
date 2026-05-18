@@ -8,6 +8,8 @@ import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-
 import { getSettings } from "@/lib/settings/service";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
+import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
+import { readJsonBody } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -19,7 +21,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json()) as { format?: string; content?: string };
+    const body = (await readJsonBody(request, MONITOR_CONFIG_IMPORT_LIMITS.maxRequestBytes)) as {
+      format?: string;
+      content?: string;
+    };
     const format = body.format === "yaml" ? "yaml" : "json";
     const content = body.content?.trim();
 
@@ -46,6 +51,7 @@ export async function POST(request: NextRequest) {
       && (
         error.message.startsWith("Monitor ")
         || error.message.includes("monitor config bundle")
+        || error.message.startsWith("Import at most ")
         || error.message.includes("PostgreSQL monitor passwords are not included")
       )
     ) {

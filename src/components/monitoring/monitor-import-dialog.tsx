@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MONITOR_CSV_IMPORT_LIMITS } from "@/lib/import-limits";
 import { DEFAULT_MONITOR_FORM, type MonitorPayload, type MonitorRecord } from "@/lib/monitors/types";
 
 const DEFAULT_MAPPING = [
@@ -127,6 +128,7 @@ export function MonitorImportDialog({
           </DialogTitle>
           <DialogDescription>
             Upload HTTP, TCP/port, or PostgreSQL monitors. Missing optional fields fall back to the workspace defaults.
+            Import accepts up to {MONITOR_CSV_IMPORT_LIMITS.maxRows} monitor rows per CSV file.
           </DialogDescription>
         </DialogHeader>
 
@@ -137,6 +139,9 @@ export function MonitorImportDialog({
 
           <div className="space-y-2">
             <Label>CSV file</Label>
+            <p className="text-xs text-muted-foreground">
+              Limit: {MONITOR_CSV_IMPORT_LIMITS.maxRows} monitor rows per import.
+            </p>
             <label className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed border-border p-6 text-center hover:border-primary/40 hover:bg-primary/5">
               <Upload className="h-8 w-8 text-muted-foreground" />
               <div>

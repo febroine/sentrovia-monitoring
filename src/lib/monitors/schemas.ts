@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 
 const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
 const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
@@ -61,7 +61,7 @@ export const monitorInputSchema = z
     url: optionalRequiredString(2000),
     portHost: optionalRequiredString(255),
     portNumber: z.coerce.number().int().min(1).max(65_535).default(443),
-    heartbeatToken: optionalRequiredString(255),
+    heartbeatToken: optionalRequiredString(MAX_HEARTBEAT_TOKEN_LENGTH),
     heartbeatLastReceivedAt: z.string().datetime().nullable().default(null),
     databaseHost: optionalRequiredString(255),
     databasePort: z.coerce.number().int().min(1).max(65_535).default(5432),

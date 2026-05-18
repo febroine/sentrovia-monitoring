@@ -33,6 +33,7 @@ const RATE_LIMITS: Record<AuthAction, RateLimitRule> = {
   },
 };
 
+const MAX_RATE_LIMIT_ENTRIES = 10_000;
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
 export function assertAuthRateLimit(
@@ -76,6 +77,8 @@ export function recordAuthFailure(
       blockedUntil,
     });
   }
+
+  pruneRateLimitStoreToMaxSize();
 }
 
 export function clearAuthFailures(
@@ -148,5 +151,16 @@ function cleanupRateLimitStore(now: number) {
     if (shouldDelete) {
       rateLimitStore.delete(key);
     }
+  }
+}
+
+function pruneRateLimitStoreToMaxSize() {
+  while (rateLimitStore.size > MAX_RATE_LIMIT_ENTRIES) {
+    const oldestKey = rateLimitStore.keys().next().value;
+    if (!oldestKey) {
+      return;
+    }
+
+    rateLimitStore.delete(oldestKey);
   }
 }

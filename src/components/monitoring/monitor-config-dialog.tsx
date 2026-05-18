@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
 
 export function MonitorConfigDialog({
   open,
@@ -71,6 +72,8 @@ export function MonitorConfigDialog({
           <DialogTitle>Monitoring as Code</DialogTitle>
           <DialogDescription>
             Export the current monitor fleet or paste a JSON/YAML bundle to restore declarative monitor definitions.
+            Import accepts up to {MONITOR_CONFIG_IMPORT_LIMITS.maxBytesLabel} and{" "}
+            {MONITOR_CONFIG_IMPORT_LIMITS.maxMonitors} monitors.
           </DialogDescription>
         </DialogHeader>
 
@@ -99,6 +102,10 @@ export function MonitorConfigDialog({
 
             <div className="space-y-2">
               <Label>Import bundle</Label>
+              <p className="text-xs text-muted-foreground">
+                Limit: {MONITOR_CONFIG_IMPORT_LIMITS.maxBytesLabel},{" "}
+                {MONITOR_CONFIG_IMPORT_LIMITS.maxMonitors} monitors per import.
+              </p>
               <Textarea
                 rows={16}
                 value={content}

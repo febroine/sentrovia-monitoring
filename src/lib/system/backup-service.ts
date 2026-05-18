@@ -14,6 +14,7 @@ import { settingsSchema } from "@/lib/settings/schemas";
 import { createCompany, listCompanies } from "@/lib/companies/service";
 import { db } from "@/lib/db";
 import { companies, monitorChecks, monitorEvents, monitorIncidents, monitors } from "@/lib/db/schema";
+import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 
 export async function buildWorkspaceBackupBundle(userId: string): Promise<WorkspaceBackupBundle> {
@@ -42,6 +43,7 @@ export function serializeWorkspaceBackup(bundle: WorkspaceBackupBundle, format: 
 }
 
 export function parseWorkspaceBackup(raw: string, format: "json" | "yaml") {
+  assertWorkspaceBackupSize(raw);
   let parsed: unknown;
 
   try {
@@ -103,6 +105,7 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   const companies = companyInputSchema.array().parse(bundle.companies);
   const monitors = monitorInputSchema.array().parse(bundle.monitors);
 
+  assertBackupItemCounts(companies.length, monitors.length);
   assertRestorableSettingsSecrets(settings);
   assertRestorablePostgresMonitorPasswords(monitors);
   assertUniqueCompanyNames(companies);
@@ -110,6 +113,22 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   assertUniqueMonitorTargets(monitors);
 
   return { settings, companies, monitors };
+}
+
+function assertWorkspaceBackupSize(raw: string) {
+  if (Buffer.byteLength(raw, "utf8") > WORKSPACE_BACKUP_IMPORT_LIMITS.maxBytes) {
+    throw new Error("The uploaded backup file is too large.");
+  }
+}
+
+function assertBackupItemCounts(companyCount: number, monitorCount: number) {
+  if (companyCount > WORKSPACE_BACKUP_IMPORT_LIMITS.maxCompanies) {
+    throw new Error(`Restore at most ${WORKSPACE_BACKUP_IMPORT_LIMITS.maxCompanies} companies at a time.`);
+  }
+
+  if (monitorCount > WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors) {
+    throw new Error(`Restore at most ${WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors} monitors at a time.`);
+  }
 }
 
 function assertRestorableSettingsSecrets(settings: ReturnType<typeof settingsSchema.parse>) {
