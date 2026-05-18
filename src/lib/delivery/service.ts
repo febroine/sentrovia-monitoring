@@ -20,6 +20,7 @@ const HISTORY_LIMIT = 40;
 const MAX_WEBHOOK_ATTEMPTS = 5;
 const WEBHOOK_RETRY_DELAY_MS = 5 * 60 * 1000;
 const DELIVERY_REQUEST_TIMEOUT_MS = 15_000;
+const DELIVERY_RESPONSE_BODY_LIMIT_BYTES = 4_000;
 
 export async function getDeliveryOverview(userId: string): Promise<DeliveryOverview> {
   const [endpoint, historyRows] = await Promise.all([
@@ -219,7 +220,7 @@ export async function sendTelegramDelivery(input: {
     const response = await postTelegramMessage(input.botToken, input.chatId, input.body);
 
     if (!response.ok) {
-      const body = await response.text();
+      const body = await readLimitedResponseText(response);
       return markDeliveryFailed(event.id, response.status, body || "Telegram delivery failed.");
     }
 
@@ -282,7 +283,8 @@ export async function sendChannelWebhookDelivery(
     });
 
     if (!response.ok) {
-      return markDeliveryFailed(event.id, response.status, (await response.text()) || `${channel} delivery failed.`);
+      const responseBody = await readLimitedResponseText(response);
+      return markDeliveryFailed(event.id, response.status, responseBody || `${channel} delivery failed.`);
     }
 
     return markDeliveryDelivered(event.id, response.status);
@@ -431,7 +433,12 @@ async function attemptWebhookDelivery(
       return markDeliveryDelivered(eventId, response.status, current.attempts + 1);
     }
 
-    return markDeliveryRetryable(eventId, current.attempts + 1, response.status, await response.text());
+    return markDeliveryRetryable(
+      eventId,
+      current.attempts + 1,
+      response.status,
+      await readLimitedResponseText(response)
+    );
   } catch (error) {
     if (isWebhookSafetyError(error)) {
       return markDeliveryFailed(eventId, null, toMessage(error));
@@ -497,6 +504,55 @@ async function markDeliveryFailed(eventId: string, responseCode: number | null, 
     .returning();
 
   return updated;
+}
+
+export async function readLimitedResponseText(
+  response: Response,
+  maxBytes = DELIVERY_RESPONSE_BODY_LIMIT_BYTES
+) {
+  if (!response.body || maxBytes <= 0) {
+    return "";
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  let truncated = false;
+
+  try {
+    while (receivedBytes < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done || !value) {
+        break;
+      }
+
+      const remainingBytes = maxBytes - receivedBytes;
+      if (value.byteLength > remainingBytes) {
+        chunks.push(value.slice(0, remainingBytes));
+        receivedBytes = maxBytes;
+        truncated = true;
+        await reader.cancel().catch(() => undefined);
+        break;
+      }
+
+      if (value.byteLength === remainingBytes) {
+        chunks.push(value);
+        receivedBytes = maxBytes;
+        const next = await reader.read();
+        truncated = !next.done;
+        await reader.cancel().catch(() => undefined);
+        break;
+      }
+
+      chunks.push(value);
+      receivedBytes += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const text = new TextDecoder().decode(Buffer.concat(chunks));
+  return truncated ? `${text}... [truncated]` : text;
 }
 
 function buildWebhookHeaders(body: string, secret: string | null) {

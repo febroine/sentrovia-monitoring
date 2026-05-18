@@ -13,6 +13,23 @@ describe("workspace backup validation", () => {
     expect(() => parseWorkspaceBackup("settings: [", "yaml")).toThrow("The backup file is invalid.");
   });
 
+  it("rejects oversized workspace backup bundles before parsing", () => {
+    const raw = JSON.stringify({
+      ...buildBackupBundle(),
+      monitors: [
+        {
+          ...DEFAULT_MONITOR_FORM,
+          name: "Large monitor",
+          url: `https://example.com/${"x".repeat(1_500_000)}`,
+        },
+      ],
+    });
+
+    expect(() => parseWorkspaceBackup(raw, "json")).toThrow(
+      "The uploaded backup file is too large."
+    );
+  });
+
   it("rejects PostgreSQL monitors whose password was not included in the backup", () => {
     const bundle = buildBackupBundle({
       monitors: [
@@ -48,6 +65,34 @@ describe("workspace backup validation", () => {
 
     expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
       "SMTP password is not included in workspace backups"
+    );
+  });
+
+  it("rejects workspace backups with too many companies", () => {
+    const bundle = buildBackupBundle({
+      companies: Array.from({ length: 201 }, (_, index) => ({
+        name: `Company ${index}`,
+        description: "",
+        isActive: true,
+      })),
+    });
+
+    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
+      "Restore at most 200 companies at a time."
+    );
+  });
+
+  it("rejects workspace backups with too many monitors", () => {
+    const bundle = buildBackupBundle({
+      monitors: Array.from({ length: 501 }, (_, index) => ({
+        ...DEFAULT_MONITOR_FORM,
+        name: `Monitor ${index}`,
+        url: `https://example-${index}.com`,
+      })),
+    });
+
+    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
+      "Restore at most 500 monitors at a time."
     );
   });
 

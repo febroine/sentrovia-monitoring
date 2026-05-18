@@ -7,6 +7,8 @@ import { createManyMonitors } from "@/lib/monitors/service";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { getSettings } from "@/lib/settings/service";
 import { parseIntervalSetting, serializeMonitorRecord } from "@/lib/monitors/utils";
+import { MONITOR_CSV_IMPORT_LIMITS } from "@/lib/import-limits";
+import { readJsonBody } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -22,11 +24,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json()) as { monitors?: unknown };
+    const body = (await readJsonBody(request, MONITOR_CSV_IMPORT_LIMITS.maxRequestBytes)) as { monitors?: unknown };
     const items: unknown[] = Array.isArray(body?.monitors) ? body.monitors : [];
 
     if (items.length === 0) {
       return NextResponse.json({ message: "Upload at least one CSV row." }, { status: 400 });
+    }
+
+    if (items.length > MONITOR_CSV_IMPORT_LIMITS.maxRows) {
+      return NextResponse.json(
+        { message: `Import at most ${MONITOR_CSV_IMPORT_LIMITS.maxRows} monitors at a time.` },
+        { status: 400 }
+      );
     }
 
     const settings = await getSettings(session.id);

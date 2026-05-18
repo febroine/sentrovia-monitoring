@@ -3,6 +3,8 @@ import { ZodError } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { parseWorkspaceBackup, restoreWorkspaceBackup } from "@/lib/system/backup-service";
+import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
+import { readJsonBody } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -14,7 +16,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json()) as { format?: string; content?: string };
+    const body = (await readJsonBody(request, WORKSPACE_BACKUP_IMPORT_LIMITS.maxRequestBytes)) as {
+      format?: string;
+      content?: string;
+    };
     const format = body.format === "yaml" ? "yaml" : "json";
     const content = body.content?.trim();
 
@@ -55,5 +60,6 @@ function isBackupPayloadError(error: unknown) {
     "Duplicate monitor target",
     "PostgreSQL monitor passwords are not included",
     "SMTP password is not included",
+    "Restore at most",
   ].some((message) => error.message.includes(message));
 }

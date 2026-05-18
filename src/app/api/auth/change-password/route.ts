@@ -5,8 +5,10 @@ import { applyAuthResponseHeaders } from "@/lib/auth/response";
 import { getSession } from "@/lib/auth/session";
 import { changePasswordSchema, flattenValidationIssues } from "@/lib/auth/schemas";
 import { changeUserPassword } from "@/lib/auth/service";
+import { readJsonBody } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
+const AUTH_JSON_BODY_LIMIT_BYTES = 32_000;
 
 export async function POST(request: NextRequest) {
   let identifier: string | null = null;
@@ -21,7 +23,7 @@ export async function POST(request: NextRequest) {
     identifier = session.email;
     assertAuthRateLimit(request, "change-password", identifier);
 
-    const body = await request.json();
+    const body = await readJsonBody(request, AUTH_JSON_BODY_LIMIT_BYTES);
     const parsed = changePasswordSchema.safeParse(body);
 
     if (!parsed.success) {

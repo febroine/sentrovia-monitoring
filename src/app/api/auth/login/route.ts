@@ -5,14 +5,16 @@ import { applyAuthResponseHeaders } from "@/lib/auth/response";
 import { loginSchema, flattenValidationIssues } from "@/lib/auth/schemas";
 import { applySessionCookie } from "@/lib/auth/session";
 import { loginUser } from "@/lib/auth/service";
+import { readJsonBody } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
+const AUTH_JSON_BODY_LIMIT_BYTES = 32_000;
 
 export async function POST(request: NextRequest) {
   let submittedEmail: string | null = null;
 
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request, AUTH_JSON_BODY_LIMIT_BYTES);
     submittedEmail = readSubmittedEmail(body);
     assertAuthRateLimit(request, "login", submittedEmail);
     const parsed = loginSchema.safeParse(body);

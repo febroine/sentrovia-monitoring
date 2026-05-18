@@ -14,7 +14,7 @@ import { AuthError } from "@/lib/auth/errors";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
 import { env } from "@/lib/env";
 import { resolveIncident } from "@/lib/incidents/service";
-import { MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import {
   buildCanonicalMonitorTarget,
@@ -432,10 +432,15 @@ export async function recordMonitorResult(
 }
 
 export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
+  const normalizedToken = normalizeHeartbeatTokenInput(token);
+  if (!normalizedToken) {
+    return null;
+  }
+
   const [existingMonitor] = await db
     .select()
     .from(monitors)
-    .where(and(eq(monitors.monitorType, "heartbeat"), eq(monitors.heartbeatToken, token)))
+    .where(and(eq(monitors.monitorType, "heartbeat"), eq(monitors.heartbeatToken, normalizedToken)))
     .limit(1);
 
   if (!existingMonitor) {
@@ -488,6 +493,18 @@ export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
     monitor,
     receivedAt,
   };
+}
+
+export function normalizeHeartbeatTokenInput(token: string) {
+  const normalized = token.trim();
+  if (
+    normalized.length < MIN_HEARTBEAT_TOKEN_LENGTH ||
+    normalized.length > MAX_HEARTBEAT_TOKEN_LENGTH
+  ) {
+    return null;
+  }
+
+  return normalized;
 }
 
 export async function appendMonitorEvent(input: {

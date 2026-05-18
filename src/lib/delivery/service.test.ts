@@ -27,7 +27,7 @@ vi.mock("@/lib/settings/smtp", () => ({
   getSmtpSettings: mocks.getSmtpSettings,
 }));
 
-import { sendEmailDelivery } from "@/lib/delivery/service";
+import { readLimitedResponseText, sendEmailDelivery } from "@/lib/delivery/service";
 
 describe("delivery service", () => {
   beforeEach(() => {
@@ -91,6 +91,18 @@ describe("delivery service", () => {
         to: "alerts@example.com",
       })
     );
+  });
+
+  it("limits delivery failure response bodies before storing them", async () => {
+    const response = new Response("abcdef");
+
+    await expect(readLimitedResponseText(response, 3)).resolves.toBe("abc... [truncated]");
+  });
+
+  it("returns complete delivery failure response bodies within the limit", async () => {
+    const response = new Response("abc");
+
+    await expect(readLimitedResponseText(response, 3)).resolves.toBe("abc");
   });
 });
 

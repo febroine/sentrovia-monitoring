@@ -1,1 +1,2 @@
 export const MIN_HEARTBEAT_TOKEN_LENGTH = 24;
+export const MAX_HEARTBEAT_TOKEN_LENGTH = 255;

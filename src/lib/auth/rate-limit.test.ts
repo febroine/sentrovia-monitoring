@@ -30,6 +30,23 @@ describe("auth rate limiting", () => {
       assertAuthRateLimit(buildRequest("198.51.100.99"), "register", email)
     ).toThrow(AuthError);
   });
+
+  it("keeps the in-memory limiter bounded under many unique identifiers", () => {
+    for (let attempt = 0; attempt < 4000; attempt += 1) {
+      recordAuthFailure(
+        buildRequest(`203.0.113.${attempt % 255}`),
+        "login",
+        `spray-${attempt}@example.com`
+      );
+    }
+
+    const freshEmail = "fresh-login@example.com";
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      recordAuthFailure(buildRequest("203.0.113.250"), "login", freshEmail);
+    }
+
+    expect(() => assertAuthRateLimit(buildRequest("203.0.113.250"), "login", freshEmail)).toThrow(AuthError);
+  });
 });
 
 function buildRequest(forwardedFor: string) {
