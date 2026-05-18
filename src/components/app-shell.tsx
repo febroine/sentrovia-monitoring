@@ -8,6 +8,7 @@ import { APPEARANCE_SETTINGS_UPDATED_EVENT } from '@/stores/use-settings-store';
 import { cn } from '@/lib/utils';
 
 const AUTH_ROUTES = ['/login', '/signup'];
+const PUBLIC_ROUTES = ['/status'];
 type AppearanceState = {
   reduceMotion: boolean;
   compactDensity: boolean;
@@ -23,10 +24,11 @@ const DEFAULT_APPEARANCE: AppearanceState = {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAuth = AUTH_ROUTES.some((r) => pathname.startsWith(r));
+  const isPublicRoute = PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
   const [appearance, setAppearance] = useState<AppearanceState>(DEFAULT_APPEARANCE);
 
   useEffect(() => {
-    if (isAuth) {
+    if (isAuth || isPublicRoute) {
       return;
     }
 
@@ -66,9 +68,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       active = false;
       window.removeEventListener(APPEARANCE_SETTINGS_UPDATED_EVENT, handleAppearanceUpdate);
     };
-  }, [isAuth]);
+  }, [isAuth, isPublicRoute]);
 
-  if (isAuth) {
+  if (isAuth || isPublicRoute) {
     return <>{children}</>;
   }
 
