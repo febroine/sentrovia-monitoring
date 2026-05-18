@@ -4,6 +4,7 @@ import { monitorChecks, monitorEvents, monitors } from "@/lib/db/schema";
 import { getDeliveryOverview } from "@/lib/delivery/service";
 import { getSettings } from "@/lib/settings/service";
 import { getWorkerState } from "@/lib/monitors/service";
+import { intervalToMs } from "@/lib/monitors/utils";
 
 export async function getDashboardData(userId: string) {
   const [monitorRows, eventRows, checkRows, settings, worker, delivery] = await Promise.all([
@@ -72,10 +73,7 @@ export async function getDashboardData(userId: string) {
       configuredNotifications,
       silentMonitors,
       certificateWatch,
-      averageIntervalMinutes:
-        active > 0
-          ? Math.round(activeRows.reduce((sum, monitor) => sum + monitor.intervalValue, 0) / active)
-          : 0,
+      averageIntervalMinutes: calculateAverageIntervalMinutes(activeRows),
       statusCodeWatchCount:
         settings?.notifications.statusCodeAlertCodes
           .split(",")
@@ -96,11 +94,27 @@ export async function getDashboardData(userId: string) {
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 
-function computeUptimePct(checks: Array<typeof monitorChecks.$inferSelect>) {
-  if (checks.length === 0) {
+export function calculateAverageIntervalMinutes(
+  rows: Array<{ intervalValue: number; intervalUnit: string }>
+) {
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  const totalMinutes = rows.reduce(
+    (sum, monitor) => sum + intervalToMs(monitor.intervalValue, monitor.intervalUnit) / 60_000,
+    0
+  );
+
+  return Math.round(totalMinutes / rows.length);
+}
+
+export function computeUptimePct(checks: Array<{ status: string }>) {
+  const settledChecks = checks.filter((check) => check.status !== "pending");
+  if (settledChecks.length === 0) {
     return 100;
   }
 
-  const upChecks = checks.filter((check) => check.status === "up").length;
-  return (upChecks / checks.length) * 100;
+  const upChecks = settledChecks.filter((check) => check.status === "up").length;
+  return (upChecks / settledChecks.length) * 100;
 }

@@ -83,10 +83,10 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
       validated.companies.map((company) => createCompany(userId, company, tx))
     );
 
-    const companyIdByName = new Map(restoredCompanies.map((company) => [company.name, company.id]));
+    const companyIdByName = buildCompanyIdByName(restoredCompanies);
     const restoredMonitors = validated.monitors.map((monitor) => ({
       ...monitor,
-      companyId: monitor.company ? companyIdByName.get(monitor.company) ?? "" : "",
+      companyId: resolveRestoredCompanyId(monitor.company, companyIdByName),
     }));
 
     await createManyMonitors(userId, restoredMonitors, tx);
@@ -149,6 +149,22 @@ function assertMonitorCompanyReferences(
       throw new Error(`Monitor references a missing company: ${monitor.company}`);
     }
   }
+}
+
+export function buildCompanyIdByName(companies: Array<{ id: string; name: string }>) {
+  return new Map(companies.map((company) => [normalizeCompanyName(company.name), company.id]));
+}
+
+export function resolveRestoredCompanyId(companyName: string | null, companyIdByName: Map<string, string>) {
+  if (!companyName) {
+    return "";
+  }
+
+  return companyIdByName.get(normalizeCompanyName(companyName)) ?? "";
+}
+
+function normalizeCompanyName(name: string) {
+  return name.trim().toLowerCase();
 }
 
 function assertUniqueMonitorTargets(monitors: MonitorInput[]) {

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_MONITOR_FORM, type WorkspaceBackupBundle } from "@/lib/monitors/types";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
-import { parseWorkspaceBackup, validateWorkspaceBackupBundle } from "@/lib/system/backup-service";
+import {
+  buildCompanyIdByName,
+  parseWorkspaceBackup,
+  resolveRestoredCompanyId,
+  validateWorkspaceBackupBundle,
+} from "@/lib/system/backup-service";
 
 describe("workspace backup validation", () => {
   it("returns a backup validation error for malformed YAML", () => {
@@ -63,6 +68,12 @@ describe("workspace backup validation", () => {
     });
 
     expect(validateWorkspaceBackupBundle(bundle).monitors).toHaveLength(1);
+  });
+
+  it("resolves restored monitor companies case-insensitively", () => {
+    const companyIdByName = buildCompanyIdByName([{ id: "company-1", name: "ACME Operations" }]);
+
+    expect(resolveRestoredCompanyId(" acme operations ", companyIdByName)).toBe("company-1");
   });
 });
 
