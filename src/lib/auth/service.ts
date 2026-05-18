@@ -98,6 +98,7 @@ export async function registerUser(input: RegisterInput) {
       firstName: input.firstName,
       lastName: input.lastName,
       email: input.email,
+      department: input.department,
       passwordHash,
     })
     .returning(sessionColumns);

@@ -68,7 +68,7 @@ function buildPingCommand(host: string, timeoutMs: number) {
 }
 
 export function parsePingLatency(output: string) {
-  const unixMatch = output.match(/(?:time|süre)[=<]\s*([\d.,]+)\s*ms/i);
+  const unixMatch = output.match(/(?:time|s(?:\u00fcre|\u00c3\u00bcre|ure))[=<]\s*([\d.,]+)\s*ms/i);
   if (unixMatch) {
     return toLatencyMs(unixMatch[1]);
   }
