@@ -326,14 +326,13 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     });
 
     if (incidentConfirmedThisCycle) {
-      const screenshot = await buildFailureScreenshotAttachment(monitor, result.checkedAt);
       await sendMonitorNotifications({
         kind: "failure",
         message: failureEventMessage,
         monitor,
         result,
         rca,
-        emailAttachments: screenshot ? [screenshot] : undefined,
+        buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
       });
     }
   }
@@ -347,6 +346,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
         monitor,
         result,
         rca,
+        buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
       });
 
       if (reminderSent) {
@@ -388,13 +388,25 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   ) {
     const message = `Status code changed from ${previousStatusCode} to ${result.statusCode}.`;
     await appendDetailedEvent(monitor, result, "status-change", message, rca, checkStatus);
-    await sendMonitorNotifications({ kind: "status-change", message, monitor, result, rca });
+    await sendMonitorNotifications({
+      kind: "status-change",
+      message,
+      monitor,
+      result,
+      rca,
+      buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
+    });
   }
 
   return {
     finalStatus: checkStatus,
     latencyMs: result.latencyMs,
   };
+}
+
+async function buildAlertEmailAttachments(monitor: Monitor, checkedAt: Date) {
+  const screenshot = await buildFailureScreenshotAttachment(monitor, checkedAt);
+  return screenshot ? [screenshot] : undefined;
 }
 
 async function recordFailureDiagnostics(monitor: Monitor) {

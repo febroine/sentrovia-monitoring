@@ -19,4 +19,5 @@ export interface NotificationContext {
   result: CheckResult;
   rca: RootCauseAnalysis;
   emailAttachments?: Mail.Attachment[];
+  buildEmailAttachments?: () => Promise<Mail.Attachment[] | undefined>;
 }
