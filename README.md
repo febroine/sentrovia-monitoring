@@ -205,8 +205,8 @@ Sentrovia can attach screenshot evidence to confirmed HTTP, keyword, and JSON ou
 - Screenshots are captured only after verification confirms the monitor is really down.
 - The worker captures the browser-rendered page, including Chromium's own network error page when the target cannot be reached.
 - Screenshot capture is best-effort: if Chromium fails, the email still goes out without blocking the alert.
-- Screenshot capture is rate-limited per monitor to avoid loading the worker.
-- Enable it per monitor with the incident screenshot option.
+- Screenshot capture is queued one at a time so alerts are not blocked by parallel browser work.
+- It is enabled by default for HTTP, keyword, and JSON monitors that send email, and can be disabled per monitor.
 
 Production note: install Playwright Chromium on each server that runs the worker:
 

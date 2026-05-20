@@ -1,31 +1,43 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import type Mail from "nodemailer/lib/mailer";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 
+const BLOCKED_SCREENSHOT_HOSTNAMES = new Set([
+  "localhost",
+  "ip6-localhost",
+  "ip6-loopback",
+  "metadata.google.internal",
+]);
+const BLOCKED_SCREENSHOT_HOST_SUFFIXES = [".localhost"];
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
 const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
-const SCREENSHOT_RATE_LIMIT_MS = 30 * 60_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
 const MAX_CONCURRENT_SCREENSHOTS = 1;
+const SCREENSHOT_QUEUE_TIMEOUT_MS = 90_000;
 const CHROMIUM_HEADLESS_ARGS = ["--headless=new"];
 
 let activeScreenshots = 0;
-const screenshotQueue: Array<() => void> = [];
-const lastScreenshotAttemptByMonitor = new Map<string, number>();
+const screenshotQueue: Array<ScreenshotQueueEntry> = [];
+
+type ScreenshotQueueEntry = {
+  resolve: () => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
 
 export async function buildFailureScreenshotAttachment(
   monitor: Monitor,
   capturedAt = new Date()
 ): Promise<Mail.Attachment | null> {
-  if (!shouldCaptureScreenshot(monitor, capturedAt)) {
+  if (!shouldCaptureScreenshot(monitor)) {
     return null;
   }
 
-  lastScreenshotAttemptByMonitor.set(monitor.id, capturedAt.getTime());
-
   try {
+    await assertScreenshotTargetAllowed(monitor);
     return await withScreenshotSlot(() => captureScreenshotAttachment(monitor, capturedAt));
   } catch (error) {
     console.warn(
@@ -35,7 +47,7 @@ export async function buildFailureScreenshotAttachment(
   }
 }
 
-export function shouldCaptureScreenshot(monitor: Monitor, capturedAt = new Date()) {
+export function shouldCaptureScreenshot(monitor: Monitor) {
   if (
     !monitor.sendIncidentScreenshot ||
     !SCREENSHOT_MONITOR_TYPES.has(monitor.monitorType) ||
@@ -44,9 +56,130 @@ export function shouldCaptureScreenshot(monitor: Monitor, capturedAt = new Date(
     return false;
   }
 
-  pruneScreenshotRateLimit(capturedAt);
-  const lastAttemptAt = lastScreenshotAttemptByMonitor.get(monitor.id);
-  return !lastAttemptAt || capturedAt.getTime() - lastAttemptAt >= SCREENSHOT_RATE_LIMIT_MS;
+  return true;
+}
+
+async function assertScreenshotTargetAllowed(monitor: Monitor) {
+  const hostname = parseScreenshotHostname(monitor.url);
+  if (!hostname) {
+    throw new Error("screenshot target is not a valid URL");
+  }
+
+  if (isBlockedScreenshotHostname(hostname)) {
+    throw new Error("screenshot target is a server-local hostname");
+  }
+
+  if (isIP(hostname)) {
+    assertAddressAllowedForScreenshot(hostname);
+    return;
+  }
+
+  const addresses = await resolveScreenshotHostname(hostname);
+  for (const address of addresses) {
+    assertAddressAllowedForScreenshot(address);
+  }
+}
+
+function parseScreenshotHostname(value: string) {
+  try {
+    const parsed = new URL(stripUrlFragment(value));
+    return normalizeScreenshotHostname(parsed.hostname);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeScreenshotHostname(value: string) {
+  return stripTrailingDots(stripIpv6Brackets(value.trim().toLowerCase()));
+}
+
+function isBlockedScreenshotHostname(hostname: string) {
+  return (
+    BLOCKED_SCREENSHOT_HOSTNAMES.has(hostname) ||
+    BLOCKED_SCREENSHOT_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
+  );
+}
+
+async function resolveScreenshotHostname(hostname: string) {
+  try {
+    const records = await lookup(hostname, { all: true, verbatim: true });
+    return records.map((record) => stripIpv6Brackets(record.address));
+  } catch {
+    return [hostname];
+  }
+}
+
+function assertAddressAllowedForScreenshot(address: string) {
+  if (isServerLocalAddress(address)) {
+    throw new Error("screenshot target resolves to a server-local address");
+  }
+}
+
+function isServerLocalAddress(address: string) {
+  const normalized = stripIpv6Brackets(address.toLowerCase());
+  const mappedIpv4 = parseIpv4MappedIpv6(normalized);
+  const comparable = mappedIpv4 ?? normalized;
+
+  return isLoopbackAddress(comparable) || isLinkLocalAddress(comparable) || isUnspecifiedAddress(comparable);
+}
+
+function isLoopbackAddress(address: string) {
+  if (address === "::1") {
+    return true;
+  }
+
+  const parts = address.split(".").map((part) => Number(part));
+  return parts.length === 4 && parts[0] === 127;
+}
+
+function isLinkLocalAddress(address: string) {
+  if (address.startsWith("fe8") || address.startsWith("fe9") || address.startsWith("fea") || address.startsWith("feb")) {
+    return true;
+  }
+
+  const parts = address.split(".").map((part) => Number(part));
+  return parts.length === 4 && parts[0] === 169 && parts[1] === 254;
+}
+
+function isUnspecifiedAddress(address: string) {
+  return address === "::" || address === "0.0.0.0";
+}
+
+function parseIpv4MappedIpv6(address: string) {
+  if (!address.startsWith("::ffff:")) {
+    return null;
+  }
+
+  const suffix = address.slice("::ffff:".length);
+  if (suffix.includes(".")) {
+    return suffix;
+  }
+
+  const parts = suffix.split(":");
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const high = Number.parseInt(parts[0], 16);
+  const low = Number.parseInt(parts[1], 16);
+  if (![high, low].every((part) => Number.isInteger(part) && part >= 0 && part <= 0xffff)) {
+    return null;
+  }
+
+  return [
+    (high >> 8) & 0xff,
+    high & 0xff,
+    (low >> 8) & 0xff,
+    low & 0xff,
+  ].join(".");
+}
+
+function stripIpv6Brackets(value: string) {
+  return value.replace(/^\[/, "").replace(/\]$/, "");
+}
+
+function stripTrailingDots(value: string) {
+  return value.replace(/\.+$/, "");
 }
 
 async function captureScreenshotAttachment(monitor: Monitor, capturedAt: Date): Promise<Mail.Attachment | null> {
@@ -180,11 +313,18 @@ function acquireScreenshotSlot() {
     return Promise.resolve();
   }
 
-  return new Promise<void>((resolve) => {
-    screenshotQueue.push(() => {
-      activeScreenshots += 1;
-      resolve();
-    });
+  return new Promise<void>((resolve, reject) => {
+    const entry: ScreenshotQueueEntry = {
+      resolve: () => {
+        activeScreenshots += 1;
+        resolve();
+      },
+      timeout: setTimeout(() => {
+        removeScreenshotQueueEntry(entry);
+        reject(new Error("screenshot queue timed out"));
+      }, SCREENSHOT_QUEUE_TIMEOUT_MS),
+    };
+    screenshotQueue.push(entry);
   });
 }
 
@@ -192,22 +332,24 @@ function releaseScreenshotSlot() {
   activeScreenshots = Math.max(0, activeScreenshots - 1);
   const next = screenshotQueue.shift();
   if (next) {
-    next();
+    clearTimeout(next.timeout);
+    next.resolve();
   }
 }
 
-function pruneScreenshotRateLimit(now: Date) {
-  const cutoff = now.getTime() - SCREENSHOT_RATE_LIMIT_MS;
-
-  for (const [monitorId, attemptedAt] of lastScreenshotAttemptByMonitor.entries()) {
-    if (attemptedAt < cutoff) {
-      lastScreenshotAttemptByMonitor.delete(monitorId);
-    }
+function removeScreenshotQueueEntry(entry: ScreenshotQueueEntry) {
+  const index = screenshotQueue.indexOf(entry);
+  if (index >= 0) {
+    screenshotQueue.splice(index, 1);
   }
 }
 
 function resolveScreenshotUrl(monitor: Monitor) {
-  return monitor.url.split("#")[0];
+  return stripUrlFragment(monitor.url);
+}
+
+function stripUrlFragment(value: string) {
+  return value.split("#")[0];
 }
 
 function isBrowserLocalUrl(value: string) {

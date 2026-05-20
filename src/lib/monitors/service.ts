@@ -872,7 +872,7 @@ async function buildMonitorValues(
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
     emailBody: input.emailBody,
-    sendIncidentScreenshot: input.sendIncidentScreenshot,
+    sendIncidentScreenshot: shouldPersistIncidentScreenshot(monitorType, input.notificationPref, input.sendIncidentScreenshot),
     isActive: input.isActive,
   };
 }
@@ -1006,6 +1006,17 @@ function normalizeMonitorType(value: string | null | undefined): MonitorInput["m
   }
 
   return "http";
+}
+
+function shouldPersistIncidentScreenshot(
+  monitorType: MonitorInput["monitorType"],
+  notificationPref: MonitorInput["notificationPref"],
+  requested: boolean
+) {
+  const supportsScreenshot = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
+  const sendsEmail = notificationPref === "email" || notificationPref === "both";
+
+  return requested && supportsScreenshot && sendsEmail;
 }
 
 function normalizeJsonMatchMode(value: string | null | undefined): MonitorInput["jsonMatchMode"] {

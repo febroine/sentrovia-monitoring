@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
-import { shouldAllowScreenshotRequest, shouldCaptureScreenshot } from "@/worker/screenshot";
+import {
+  buildFailureScreenshotAttachment,
+  shouldAllowScreenshotRequest,
+  shouldCaptureScreenshot,
+} from "@/worker/screenshot";
 
 describe("failure screenshot capture rules", () => {
   it("allows enabled HTTP monitors with email delivery", () => {
@@ -21,6 +25,58 @@ describe("failure screenshot capture rules", () => {
         buildMonitor({ notificationPref: "telegram", sendIncidentScreenshot: true })
       )
     ).toBe(false);
+  });
+
+  it("skips server-local screenshot targets without blocking the alert", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(
+      buildFailureScreenshotAttachment(
+        buildMonitor({ url: "http://127.0.0.1:3000/admin", sendIncidentScreenshot: true })
+      )
+    ).resolves.toBeNull();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    warn.mockRestore();
+  });
+
+  it("skips dotted localhost screenshot targets", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(
+      buildFailureScreenshotAttachment(
+        buildMonitor({ url: "http://localhost.:3000/admin", sendIncidentScreenshot: true })
+      )
+    ).resolves.toBeNull();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    warn.mockRestore();
+  });
+
+  it("skips link-local metadata screenshot targets", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(
+      buildFailureScreenshotAttachment(
+        buildMonitor({ url: "http://169.254.169.254/latest/meta-data", sendIncidentScreenshot: true })
+      )
+    ).resolves.toBeNull();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    warn.mockRestore();
+  });
+
+  it("skips dotted cloud metadata hostnames", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(
+      buildFailureScreenshotAttachment(
+        buildMonitor({ url: "http://metadata.google.internal./computeMetadata/v1", sendIncidentScreenshot: true })
+      )
+    ).resolves.toBeNull();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    warn.mockRestore();
   });
 });
 

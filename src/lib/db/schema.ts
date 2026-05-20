@@ -191,7 +191,7 @@ export const monitors = pgTable("monitors", {
   telegramTemplate: text("telegram_template"),
   emailSubject: text("email_subject"),
   emailBody: text("email_body"),
-  sendIncidentScreenshot: boolean("send_incident_screenshot").default(false).notNull(),
+  sendIncidentScreenshot: boolean("send_incident_screenshot").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

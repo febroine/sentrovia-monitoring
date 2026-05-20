@@ -114,7 +114,7 @@ export const monitorInputSchema = z
     telegramTemplate: optionalString(4000),
     emailSubject: optionalString(500),
     emailBody: optionalString(4000),
-    sendIncidentScreenshot: z.boolean().default(false),
+    sendIncidentScreenshot: z.boolean().default(true),
     isActive: z.boolean().default(true),
   })
   .superRefine((value, context) => {

@@ -342,6 +342,6 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   telegramTemplate: "",
   emailSubject: "",
   emailBody: "",
-  sendIncidentScreenshot: false,
+  sendIncidentScreenshot: true,
   isActive: true,
 };
