@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckSquare, Mail, Pencil, Search, Square, Trash2, UserRound, UsersRound } from "lucide-react";
+import { CheckSquare, Mail, Pencil, Search, SearchX, Square, Trash2, UserRound, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -289,7 +290,13 @@ export default function MembersPageClient() {
               ) : null}
               {!loading && filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">No members found.</TableCell>
+                  <TableCell colSpan={8}>
+                    <EmptyState
+                      icon={SearchX}
+                      title="No members found"
+                      description="Try another search term or refresh the member list."
+                    />
+                  </TableCell>
                 </TableRow>
               ) : null}
               {!loading ? filtered.map((member) => (
@@ -354,7 +361,7 @@ export default function MembersPageClient() {
       </Card>
 
       <Dialog open={Boolean(editingMember)} onOpenChange={(open) => !open && setEditingMember(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit member</DialogTitle>
             <DialogDescription>Update the username and email address used by this workspace user.</DialogDescription>
@@ -375,7 +382,7 @@ export default function MembersPageClient() {
       </Dialog>
 
       <Dialog open={deleteTargetIds.length > 0} onOpenChange={(open) => !open && closeDeleteConfirmation()}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Delete member{deleteTargets.length === 1 ? "" : "s"}?</DialogTitle>
             <DialogDescription>
@@ -387,12 +394,12 @@ export default function MembersPageClient() {
             <p className="text-sm font-medium text-destructive">Please confirm before continuing.</p>
             <div className="space-y-2 text-sm text-muted-foreground">
               {deleteTargets.map((member) => (
-                <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2">
+                <div key={member.id} className="flex min-w-0 flex-col gap-1 rounded-lg border border-border/70 bg-background/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <span className="font-medium text-foreground">
                     {member.firstName} {member.lastName}
                     {member.id === currentUserId ? " (you)" : ""}
                   </span>
-                  <span className="truncate text-xs">{member.email}</span>
+                  <span className="min-w-0 text-xs [overflow-wrap:anywhere]">{member.email}</span>
                 </div>
               ))}
             </div>

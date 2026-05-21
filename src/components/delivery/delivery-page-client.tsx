@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlaskConical, RefreshCw, RotateCcw, Send, Webhook } from "lucide-react";
+import { FlaskConical, Inbox, RefreshCw, RotateCcw, Send, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -178,10 +179,10 @@ export function DeliveryPageClient() {
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/15 pb-3">
             <CardTitle className="text-base">Webhook Endpoint</CardTitle>
-                <CardDescription>Store one outbound webhook and let Sentrovia retry failed posts.</CardDescription>
+            <CardDescription>Store one outbound webhook and let Sentrovia retry failed posts.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 border-l-2 border-l-sky-500 p-5">
-                <Field label="URL" id="webhook-url" value={webhookUrl} onChange={setWebhookUrl} placeholder="https://hooks.example.com/sentrovia" />
+            <Field label="URL" id="webhook-url" value={webhookUrl} onChange={setWebhookUrl} placeholder="https://hooks.example.com/sentrovia" />
             <Field label="Secret" id="webhook-secret" value={webhookSecret} onChange={setWebhookSecret} placeholder={overview.webhook?.secretConfigured ? "Secret already configured" : "Optional HMAC shared secret"} />
             <div className="flex items-center justify-between rounded-lg border px-3 py-3">
               <div>
@@ -262,7 +263,13 @@ export function DeliveryPageClient() {
             <TableBody>
               {overview.history.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">No deliveries recorded yet.</TableCell>
+                  <TableCell colSpan={7}>
+                    <EmptyState
+                      icon={Inbox}
+                      title="No deliveries recorded yet"
+                      description="Delivery attempts will appear here after alerts, report sends, or test messages run."
+                    />
+                  </TableCell>
                 </TableRow>
               ) : (
                 overview.history.map((item) => (

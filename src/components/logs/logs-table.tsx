@@ -6,12 +6,14 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  SearchX,
   Square,
 } from "lucide-react";
 import { LevelBadge } from "@/components/logs/log-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { LogRecord } from "@/lib/logs/types";
@@ -59,7 +61,7 @@ export function LogsTable({
               {total} event{total === 1 ? "" : "s"} matched. Healthy checks are merged into one active up-state row per monitor.
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-start lg:self-auto">
             <span className="text-xs text-muted-foreground">Rows</span>
             <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
               <SelectTrigger className="w-24">
@@ -113,8 +115,12 @@ export function LogsTable({
             ) : null}
             {!loading && logs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                  No logs found for the current filters.
+                <TableCell colSpan={8}>
+                  <EmptyState
+                    icon={SearchX}
+                    title="No logs found"
+                    description="Change the filters or refresh after new monitor checks run."
+                  />
                 </TableCell>
               </TableRow>
             ) : null}
@@ -140,7 +146,7 @@ export function LogsTable({
           <p className="text-xs text-muted-foreground">
             Page {safePage} of {totalPages}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
             <Button
               variant="outline"
               size="sm"

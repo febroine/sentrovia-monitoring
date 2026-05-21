@@ -883,14 +883,17 @@ export default function ReportsPageClient() {
             </CardHeader>
             <CardContent className="space-y-3 pt-4">
               {activeSchedules.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active report schedule right now.</p>
+                <BuilderEmptyState
+                  title="No active report schedule"
+                  description="Enable a schedule below or create one from the report builder."
+                />
               ) : (
                 activeSchedules.slice(0, 6).map((schedule) => (
                   <div key={schedule.id} className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium">{schedule.name}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
                           {getCadenceLabel(schedule.cadence)} / {schedule.reportBrandName || "Profile organization"} / {schedule.recipientEmails.join(", ")}
                         </p>
                       </div>
@@ -1405,7 +1408,7 @@ function DetailBlock({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-muted/10 px-4 py-3">
       <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm leading-6">{value}</p>
+      <p className="mt-2 text-sm leading-6 [overflow-wrap:anywhere]">{value}</p>
     </div>
   );
 }
