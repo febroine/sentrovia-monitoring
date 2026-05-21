@@ -1,6 +1,7 @@
 import { AuthError } from "@/lib/auth/errors";
 
 const EMPTY_JSON_BODY_ERROR = "Invalid JSON request body.";
+export const STANDARD_JSON_BODY_LIMIT_BYTES = 128_000;
 
 export async function readJsonBody(request: Request, maxBytes: number) {
   const body = await readRequestBodyText(request, maxBytes);

@@ -61,6 +61,7 @@ type DraftReport = {
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string;
   emailIntroTemplate: string;
+  reportBrandName: string;
 };
 
 type DraftSchedule = {
@@ -80,6 +81,7 @@ type DraftSchedule = {
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string;
   emailIntroTemplate: string;
+  reportBrandName: string;
 };
 
 const EMPTY_REPORT_DRAFT: DraftReport = {
@@ -96,6 +98,7 @@ const EMPTY_REPORT_DRAFT: DraftReport = {
   includeMonitorBreakdown: true,
   emailSubjectTemplate: "",
   emailIntroTemplate: "",
+  reportBrandName: "",
 };
 
 const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
@@ -115,7 +118,14 @@ const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
   includeMonitorBreakdown: true,
   emailSubjectTemplate: "",
   emailIntroTemplate: "",
+  reportBrandName: "",
 };
+
+const CADENCE_OPTIONS: Array<{ value: ReportCadence; label: string }> = [
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "all_time", label: "All time" },
+];
 
 const TEMPLATE_OPTIONS: Array<{
   value: ReportTemplateVariant;
@@ -161,6 +171,13 @@ export default function ReportsPageClient() {
   const filteredSchedules = useMemo(
     () => filterSchedules(schedules, scheduleSearch, scheduleFilter),
     [scheduleFilter, scheduleSearch, schedules]
+  );
+  const activeSchedules = useMemo(
+    () =>
+      schedules
+        .filter((schedule) => schedule.isActive)
+        .sort((left, right) => new Date(left.nextRunAt).getTime() - new Date(right.nextRunAt).getTime()),
+    [schedules]
   );
 
   const refreshPage = useCallback(async () => {
@@ -452,6 +469,7 @@ export default function ReportsPageClient() {
       includeMonitorBreakdown: schedule.includeMonitorBreakdown,
       emailSubjectTemplate: schedule.emailSubjectTemplate ?? "",
       emailIntroTemplate: schedule.emailIntroTemplate ?? "",
+      reportBrandName: schedule.reportBrandName ?? "",
     });
     setActiveTab("schedules");
   }
@@ -502,7 +520,7 @@ export default function ReportsPageClient() {
                   Reports
                 </Badge>
                 <Badge variant="outline" className="border-sky-500/25 bg-sky-500/10 text-sky-200">
-                  Weekly / Monthly
+                  Weekly / Monthly / All time
                 </Badge>
               </div>
               <div className="space-y-1">
@@ -523,10 +541,11 @@ export default function ReportsPageClient() {
 
       {message ? <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">{message}</div> : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <SummaryCard icon={CalendarDays} label="Active schedules" value={String(summary.activeSchedules)} description="Auto-send schedules currently enabled." tone="violet" />
         <SummaryCard icon={Sparkles} label="Weekly" value={String(summary.weeklySchedules)} description="Weekly report automations." tone="sky" />
         <SummaryCard icon={BarChart3} label="Monthly" value={String(summary.monthlySchedules)} description="Monthly report automations." tone="amber" />
+        <SummaryCard icon={FileText} label="All time" value={String(summary.allTimeSchedules)} description="Schedules that cover the full history." tone="sky" />
         <SummaryCard icon={Building2} label="Company scoped" value={String(summary.companySchedules)} description="Schedules tied to a single company." tone="emerald" />
         <SummaryCard icon={Mail} label="Paused" value={String(summary.pausedSchedules)} description="Schedules waiting to be re-enabled." tone="slate" />
       </div>
@@ -644,8 +663,11 @@ export default function ReportsPageClient() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                      {CADENCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </Field>
@@ -771,8 +793,11 @@ export default function ReportsPageClient() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                      {CADENCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </Field>
@@ -836,6 +861,34 @@ export default function ReportsPageClient() {
               </div>
 
               <RecipientHint count={scheduleRecipients.length} />
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-emerald-500/15">
+            <CardHeader className="border-b bg-emerald-500/5 pb-4">
+              <CardTitle className="text-base">Active schedules</CardTitle>
+              <CardDescription>Enabled reports that the worker will pick up automatically.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-4">
+              {activeSchedules.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No active report schedule right now.</p>
+              ) : (
+                activeSchedules.slice(0, 6).map((schedule) => (
+                  <div key={schedule.id} className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{schedule.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {getCadenceLabel(schedule.cadence)} / {schedule.reportBrandName || "Profile organization"} / {schedule.recipientEmails.join(", ")}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">
+                        Next {new Date(schedule.nextRunAt).toLocaleString()}
+                      </Badge>
+                    </div>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
 
@@ -1037,6 +1090,7 @@ type ReportDeliveryDraft = Pick<
   | "includeMonitorBreakdown"
   | "emailSubjectTemplate"
   | "emailIntroTemplate"
+  | "reportBrandName"
 >;
 
 function ReportDeliveryComposer({
@@ -1084,16 +1138,23 @@ function ReportDeliveryComposer({
           </div>
         </div>
         <div className="space-y-4">
+          <Field label="Report brand">
+            <Input
+              value={draft.reportBrandName}
+              onChange={(event) => onChange({ reportBrandName: event.target.value })}
+              placeholder="Sentrovia"
+            />
+          </Field>
           <Field label="Email subject template">
             <Input
               value={draft.emailSubjectTemplate}
               onChange={(event) => onChange({ emailSubjectTemplate: event.target.value })}
-              placeholder="[Sentrovia Report] {title} - {health_status}"
+              placeholder="[{brand} Report] {title} - {health_status}"
             />
           </Field>
           <TemplateEditor
             label="Email intro template"
-            hint="Tokens: {title}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {failure_rate}, {failures}, {down_now}, {p95_latency}"
+            hint="Tokens: {title}, {brand}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {failure_rate}, {failures}, {down_now}, {p95_latency}"
             rows={4}
             value={draft.emailIntroTemplate}
             onChange={(emailIntroTemplate) => onChange({ emailIntroTemplate })}
@@ -1262,17 +1323,18 @@ function ScheduleCard({
               {schedule.scope === "company" ? schedule.companyName ?? "Company" : "Global workspace"}
             </Badge>
             <Badge variant="outline" className="border-border/70 text-muted-foreground">
-              {schedule.cadence}
+              {getCadenceLabel(schedule.cadence)}
             </Badge>
             <Badge variant="outline" className="border-border/70 text-muted-foreground">
               {schedule.template}
             </Badge>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-5">
             <DetailBlock label="Next run" value={new Date(schedule.nextRunAt).toLocaleString()} />
             <DetailBlock label="Last delivery" value={schedule.lastDeliveredAt ? new Date(schedule.lastDeliveredAt).toLocaleString() : "No delivery yet"} />
             <DetailBlock label="Recipients" value={schedule.recipientEmails.join(", ") || "No recipients"} />
+            <DetailBlock label="Brand" value={schedule.reportBrandName || "Profile organization"} />
             <DetailBlock label="Package" value={buildSchedulePackageLabel(schedule)} />
           </div>
 
@@ -1581,6 +1643,7 @@ function buildSummary(schedules: ReportScheduleRecord[]) {
   const pausedSchedules = schedules.length - activeSchedules;
   const weeklySchedules = schedules.filter((schedule) => schedule.cadence === "weekly").length;
   const monthlySchedules = schedules.filter((schedule) => schedule.cadence === "monthly").length;
+  const allTimeSchedules = schedules.filter((schedule) => schedule.cadence === "all_time").length;
   const companySchedules = schedules.filter((schedule) => schedule.scope === "company").length;
   const recipientCount = new Set(schedules.flatMap((schedule) => schedule.recipientEmails)).size;
   const nextRun = schedules.filter((schedule) => schedule.isActive).sort((left, right) => new Date(left.nextRunAt).getTime() - new Date(right.nextRunAt).getTime())[0];
@@ -1598,6 +1661,7 @@ function buildSummary(schedules: ReportScheduleRecord[]) {
     pausedSchedules,
     weeklySchedules,
     monthlySchedules,
+    allTimeSchedules,
     companySchedules,
     recipientCount,
     nextRunLabel: nextRun ? new Date(nextRun.nextRunAt).toLocaleString() : "No active schedule",
@@ -1638,7 +1702,7 @@ function filterSchedules(schedules: ReportScheduleRecord[], query: string, filte
 }
 
 function buildScheduleName(scope: ReportScope, cadence: ReportCadence, companyId: string, companies: CompanyRecord[]) {
-  const cadenceLabel = cadence === "weekly" ? "Weekly" : "Monthly";
+  const cadenceLabel = getCadenceLabel(cadence);
 
   if (scope !== "company") {
     return `${cadenceLabel} Workspace Report`;
@@ -1646,6 +1710,10 @@ function buildScheduleName(scope: ReportScope, cadence: ReportCadence, companyId
 
   const company = companies.find((item) => item.id === companyId);
   return company ? `${cadenceLabel} ${company.name} Report` : `${cadenceLabel} Company Report`;
+}
+
+function getCadenceLabel(cadence: ReportCadence) {
+  return CADENCE_OPTIONS.find((option) => option.value === cadence)?.label ?? "Weekly";
 }
 
 function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {
@@ -1658,6 +1726,7 @@ function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {
     includeMonitorBreakdown: draft.includeMonitorBreakdown,
     emailSubjectTemplate: draft.emailSubjectTemplate.trim() || null,
     emailIntroTemplate: draft.emailIntroTemplate.trim() || null,
+    reportBrandName: draft.reportBrandName.trim() || null,
   };
 }
 

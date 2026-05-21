@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
+import { toEnglishUppercase } from "@/lib/text/casing";
 
 export function MonitorConfigDialog({
   open,
@@ -39,7 +40,7 @@ export function MonitorConfigDialog({
     link.download = `sentrovia-monitors.${format}`;
     link.click();
     URL.revokeObjectURL(url);
-    setMessage(`Monitor configuration exported as ${format.toUpperCase()}.`);
+    setMessage(`Monitor configuration exported as ${toEnglishUppercase(format)}.`);
   }
 
   async function handleImport() {

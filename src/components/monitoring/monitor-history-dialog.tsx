@@ -8,6 +8,7 @@ import type {
   MonitorIncidentEventRecord,
   MonitorRecord,
 } from "@/lib/monitors/types";
+import { toEnglishUppercase } from "@/lib/text/casing";
 
 export function MonitorHistoryDialog({
   open,
@@ -106,16 +107,16 @@ export function MonitorHistoryDialog({
                             : "border-destructive/30 bg-destructive/80",
                         point.id === selection.point.id ? "scale-110 ring-2 ring-ring/50" : "opacity-70",
                       ].join(" ")}
-                      title={`${point.status.toUpperCase()} · ${formatDateTime(point.createdAt)}`}
+                      title={`${toEnglishUppercase(point.status)} · ${formatDateTime(point.createdAt)}`}
                     />
                   ))}
                 </div>
                 <div className="mt-4 space-y-2">
                   {selection.previousPoint ? (
-                    <DetailRow label="Previous state" value={`${selection.previousPoint.status.toUpperCase()} at ${formatDateTime(selection.previousPoint.createdAt)}`} />
+                    <DetailRow label="Previous state" value={`${toEnglishUppercase(selection.previousPoint.status)} at ${formatDateTime(selection.previousPoint.createdAt)}`} />
                   ) : null}
                   {selection.nextPoint ? (
-                    <DetailRow label="Next change" value={`${selection.nextPoint.status.toUpperCase()} at ${formatDateTime(selection.nextPoint.createdAt)}`} />
+                    <DetailRow label="Next change" value={`${toEnglishUppercase(selection.nextPoint.status)} at ${formatDateTime(selection.nextPoint.createdAt)}`} />
                   ) : (
                     <DetailRow label="Next change" value="No later state change in the current timeline window" />
                   )}
@@ -194,7 +195,7 @@ export function MonitorHistoryDialog({
                               : "bg-destructive/10 text-destructive",
                         ].join(" ")}
                       >
-                        {point.status.toUpperCase()}
+                        {toEnglishUppercase(point.status)}
                       </span>
                       <span className="text-muted-foreground">{formatDateTime(point.createdAt)}</span>
                     </div>
@@ -329,7 +330,7 @@ function getCurrentMonitorStatusLabel(monitor: MonitorRecord) {
     return "Paused";
   }
 
-  return monitor.verificationMode ? "Verification mode" : monitor.status.toUpperCase();
+  return monitor.verificationMode ? "Verification mode" : toEnglishUppercase(monitor.status);
 }
 
 function getStateLabel(status: MonitorHistoryPoint["status"]) {
@@ -361,7 +362,7 @@ function formatStepStatus(status: string | null) {
     return "--";
   }
 
-  return status.toUpperCase();
+  return toEnglishUppercase(status);
 }
 
 function formatDateTime(value: string) {

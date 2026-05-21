@@ -1,4 +1,4 @@
-export type ReportCadence = "weekly" | "monthly";
+export type ReportCadence = "weekly" | "monthly" | "all_time";
 export type ReportScope = "global" | "company";
 export type ReportScheduleStatus = "idle" | "delivered" | "failed";
 export type ReportTemplateVariant = "executive" | "operations" | "client";
@@ -16,6 +16,7 @@ export interface ReportPreviewInput {
   includeMonitorBreakdown?: boolean;
   emailSubjectTemplate?: string | null;
   emailIntroTemplate?: string | null;
+  reportBrandName?: string | null;
 }
 
 export interface ReportScheduleInput extends ReportPreviewInput {
@@ -48,6 +49,7 @@ export interface ReportScheduleRecord {
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string | null;
   emailIntroTemplate: string | null;
+  reportBrandName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +62,7 @@ export interface GeneratedReport {
   companyId: string | null;
   companyName: string | null;
   workspaceName: string;
+  brandName: string;
   templateLabel: string;
   generatedAt: string;
   periodStartedAt: string;

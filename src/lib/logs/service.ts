@@ -2,6 +2,7 @@ import { and, desc, eq, gte, ilike, inArray, lte, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, monitorEvents, monitors } from "@/lib/db/schema";
 import type { LogLevel } from "@/lib/logs/types";
+import { toEnglishUppercase } from "@/lib/text/casing";
 
 function mapEventToLevel(eventType: string, status: string | null): LogLevel {
   if (eventType === "check") return "info";
@@ -300,7 +301,7 @@ function mapLogRow(row: {
       row.detailItems ??
       compactDetailItems([
         { label: "Event type", value: row.eventType },
-        row.status ? { label: "Status", value: row.status.toUpperCase() } : null,
+        row.status ? { label: "Status", value: toEnglishUppercase(row.status) } : null,
         row.statusCode ? { label: "Status code", value: `HTTP ${row.statusCode}` } : null,
         row.latencyMs !== null && row.latencyMs !== undefined
           ? { label: "Latency", value: `${row.latencyMs}ms` }

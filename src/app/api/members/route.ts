@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { clearSessionCookie } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { deleteMembers, listMembers } from "@/lib/members/service";
 
 export const runtime = "nodejs";
@@ -39,7 +40,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
     const parsed = memberDeleteSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ message: "Select at least one member." }, { status: 400 });

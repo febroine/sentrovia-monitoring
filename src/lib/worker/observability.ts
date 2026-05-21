@@ -6,6 +6,7 @@ import type {
   WorkerObservability,
   WorkerObservabilityRange,
 } from "@/lib/monitors/types";
+import { toEnglishUppercase } from "@/lib/text/casing";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -456,7 +457,7 @@ function formatFailureReason(reason: string | null) {
 
   return reason
     .replaceAll("_", " ")
-    .replace(/\b\w/g, (value) => value.toUpperCase());
+    .replace(/\b\w/g, (value) => toEnglishUppercase(value));
 }
 
 export function getLatestDate(values: Date[]) {

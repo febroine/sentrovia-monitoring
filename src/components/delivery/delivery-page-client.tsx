@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import type { DeliveryHistoryRecord, DeliveryOverview } from "@/lib/delivery/types";
+import { toEnglishUppercase } from "@/lib/text/casing";
 
 const EMPTY_OVERVIEW: DeliveryOverview = {
   webhook: null,
@@ -356,7 +357,7 @@ function toTitleCase(value: string) {
   return value
     .split(/[\s-_]+/)
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => toEnglishUppercase(part.charAt(0)) + part.slice(1))
     .join(" ");
 }
 

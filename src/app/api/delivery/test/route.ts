@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { sendDeliveryTest } from "@/lib/delivery/service";
+import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const parsed = testSchema.safeParse(await request.json());
+    const parsed = testSchema.safeParse(await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES));
     if (!parsed.success) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid delivery test payload." }, { status: 400 });
     }

@@ -9,6 +9,7 @@ describe("report exports", () => {
     const csv = buildReportCsv(report);
     const html = buildPrintableReportHtml(report);
 
+    expect(csv.startsWith("\uFEFF")).toBe(true);
     expect(csv).toContain("Health score");
     expect(csv).toContain("P95 latency");
     expect(csv).toContain("Recent failures");
@@ -25,6 +26,21 @@ describe("report exports", () => {
     expect(pdf.byteLength).toBeGreaterThan(1_000);
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
   });
+
+  it("neutralizes spreadsheet formulas in csv cells", () => {
+    const report = buildSampleReport();
+    report.monitorBreakdown[0].name = '=HYPERLINK("https://evil.example","open")';
+    report.monitorBreakdown[0].companyName = "+SUM(1,1)";
+    report.monitorBreakdown[0].url = "@malicious";
+    report.recentFailures[0].rcaSummary = "-10+10";
+
+    const csv = buildReportCsv(report);
+
+    expect(csv).toContain(`"'=HYPERLINK(""https://evil.example"",""open"")"`);
+    expect(csv).toContain(`"'+SUM(1,1)"`);
+    expect(csv).toContain(`"'@malicious"`);
+    expect(csv).toContain(`"'-10+10"`);
+  });
 });
 
 function buildSampleReport(): GeneratedReport {
@@ -36,6 +52,7 @@ function buildSampleReport(): GeneratedReport {
     companyId: null,
     companyName: null,
     workspaceName: "Sentrovia",
+    brandName: "Sentrovia",
     templateLabel: "Operations Report",
     generatedAt: "2026-05-05T08:00:00.000Z",
     periodStartedAt: "2026-04-28T08:00:00.000Z",

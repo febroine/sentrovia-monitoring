@@ -71,8 +71,21 @@
     @apply border-border;
   }
 
+  html,
+  body {
+    -webkit-locale: "en";
+  }
+
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .uppercase {
+    -webkit-locale: "en";
+    font-feature-settings: "locl" 0;
+    text-transform: uppercase;
   }
 }
 

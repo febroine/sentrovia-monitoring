@@ -19,6 +19,10 @@ import type {
 
 const REPORT_PREVIEW_LIMIT = 12;
 const RECENT_FAILURE_LIMIT = 8;
+const PERIOD_CHECK_LIMIT = 8_000;
+const ALL_TIME_CHECK_LIMIT = 50_000;
+const PERIOD_FAILURE_EVENT_LIMIT = 4_000;
+const ALL_TIME_FAILURE_EVENT_LIMIT = 20_000;
 const DEFAULT_FIRST_RUN_DELAY_MS = 60 * 60 * 1000;
 const DEFAULT_REPORT_TEMPLATE: ReportTemplateVariant = "operations";
 type ReportDeliveryOptions = {
@@ -82,6 +86,7 @@ export async function createReportSchedule(userId: string, input: ReportSchedule
       isActive: input.isActive,
       nextRunAt: resolveNextRunAt(input.nextRunAt),
       lastStatus: "idle",
+      reportBrandName: emptyTemplateToNull(input.reportBrandName),
       ...normalizeReportDeliveryOptions(input),
     })
     .returning();
@@ -129,6 +134,7 @@ export async function updateReportSchedule(
     recipientEmails: input.recipientEmails ?? existing.recipientEmails,
     isActive: input.isActive ?? existing.isActive,
     nextRunAt: hasNextRunAtUpdate ? input.nextRunAt : existing.nextRunAt?.toISOString() ?? null,
+    reportBrandName: input.reportBrandName ?? existing.reportBrandName,
   });
 
   const [updated] = await db
@@ -142,6 +148,9 @@ export async function updateReportSchedule(
       recipientEmails: input.recipientEmails ? normalizeEmails(input.recipientEmails) : existing.recipientEmails,
       isActive: input.isActive ?? existing.isActive,
       nextRunAt: hasNextRunAtUpdate ? resolveNextRunAt(input.nextRunAt) : existing.nextRunAt,
+      reportBrandName: Object.prototype.hasOwnProperty.call(input, "reportBrandName")
+        ? emptyTemplateToNull(input.reportBrandName)
+        : existing.reportBrandName,
       ...normalizeReportDeliveryOptions({ ...existing, ...input }),
       updatedAt: new Date(),
     })
@@ -185,6 +194,7 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
       includeMonitorBreakdown: existing.includeMonitorBreakdown,
       emailSubjectTemplate: existing.emailSubjectTemplate,
       emailIntroTemplate: existing.emailIntroTemplate,
+      reportBrandName: existing.reportBrandName,
     })
     .returning();
 
@@ -206,7 +216,7 @@ export async function generateReportPreview(
   now = new Date()
 ): Promise<GeneratedReport> {
   const scoped = await loadScopedReportData(userId, input, now);
-  const workspaceName = await getWorkspaceName(userId);
+  const workspaceName = await resolveReportBrandName(userId, input.reportBrandName);
   const period = resolveReportPeriod(input.cadence, now);
   const template = input.template ?? DEFAULT_REPORT_TEMPLATE;
   const checksByMonitor = groupChecksByMonitor(scoped.checks);
@@ -257,6 +267,7 @@ export async function generateReportPreview(
     companyId: scoped.companyId,
     companyName: scoped.companyName,
     workspaceName,
+    brandName: workspaceName,
     templateLabel: resolveTemplateLabel(template),
     generatedAt: now.toISOString(),
     periodStartedAt: period.startedAt.toISOString(),
@@ -420,6 +431,9 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
 
 async function loadScopedReportData(userId: string, input: ReportPreviewInput, now: Date) {
   const period = resolveReportPeriod(input.cadence, now);
+  const checkLimit = input.cadence === "all_time" ? ALL_TIME_CHECK_LIMIT : PERIOD_CHECK_LIMIT;
+  const failureEventLimit =
+    input.cadence === "all_time" ? ALL_TIME_FAILURE_EVENT_LIMIT : PERIOD_FAILURE_EVENT_LIMIT;
   const company =
     input.scope === "company" && input.companyId
       ? await getCompanyById(userId, input.companyId)
@@ -475,7 +489,7 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
             )
           )
           .orderBy(desc(monitorChecks.createdAt))
-          .limit(8_000);
+          .limit(checkLimit);
 
   const failureEvents =
     monitorIds.length === 0
@@ -499,7 +513,7 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
             )
           )
           .orderBy(desc(monitorEvents.createdAt))
-          .limit(4_000);
+          .limit(failureEventLimit);
 
   return {
     companyId: company?.id ?? null,
@@ -518,13 +532,29 @@ function resolveReportPeriod(cadence: ReportCadence, now: Date) {
     return { startedAt, endedAt: now, label: "Last 7 days" };
   }
 
+  if (cadence === "all_time") {
+    return { startedAt: new Date("1970-01-01T00:00:00.000Z"), endedAt: now, label: "All time" };
+  }
+
   startedAt.setDate(startedAt.getDate() - 30);
   return { startedAt, endedAt: now, label: "Last 30 days" };
 }
 
 function buildReportTitle(cadence: ReportCadence, scope: ReportPreviewInput["scope"], companyName: string | null) {
-  const cadenceLabel = cadence === "weekly" ? "Weekly" : "Monthly";
+  const cadenceLabel = resolveCadenceLabel(cadence);
   return scope === "company" ? `${cadenceLabel} ${companyName ?? "Company"} Report` : `${cadenceLabel} Workspace Report`;
+}
+
+function resolveCadenceLabel(cadence: ReportCadence) {
+  if (cadence === "weekly") {
+    return "Weekly";
+  }
+
+  if (cadence === "monthly") {
+    return "Monthly";
+  }
+
+  return "All-time";
 }
 
 function groupChecksByMonitor(
@@ -827,10 +857,10 @@ function buildHealthStatus(score: number) {
 function buildReportMessage(report: GeneratedReport, options: ReportDeliveryOptions) {
   const subjectPrefix =
     report.template === "executive"
-      ? "[Sentrovia Executive Report]"
+      ? `[${report.workspaceName} Executive Report]`
       : report.template === "client"
-        ? "[Sentrovia Client Report]"
-        : "[Sentrovia Operations Report]";
+        ? `[${report.workspaceName} Client Report]`
+        : `[${report.workspaceName} Operations Report]`;
   const introLine =
     report.template === "executive"
       ? "A concise leadership snapshot of uptime, risk, and recent service movement."
@@ -883,14 +913,14 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
   const generatedAt = new Date(report.generatedAt).toLocaleString();
 
   return `
-    <div style="margin:0;padding:0;background:#f8fafc;color:#0f172a;font-family:Arial,Helvetica,sans-serif;">
+    <div style="margin:0;padding:0;background:#f8fafc;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#f8fafc;">
         <tr>
           <td align="center" style="padding:24px 12px;">
             <table role="presentation" width="720" cellpadding="0" cellspacing="0" style="width:720px;max-width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
               <tr>
                 <td style="padding:24px;background:#0f172a;color:#ffffff;">
-                  <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#93c5fd;">${escapeHtml(report.templateLabel)}</div>
+                  <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#93c5fd;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.templateLabel)}</div>
                   <h1 style="margin:8px 0 8px;font-size:24px;line-height:1.25;">${escapeHtml(report.title)}</h1>
                   <div style="font-size:14px;line-height:1.6;color:#cbd5e1;">${escapeHtml(report.workspaceName)} / ${escapeHtml(report.periodLabel)} / ${escapeHtml(scopeLabel)}</div>
                   <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#e2e8f0;">${escapeHtml(introLine)}</p>
@@ -1053,7 +1083,7 @@ function renderEmailMetric(label: string, value: string, detail: string) {
   return `
     <td width="33.33%" style="padding:0 6px 12px;vertical-align:top;">
       <div style="border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#ffffff;">
-        <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;">${escapeHtml(label)}</div>
+        <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(label)}</div>
         <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;color:#0f172a;">${escapeHtml(value)}</div>
         <div style="margin-top:4px;font-size:12px;line-height:1.5;color:#64748b;">${escapeHtml(detail)}</div>
       </div>
@@ -1094,7 +1124,7 @@ function renderEmailTableSection(title: string, headers: string[], rows: string[
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
           <thead>
             <tr>
-              ${headers.map((header) => `<th align="left" style="padding:10px 12px;background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;">${escapeHtml(header)}</th>`).join("")}
+              ${headers.map((header) => `<th align="left" style="padding:10px 12px;background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(header)}</th>`).join("")}
             </tr>
           </thead>
           <tbody>
@@ -1171,6 +1201,7 @@ function serializeSchedule(
     includeMonitorBreakdown: row.includeMonitorBreakdown,
     emailSubjectTemplate: row.emailSubjectTemplate,
     emailIntroTemplate: row.emailIntroTemplate,
+    reportBrandName: row.reportBrandName,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -1186,6 +1217,7 @@ function scheduleToDeliveryInput(schedule: typeof reportSchedules.$inferSelect |
     includeMonitorBreakdown: schedule.includeMonitorBreakdown,
     emailSubjectTemplate: schedule.emailSubjectTemplate,
     emailIntroTemplate: schedule.emailIntroTemplate,
+    reportBrandName: schedule.reportBrandName,
   };
 }
 
@@ -1314,9 +1346,14 @@ async function updateScheduleDeliveryState(
   return updated;
 }
 
-async function getWorkspaceName(userId: string) {
+async function resolveReportBrandName(userId: string, override: string | null | undefined) {
+  const brandName = emptyTemplateToNull(override);
+  if (brandName) {
+    return brandName;
+  }
+
   const settings = await getSettings(userId);
-  return settings?.profile.organization || "Sentrovia Workspace";
+  return settings?.profile.organization || "Sentrovia";
 }
 
 function serializeDeliveryResult(delivery: {
@@ -1350,6 +1387,7 @@ function renderReportTemplate(template: string | null, report: GeneratedReport) 
   const replacements: Record<string, string> = {
     "{title}": report.title,
     "{workspace}": report.workspaceName,
+    "{brand}": report.workspaceName,
     "{scope}": report.scope === "company" ? report.companyName ?? "Company" : "Workspace",
     "{period}": report.periodLabel,
     "{template}": report.templateLabel,

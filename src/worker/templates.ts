@@ -30,9 +30,9 @@ export function renderNotificationTemplates(
   const htmlDashboardPlaceholder = "__SENTROVIA_DASHBOARD_LINK__";
   const monitorLink =
     context.monitor.monitorType === "http"
-      ? `<a href="${escapeHtml(context.monitor.url)}">${escapeHtml(context.monitor.url)}</a>`
+      ? buildSafeAnchor(context.monitor.url, context.monitor.url)
       : escapeHtml(displayTarget);
-  const dashboardLink = `<a href="${escapeHtml(appUrl)}/monitoring">${escapeHtml(domain)}</a>`;
+  const dashboardLink = buildSafeAnchor(buildAppRouteUrl(appUrl, "/monitoring"), domain);
 
   const textReplacements = {
     "{name}": context.monitor.name,
@@ -131,6 +131,34 @@ function applyTemplate(template: string, replacements: Record<string, string>) {
     (result, [token, value]) => result.split(token).join(value),
     template
   );
+}
+
+function buildSafeAnchor(href: string | null, label: string) {
+  const safeHref = href ? normalizeHttpHref(href) : null;
+
+  if (!safeHref) {
+    return escapeHtml(label);
+  }
+
+  return `<a href="${escapeHtml(safeHref)}">${escapeHtml(label)}</a>`;
+}
+
+function buildAppRouteUrl(appUrl: string, route: string) {
+  const safeBaseUrl = normalizeHttpHref(appUrl);
+  if (!safeBaseUrl) {
+    return null;
+  }
+
+  return `${safeBaseUrl.replace(/\/+$/, "")}${route}`;
+}
+
+function normalizeHttpHref(value: string) {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function toHtml(text: string, htmlFragments: Record<string, string>) {

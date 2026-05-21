@@ -1,6 +1,8 @@
 import type { GeneratedReport } from "@/lib/reports/types";
 
 const EMPTY_REPORT_VALUE = "--";
+const UTF8_BOM = "\uFEFF";
+const DANGEROUS_CSV_CELL_PREFIXES = ["=", "+", "-", "@", "\t", "\r", "\n"];
 
 export function buildReportFileSlug(report: GeneratedReport) {
   const generatedDate = report.generatedAt.slice(0, 10);
@@ -67,7 +69,7 @@ export function buildReportCsv(report: GeneratedReport) {
     ]),
   ];
 
-  return toCsv(rows);
+  return UTF8_BOM + toCsv(rows);
 }
 
 export function buildPrintableReportHtml(
@@ -153,7 +155,8 @@ export function buildPrintableReportHtml(
         <meta charset="utf-8" />
         <title>${escapeHtml(report.title)}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 32px; color: #111827; }
+          body { font-family: Arial, sans-serif; margin: 32px; color: #111827; -webkit-locale: "en"; }
+          .eyebrow, .stat-label, th { -webkit-locale: "en"; font-feature-settings: "locl" 0; }
           .hero { border: 1px solid #e5e7eb; border-radius: 20px; padding: 24px; margin-bottom: 24px; }
           .eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; margin-bottom: 8px; }
           .summary { color: #475569; margin: 8px 0 0; }
@@ -331,10 +334,20 @@ function toCsv(rows: Array<Array<string>>) {
   return rows
     .map((row) =>
       row
-        .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+        .map((value) => `"${escapeCsvValue(value)}"`)
         .join(",")
     )
     .join("\n");
+}
+
+function escapeCsvValue(value: string) {
+  const text = String(value ?? "");
+  const trimmedStart = text.trimStart();
+  const safeText = DANGEROUS_CSV_CELL_PREFIXES.some((prefix) => trimmedStart.startsWith(prefix))
+    ? `'${text}`
+    : text;
+
+  return safeText.replaceAll('"', '""');
 }
 
 function reportValue(value: string | number | null | undefined) {

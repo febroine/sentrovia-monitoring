@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { deleteMonitors, updateMonitor } from "@/lib/monitors/service";
@@ -30,7 +31,7 @@ export async function PATCH(request: NextRequest, context: MonitorRouteContext) 
     }
 
     const { id } = await context.params;
-    const body = await request.json();
+    const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
     const settings = await getSettings(session.id);
     const parsed = monitorInputSchema.safeParse(applyMonitorDefaults(body, settings));
 

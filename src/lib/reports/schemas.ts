@@ -1,12 +1,13 @@
 import { z } from "zod";
 
 const reportScopeSchema = z.enum(["global", "company"]);
-const reportCadenceSchema = z.enum(["weekly", "monthly"]);
+const reportCadenceSchema = z.enum(["weekly", "monthly", "all_time"]);
 const reportTemplateSchema = z.enum(["executive", "operations", "client"]);
 const deliveryDetailLevelSchema = z.enum(["summary", "standard", "full"]);
 const companyIdSchema = z.string().trim().max(120).nullable().optional();
 const recipientEmailsSchema = z.array(z.string().trim().email()).min(1).max(25);
 const optionalTemplateStringSchema = z.string().trim().max(1000).nullable().optional();
+const optionalBrandNameSchema = z.string().trim().max(120).nullable().optional();
 
 export const reportPreviewSchema = z.object({
   scope: reportScopeSchema,
@@ -21,6 +22,7 @@ export const reportPreviewSchema = z.object({
   includeMonitorBreakdown: z.boolean().default(true),
   emailSubjectTemplate: optionalTemplateStringSchema,
   emailIntroTemplate: optionalTemplateStringSchema,
+  reportBrandName: optionalBrandNameSchema,
 });
 
 export const reportScheduleSchema = reportPreviewSchema.extend({
@@ -44,6 +46,7 @@ export const reportSchedulePatchSchema = z.object({
   includeMonitorBreakdown: z.boolean().optional(),
   emailSubjectTemplate: optionalTemplateStringSchema,
   emailIntroTemplate: optionalTemplateStringSchema,
+  reportBrandName: optionalBrandNameSchema,
   name: z.string().trim().min(3).max(160).optional(),
   recipientEmails: recipientEmailsSchema.optional(),
   isActive: z.boolean().optional(),

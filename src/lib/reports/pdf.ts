@@ -1,11 +1,19 @@
+import { existsSync } from "node:fs";
 import PDFDocument from "pdfkit";
 import type { GeneratedReport } from "@/lib/reports/types";
+import { toEnglishUppercase } from "@/lib/text/casing";
 
 const PAGE_MARGIN = 48;
 const TEXT_COLOR = "#0f172a";
 const MUTED_COLOR = "#64748b";
 const BORDER_COLOR = "#e2e8f0";
 const ACCENT_COLOR = "#2563eb";
+const REGULAR_FONT_NAME = "SentroviaReportRegular";
+const REGULAR_FONT_PATHS = [
+  "C:\\Windows\\Fonts\\arial.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+  "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+];
 
 export async function buildReportPdf(report: GeneratedReport) {
   const document = new PDFDocument({
@@ -13,7 +21,7 @@ export async function buildReportPdf(report: GeneratedReport) {
     margin: PAGE_MARGIN,
     info: {
       Title: report.title,
-      Author: "Sentrovia",
+      Author: report.workspaceName,
       Subject: report.templateLabel,
     },
   });
@@ -32,6 +40,7 @@ export async function buildReportPdf(report: GeneratedReport) {
 }
 
 function renderReport(document: PDFKit.PDFDocument, report: GeneratedReport) {
+  registerReportFont(document);
   renderHeader(document, report);
   renderMetricGrid(document, report);
   renderListSection(document, "Recommended actions", report.recommendations);
@@ -39,11 +48,21 @@ function renderReport(document: PDFKit.PDFDocument, report: GeneratedReport) {
   renderMonitorBreakdown(document, report);
 }
 
+function registerReportFont(document: PDFKit.PDFDocument) {
+  const fontPath = REGULAR_FONT_PATHS.find((path) => existsSync(path));
+  if (!fontPath) {
+    return;
+  }
+
+  document.registerFont(REGULAR_FONT_NAME, fontPath);
+  document.font(REGULAR_FONT_NAME);
+}
+
 function renderHeader(document: PDFKit.PDFDocument, report: GeneratedReport) {
   document
     .fillColor(ACCENT_COLOR)
     .fontSize(9)
-    .text(report.templateLabel.toUpperCase(), { characterSpacing: 1.2 });
+    .text(toEnglishUppercase(report.templateLabel), { characterSpacing: 1.2 });
   document.moveDown(0.4);
   document.fillColor(TEXT_COLOR).fontSize(22).text(report.title, { lineGap: 3 });
   document.moveDown(0.4);
@@ -87,7 +106,7 @@ function renderListSection(document: PDFKit.PDFDocument, title: string, items: s
 
   for (const item of safeItems) {
     ensureSpace(document, 32);
-    document.fillColor(ACCENT_COLOR).fontSize(10).text("•", PAGE_MARGIN, document.y, { continued: true });
+    document.fillColor(ACCENT_COLOR).fontSize(10).text("-", PAGE_MARGIN, document.y, { continued: true });
     document.fillColor(TEXT_COLOR).fontSize(10).text(` ${item}`, { width: document.page.width - PAGE_MARGIN * 2 - 10 });
     document.moveDown(0.45);
   }
@@ -129,7 +148,7 @@ function renderMonitorBreakdown(document: PDFKit.PDFDocument, report: GeneratedR
   for (const monitor of rows) {
     ensureSpace(document, 44);
     document.fillColor(TEXT_COLOR).fontSize(10).text(monitor.name, { continued: true });
-    document.fillColor(MUTED_COLOR).text(` / ${monitor.status.toUpperCase()} / ${monitor.uptimePct.toFixed(2)}% uptime`);
+    document.fillColor(MUTED_COLOR).text(` / ${toEnglishUppercase(monitor.status)} / ${monitor.uptimePct.toFixed(2)}% uptime`);
     document
       .fontSize(9)
       .text(`${monitor.url} / avg ${monitor.averageLatencyMs}ms / p95 ${monitor.p95LatencyMs}ms / failures ${monitor.failures}`);

@@ -379,6 +379,7 @@ export const reportSchedules = pgTable("report_schedules", {
   attachPdf: boolean("attach_pdf").default(true).notNull(),
   emailSubjectTemplate: text("email_subject_template"),
   emailIntroTemplate: text("email_intro_template"),
+  reportBrandName: varchar("report_brand_name", { length: 120 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { updateMonitorTags } from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 
@@ -21,7 +22,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
     const parsed = tagPatchSchema.safeParse(body);
 
     if (!parsed.success) {

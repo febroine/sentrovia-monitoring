@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { getSession } from "@/lib/auth/session";
 import { env } from "@/lib/env";
+import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { updateWorkerState, getWorkerState } from "@/lib/monitors/service";
 import type { WorkerObservabilityRange } from "@/lib/monitors/types";
 import { getWorkerObservability } from "@/lib/worker/observability";
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function readWorkerAction(request: NextRequest) {
-  const parsed = workerActionSchema.safeParse(await request.json());
+  const parsed = workerActionSchema.safeParse(await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES));
   if (!parsed.success) {
     throw new AuthError("Worker action must be start or stop.", 400);
   }

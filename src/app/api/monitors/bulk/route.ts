@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorBulkUpdateSchema } from "@/lib/monitors/schemas";
 import { bulkUpdateMonitors } from "@/lib/monitors/service";
@@ -17,7 +18,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const rawBody = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
+    const body = rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>) : {};
     const settings = await getSettings(session.id);
     const payloadWithDefaults = {
       ...body,
