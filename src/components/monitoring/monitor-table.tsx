@@ -1,7 +1,8 @@
-import { CheckCircle2, CheckSquare, Clock, Globe, Mail, Power, Send, Settings2, Square, XCircle } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Globe, Mail, Power, SearchX, Send, Settings2, Square, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MonitorHistoryStrip } from "@/components/monitoring/monitor-history-strip";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getMonitorTargetDisplay, getMonitorTypeLabel } from "@/lib/monitors/targets";
 import type { MonitorHistoryPoint, MonitorRecord, NotificationPref, SiteStatus } from "@/lib/monitors/types";
@@ -110,7 +111,13 @@ export function MonitorTable({
             </TableRow>
           ) : monitors.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={14} className="py-12 text-center text-sm text-muted-foreground">No monitors found.</TableCell>
+              <TableCell colSpan={14}>
+                <EmptyState
+                  icon={SearchX}
+                  title="No monitors found"
+                  description="Adjust the filters or add a monitor to start collecting uptime checks."
+                />
+              </TableCell>
             </TableRow>
           ) : (
             monitors.map((monitor) => (

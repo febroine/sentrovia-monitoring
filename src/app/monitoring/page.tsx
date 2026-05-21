@@ -379,7 +379,7 @@ export default function MonitoringPage() {
       {totalPages > 1 ? (
         <div className="flex flex-col gap-3 rounded-lg border border-border/70 bg-muted/10 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages} · {pageSize} rows</p>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
             <Button
               variant="outline"
               size="sm"

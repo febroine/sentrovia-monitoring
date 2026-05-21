@@ -10,12 +10,13 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { Building2, CheckSquare, Pencil, Plus, Search, Server, Square, Trash2, Users } from "lucide-react";
+import { Building2, CheckSquare, Pencil, Plus, Search, SearchX, Server, Square, Trash2, Users } from "lucide-react";
 import { CompanyMonitorsPanel } from "@/components/companies/company-monitors-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -199,7 +200,17 @@ export default function CompaniesPage() {
             </TableHeader>
             <TableBody>
               {loading ? <TableRow><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">Loading companies...</TableCell></TableRow> : null}
-              {!loading && filtered.length === 0 ? <TableRow><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">No companies found.</TableCell></TableRow> : null}
+              {!loading && filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6}>
+                    <EmptyState
+                      icon={SearchX}
+                      title="No companies found"
+                      description="Try a different search term or add a company for monitor assignment."
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {!loading ? filtered.map((company) => (
                 <TableRow key={company.id} className={cn(selectedIds.has(company.id) && "bg-emerald-500/5", "cursor-pointer")} onClick={() => setDetailCompany(company)}>
                   <TableCell className="pl-5" onClick={(event) => event.stopPropagation()}>
@@ -257,8 +268,64 @@ export default function CompaniesPage() {
   );
 }
 
-function CompanyDialog({ open, title, description, form, saving, onOpenChange, onFormChange, onSubmit }: { open: boolean; title: string; description: string; form: CompanyPayload; saving: boolean; onOpenChange: (open: boolean) => void; onFormChange: Dispatch<SetStateAction<CompanyPayload>>; onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>; }) {
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><form onSubmit={(event) => void onSubmit(event)} className="space-y-4"><DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader><Field label="Name"><Input value={form.name} onChange={(event) => onFormChange((current) => ({ ...current, name: event.target.value }))} required /></Field><Field label="Description"><Textarea rows={4} value={form.description} onChange={(event) => onFormChange((current) => ({ ...current, description: event.target.value }))} placeholder="Primary customer workspace for production uptime checks." /></Field><DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Company"}</Button></DialogFooter></form></DialogContent></Dialog>;
+function CompanyDialog({
+  open,
+  title,
+  description,
+  form,
+  saving,
+  onOpenChange,
+  onFormChange,
+  onSubmit,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  form: CompanyPayload;
+  saving: boolean;
+  onOpenChange: (open: boolean) => void;
+  onFormChange: Dispatch<SetStateAction<CompanyPayload>>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <form onSubmit={(event) => void onSubmit(event)} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
+          <Field label="Name">
+            <Input
+              value={form.name}
+              onChange={(event) =>
+                onFormChange((current) => ({ ...current, name: event.target.value }))
+              }
+              required
+            />
+          </Field>
+          <Field label="Description">
+            <Textarea
+              rows={4}
+              value={form.description}
+              onChange={(event) =>
+                onFormChange((current) => ({ ...current, description: event.target.value }))
+              }
+              placeholder="Primary customer workspace for production uptime checks."
+            />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Save Company"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function StatCard({ label, value, sub, icon: Icon, tone }: { label: string; value: string; sub: string; icon: ElementType; tone: "neutral" | "green" | "red" }) {

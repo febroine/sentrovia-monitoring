@@ -41,8 +41,8 @@ export function SavedRecipientsManager({
 
   return (
     <div className="rounded-xl border bg-muted/20 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="text-sm font-medium">Saved notification recipients</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Store common team mailboxes once, then reuse them in monitor notification settings.
@@ -73,7 +73,7 @@ export function SavedRecipientsManager({
               key={email}
               type="button"
               onClick={() => removeRecipient(email)}
-              className="rounded-full border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-destructive/30 hover:text-destructive"
+              className="max-w-full rounded-full border bg-background px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors [overflow-wrap:anywhere] hover:border-destructive/30 hover:text-destructive"
             >
               {email}
             </button>
