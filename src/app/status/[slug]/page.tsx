@@ -5,6 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { getPublicStatusPage } from "@/lib/public-status/service";
 import { formatDateTime, type TimeDisplaySettings } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { StatusPageRefresh } from "./status-page-refresh";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type Params = Promise<{ slug: string }>;
 type StatusPageData = NonNullable<Awaited<ReturnType<typeof getPublicStatusPage>>>;
@@ -45,6 +49,7 @@ function PublicStatusView({ statusPage }: { statusPage: StatusPageData }) {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <StatusPageRefresh />
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <StatusHeader
           generatedAt={statusPage.generatedAt}
@@ -187,10 +192,10 @@ function ServiceStatusList({
         </Badge>
       </div>
 
-      <div className="divide-y divide-border">
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
         {services.length > 0 ? (
           services.map((service) => (
-            <ServiceRow
+            <ServiceCard
               key={service.id}
               healthLabel={service.healthLabel}
               lastCheckedAt={formatLastCheckedAt(service.lastCheckedAt, timeDisplaySettings)}
@@ -208,7 +213,7 @@ function ServiceStatusList({
 
 function EmptyServiceState() {
   return (
-    <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+    <div className="rounded-lg border border-dashed border-border px-5 py-10 text-center text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
       No services are currently published on this status page.
     </div>
   );
@@ -235,7 +240,7 @@ function StatusMetric({ title, value, detail, tone, icon: Icon }: StatusMetricPr
   );
 }
 
-function ServiceRow({
+function ServiceCard({
   healthLabel,
   lastCheckedAt,
   service,
@@ -249,16 +254,21 @@ function ServiceRow({
   const meta = getStatusMeta(status);
 
   return (
-    <article className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(420px,0.9fr)] lg:items-center">
+    <article className={cn("flex min-h-[260px] flex-col justify-between rounded-lg border bg-background/75 p-4", meta.card)}>
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={cn("size-2.5 rounded-full", meta.dot)} />
-          <h2 className="truncate text-sm font-semibold">{service.name}</h2>
-          <Badge variant="outline" className="border-border bg-background/60 text-muted-foreground">
-            <Globe2 className="mr-1 h-3 w-3" />
-            {service.company}
-          </Badge>
-          <Badge variant="outline" className={cn("border-border bg-background/60", meta.text)}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <Globe2 className="h-3.5 w-3.5" />
+              {service.company}
+            </p>
+            <h2 className="mt-3 break-all text-sm font-semibold leading-6 text-foreground">{service.url}</h2>
+          </div>
+          <span className={cn("mt-1 size-2.5 shrink-0 rounded-full", meta.dot)} />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Badge variant="outline" className={cn("border-border bg-background/70", meta.text)}>
             {meta.label}
           </Badge>
           {service.hasOpenIncident ? (
@@ -267,10 +277,11 @@ function ServiceRow({
             </Badge>
           ) : null}
         </div>
+
         <p className="mt-2 text-xs text-muted-foreground">Last checked {lastCheckedAt}</p>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="mt-5 grid gap-2 sm:grid-cols-3">
         <StatusDetail label="Health" value={`${service.healthScore} / ${healthLabel}`} />
         <StatusDetail label="Uptime" value={service.uptime} />
         <StatusDetail label="Latency" value={typeof service.latencyMs === "number" ? `${service.latencyMs}ms` : "--"} />
@@ -330,14 +341,29 @@ function getOverallStatus(totals: { total: number; operational: number; degraded
 
 function getStatusMeta(status: ServiceStatus) {
   if (status === "down") {
-    return { label: "Outage", dot: "bg-rose-400", text: "text-rose-300" };
+    return {
+      label: "Outage",
+      dot: "bg-rose-400",
+      text: "text-rose-300",
+      card: "border-rose-500/35 bg-rose-500/10",
+    };
   }
 
   if (status === "pending") {
-    return { label: "Degraded", dot: "bg-amber-400", text: "text-amber-300" };
+    return {
+      label: "Degraded",
+      dot: "bg-amber-400",
+      text: "text-amber-300",
+      card: "border-amber-500/35 bg-amber-500/10",
+    };
   }
 
-  return { label: "Operational", dot: "bg-emerald-400", text: "text-emerald-300" };
+  return {
+    label: "Operational",
+    dot: "bg-emerald-400",
+    text: "text-emerald-300",
+    card: "border-emerald-500/25 bg-emerald-500/10",
+  };
 }
 
 function getToneClass(tone: StatusTone) {

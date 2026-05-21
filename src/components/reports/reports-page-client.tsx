@@ -180,7 +180,7 @@ export default function ReportsPageClient() {
     [schedules]
   );
 
-  const refreshPage = useCallback(async () => {
+  const refreshPage = useCallback(async (options: { clearMessage?: boolean } = {}) => {
     setLoading(true);
 
     try {
@@ -204,7 +204,9 @@ export default function ReportsPageClient() {
 
       setSchedules(reportsData.schedules ?? []);
       setCompanies(companiesData.companies ?? []);
-      setMessage(null);
+      if (options.clearMessage !== false) {
+        setMessage(null);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load reports.");
     } finally {
@@ -287,18 +289,16 @@ export default function ReportsPageClient() {
         delivery?: { status?: string; deliveredAt?: string | null } | null;
       };
 
-      if (!response.ok) {
+      if (!response.ok || !data.report || data.delivery?.status !== "delivered") {
         throw new Error(data.message ?? "Unable to send the report.");
       }
 
-      if (data.report) {
-        setPreview(data.report);
-      }
+      setPreview(data.report);
 
       setLastDeliveryResult({
-        status: data.delivery?.status ?? "sent",
-        deliveredAt: data.delivery?.deliveredAt ?? null,
-        reportTitle: data.report?.title ?? "Manual report",
+        status: data.delivery.status,
+        deliveredAt: data.delivery.deliveredAt ?? null,
+        reportTitle: data.report.title,
         recipients: parseRecipients(previewDraft.recipients),
       });
       setMessage("Report sent successfully with CSV and print-ready HTML attachments.");
@@ -376,21 +376,32 @@ export default function ReportsPageClient() {
 
     try {
       const response = await fetch(`/api/reports/${scheduleId}/send`, { method: "POST" });
-      const data = (await response.json()) as { message?: string; schedule?: ReportScheduleRecord };
+      const data = (await response.json()) as {
+        message?: string;
+        report?: GeneratedReport | null;
+        delivery?: { status?: string; deliveredAt?: string | null } | null;
+        schedule?: ReportScheduleRecord;
+      };
 
       if (data.schedule) {
         setSchedules((current) =>
           current.map((schedule) => (schedule.id === data.schedule?.id ? data.schedule : schedule))
         );
       }
-      if (!response.ok) {
+      if (!response.ok || !data.schedule || !data.report || data.delivery?.status !== "delivered") {
         throw new Error(data.message ?? "Unable to send the scheduled report.");
       }
 
-      setMessage("Scheduled report sent successfully with CSV and print-ready HTML attachments.");
+      setLastDeliveryResult({
+        status: data.delivery.status,
+        deliveredAt: data.delivery.deliveredAt ?? null,
+        reportTitle: data.report.title,
+        recipients: data.schedule.recipientEmails,
+      });
+      setMessage("Scheduled report sent successfully.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to send the scheduled report.");
-      await refreshPage();
+      await refreshPage({ clearMessage: false });
     } finally {
       setSaving(false);
     }
@@ -584,10 +595,11 @@ export default function ReportsPageClient() {
               Keep an eye on upcoming sends and the latest delivery outcome.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 pt-4 sm:grid-cols-3">
+          <CardContent className="grid gap-3 pt-4 sm:grid-cols-2 xl:grid-cols-4">
             <PulseMetric label="Next run" value={summary.nextRunLabel} />
             <PulseMetric label="Last delivered" value={summary.lastDeliveredLabel} />
-            <PulseMetric label="Latest status" value={summary.latestStatusLabel} />
+            <PulseMetric label="Successful sends" value={String(summary.deliveredSchedules)} />
+            <PulseMetric label="Failed sends" value={String(summary.failedSchedules)} />
           </CardContent>
         </Card>
       </div>
@@ -1222,7 +1234,8 @@ function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
           Manual send feedback for the last report dispatch from this page.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 pt-4 md:grid-cols-3">
+      <CardContent className="grid gap-3 pt-4 md:grid-cols-4">
+        <DetailBlock label="Status" value={delivery.status} />
         <DetailBlock label="Report" value={delivery.reportTitle} />
         <DetailBlock
           label="Delivered"
@@ -1330,9 +1343,10 @@ function ScheduleCard({
             </Badge>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <DetailBlock label="Next run" value={new Date(schedule.nextRunAt).toLocaleString()} />
             <DetailBlock label="Last delivery" value={schedule.lastDeliveredAt ? new Date(schedule.lastDeliveredAt).toLocaleString() : "No delivery yet"} />
+            <DetailBlock label="Delivery status" value={getScheduleDeliveryStatusLabel(schedule)} />
             <DetailBlock label="Recipients" value={schedule.recipientEmails.join(", ") || "No recipients"} />
             <DetailBlock label="Brand" value={schedule.reportBrandName || "Profile organization"} />
             <DetailBlock label="Package" value={buildSchedulePackageLabel(schedule)} />
@@ -1641,6 +1655,8 @@ function StateChip({
 function buildSummary(schedules: ReportScheduleRecord[]) {
   const activeSchedules = schedules.filter((schedule) => schedule.isActive).length;
   const pausedSchedules = schedules.length - activeSchedules;
+  const deliveredSchedules = schedules.filter((schedule) => schedule.lastStatus === "delivered").length;
+  const failedSchedules = schedules.filter((schedule) => schedule.lastStatus === "failed").length;
   const weeklySchedules = schedules.filter((schedule) => schedule.cadence === "weekly").length;
   const monthlySchedules = schedules.filter((schedule) => schedule.cadence === "monthly").length;
   const allTimeSchedules = schedules.filter((schedule) => schedule.cadence === "all_time").length;
@@ -1654,11 +1670,12 @@ function buildSummary(schedules: ReportScheduleRecord[]) {
       const rightTime = right.lastDeliveredAt ? new Date(right.lastDeliveredAt).getTime() : 0;
       return rightTime - leftTime;
     })[0];
-  const latestStatus = schedules[0]?.lastStatus ?? "idle";
 
   return {
     activeSchedules,
     pausedSchedules,
+    deliveredSchedules,
+    failedSchedules,
     weeklySchedules,
     monthlySchedules,
     allTimeSchedules,
@@ -1666,7 +1683,6 @@ function buildSummary(schedules: ReportScheduleRecord[]) {
     recipientCount,
     nextRunLabel: nextRun ? new Date(nextRun.nextRunAt).toLocaleString() : "No active schedule",
     lastDeliveredLabel: lastDelivered?.lastDeliveredAt ? new Date(lastDelivered.lastDeliveredAt).toLocaleString() : "No delivery yet",
-    latestStatusLabel: latestStatus,
   };
 }
 
@@ -1738,6 +1754,22 @@ function buildSchedulePackageLabel(schedule: ReportScheduleRecord) {
   ].filter(Boolean);
 
   return `${schedule.deliveryDetailLevel} / ${attachments.join(", ") || "no attachments"}`;
+}
+
+function getScheduleDeliveryStatusLabel(schedule: ReportScheduleRecord) {
+  if (schedule.lastStatus === "delivered") {
+    return schedule.lastDeliveredAt
+      ? `Delivered at ${new Date(schedule.lastDeliveredAt).toLocaleString()}`
+      : "Delivered";
+  }
+
+  if (schedule.lastStatus === "failed") {
+    return schedule.lastRunAt
+      ? `Failed at ${new Date(schedule.lastRunAt).toLocaleString()}`
+      : "Failed";
+  }
+
+  return "Not sent yet";
 }
 
 function resolveAccentClass(tone: "violet" | "sky" | "amber" | "emerald" | "slate") {

@@ -312,6 +312,7 @@ export async function dispatchReportNow(
 
   const report = await generateReportPreview(userId, input);
   const deliveryOptions = normalizeReportDeliveryOptions(input);
+  const attachments = await buildReportAttachments(report, deliveryOptions);
   const message = buildReportMessage(report, deliveryOptions);
   const delivery = await sendEmailDelivery({
     userId,
@@ -320,7 +321,7 @@ export async function dispatchReportNow(
     subject: message.subject,
     textBody: message.textBody,
     htmlBody: message.htmlBody,
-    attachments: await buildReportAttachments(report, deliveryOptions),
+    attachments,
   });
   assertReportEmailDelivered(delivery);
 
@@ -466,9 +467,13 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
     )
     .orderBy(asc(monitors.name));
 
-  const monitorIds = monitorRows.map((monitor) => monitor.id);
+  const normalizedMonitorRows = monitorRows.map((monitor) => ({
+    ...monitor,
+    status: normalizeReportStatus(monitor.status),
+  }));
+  const monitorIds = normalizedMonitorRows.map((monitor) => monitor.id);
 
-  const checks =
+  const checkRows =
     monitorIds.length === 0
       ? []
       : await db
@@ -490,6 +495,10 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
           )
           .orderBy(desc(monitorChecks.createdAt))
           .limit(checkLimit);
+  const checks = checkRows.map((check) => ({
+    ...check,
+    status: normalizeReportStatus(check.status),
+  }));
 
   const failureEvents =
     monitorIds.length === 0
@@ -518,7 +527,7 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
   return {
     companyId: company?.id ?? null,
     companyName: company?.name ?? null,
-    monitorRows,
+    monitorRows: normalizedMonitorRows,
     checks,
     failureEvents,
   };
@@ -1048,35 +1057,72 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
   return sections.join("");
 }
 
+type ReportAttachmentRequest = {
+  label: string;
+  build: () => Mail.Attachment | Promise<Mail.Attachment>;
+};
+
 async function buildReportAttachments(report: GeneratedReport, options: ReportDeliveryOptions): Promise<Mail.Attachment[]> {
-  const fileSlug = buildReportFileSlug(report);
+  const requests = getReportAttachmentRequests(report, options);
   const attachments: Mail.Attachment[] = [];
 
+  for (const request of requests) {
+    const attachment = await buildReportAttachmentSafely(request);
+    if (attachment) {
+      attachments.push(attachment);
+    }
+  }
+
+  return attachments;
+}
+
+function getReportAttachmentRequests(report: GeneratedReport, options: ReportDeliveryOptions): ReportAttachmentRequest[] {
+  const fileSlug = buildReportFileSlug(report);
+  const requests: ReportAttachmentRequest[] = [];
+
   if (options.attachCsv) {
-    attachments.push({
-      filename: `${fileSlug}.csv`,
-      content: buildReportCsv(report),
-      contentType: "text/csv; charset=utf-8",
+    requests.push({
+      label: "CSV",
+      build: () => ({
+        filename: `${fileSlug}.csv`,
+        content: buildReportCsv(report),
+        contentType: "text/csv; charset=utf-8",
+      }),
     });
   }
 
   if (options.attachHtml) {
-    attachments.push({
-      filename: `${fileSlug}.html`,
-      content: buildPrintableReportHtml(report),
-      contentType: "text/html; charset=utf-8",
+    requests.push({
+      label: "HTML",
+      build: () => ({
+        filename: `${fileSlug}.html`,
+        content: buildPrintableReportHtml(report),
+        contentType: "text/html; charset=utf-8",
+      }),
     });
   }
 
   if (options.attachPdf) {
-    attachments.push({
-      filename: `${fileSlug}.pdf`,
-      content: await buildReportPdf(report),
-      contentType: "application/pdf",
+    requests.push({
+      label: "PDF",
+      build: async () => ({
+        filename: `${fileSlug}.pdf`,
+        content: await buildReportPdf(report),
+        contentType: "application/pdf",
+      }),
     });
   }
 
-  return attachments;
+  return requests;
+}
+
+async function buildReportAttachmentSafely(request: ReportAttachmentRequest) {
+  try {
+    return await request.build();
+  } catch (error) {
+    console.warn(`[sentrovia] ${request.label} report attachment skipped: ${toMessage(error)}`);
+    return null;
+  }
 }
 
 function renderEmailMetric(label: string, value: string, detail: string) {
@@ -1238,6 +1284,14 @@ function normalizeReportDeliveryOptions(input: Partial<ReportPreviewInput> | Rec
 
 function resolveDeliveryDetailLevel(value: unknown): ReportDeliveryOptions["deliveryDetailLevel"] {
   return value === "summary" || value === "full" ? value : "standard";
+}
+
+export function normalizeReportStatus(status: string) {
+  if (status === "up" || status === "down" || status === "pending") {
+    return status;
+  }
+
+  return "pending";
 }
 
 function emptyTemplateToNull(value: unknown) {

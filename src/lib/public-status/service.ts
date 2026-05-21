@@ -33,7 +33,7 @@ export async function getPublicStatusPage(slug: string) {
     db
       .select({
         id: monitors.id,
-        name: monitors.name,
+        url: monitors.url,
         company: monitors.company,
         status: monitors.status,
         lastCheckedAt: monitors.lastCheckedAt,
@@ -45,7 +45,7 @@ export async function getPublicStatusPage(slug: string) {
       })
       .from(monitors)
       .where(and(eq(monitors.userId, settingsRow.userId), eq(monitors.isActive, true)))
-      .orderBy(asc(monitors.company), asc(monitors.name)),
+      .orderBy(asc(monitors.company), asc(monitors.url)),
     db
       .select({
         monitorId: monitorIncidents.monitorId,
@@ -59,8 +59,9 @@ export async function getPublicStatusPage(slug: string) {
   const timeDisplaySettings = resolveTimeDisplaySettings(settings?.appearance);
   const openIncidentMap = new Map(openIncidents.map((incident) => [incident.monitorId, incident.startedAt.toISOString()]));
   const services = monitorRows.map((monitor) => {
+    const status = normalizePublicServiceStatus(monitor.status);
     const health = buildMonitorHealthSummary({
-      status: normalizeSiteStatus(monitor.status),
+      status,
       verificationMode: monitor.verificationMode,
       consecutiveFailures: monitor.consecutiveFailures,
       latencyMs: monitor.latencyMs,
@@ -71,9 +72,9 @@ export async function getPublicStatusPage(slug: string) {
 
     return {
       id: monitor.id,
-      name: monitor.name,
+      url: sanitizePublicMonitorUrl(monitor.url),
       company: monitor.company ?? "Workspace",
-      status: monitor.status,
+      status,
       uptime: monitor.uptime,
       latencyMs: monitor.latencyMs,
       lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
@@ -111,10 +112,31 @@ export async function getPublicStatusPage(slug: string) {
   };
 }
 
-function normalizeSiteStatus(status: string) {
+export function normalizePublicServiceStatus(status: string) {
   if (status === "up" || status === "down" || status === "pending") {
     return status;
   }
 
   return "pending";
+}
+
+export function sanitizePublicMonitorUrl(value: string) {
+  if (!value.includes("://")) {
+    return sanitizePlainMonitorTarget(value);
+  }
+
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return sanitizePlainMonitorTarget(value);
+  }
+}
+
+function sanitizePlainMonitorTarget(value: string) {
+  return value.replace(/[?#].*$/, "").replace(/^([^:/?#]+:\/\/)?[^@\s/]+@/, "$1");
 }
