@@ -20,6 +20,8 @@ const EMPTY_OVERVIEW: DeliveryOverview = {
   summary: { delivered: 0, failed: 0, retrying: 0, pendingWebhookRetries: 0 },
 };
 
+type MessageResponse = { message?: string };
+
 export function DeliveryPageClient() {
   const [overview, setOverview] = useState<DeliveryOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
@@ -66,20 +68,24 @@ export function DeliveryPageClient() {
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
-    const response = await fetch("/api/delivery", { cache: "no-store" });
-    const data = (await response.json()) as { overview?: DeliveryOverview; message?: string };
 
-    if (response.ok) {
-      const nextOverview = data.overview ?? EMPTY_OVERVIEW;
+    try {
+      const response = await fetch("/api/delivery", { cache: "no-store" });
+      const data = await readJsonOrNull<{ overview?: DeliveryOverview; message?: string }>(response);
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to load delivery operations.");
+      }
+
+      const nextOverview = data?.overview ?? EMPTY_OVERVIEW;
       setOverview(nextOverview);
       setWebhookUrl(nextOverview.webhook?.url ?? "");
       setWebhookActive(nextOverview.webhook?.isActive ?? true);
       setMessage(null);
-    } else {
-      setMessage(data.message ?? "Unable to load delivery operations.");
+    } catch (error) {
+      setMessage(toMessage(error, "Unable to load delivery operations."));
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -92,58 +98,78 @@ export function DeliveryPageClient() {
 
   async function saveWebhook() {
     setPendingAction("save-webhook");
-    const response = await fetch("/api/delivery", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: webhookUrl, secret: webhookSecret, isActive: webhookActive }),
-    });
-    const data = (await response.json()) as { overview?: DeliveryOverview; message?: string };
 
-    if (response.ok) {
-      setOverview(data.overview ?? EMPTY_OVERVIEW);
+    try {
+      const response = await fetch("/api/delivery", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: webhookUrl, secret: webhookSecret, isActive: webhookActive }),
+      });
+      const data = await readJsonOrNull<{ overview?: DeliveryOverview; message?: string }>(response);
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to save webhook settings.");
+      }
+
+      setOverview(data?.overview ?? EMPTY_OVERVIEW);
       setWebhookSecret("");
       setMessage("Webhook endpoint saved.");
+    } catch (error) {
+      setMessage(toMessage(error, "Unable to save webhook settings."));
+    } finally {
       setPendingAction(null);
-      return;
     }
-
-    setPendingAction(null);
-    setMessage(data.message ?? "Unable to save webhook settings.");
   }
 
   async function sendTest(channel: "email" | "telegram" | "webhook" | "discord") {
     setPendingAction(`test-${channel}`);
-    const response = await fetch("/api/delivery/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        channel,
-        destination: emailTarget,
-        botToken: telegramBotToken,
-        chatId: telegramChatId,
-        message: testMessage,
-      }),
-    });
-    const data = (await response.json()) as { message?: string };
-    setMessage(response.ok ? `${toTitleCase(channel)} test sent.` : data.message ?? `Unable to send ${channel} test.`);
-    await loadOverview();
-    setPendingAction(null);
+
+    try {
+      const response = await fetch("/api/delivery/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel,
+          destination: emailTarget,
+          botToken: telegramBotToken,
+          chatId: telegramChatId,
+          message: testMessage,
+        }),
+      });
+      const data = await readJsonOrNull<MessageResponse>(response);
+      if (!response.ok) {
+        throw new Error(data?.message ?? `Unable to send ${channel} test.`);
+      }
+
+      await loadOverview();
+      setMessage(`${toTitleCase(channel)} test sent.`);
+    } catch (error) {
+      setMessage(toMessage(error, `Unable to send ${channel} test.`));
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   async function retryQueue() {
     setPendingAction("retry-queue");
-    const response = await fetch("/api/delivery/retry", { method: "POST" });
-    const data = (await response.json()) as { overview?: DeliveryOverview; result?: { processed: number }; message?: string };
 
-    if (response.ok) {
-      setOverview(data.overview ?? EMPTY_OVERVIEW);
-      setMessage(`Processed ${data.result?.processed ?? 0} webhook retry item(s).`);
+    try {
+      const response = await fetch("/api/delivery/retry", { method: "POST" });
+      const data = await readJsonOrNull<{
+        overview?: DeliveryOverview;
+        result?: { processed: number };
+        message?: string;
+      }>(response);
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to retry webhook queue.");
+      }
+
+      setOverview(data?.overview ?? EMPTY_OVERVIEW);
+      setMessage(`Processed ${data?.result?.processed ?? 0} webhook retry item(s).`);
+    } catch (error) {
+      setMessage(toMessage(error, "Unable to retry webhook queue."));
+    } finally {
       setPendingAction(null);
-      return;
     }
-
-    setPendingAction(null);
-    setMessage(data.message ?? "Unable to retry webhook queue.");
   }
 
   return (
@@ -386,6 +412,14 @@ function statusTone(value: string) {
 
 function progressLabel(value: string) {
   return toTitleCase(value.replace("test-", "sending "));
+}
+
+async function readJsonOrNull<T>(response: Response) {
+  return (await response.json().catch(() => null)) as T | null;
+}
+
+function toMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function PayloadMetric({ label, value }: { label: string; value: string }) {

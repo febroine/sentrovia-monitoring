@@ -10,6 +10,7 @@ const jsonMatchModeSchema = z.enum(["equals", "contains", "exists"]);
 const INVALID_HOST_INPUT_PATTERN = /[\s/?#]/;
 const MAX_MONITOR_EMAIL_RECIPIENTS = 25;
 const MAX_MONITOR_EMAIL_RECIPIENTS_LENGTH = 2000;
+const TELEGRAM_NOTIFICATION_PREFS = new Set(["telegram", "both"]);
 
 function optionalString(maxLength: number) {
   return z
@@ -146,6 +147,24 @@ export const monitorInputSchema = z
             message: `Invalid email recipient: ${recipient}`,
           });
         }
+      }
+    }
+
+    if (TELEGRAM_NOTIFICATION_PREFS.has(value.notificationPref)) {
+      if (!value.telegramBotToken) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["telegramBotToken"],
+          message: "Enter a Telegram bot token when Telegram notifications are enabled.",
+        });
+      }
+
+      if (!value.telegramChatId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["telegramChatId"],
+          message: "Enter a Telegram chat id when Telegram notifications are enabled.",
+        });
       }
     }
 

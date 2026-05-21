@@ -15,6 +15,10 @@ interface CompaniesState {
   bulkAction: (action: "activate" | "deactivate" | "delete", ids: string[]) => Promise<string[] | null>;
 }
 
+async function readJsonOrNull<T>(response: Response): Promise<T | null> {
+  return (await response.json().catch(() => null)) as T | null;
+}
+
 export const useCompaniesStore = create<CompaniesState>((set) => ({
   companies: [],
   loading: true,
@@ -24,9 +28,9 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
     set({ loading: true });
     try {
       const response = await fetch("/api/companies", { cache: "no-store" });
-      const data = (await response.json()) as { message?: string; companies?: CompanyRecord[] };
-      if (!response.ok) {
-        throw new Error(data.message ?? "Unable to load companies.");
+      const data = await readJsonOrNull<{ message?: string; companies?: CompanyRecord[] }>(response);
+      if (!response.ok || !data) {
+        throw new Error(data?.message ?? "Unable to load companies.");
       }
 
       set({ companies: data.companies ?? [], loading: false, error: null });
@@ -42,17 +46,18 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await response.json()) as { message?: string; company?: CompanyRecord };
-      if (!response.ok || !data.company) {
-        throw new Error(data.message ?? "Unable to create company.");
+      const data = await readJsonOrNull<{ message?: string; company?: CompanyRecord }>(response);
+      if (!response.ok || !data?.company) {
+        throw new Error(data?.message ?? "Unable to create company.");
       }
 
+      const company = data.company;
       set((state) => ({
-        companies: [data.company!, ...state.companies],
+        companies: [company, ...state.companies],
         saving: false,
         error: null,
       }));
-      return data.company;
+      return company;
     } catch (error) {
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to create company." });
       return null;
@@ -66,9 +71,9 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await response.json()) as { message?: string; company?: CompanyRecord };
-      if (!response.ok || !data.company) {
-        throw new Error(data.message ?? "Unable to update company.");
+      const data = await readJsonOrNull<{ message?: string; company?: CompanyRecord }>(response);
+      if (!response.ok || !data?.company) {
+        throw new Error(data?.message ?? "Unable to update company.");
       }
 
       const company = data.company;
@@ -89,9 +94,9 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       const response = await fetch(`/api/companies/${id}`, {
         method: "DELETE",
       });
-      const data = (await response.json()) as { message?: string; id?: string };
-      if (!response.ok || !data.id) {
-        throw new Error(data.message ?? "Unable to delete company.");
+      const data = await readJsonOrNull<{ message?: string; id?: string }>(response);
+      if (!response.ok || !data?.id) {
+        throw new Error(data?.message ?? "Unable to delete company.");
       }
 
       set((state) => ({
@@ -113,14 +118,14 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ids }),
       });
-      const data = (await response.json()) as {
+      const data = await readJsonOrNull<{
         message?: string;
         ids?: string[];
         companies?: CompanyRecord[];
-      };
+      }>(response);
 
-      if (!response.ok) {
-        throw new Error(data.message ?? "Unable to process company action.");
+      if (!response.ok || !data) {
+        throw new Error(data?.message ?? "Unable to process company action.");
       }
 
       set((state) => ({

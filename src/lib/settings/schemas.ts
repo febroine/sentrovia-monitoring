@@ -19,6 +19,9 @@ const publicStatusSlug = z
   .max(120)
   .default("")
   .transform(normalizePublicStatusSlug);
+const MONITORING_INTERVAL_PATTERN = /^(\d+)\s*(s|sn|sec|m|min|dk|h|hr|sa)$/;
+const MIN_MONITORING_INTERVAL_VALUE = 1;
+const MAX_MONITORING_INTERVAL_VALUE = 1440;
 
 export const settingsSchema = z.object({
   profile: z.object({
@@ -67,7 +70,7 @@ export const settingsSchema = z.object({
       .transform((recipients) => Array.from(new Set(recipients))),
   }),
   monitoring: z.object({
-    interval: z.string().trim().min(2).max(16),
+    interval: z.string().trim().min(2).max(16).transform(normalizeMonitoringInterval),
     timeout: z.coerce.number().int().min(1000).max(120000),
     retries: z.coerce.number().int().min(1).max(10),
     batchSize: z.coerce.number().int().min(1).max(500),
@@ -129,4 +132,35 @@ function normalizePublicStatusSlug(value: string) {
     .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
+}
+
+function normalizeMonitoringInterval(value: string, context: z.RefinementCtx) {
+  const match = value.toLowerCase().match(MONITORING_INTERVAL_PATTERN);
+  if (!match) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Enter an interval like 30s, 5m, or 1h.",
+    });
+    return z.NEVER;
+  }
+
+  const amount = Number(match[1]);
+  if (amount < MIN_MONITORING_INTERVAL_VALUE || amount > MAX_MONITORING_INTERVAL_VALUE) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Interval value must be between ${MIN_MONITORING_INTERVAL_VALUE} and ${MAX_MONITORING_INTERVAL_VALUE}.`,
+    });
+    return z.NEVER;
+  }
+
+  const unit = match[2];
+  if (["s", "sn", "sec"].includes(unit)) {
+    return `${amount}s`;
+  }
+
+  if (["h", "hr", "sa"].includes(unit)) {
+    return `${amount}h`;
+  }
+
+  return `${amount}m`;
 }

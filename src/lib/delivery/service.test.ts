@@ -27,10 +27,11 @@ vi.mock("@/lib/settings/smtp", () => ({
   getSmtpSettings: mocks.getSmtpSettings,
 }));
 
-import { readLimitedResponseText, sendEmailDelivery } from "@/lib/delivery/service";
+import { readLimitedResponseText, sendEmailDelivery, sendTelegramDelivery } from "@/lib/delivery/service";
 
 describe("delivery service", () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
     mocks.createTransport.mockReturnValue({ sendMail: mocks.sendMail });
     mocks.sendMail.mockResolvedValue({ accepted: ["alerts@example.com"] });
@@ -103,6 +104,43 @@ describe("delivery service", () => {
     const response = new Response("abc");
 
     await expect(readLimitedResponseText(response, 3)).resolves.toBe("abc");
+  });
+
+  it("fails telegram delivery without calling Telegram when credentials are missing", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "failed" }]);
+
+    const result = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      botToken: "",
+      chatId: "",
+      body: "Down",
+    });
+
+    expect(result?.status).toBe("failed");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("truncates telegram messages to Telegram's message size limit", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      botToken: "123456:telegram-token",
+      chatId: "-1001234567890",
+      body: "a".repeat(5_000),
+    });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const payload = JSON.parse(String(request.body)) as { text: string };
+
+    expect(result?.status).toBe("delivered");
+    expect(payload.text).toHaveLength(4096);
+    expect(payload.text.endsWith("...[truncated]")).toBe(true);
   });
 });
 

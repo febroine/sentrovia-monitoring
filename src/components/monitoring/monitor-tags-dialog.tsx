@@ -22,15 +22,23 @@ export function MonitorTagsDialog({
   const [action, setAction] = useState<"add" | "remove" | "replace">("add");
   const [tagsText, setTagsText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   async function handleSubmit() {
     setSubmitting(true);
-    await onApply({
-      action,
-      tags: tagsText.split(",").map((tag) => tag.trim()).filter(Boolean),
-    });
-    setSubmitting(false);
-    onOpenChange(false);
+    setMessage(null);
+
+    try {
+      await onApply({
+        action,
+        tags: tagsText.split(",").map((tag) => tag.trim()).filter(Boolean),
+      });
+      onOpenChange(false);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to apply monitor tags.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -41,6 +49,7 @@ export function MonitorTagsDialog({
           setAction("add");
           setTagsText("");
           setSubmitting(false);
+          setMessage(null);
         }
         onOpenChange(nextOpen);
       }}
@@ -76,6 +85,8 @@ export function MonitorTagsDialog({
             />
           </div>
         </div>
+
+        {message ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{message}</div> : null}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -20,10 +20,10 @@ export const useWorkerStore = create<WorkerStore>((set, get) => ({
   loadWorker: async (range = "24h") => {
     try {
       const response = await fetch(`/api/worker?range=${range}`, { cache: "no-store" });
-      const data = (await response.json()) as { message?: string } & WorkerStatus;
+      const data = await readJsonOrNull<{ message?: string } & WorkerStatus>(response);
 
-      if (!response.ok) {
-        throw new Error(data.message ?? "Unable to load worker state.");
+      if (!response.ok || !data) {
+        throw new Error(data?.message ?? "Unable to load worker state.");
       }
 
       set({ worker: data, loading: false, error: null });
@@ -46,12 +46,12 @@ export const useWorkerStore = create<WorkerStore>((set, get) => ({
       const response = await fetch("/api/worker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: current.desiredState === "running" ? "stop" : "start" }),
+        body: JSON.stringify({ action: getNextWorkerAction(current) }),
       });
-      const data = (await response.json()) as { message?: string } & WorkerStatus;
+      const data = await readJsonOrNull<{ message?: string } & WorkerStatus>(response);
 
-      if (!response.ok) {
-        throw new Error(data.message ?? "Unable to update worker state.");
+      if (!response.ok || !data) {
+        throw new Error(data?.message ?? "Unable to update worker state.");
       }
 
       set({ worker: data, commandLoading: false, error: null });
@@ -63,3 +63,15 @@ export const useWorkerStore = create<WorkerStore>((set, get) => ({
     }
   },
 }));
+
+async function readJsonOrNull<T>(response: Response) {
+  return (await response.json().catch(() => null)) as T | null;
+}
+
+function getNextWorkerAction(worker: WorkerStatus): "start" | "stop" {
+  if (worker.desiredState !== "running") {
+    return "start";
+  }
+
+  return worker.running || worker.processAlive ? "stop" : "start";
+}

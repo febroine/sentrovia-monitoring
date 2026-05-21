@@ -57,7 +57,7 @@ export default function SettingsPageClient() {
       {error ? <Banner tone="error">{error}</Banner> : null}
       {message ? <Banner tone="success">{message}</Banner> : null}
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-4">
         <SummaryCard
           tone="green"
           icon={Mail}
@@ -75,7 +75,7 @@ export default function SettingsPageClient() {
           icon={Clock3}
           label="Default Timeout"
           value={`${settings.monitoring.timeout} ms`}
-          description={`${settings.monitoring.retries} verification attempts · ${settings.monitoring.method}`}
+          description={`${settings.monitoring.retries} verification attempts - ${settings.monitoring.method}`}
           onClick={() => setActiveTab("monitoring")}
         />
         <SummaryCard
@@ -95,7 +95,7 @@ export default function SettingsPageClient() {
           icon={Database}
           label="Data Retention"
           value={`${settings.data.eventRetentionDays} days`}
-          description={`Backups ${settings.data.autoBackupEnabled ? "enabled" : "disabled"} · window ${settings.data.backupWindow}`}
+          description={`Backups ${settings.data.autoBackupEnabled ? "enabled" : "disabled"} - window ${settings.data.backupWindow}`}
           onClick={() => setActiveTab("data")}
         />
       </div>
@@ -104,7 +104,7 @@ export default function SettingsPageClient() {
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as TabId)}
         orientation="vertical"
-        className="gap-6 md:grid md:grid-cols-[200px_minmax(0,1fr)]"
+        className="gap-8 md:grid md:grid-cols-[220px_minmax(0,1fr)]"
       >
         <TabsList className="h-fit w-full flex-col items-stretch rounded-2xl border bg-card p-2 shadow-sm">
           {tabs.map((tab) => (
@@ -119,7 +119,7 @@ export default function SettingsPageClient() {
           ))}
         </TabsList>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
           {loading ? (
             <Card>
               <CardContent className="p-6 text-sm text-muted-foreground">Loading settings...</CardContent>
@@ -198,9 +198,9 @@ function SummaryCard({
           : "text-red-600 dark:text-red-400";
 
   return (
-    <button type="button" onClick={onClick} className="text-left">
+    <button type="button" onClick={onClick} className="h-full w-full text-left">
       <Card className="overflow-hidden transition-colors hover:border-border/80">
-        <CardContent className={`border-l-2 ${border} px-4 py-3`}>
+        <CardContent className={`h-full border-l-2 ${border} px-5 py-4`}>
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>

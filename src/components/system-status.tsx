@@ -66,6 +66,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
   const workerActive = worker?.running ?? false;
   const desiredRunning = worker?.desiredState === "running";
   const processAlive = worker?.processAlive ?? false;
+  const shouldOfferStop = desiredRunning && (workerActive || processAlive);
   const uptimeSeconds = worker?.startedAt
     ? Math.floor((Date.now() - new Date(worker.startedAt).getTime()) / 1000)
     : 0;
@@ -244,7 +245,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
               type="button"
               className={cn(
                 "mt-4 w-full",
-                desiredRunning
+                shouldOfferStop
                   ? "bg-destructive text-white hover:bg-destructive/90"
                   : "bg-emerald-600 text-white hover:bg-emerald-700"
               )}
@@ -253,12 +254,12 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
             >
               {commandLoading ? (
                 <LoaderCircle className="size-4 animate-spin" />
-              ) : desiredRunning ? (
+              ) : shouldOfferStop ? (
                 <Square className="size-4 fill-current" />
               ) : (
                 <Play className="size-4 fill-current" />
               )}
-              {commandLoading ? "Applying" : desiredRunning ? "Stop Worker" : "Start Worker"}
+              {commandLoading ? "Applying" : shouldOfferStop ? "Stop Worker" : "Start Worker"}
             </Button>
           </div>
         </div>

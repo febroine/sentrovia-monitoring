@@ -67,6 +67,42 @@ describe("settings schema", () => {
 
     expect(parsed.notifications.savedEmailRecipients).toEqual(["ops@example.com", "noc@example.com"]);
   });
+
+  it("normalizes valid monitoring intervals", () => {
+    const parsed = settingsSchema.parse({
+      ...buildSettingsPayload(),
+      monitoring: {
+        ...buildSettingsPayload().monitoring,
+        interval: "15 dk",
+      },
+    });
+
+    expect(parsed.monitoring.interval).toBe("15m");
+  });
+
+  it("rejects invalid monitoring interval formats", () => {
+    const parsed = settingsSchema.safeParse({
+      ...buildSettingsPayload(),
+      monitoring: {
+        ...buildSettingsPayload().monitoring,
+        interval: "soon",
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects monitoring intervals that cannot become monitor defaults", () => {
+    const parsed = settingsSchema.safeParse({
+      ...buildSettingsPayload(),
+      monitoring: {
+        ...buildSettingsPayload().monitoring,
+        interval: "1441m",
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
 });
 
 function buildSettingsPayload() {

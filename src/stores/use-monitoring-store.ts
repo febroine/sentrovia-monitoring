@@ -18,8 +18,8 @@ interface MonitoringState {
   clearError: () => void;
 }
 
-async function readJson<T>(response: Response): Promise<T> {
-  return (await response.json()) as T;
+async function readJsonOrNull<T>(response: Response): Promise<T | null> {
+  return (await response.json().catch(() => null)) as T | null;
 }
 
 export const useMonitoringStore = create<MonitoringState>((set) => ({
@@ -32,10 +32,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
 
     try {
       const response = await fetch("/api/monitors", { cache: "no-store" });
-      const data = await readJson<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
 
-      if (!response.ok) {
-        throw new Error(data.message ?? "Unable to load monitors.");
+      if (!response.ok || !data) {
+        throw new Error(data?.message ?? "Unable to load monitors.");
       }
 
       set({ monitors: data.monitors ?? [], loading: false, error: null });
@@ -55,10 +55,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await readJson<{ message?: string; monitor?: MonitorRecord }>(response);
+      const data = await readJsonOrNull<{ message?: string; monitor?: MonitorRecord }>(response);
 
-      if (!response.ok || !data.monitor) {
-        throw new Error(data.message ?? "Unable to create monitor.");
+      if (!response.ok || !data?.monitor) {
+        throw new Error(data?.message ?? "Unable to create monitor.");
       }
 
       const monitor = data.monitor;
@@ -83,10 +83,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await readJson<{ message?: string; monitor?: MonitorRecord }>(response);
+      const data = await readJsonOrNull<{ message?: string; monitor?: MonitorRecord }>(response);
 
-      if (!response.ok || !data.monitor) {
-        throw new Error(data.message ?? "Unable to update monitor.");
+      if (!response.ok || !data?.monitor) {
+        throw new Error(data?.message ?? "Unable to update monitor.");
       }
 
       const monitor = data.monitor;
@@ -111,10 +111,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive }),
       });
-      const data = await readJson<{ message?: string; monitor?: MonitorRecord }>(response);
+      const data = await readJsonOrNull<{ message?: string; monitor?: MonitorRecord }>(response);
 
-      if (!response.ok || !data.monitor) {
-        throw new Error(data.message ?? "Unable to update monitor active state.");
+      if (!response.ok || !data?.monitor) {
+        throw new Error(data?.message ?? "Unable to update monitor active state.");
       }
 
       const monitor = data.monitor;
@@ -142,10 +142,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids, payload }),
       });
-      const data = await readJson<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
 
-      if (!response.ok || !data.monitors) {
-        throw new Error(data.message ?? "Unable to update selected monitors.");
+      if (!response.ok || !data?.monitors) {
+        throw new Error(data?.message ?? "Unable to update selected monitors.");
       }
 
       const updatedMap = new Map(data.monitors.map((monitor) => [monitor.id, monitor]));
@@ -173,10 +173,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
       });
-      const data = await readJson<{ message?: string; ids?: string[] }>(response);
+      const data = await readJsonOrNull<{ message?: string; ids?: string[] }>(response);
 
-      if (!response.ok || !data.ids) {
-        throw new Error(data.message ?? "Unable to delete monitors.");
+      if (!response.ok || !data?.ids) {
+        throw new Error(data?.message ?? "Unable to delete monitors.");
       }
 
       const deletedIds = new Set(data.ids);

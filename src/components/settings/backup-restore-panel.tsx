@@ -22,45 +22,58 @@ export function BackupRestorePanel({
   const [restoring, setRestoring] = useState(false);
 
   async function handleExport() {
-    const response = await fetch(`/api/system/backup/export?format=${format}`, { cache: "no-store" });
-    const text = await response.text();
+    try {
+      const response = await fetch(`/api/system/backup/export?format=${format}`, { cache: "no-store" });
+      const text = await response.text();
 
-    if (!response.ok) {
+      if (!response.ok) {
+        setMessage("Unable to create a workspace backup.");
+        return;
+      }
+
+      const blob = new Blob([text], { type: format === "yaml" ? "application/yaml" : "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `sentrovia-workspace-backup.${format}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      const timestamp = new Date().toISOString();
+      onBackupCreated(timestamp);
+      setMessage("Workspace backup exported.");
+    } catch {
       setMessage("Unable to create a workspace backup.");
-      return;
     }
-
-    const blob = new Blob([text], { type: format === "yaml" ? "application/yaml" : "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `sentrovia-workspace-backup.${format}`;
-    link.click();
-    URL.revokeObjectURL(url);
-    const timestamp = new Date().toISOString();
-    onBackupCreated(timestamp);
-    setMessage("Workspace backup exported.");
   }
 
   async function handleRestore() {
     setRestoring(true);
     setMessage(null);
 
-    const response = await fetch("/api/system/backup/restore", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ format, content }),
-    });
-    const data = (await response.json()) as { message?: string };
+    try {
+      const response = await fetch("/api/system/backup/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format, content }),
+      });
+      const data = (await response.json().catch(() => null)) as { message?: string } | null;
 
-    setRestoring(false);
-    setMessage(response.ok ? "Workspace backup restored. Refreshing the page is recommended." : data.message ?? "Unable to restore the backup.");
+      setMessage(
+        response.ok
+          ? "Workspace backup restored. Refreshing the page is recommended."
+          : data?.message ?? "Unable to restore the backup."
+      );
+    } catch {
+      setMessage("Unable to restore the backup.");
+    } finally {
+      setRestoring(false);
+    }
   }
 
   return (
     <Card>
-      <CardHeader className="border-b bg-muted/20 pb-4">
-        <div className="flex items-start gap-3">
+      <CardHeader className="border-b bg-muted/20 px-6 py-5">
+        <div className="flex items-start gap-4">
           <div className="rounded-2xl border border-border/70 bg-background/80 p-2.5 shadow-sm">
             <Vault className="h-4 w-4 text-amber-600 dark:text-amber-300" />
           </div>
@@ -75,9 +88,9 @@ export function BackupRestorePanel({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4 p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+      <CardContent className="space-y-5 p-6 md:p-7">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end">
             <div className="w-40 space-y-2">
               <Label>Format</Label>
               <Select value={format} onValueChange={(value) => setFormat(value as "json" | "yaml")}>

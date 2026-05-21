@@ -51,7 +51,7 @@ interface TabProps {
 
 export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <SectionCard
         title="Alert Conditions"
         description="These switches are read by the worker before sending down, recovery, latency, SSL, or status-change notifications."
@@ -171,7 +171,7 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           </Field>
         </div>
         <SavedRecipientsManager settings={settings} updateSetting={updateSetting} />
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-3">
           <ToggleCard
             label="SSL/TLS secure connection"
             description="Start SMTP over a secure transport."
@@ -317,7 +317,7 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <Field label="Default interval" hint="Examples: 1m, 5m, 15m">
+            <Field label="Default interval" hint="Examples: 30s, 5m, 1h. The numeric value must be between 1 and 1440.">
               <Input
                 value={settings.monitoring.interval}
                 onChange={(event) => updateSetting("monitoring.interval", event.target.value)}
@@ -327,6 +327,9 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
             <Field label="Timeout (ms)" hint="Used by the worker when a monitor does not override timeout.">
               <Input
                 type="number"
+                min={1000}
+                max={120000}
+                step={500}
                 value={settings.monitoring.timeout}
                 onChange={(event) => updateSetting("monitoring.timeout", Number(event.target.value) || 1000)}
               />
@@ -337,6 +340,8 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
             >
               <Input
                 type="number"
+                min={1}
+                max={10}
                 value={settings.monitoring.retries}
                 onChange={(event) => updateSetting("monitoring.retries", Number(event.target.value) || 1)}
               />
@@ -347,6 +352,8 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
             >
               <Input
                 type="number"
+                min={1}
+                max={500}
                 value={settings.monitoring.batchSize}
                 onChange={(event) => updateSetting("monitoring.batchSize", Number(event.target.value) || 1)}
               />
@@ -383,6 +390,8 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
             <Field label="Response max length" hint="0 keeps the current unlimited behavior for new monitors.">
               <Input
                 type="number"
+                min={0}
+                max={100000}
                 value={settings.monitoring.responseMaxLength}
                 onChange={(event) =>
                   updateSetting("monitoring.responseMaxLength", Number(event.target.value) || 0)
@@ -392,6 +401,8 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
             <Field label="Max redirects" hint="0 disables redirect following for monitors that do not override it.">
               <Input
                 type="number"
+                min={0}
+                max={10}
                 value={settings.monitoring.maxRedirects}
                 onChange={(event) => updateSetting("monitoring.maxRedirects", Number(event.target.value) || 0)}
               />
@@ -400,7 +411,7 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ToggleCard
           label="Check SSL expiry"
           description="New monitors inherit certificate expiry checks unless the monitor overrides it."
@@ -645,8 +656,8 @@ function SectionCard({
 }) {
   return (
     <Card>
-      <CardHeader className="border-b bg-muted/20 pb-4">
-        <div className="flex items-start gap-3">
+      <CardHeader className="border-b bg-muted/20 px-6 py-5">
+        <div className="flex items-start gap-4">
           {Icon ? (
             <div className="rounded-2xl border border-border/70 bg-background/80 p-2.5 shadow-sm">
               <Icon className={iconClassName ?? "text-primary"} />
@@ -658,7 +669,7 @@ function SectionCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4 p-6">{children}</CardContent>
+      <CardContent className="space-y-5 p-6 md:p-7">{children}</CardContent>
     </Card>
   );
 }
@@ -693,7 +704,7 @@ function ToggleRow({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border bg-card px-4 py-4">
+    <div className="flex items-center justify-between gap-4 rounded-xl border bg-card px-5 py-4">
       <div>
         <p className="text-sm font-medium">{label}</p>
         <p className="mt-1 text-xs text-muted-foreground">{description}</p>
@@ -715,7 +726,7 @@ function ToggleCard({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="rounded-xl border bg-muted/20 p-4">
+    <div className="rounded-xl border bg-muted/20 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium">{label}</p>

@@ -15,7 +15,7 @@ export function NotificationChannelsEditor({
   ) => void;
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-1">
+    <div className="grid gap-4 md:grid-cols-1">
       <ChannelCard
         title="Discord"
         enabled={settings.notifications.discordEnabled}
@@ -44,8 +44,8 @@ function ChannelCard({
   placeholder: string;
 }) {
   return (
-    <div className="rounded-xl border bg-muted/20 p-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="rounded-xl border bg-muted/20 p-5">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">{title} Channel</p>
           <p className="mt-1 text-xs text-muted-foreground">

@@ -25,45 +25,53 @@ export function MonitorConfigDialog({
   const [message, setMessage] = useState<string | null>(null);
 
   async function handleExport() {
-    const response = await fetch(`/api/monitors/config/export?format=${format}`, { cache: "no-store" });
-    const text = await response.text();
+    try {
+      const response = await fetch(`/api/monitors/config/export?format=${format}`, { cache: "no-store" });
+      const text = await response.text();
 
-    if (!response.ok) {
+      if (!response.ok) {
+        setMessage("Unable to export monitor configuration.");
+        return;
+      }
+
+      const blob = new Blob([text], { type: format === "yaml" ? "application/yaml" : "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `sentrovia-monitors.${format}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage(`Monitor configuration exported as ${toEnglishUppercase(format)}.`);
+    } catch {
       setMessage("Unable to export monitor configuration.");
-      return;
     }
-
-    const blob = new Blob([text], { type: format === "yaml" ? "application/yaml" : "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `sentrovia-monitors.${format}`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setMessage(`Monitor configuration exported as ${toEnglishUppercase(format)}.`);
   }
 
   async function handleImport() {
     setSubmitting(true);
     setMessage(null);
 
-    const response = await fetch("/api/monitors/config/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ format, content }),
-    });
-    const data = (await response.json()) as { message?: string };
+    try {
+      const response = await fetch("/api/monitors/config/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format, content }),
+      });
+      const data = (await response.json().catch(() => null)) as { message?: string } | null;
 
-    if (!response.ok) {
-      setMessage(data.message ?? "Unable to import monitor configuration.");
+      if (!response.ok) {
+        setMessage(data?.message ?? "Unable to import monitor configuration.");
+        return;
+      }
+
+      setMessage("Monitor configuration imported.");
+      setContent("");
+      onImported();
+    } catch {
+      setMessage("Unable to import monitor configuration.");
+    } finally {
       setSubmitting(false);
-      return;
     }
-
-    setSubmitting(false);
-    setMessage("Monitor configuration imported.");
-    setContent("");
-    onImported();
   }
 
   return (

@@ -21,6 +21,8 @@ const MAX_WEBHOOK_ATTEMPTS = 5;
 const WEBHOOK_RETRY_DELAY_MS = 5 * 60 * 1000;
 const DELIVERY_REQUEST_TIMEOUT_MS = 15_000;
 const DELIVERY_RESPONSE_BODY_LIMIT_BYTES = 4_000;
+const TELEGRAM_MESSAGE_LIMIT = 4096;
+const TELEGRAM_TRUNCATION_SUFFIX = "\n\n...[truncated]";
 
 export async function getDeliveryOverview(userId: string): Promise<DeliveryOverview> {
   const [endpoint, historyRows] = await Promise.all([
@@ -207,17 +209,24 @@ export async function sendTelegramDelivery(input: {
   chatId: string;
   body: string;
 }) {
-  const destination = input.chatId;
+  const botToken = input.botToken.trim();
+  const chatId = input.chatId.trim();
+  const body = normalizeTelegramMessage(input.body);
+  const destination = chatId || "Telegram not configured";
   const event = await createDeliveryEvent(input.userId, "telegram", input.kind, destination, {
-    text: input.body,
+    text: body,
   });
 
-  if (!input.botToken || !input.chatId) {
+  if (!botToken || !chatId) {
     return markDeliveryFailed(event.id, null, "Telegram bot token or chat id is missing.");
   }
 
+  if (!body.trim()) {
+    return markDeliveryFailed(event.id, null, "Telegram message body is empty.");
+  }
+
   try {
-    const response = await postTelegramMessage(input.botToken, input.chatId, input.body);
+    const response = await postTelegramMessage(botToken, chatId, body);
 
     if (!response.ok) {
       const body = await readLimitedResponseText(response);
@@ -615,6 +624,15 @@ function postTelegramMessage(botToken: string, chatId: string, body: string) {
       disable_web_page_preview: false,
     }),
   });
+}
+
+function normalizeTelegramMessage(body: string) {
+  if (body.length <= TELEGRAM_MESSAGE_LIMIT) {
+    return body;
+  }
+
+  const availableLength = TELEGRAM_MESSAGE_LIMIT - TELEGRAM_TRUNCATION_SUFFIX.length;
+  return `${body.slice(0, availableLength).trimEnd()}${TELEGRAM_TRUNCATION_SUFFIX}`;
 }
 
 function buildDeliveryAbortSignal() {

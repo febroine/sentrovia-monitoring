@@ -12,6 +12,7 @@ export function WorkerPulseCard() {
   const [now, setNow] = useState(() => Date.now());
   const heartbeatAge = worker?.heartbeatAt ? Math.max(0, Math.floor((now - new Date(worker.heartbeatAt).getTime()) / 1000)) : null;
   const stale = worker?.desiredState === "running" && (heartbeatAge === null || heartbeatAge > 180);
+  const shouldOfferStop = Boolean(worker?.desiredState === "running" && (worker.running || worker.processAlive));
 
   useEffect(() => {
     void loadWorker();
@@ -49,7 +50,7 @@ export function WorkerPulseCard() {
               <span>Last Cycle: {worker?.lastCycleAt ? new Date(worker.lastCycleAt).toLocaleString() : "--"}</span>
               <span>PID: {worker?.processAlive ? worker?.pid ?? "--" : "Offline"}</span>
               <span>Backlog: {worker?.observability?.summary.dueBacklog ?? 0}</span>
-              <span>Cycle Duration: {worker?.lastCycleDurationMs === null ? "--" : `${worker?.lastCycleDurationMs}ms`}</span>
+              <span>Cycle Duration: {formatNullableMs(worker?.lastCycleDurationMs)}</span>
             </div>
             <p className="text-xs text-muted-foreground">{error ?? worker?.statusMessage ?? "Worker status will appear here."}</p>
           </div>
@@ -58,15 +59,15 @@ export function WorkerPulseCard() {
             type="button"
             variant="default"
             className={
-              worker?.desiredState === "running"
+              shouldOfferStop
                 ? "bg-destructive text-white hover:bg-destructive/90"
                 : "bg-violet-600 text-white hover:bg-violet-500"
             }
             onClick={() => void toggleWorker()}
-            disabled={commandLoading}
+            disabled={commandLoading || !worker}
           >
-            {worker?.desiredState === "running" ? <Square className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-            {commandLoading ? "Applying..." : worker?.desiredState === "running" ? "Stop Worker" : "Start Worker"}
+            {shouldOfferStop ? <Square className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+            {commandLoading ? "Applying..." : shouldOfferStop ? "Stop Worker" : "Start Worker"}
           </Button>
         </div>
 
@@ -79,4 +80,8 @@ export function WorkerPulseCard() {
       </CardContent>
     </Card>
   );
+}
+
+function formatNullableMs(value: number | null | undefined) {
+  return typeof value === "number" ? `${value}ms` : "--";
 }

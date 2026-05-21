@@ -21,6 +21,10 @@ interface SettingsState {
   clearMessage: () => void;
 }
 
+async function readJsonOrNull<T>(response: Response): Promise<T | null> {
+  return (await response.json().catch(() => null)) as T | null;
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   loading: true,
@@ -32,10 +36,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     try {
       const response = await fetch("/api/settings", { cache: "no-store" });
-      const data = (await response.json()) as { message?: string; settings?: SettingsPayload | null };
+      const data = await readJsonOrNull<{ message?: string; settings?: SettingsPayload | null }>(response);
 
-      if (!response.ok || !data.settings) {
-        throw new Error(data.message ?? "Unable to load settings.");
+      if (!response.ok || !data?.settings) {
+        throw new Error(data?.message ?? "Unable to load settings.");
       }
 
       set({ settings: data.settings, loading: false, error: null, message: null });
@@ -55,10 +59,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(get().settings),
       });
-      const data = (await response.json()) as { message?: string; settings?: SettingsPayload | null };
+      const data = await readJsonOrNull<{ message?: string; settings?: SettingsPayload | null }>(response);
 
-      if (!response.ok || !data.settings) {
-        throw new Error(data.message ?? "Unable to save settings.");
+      if (!response.ok || !data?.settings) {
+        throw new Error(data?.message ?? "Unable to save settings.");
       }
 
       set({

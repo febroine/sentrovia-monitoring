@@ -112,28 +112,43 @@ export default function MonitoringPage() {
   }, [defaultForm, monitors, selectedIds]);
 
   const loadSupportingData = useCallback(async () => {
-    const [companiesResponse, settingsResponse] = await Promise.all([
-      fetch("/api/companies", { cache: "no-store" }),
-      fetch("/api/settings", { cache: "no-store" }),
-    ]);
-    const companiesData = (await companiesResponse.json()) as { companies?: CompanyRecord[] };
-    const settingsData = (await settingsResponse.json()) as { settings?: SettingsPayload | null };
+    try {
+      const [companiesResponse, settingsResponse] = await Promise.all([
+        fetch("/api/companies", { cache: "no-store" }),
+        fetch("/api/settings", { cache: "no-store" }),
+      ]);
+      const companiesData = await readJsonOrNull<{ companies?: CompanyRecord[] }>(companiesResponse);
+      const settingsData = await readJsonOrNull<{ settings?: SettingsPayload | null }>(settingsResponse);
 
-    setCompanies(companiesData.companies ?? []);
-    setSavedEmails(settingsData.settings?.notifications.savedEmailRecipients ?? []);
-    setDefaultForm(buildDefaultMonitorForm(settingsData.settings ?? null));
+      setCompanies(companiesResponse.ok ? companiesData?.companies ?? [] : []);
+      setSavedEmails(
+        settingsResponse.ok ? settingsData?.settings?.notifications.savedEmailRecipients ?? [] : []
+      );
+      setDefaultForm(buildDefaultMonitorForm(settingsResponse.ok ? settingsData?.settings ?? null : null));
+    } catch {
+      setCompanies([]);
+      setSavedEmails([]);
+      setDefaultForm(buildDefaultMonitorForm(null));
+    }
   }, []);
 
   const loadMonitorHistory = useCallback(async () => {
-    const response = await fetch("/api/monitors/history", { cache: "no-store" });
-    const data = (await response.json()) as {
-      history?: Record<string, MonitorHistoryPoint[]>;
-      diagnostics?: Record<string, MonitorDiagnosticRecord[]>;
-      incidentEvents?: Record<string, MonitorIncidentEventRecord[]>;
-    };
-    setHistoryByMonitor(data.history ?? {});
-    setDiagnosticsByMonitor(data.diagnostics ?? {});
-    setIncidentEventsByMonitor(data.incidentEvents ?? {});
+    try {
+      const response = await fetch("/api/monitors/history", { cache: "no-store" });
+      const data = await readJsonOrNull<{
+        history?: Record<string, MonitorHistoryPoint[]>;
+        diagnostics?: Record<string, MonitorDiagnosticRecord[]>;
+        incidentEvents?: Record<string, MonitorIncidentEventRecord[]>;
+      }>(response);
+
+      setHistoryByMonitor(response.ok ? data?.history ?? {} : {});
+      setDiagnosticsByMonitor(response.ok ? data?.diagnostics ?? {} : {});
+      setIncidentEventsByMonitor(response.ok ? data?.incidentEvents ?? {} : {});
+    } catch {
+      setHistoryByMonitor({});
+      setDiagnosticsByMonitor({});
+      setIncidentEventsByMonitor({});
+    }
   }, []);
 
   const refreshMonitoring = useCallback(async () => {
@@ -528,11 +543,16 @@ export default function MonitoringPage() {
         onOpenChange={setTagPatchOpen}
         selectedCount={selectedIds.size}
         onApply={async ({ action, tags }) => {
-          await fetch("/api/monitors/tags", {
+          const response = await fetch("/api/monitors/tags", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ids: Array.from(selectedIds), action, tags }),
           });
+          const data = await readJsonOrNull<{ message?: string }>(response);
+          if (!response.ok) {
+            throw new Error(data?.message ?? "Unable to update monitor tags.");
+          }
+
           await refreshMonitoring();
         }}
       />
@@ -546,5 +566,9 @@ function buildVisiblePages(currentPage: number, totalPages: number, windowSize: 
   const end = Math.min(totalPages, start + windowSize - 1);
 
   return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+async function readJsonOrNull<T>(response: Response) {
+  return (await response.json().catch(() => null)) as T | null;
 }
 

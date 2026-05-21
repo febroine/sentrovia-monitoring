@@ -25,6 +25,30 @@ describe("monitor input schema", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("requires telegram credentials when telegram notifications are enabled", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      notificationPref: "telegram",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("allows telegram notifications when bot token and chat id are configured", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      notificationPref: "telegram",
+      telegramBotToken: "123456:telegram-token",
+      telegramChatId: "-1001234567890",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
   it("rejects non-http URLs for HTTP-based monitors", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,

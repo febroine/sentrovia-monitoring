@@ -40,8 +40,8 @@ export function SavedRecipientsManager({
   }
 
   return (
-    <div className="rounded-xl border bg-muted/20 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-xl border bg-muted/20 p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-medium">Saved notification recipients</p>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -51,7 +51,7 @@ export function SavedRecipientsManager({
         <Badge variant="outline">{availableCount} saved</Badge>
       </div>
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+      <div className="mt-5 flex flex-col gap-4 sm:flex-row">
         <Input
           type="email"
           value={draft}
@@ -64,7 +64,7 @@ export function SavedRecipientsManager({
         </Button>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         {recipients.length === 0 ? (
           <p className="text-xs text-muted-foreground">No saved recipients yet.</p>
         ) : (
