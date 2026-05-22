@@ -38,6 +38,24 @@ const USERS_COLUMN_MAP = {
   updatedAt: "updated_at",
 } as const;
 
+const LEGACY_TELEGRAM_TEMPLATES = {
+  defaultTelegramTemplate: new Set([
+    normalizeTemplateForComparison(
+      "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}"
+    ),
+  ]),
+  recoveryTelegramTemplate: new Set([
+    normalizeTemplateForComparison(
+      "{domain} ({url}) recovered\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}"
+    ),
+  ]),
+  prolongedDowntimeTelegramTemplate: new Set([
+    normalizeTemplateForComparison(
+      "{domain} ({url}) is still DOWN\n\nDURATION: {downtime_duration}\nSTARTED: {downtime_started_at_local}\nLAST CHECK: {checked_at_local}\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}"
+    ),
+  ]),
+} as const;
+
 const USER_SETTINGS_COLUMN_MAP = {
   id: "id",
   userId: "user_id",
@@ -113,6 +131,17 @@ function stringOrEmpty(value: unknown) {
 
 function stringOrDefault(value: unknown, fallback: string) {
   return typeof value === "string" ? value : fallback;
+}
+
+function resolveWorkspaceTemplate(value: unknown, fallback: string, legacyDefaults: Set<string>) {
+  const template = stringOrEmpty(value);
+  const normalized = normalizeTemplateForComparison(template);
+
+  return normalized.length === 0 || legacyDefaults.has(normalized) ? fallback : template;
+}
+
+function normalizeTemplateForComparison(value: string) {
+  return value.replaceAll("\r\n", "\n").replaceAll("\\n", "\n").trim();
 }
 
 function booleanOrDefault(value: unknown, fallback: boolean) {
@@ -193,25 +222,33 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         stringOrEmpty(settings?.defaultEmailSubjectTemplate) || DEFAULT_SETTINGS.notifications.defaultEmailSubjectTemplate,
       defaultEmailBodyTemplate:
         stringOrEmpty(settings?.defaultEmailBodyTemplate) || DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
-      defaultTelegramTemplate:
-        stringOrEmpty(settings?.defaultTelegramTemplate) || DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+      defaultTelegramTemplate: resolveWorkspaceTemplate(
+        settings?.defaultTelegramTemplate,
+        DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+        LEGACY_TELEGRAM_TEMPLATES.defaultTelegramTemplate
+      ),
       recoveryEmailSubjectTemplate:
         stringOrEmpty(settings?.recoveryEmailSubjectTemplate) ||
         DEFAULT_SETTINGS.notifications.recoveryEmailSubjectTemplate,
       recoveryEmailBodyTemplate:
         stringOrEmpty(settings?.recoveryEmailBodyTemplate) ||
         DEFAULT_SETTINGS.notifications.recoveryEmailBodyTemplate,
-      recoveryTelegramTemplate:
-        stringOrEmpty(settings?.recoveryTelegramTemplate) || DEFAULT_SETTINGS.notifications.recoveryTelegramTemplate,
+      recoveryTelegramTemplate: resolveWorkspaceTemplate(
+        settings?.recoveryTelegramTemplate,
+        DEFAULT_SETTINGS.notifications.recoveryTelegramTemplate,
+        LEGACY_TELEGRAM_TEMPLATES.recoveryTelegramTemplate
+      ),
       prolongedDowntimeEmailSubjectTemplate:
         stringOrEmpty(settings?.prolongedDowntimeEmailSubjectTemplate) ||
         DEFAULT_SETTINGS.notifications.prolongedDowntimeEmailSubjectTemplate,
       prolongedDowntimeEmailBodyTemplate:
         stringOrEmpty(settings?.prolongedDowntimeEmailBodyTemplate) ||
         DEFAULT_SETTINGS.notifications.prolongedDowntimeEmailBodyTemplate,
-      prolongedDowntimeTelegramTemplate:
-        stringOrEmpty(settings?.prolongedDowntimeTelegramTemplate) ||
+      prolongedDowntimeTelegramTemplate: resolveWorkspaceTemplate(
+        settings?.prolongedDowntimeTelegramTemplate,
         DEFAULT_SETTINGS.notifications.prolongedDowntimeTelegramTemplate,
+        LEGACY_TELEGRAM_TEMPLATES.prolongedDowntimeTelegramTemplate
+      ),
       statusCodeAlertCodes: stringOrDefault(
         settings?.statusCodeAlertCodes,
         DEFAULT_SETTINGS.notifications.statusCodeAlertCodes

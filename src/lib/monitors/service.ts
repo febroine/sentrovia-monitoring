@@ -1014,9 +1014,10 @@ function shouldPersistIncidentScreenshot(
   requested: boolean
 ) {
   const supportsScreenshot = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
-  const sendsEmail = notificationPref === "email" || notificationPref === "both";
+  const sendsScreenshotCapableAlert =
+    notificationPref === "email" || notificationPref === "telegram" || notificationPref === "both";
 
-  return requested && supportsScreenshot && sendsEmail;
+  return requested && supportsScreenshot && sendsScreenshotCapableAlert;
 }
 
 function normalizeJsonMatchMode(value: string | null | undefined): MonitorInput["jsonMatchMode"] {
