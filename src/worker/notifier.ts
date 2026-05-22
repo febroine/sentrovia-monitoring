@@ -25,6 +25,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
 
   const rendered = renderNotificationTemplates(context, settings, env.appUrl);
   const deliveryResults: NotificationDeliveryResult[] = [];
+  const getScreenshotAttachments = createScreenshotAttachmentResolver(context);
 
   if (context.monitor.notificationPref === "email" || context.monitor.notificationPref === "both") {
     deliveryResults.push(
@@ -36,7 +37,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
         textBody: rendered.textBody,
         htmlBody: rendered.htmlBody,
         attachments: context.emailAttachments,
-        buildAttachments: context.buildEmailAttachments,
+        buildAttachments: context.emailAttachments ? undefined : getScreenshotAttachments,
       })
     );
   }
@@ -49,6 +50,8 @@ export async function sendMonitorNotifications(context: NotificationContext) {
         botToken: context.monitor.telegramBotToken ?? "",
         chatId: context.monitor.telegramChatId ?? "",
         body: rendered.telegramBody,
+        photo: context.emailAttachments?.[0],
+        buildPhoto: context.emailAttachments ? undefined : () => resolveFirstScreenshotAttachment(getScreenshotAttachments),
       })
     );
   }
@@ -78,6 +81,30 @@ export async function sendMonitorNotifications(context: NotificationContext) {
 
 function isDeliveredDelivery(result: NotificationDeliveryResult) {
   return result?.status === "delivered";
+}
+
+function createScreenshotAttachmentResolver(context: NotificationContext) {
+  let cached: Promise<NotificationContext["emailAttachments"]> | null = null;
+
+  return () => {
+    if (context.emailAttachments) {
+      return Promise.resolve(context.emailAttachments);
+    }
+
+    if (!context.buildEmailAttachments) {
+      return Promise.resolve(undefined);
+    }
+
+    cached ??= context.buildEmailAttachments();
+    return cached;
+  };
+}
+
+async function resolveFirstScreenshotAttachment(
+  getScreenshotAttachments: () => Promise<NotificationContext["emailAttachments"]>
+) {
+  const attachments = await getScreenshotAttachments();
+  return attachments?.[0] ?? null;
 }
 
 async function shouldSendNotification(context: NotificationContext) {

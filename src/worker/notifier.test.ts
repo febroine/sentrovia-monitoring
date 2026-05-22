@@ -58,6 +58,7 @@ describe("worker notifier", () => {
     vi.clearAllMocks();
     mocks.hasRecentMonitorEvent.mockResolvedValue(true);
     mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
+    mocks.sendTelegramDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
     mocks.sendWebhookDelivery.mockResolvedValue(null);
   });
 
@@ -161,7 +162,62 @@ describe("worker notifier", () => {
     const emailInput = mocks.sendEmailDelivery.mock.calls[0]?.[0];
     expect(emailInput).toEqual(expect.objectContaining({ kind: "failure" }));
     expect(emailInput.attachments).toBeUndefined();
-    expect(emailInput.buildAttachments).toBe(buildEmailAttachments);
+    expect(emailInput.buildAttachments).toEqual(expect.any(Function));
+  });
+
+  it("passes screenshot attachments to telegram delivery", async () => {
+    const attachment = {
+      filename: "sentrovia-api.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    const context = buildNotificationContext("failure");
+    context.monitor = buildMonitor({
+      notificationPref: "telegram",
+      telegramBotToken: "123456:telegram-token",
+      telegramChatId: "-1001234567890",
+    });
+
+    const sent = await sendMonitorNotifications({
+      ...context,
+      emailAttachments: [attachment],
+    });
+
+    expect(sent).toBe(true);
+    expect(mocks.sendTelegramDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "failure",
+        photo: attachment,
+      })
+    );
+  });
+
+  it("passes lazy screenshot attachments to telegram without building them in the notifier", async () => {
+    const attachment = {
+      filename: "sentrovia-api.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    const buildEmailAttachments = vi.fn().mockResolvedValue([attachment]);
+    const context = buildNotificationContext("failure");
+    context.monitor = buildMonitor({
+      notificationPref: "telegram",
+      telegramBotToken: "123456:telegram-token",
+      telegramChatId: "-1001234567890",
+    });
+
+    const sent = await sendMonitorNotifications({
+      ...context,
+      buildEmailAttachments,
+    });
+
+    expect(sent).toBe(true);
+    expect(buildEmailAttachments).not.toHaveBeenCalled();
+
+    const telegramInput = mocks.sendTelegramDelivery.mock.calls[0]?.[0];
+    expect(telegramInput.photo).toBeUndefined();
+    expect(telegramInput.buildPhoto).toEqual(expect.any(Function));
+    await expect(telegramInput.buildPhoto()).resolves.toBe(attachment);
   });
 
   it("does not build lazy email attachments when a notification is suppressed", async () => {
@@ -204,7 +260,7 @@ function buildNotificationContext(kind: NotificationContext["kind"]): Notificati
   };
 }
 
-function buildMonitor(): Monitor {
+function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
   const now = new Date("2026-05-13T07:55:00.000Z");
 
   return {
@@ -265,5 +321,6 @@ function buildMonitor(): Monitor {
     sendIncidentScreenshot: false,
     createdAt: now,
     updatedAt: now,
+    ...overrides,
   };
 }

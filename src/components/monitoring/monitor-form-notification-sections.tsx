@@ -79,14 +79,6 @@ export function NotificationMonitorSettings({
             />
             <p className="text-xs text-muted-foreground">Use commas, semicolons, or new lines for multiple email recipients.</p>
           </Field>
-          {canAttachScreenshot ? (
-            <CheckRow
-              label="Attach screenshot on confirmed down"
-              description="Capture a bounded browser screenshot after outage verification and attach it to the down email."
-              checked={values.sendIncidentScreenshot}
-              onChange={(checked) => onFieldChange("sendIncidentScreenshot", checked)}
-            />
-          ) : null}
         </div>
       )}
 
@@ -100,6 +92,15 @@ export function NotificationMonitorSettings({
           </Field>
         </div>
       )}
+
+      {canAttachScreenshot && values.notificationPref !== "none" ? (
+        <CheckRow
+          label="Attach screenshot on confirmed down"
+          description="Capture a bounded browser screenshot after outage verification and include it with email or Telegram alerts."
+          checked={values.sendIncidentScreenshot}
+          onChange={(checked) => onFieldChange("sendIncidentScreenshot", checked)}
+        />
+      ) : null}
     </div>
   );
 }

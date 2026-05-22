@@ -23,6 +23,7 @@ const DELIVERY_REQUEST_TIMEOUT_MS = 15_000;
 const DELIVERY_RESPONSE_BODY_LIMIT_BYTES = 4_000;
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 const TELEGRAM_TRUNCATION_SUFFIX = "\n\n...[truncated]";
+const TELEGRAM_PHOTO_CAPTION_LIMIT = 1024;
 
 export async function getDeliveryOverview(userId: string): Promise<DeliveryOverview> {
   const [endpoint, historyRows] = await Promise.all([
@@ -208,6 +209,8 @@ export async function sendTelegramDelivery(input: {
   botToken: string;
   chatId: string;
   body: string;
+  photo?: Mail.Attachment;
+  buildPhoto?: () => Promise<Mail.Attachment | null | undefined>;
 }) {
   const botToken = input.botToken.trim();
   const chatId = input.chatId.trim();
@@ -215,6 +218,7 @@ export async function sendTelegramDelivery(input: {
   const destination = chatId || "Telegram not configured";
   const event = await createDeliveryEvent(input.userId, "telegram", input.kind, destination, {
     text: body,
+    photo: input.photo?.filename ?? null,
   });
 
   if (!botToken || !chatId) {
@@ -229,8 +233,16 @@ export async function sendTelegramDelivery(input: {
     const response = await postTelegramMessage(botToken, chatId, body);
 
     if (!response.ok) {
-      const body = await readLimitedResponseText(response);
-      return markDeliveryFailed(event.id, response.status, body || "Telegram delivery failed.");
+      const responseBody = await readLimitedResponseText(response);
+      return markDeliveryFailed(event.id, response.status, responseBody || "Telegram delivery failed.");
+    }
+
+    const photo = await resolveTelegramPhoto({
+      photo: input.photo,
+      buildPhoto: input.buildPhoto,
+    });
+    if (photo) {
+      await sendTelegramPhotoWithoutBlockingMessage(botToken, chatId, body, photo);
     }
 
     return markDeliveryDelivered(event.id, response.status);
@@ -624,6 +636,89 @@ function postTelegramMessage(botToken: string, chatId: string, body: string) {
       disable_web_page_preview: false,
     }),
   });
+}
+
+async function resolveTelegramPhoto(input: {
+  photo?: Mail.Attachment;
+  buildPhoto?: () => Promise<Mail.Attachment | null | undefined>;
+}) {
+  if (input.photo) {
+    return input.photo;
+  }
+
+  if (!input.buildPhoto) {
+    return null;
+  }
+
+  try {
+    return (await input.buildPhoto()) ?? null;
+  } catch (error) {
+    console.warn(`[sentrovia] Telegram screenshot skipped: ${toMessage(error)}`);
+    return null;
+  }
+}
+
+async function sendTelegramPhotoWithoutBlockingMessage(
+  botToken: string,
+  chatId: string,
+  body: string,
+  photo: Mail.Attachment
+) {
+  try {
+    const response = await postTelegramPhoto(botToken, chatId, body, photo);
+    if (!response.ok) {
+      console.warn(`[sentrovia] Telegram screenshot skipped: ${await readLimitedResponseText(response)}`);
+    }
+  } catch (error) {
+    console.warn(`[sentrovia] Telegram screenshot skipped: ${toMessage(error)}`);
+  }
+}
+
+function postTelegramPhoto(botToken: string, chatId: string, body: string, photo: Mail.Attachment) {
+  const content = getTelegramPhotoContent(photo);
+  if (!content) {
+    throw new Error("Telegram screenshot content is not available.");
+  }
+
+  const formData = new FormData();
+  formData.set("chat_id", chatId);
+  formData.set("caption", truncateTelegramCaption(body));
+  formData.set("photo", buildTelegramPhotoBlob(content, photo.contentType), getTelegramPhotoFilename(photo));
+
+  return fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+    method: "POST",
+    signal: buildDeliveryAbortSignal(),
+    body: formData,
+  });
+}
+
+function getTelegramPhotoContent(photo: Mail.Attachment) {
+  const content = photo.content;
+  if (typeof content === "string" || Buffer.isBuffer(content) || content instanceof Uint8Array) {
+    return content;
+  }
+
+  return null;
+}
+
+function getTelegramPhotoFilename(photo: Mail.Attachment) {
+  return typeof photo.filename === "string" && photo.filename.trim().length > 0
+    ? photo.filename
+    : "sentrovia-screenshot.jpg";
+}
+
+function buildTelegramPhotoBlob(content: string | Buffer | Uint8Array, contentType?: string) {
+  const blobPart = typeof content === "string" ? content : new Uint8Array(content);
+  return new Blob([blobPart], { type: contentType || "image/jpeg" });
+}
+
+function truncateTelegramCaption(body: string) {
+  if (body.length <= TELEGRAM_PHOTO_CAPTION_LIMIT) {
+    return body;
+  }
+
+  const suffix = "\n...[truncated]";
+  return `${body.slice(0, TELEGRAM_PHOTO_CAPTION_LIMIT - suffix.length).trimEnd()}${suffix}`;
 }
 
 function normalizeTelegramMessage(body: string) {

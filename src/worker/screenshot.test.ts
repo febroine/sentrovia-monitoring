@@ -19,12 +19,12 @@ describe("failure screenshot capture rules", () => {
     expect(shouldCaptureScreenshot(buildMonitor({ monitorType: "ping", sendIncidentScreenshot: true }))).toBe(false);
   });
 
-  it("skips when the monitor has no email delivery target", () => {
+  it("allows enabled HTTP monitors with telegram delivery", () => {
     expect(
       shouldCaptureScreenshot(
         buildMonitor({ notificationPref: "telegram", sendIncidentScreenshot: true })
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("skips server-local screenshot targets without blocking the alert", async () => {

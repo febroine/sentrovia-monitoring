@@ -51,7 +51,7 @@ export function shouldCaptureScreenshot(monitor: Monitor) {
   if (
     !monitor.sendIncidentScreenshot ||
     !SCREENSHOT_MONITOR_TYPES.has(monitor.monitorType) ||
-    (monitor.notificationPref !== "email" && monitor.notificationPref !== "both")
+    (monitor.notificationPref !== "email" && monitor.notificationPref !== "telegram" && monitor.notificationPref !== "both")
   ) {
     return false;
   }

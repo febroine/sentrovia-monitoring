@@ -9,6 +9,9 @@ const LEGACY_DEFAULT_EMAIL_SUBJECTS = new Set([
 const LEGACY_DEFAULT_EMAIL_BODIES = new Set([normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultEmailBodyTemplate)]);
 const LEGACY_DEFAULT_TELEGRAM_TEMPLATES = new Set([
   normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultTelegramTemplate),
+  normalizeForComparison(
+    "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}"
+  ),
 ]);
 
 export function renderNotificationTemplates(

@@ -42,6 +42,20 @@ describe("notification templates", () => {
     expect(rendered.htmlBody).not.toContain('href="javascript:alert(1)/monitoring"');
     expect(rendered.htmlBody).toContain("api.example.com");
   });
+
+  it("renders telegram alerts with the same operational details as email defaults", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext(),
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.telegramBody).toContain("Monitor: api.example.com");
+    expect(rendered.telegramBody).toContain("Status: 500 -");
+    expect(rendered.telegramBody).toContain("Root cause: The service returned an error response.");
+    expect(rendered.telegramBody).toContain("Details: Service is unavailable.");
+    expect(rendered.telegramBody).toContain("Organization: Sentrovia Monitoring");
+  });
 });
 
 function buildContext(monitorOverrides: Partial<Monitor> = {}): NotificationContext {

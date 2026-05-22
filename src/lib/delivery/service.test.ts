@@ -142,6 +142,56 @@ describe("delivery service", () => {
     expect(payload.text).toHaveLength(4096);
     expect(payload.text.endsWith("...[truncated]")).toBe(true);
   });
+
+  it("sends a telegram photo after the text message when a screenshot is available", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      botToken: "123456:telegram-token",
+      chatId: "-1001234567890",
+      body: "Down",
+      photo: {
+        filename: "sentrovia-api.jpg",
+        content: Buffer.from("image"),
+        contentType: "image/jpeg",
+      },
+    });
+
+    expect(result?.status).toBe("delivered");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendMessage");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendPhoto");
+  });
+
+  it("keeps telegram text delivery successful when screenshot upload fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response("photo rejected", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      botToken: "123456:telegram-token",
+      chatId: "-1001234567890",
+      body: "Down",
+      photo: {
+        filename: "sentrovia-api.jpg",
+        content: Buffer.from("image"),
+        contentType: "image/jpeg",
+      },
+    });
+
+    expect(result?.status).toBe("delivered");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Telegram screenshot skipped"));
+    warn.mockRestore();
+  });
 });
 
 function buildSmtpSettings() {
