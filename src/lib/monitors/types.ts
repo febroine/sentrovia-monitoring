@@ -58,6 +58,7 @@ export interface MonitorRecord {
   intervalValue: number;
   intervalUnit: IntervalUnit;
   timeout: number;
+  slowResponseThresholdMs: number | null;
   retries: number;
   method: HttpMethod;
   tags: string[];
@@ -256,6 +257,7 @@ export interface MonitorPayload {
   intervalValue: number;
   intervalUnit: IntervalUnit;
   timeout: number;
+  slowResponseThresholdMs: number | null;
   retries: number;
   method: HttpMethod;
   tags: string[];
@@ -327,6 +329,7 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   intervalValue: 5,
   intervalUnit: "dk",
   timeout: 5000,
+  slowResponseThresholdMs: null,
   retries: 3,
   method: "GET",
   tags: [],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizePublicServiceStatus, sanitizePublicMonitorUrl } from "@/lib/public-status/service";
+import { isSlowPublicService, normalizePublicServiceStatus, sanitizePublicMonitorUrl } from "@/lib/public-status/service";
 
 describe("sanitizePublicMonitorUrl", () => {
   it("removes credentials, query strings, and fragments before public rendering", () => {
@@ -32,5 +32,16 @@ describe("normalizePublicServiceStatus", () => {
 
   it("treats unknown legacy status values as degraded", () => {
     expect(normalizePublicServiceStatus("unknown")).toBe("pending");
+  });
+});
+
+describe("isSlowPublicService", () => {
+  it("marks online services as degraded when latency exceeds the threshold", () => {
+    expect(isSlowPublicService("up", 21, 20)).toBe(true);
+  });
+
+  it("does not mark down or threshold-less services as slow", () => {
+    expect(isSlowPublicService("down", 21, 20)).toBe(false);
+    expect(isSlowPublicService("up", 21, null)).toBe(false);
   });
 });

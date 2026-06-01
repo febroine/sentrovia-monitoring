@@ -394,15 +394,37 @@ export function CheckMonitorSettings({
             </Select>
           </div>
         </Field>
-        <Field label="Timeout (ms)">
+        <Field label="Hard failure timeout (ms)">
           <Input
             type="number"
             min={1000}
             value={values.timeout}
             onChange={(event) => onFieldChange("timeout", Number(event.target.value) || 1000)}
           />
+          <p className="text-[11px] text-muted-foreground">
+            The monitor is considered failed only when the request cannot complete inside this window.
+          </p>
         </Field>
       </div>
+
+      {isHttpMonitor || isAssertionMonitor ? (
+        <Field label="Slow response threshold (ms)">
+          <Input
+            type="number"
+            min={1}
+            max={Math.max(1, values.timeout - 1)}
+            placeholder="Optional"
+            value={values.slowResponseThresholdMs ?? ""}
+            onChange={(event) => {
+              const rawValue = event.target.value.trim();
+              onFieldChange("slowResponseThresholdMs", rawValue.length > 0 ? Number(rawValue) || null : null);
+            }}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Responses above this value stay online but are marked degraded. Keep it below the hard failure timeout.
+          </p>
+        </Field>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Verification attempts">

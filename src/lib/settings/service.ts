@@ -62,6 +62,7 @@ const USER_SETTINGS_COLUMN_MAP = {
   notifyOnDown: "notify_on_down",
   notifyOnRecovery: "notify_on_recovery",
   notifyOnStatusChange: "notify_on_status_change",
+  notifyOnLatency: "notify_on_latency",
   prolongedDowntimeEnabled: "prolonged_downtime_enabled",
   prolongedDowntimeMinutes: "prolonged_downtime_minutes",
   alertDedupMinutes: "alert_dedup_minutes",
@@ -191,6 +192,7 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         settings?.notifyOnStatusChange,
         DEFAULT_SETTINGS.notifications.notifyOnStatusChange
       ),
+      notifyOnLatency: booleanOrDefault(settings?.notifyOnLatency, DEFAULT_SETTINGS.notifications.notifyOnLatency),
       prolongedDowntimeEnabled: booleanOrDefault(
         settings?.prolongedDowntimeEnabled,
         DEFAULT_SETTINGS.notifications.prolongedDowntimeEnabled
@@ -479,6 +481,7 @@ export async function upsertSettings(
     notifyOnDown: input.notifications.notifyOnDown,
     notifyOnRecovery: input.notifications.notifyOnRecovery,
     notifyOnStatusChange: input.notifications.notifyOnStatusChange,
+    notifyOnLatency: input.notifications.notifyOnLatency,
     prolongedDowntimeEnabled: input.notifications.prolongedDowntimeEnabled,
     prolongedDowntimeMinutes: input.notifications.prolongedDowntimeMinutes,
     alertDedupMinutes: input.notifications.alertDedupMinutes,

@@ -109,12 +109,20 @@ function buildRateLimitKeys(
 }
 
 function readClientIp(request: NextRequest) {
+  if (!shouldTrustProxyHeaders()) {
+    return "direct";
+  }
+
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
     return forwardedFor.split(",")[0]?.trim() || "unknown";
   }
 
   return request.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
+function shouldTrustProxyHeaders() {
+  return process.env.AUTH_TRUST_PROXY_HEADERS === "true";
 }
 
 function normalizeIdentifier(identifier?: string | null) {
@@ -163,4 +171,12 @@ function pruneRateLimitStoreToMaxSize() {
 
     rateLimitStore.delete(oldestKey);
   }
+}
+
+export function resetAuthRateLimitForTests() {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Rate limit reset is only available during tests.");
+  }
+
+  rateLimitStore.clear();
 }

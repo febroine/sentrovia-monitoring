@@ -247,6 +247,54 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("keeps slow successful responses online and sends a latency warning", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 21,
+      errorMessage: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "up",
+        notificationPref: "email",
+        slowResponseThresholdMs: 20,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "up",
+        verificationMode: false,
+        verificationFailureCount: 0,
+        latencyMs: 21,
+      }),
+      "lease-1"
+    );
+    expect(mocks.appendMonitorCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "up", latencyMs: 21 })
+    );
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "latency",
+        status: "up",
+        message: "Service is online but slow: 21ms exceeded the 20ms threshold.",
+      })
+    );
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "latency" })
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "failure" })
+    );
+  });
+
   it("sends confirmed failure without a duplicate status-change notification", async () => {
     mocks.checkResults = [
       {
@@ -555,6 +603,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalValue: 5,
     intervalUnit: "dk",
     timeout: 5000,
+    slowResponseThresholdMs: null,
     retries: 3,
     method: "GET",
     databaseSsl: true,

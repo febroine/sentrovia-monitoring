@@ -26,7 +26,7 @@ export function renderNotificationTemplates(
   const statusCode = String(context.result.statusCode ?? "N/A");
   const statusLabel = statusMeta?.label ?? (context.result.ok ? "Healthy Response" : "Unavailable");
   const localTime = formatLocalDateTime(context.result.checkedAt);
-  const eventState = context.kind === "downtime-reminder" ? "DOWN" : context.result.status === "up" ? "UP" : "DOWN";
+  const eventState = resolveEventState(context);
   const downtimeStartedAt = context.monitor.lastFailureAt ? new Date(context.monitor.lastFailureAt) : context.result.checkedAt;
   const downtimeDuration = formatDuration(context.result.checkedAt.getTime() - downtimeStartedAt.getTime());
   const htmlUrlPlaceholder = "__SENTROVIA_URL_LINK__";
@@ -45,6 +45,8 @@ export function renderNotificationTemplates(
     "{dashboard_link}": `${appUrl}/monitoring`,
     "{status_code}": statusCode,
     "{status_label}": statusLabel,
+    "{latency_ms}": String(context.result.latencyMs ?? "N/A"),
+    "{slow_threshold_ms}": String(context.monitor.slowResponseThresholdMs ?? "N/A"),
     "{event_state}": eventState,
     "{checked_at}": context.result.checkedAt.toISOString(),
     "{checked_at_local}": localTime,
@@ -118,6 +120,18 @@ function resolveTelegramTemplate(context: NotificationContext, settings: Setting
       : settings.notifications.defaultTelegramTemplate;
 
   return resolveMonitorTemplate(context.monitor.telegramTemplate, fallback, LEGACY_DEFAULT_TELEGRAM_TEMPLATES);
+}
+
+function resolveEventState(context: NotificationContext) {
+  if (context.kind === "downtime-reminder") {
+    return "DOWN";
+  }
+
+  if (context.kind === "latency") {
+    return "SLOW";
+  }
+
+  return context.result.status === "up" ? "UP" : "DOWN";
 }
 
 function resolveMonitorTemplate(template: string | null, fallback: string, legacyDefaults: Set<string>) {

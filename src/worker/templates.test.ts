@@ -117,6 +117,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalValue: 5,
     intervalUnit: "dk",
     timeout: 5000,
+    slowResponseThresholdMs: null,
     retries: 2,
     method: "GET",
     databaseSsl: true,

@@ -39,6 +39,7 @@ export async function getPublicStatusPage(slug: string) {
         lastCheckedAt: monitors.lastCheckedAt,
         uptime: monitors.uptime,
         latencyMs: monitors.latencyMs,
+        slowResponseThresholdMs: monitors.slowResponseThresholdMs,
         isActive: monitors.isActive,
         verificationMode: monitors.verificationMode,
         consecutiveFailures: monitors.consecutiveFailures,
@@ -60,8 +61,11 @@ export async function getPublicStatusPage(slug: string) {
   const openIncidentMap = new Map(openIncidents.map((incident) => [incident.monitorId, incident.startedAt.toISOString()]));
   const services = monitorRows.map((monitor) => {
     const status = normalizePublicServiceStatus(monitor.status);
+    const publicStatus = isSlowPublicService(status, monitor.latencyMs, monitor.slowResponseThresholdMs)
+      ? "pending"
+      : status;
     const health = buildMonitorHealthSummary({
-      status,
+      status: publicStatus,
       verificationMode: monitor.verificationMode,
       consecutiveFailures: monitor.consecutiveFailures,
       latencyMs: monitor.latencyMs,
@@ -74,9 +78,10 @@ export async function getPublicStatusPage(slug: string) {
       id: monitor.id,
       url: sanitizePublicMonitorUrl(monitor.url),
       company: monitor.company ?? "Workspace",
-      status,
+      status: publicStatus,
       uptime: monitor.uptime,
       latencyMs: monitor.latencyMs,
+      slowResponseThresholdMs: monitor.slowResponseThresholdMs,
       lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
       healthScore: health.score,
       healthLabel: health.label,
@@ -110,6 +115,10 @@ export async function getPublicStatusPage(slug: string) {
     },
     services,
   };
+}
+
+export function isSlowPublicService(status: "up" | "down" | "pending", latencyMs: number | null, thresholdMs: number | null) {
+  return status === "up" && typeof latencyMs === "number" && typeof thresholdMs === "number" && latencyMs > thresholdMs;
 }
 
 export function normalizePublicServiceStatus(status: string) {

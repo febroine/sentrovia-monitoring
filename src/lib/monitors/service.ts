@@ -850,6 +850,7 @@ async function buildMonitorValues(
     intervalValue: input.intervalValue,
     intervalUnit: input.intervalUnit,
     timeout: input.timeout,
+    slowResponseThresholdMs: shouldPersistSlowResponseThreshold(monitorType, input.slowResponseThresholdMs),
     retries: input.retries,
     method: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? "GET" : input.method,
     databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
@@ -1018,6 +1019,17 @@ function shouldPersistIncidentScreenshot(
     notificationPref === "email" || notificationPref === "telegram" || notificationPref === "both";
 
   return requested && supportsScreenshot && sendsScreenshotCapableAlert;
+}
+
+function shouldPersistSlowResponseThreshold(
+  monitorType: MonitorInput["monitorType"],
+  thresholdMs: number | null
+) {
+  if (monitorType !== "http" && monitorType !== "keyword" && monitorType !== "json") {
+    return null;
+  }
+
+  return thresholdMs;
 }
 
 function normalizeJsonMatchMode(value: string | null | undefined): MonitorInput["jsonMatchMode"] {

@@ -38,6 +38,7 @@ export const settingsSchema = z.object({
     notifyOnDown: z.boolean(),
     notifyOnRecovery: z.boolean(),
     notifyOnStatusChange: z.boolean(),
+    notifyOnLatency: z.boolean().default(true),
     prolongedDowntimeEnabled: z.boolean(),
     prolongedDowntimeMinutes: z.coerce.number().int().min(5).max(10080),
     alertDedupMinutes: z.coerce.number().int().min(0).max(1440),

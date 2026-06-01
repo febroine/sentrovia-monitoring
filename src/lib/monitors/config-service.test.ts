@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMonitorConfigBundle } from "@/lib/monitors/config-service";
+import { parseMonitorConfigBundle, redactMonitorExportSecrets } from "@/lib/monitors/config-service";
 import { DEFAULT_MONITOR_FORM } from "@/lib/monitors/types";
 
 describe("monitor config bundle parsing", () => {
@@ -37,5 +37,24 @@ describe("monitor config bundle parsing", () => {
     expect(() => parseMonitorConfigBundle(raw, "json")).toThrow(
       "Import at most 500 monitors at a time."
     );
+  });
+});
+
+describe("monitor config export redaction", () => {
+  it("removes monitor secrets from exported payloads", () => {
+    const exported = redactMonitorExportSecrets({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Secret-backed monitor",
+      monitorType: "heartbeat",
+      heartbeatToken: "heartbeat-token-that-should-not-export",
+      notificationPref: "both",
+      telegramBotToken: "123456:secret-token",
+      telegramChatId: "-1001234567890",
+    });
+
+    expect(exported.heartbeatToken).toBe("");
+    expect(exported.telegramBotToken).toBe("");
+    expect(exported.telegramChatId).toBe("-1001234567890");
+    expect(exported.notificationPref).toBe("both");
   });
 });

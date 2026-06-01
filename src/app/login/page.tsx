@@ -15,6 +15,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 
 const inputClassName =
@@ -61,7 +62,7 @@ export default function LoginPage() {
       clearPasswordFields(formRef.current);
       const nextPath =
         typeof window !== "undefined"
-          ? new URLSearchParams(window.location.search).get("next") || "/dashboard"
+          ? resolveSafeAuthRedirect(new URLSearchParams(window.location.search).get("next"))
           : "/dashboard";
 
       startTransition(() => {

@@ -15,6 +15,7 @@ function StatusBadge({
   verificationMode,
   verificationFailureCount,
   threshold,
+  slow,
 }: {
   status: SiteStatus;
   code: number | null;
@@ -22,6 +23,7 @@ function StatusBadge({
   verificationMode: boolean;
   verificationFailureCount: number;
   threshold: number;
+  slow: boolean;
 }) {
   if (!isActive) {
     return <Badge variant="outline" className="text-muted-foreground">PAUSED</Badge>;
@@ -32,6 +34,15 @@ function StatusBadge({
       <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400">
         <Clock className="size-3" />
         VERIFYING · {verificationFailureCount}/{threshold}
+      </Badge>
+    );
+  }
+
+  if (slow) {
+    return (
+      <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400">
+        <Clock className="size-3" />
+        SLOW
       </Badge>
     );
   }
@@ -164,9 +175,12 @@ export function MonitorTable({
                       verificationMode={monitor.verificationMode}
                       verificationFailureCount={monitor.verificationFailureCount}
                       threshold={Math.max(1, monitor.retries)}
+                      slow={isSlowMonitor(monitor)}
                     />
                     {monitor.isActive && monitor.verificationMode ? (
                       <p className="text-[11px] text-muted-foreground">Pending confirmation</p>
+                    ) : monitor.isActive && isSlowMonitor(monitor) ? (
+                      <p className="text-[11px] text-muted-foreground">Online but above threshold</p>
                     ) : null}
                   </div>
                 </TableCell>
@@ -189,7 +203,14 @@ export function MonitorTable({
                   </div>
                 </TableCell>
                 <TableCell>{monitor.statusCode ?? "--"}</TableCell>
-                <TableCell>{monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"}</TableCell>
+                <TableCell>
+                  <div className="space-y-0.5">
+                    <span>{monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"}</span>
+                    {monitor.slowResponseThresholdMs ? (
+                      <p className="text-[10px] text-muted-foreground">Limit {monitor.slowResponseThresholdMs}ms</p>
+                    ) : null}
+                  </div>
+                </TableCell>
                 <TableCell><NotificationBadge pref={monitor.notificationPref} /></TableCell>
                 <TableCell>{monitor.company ?? "--"}</TableCell>
                 <TableCell>
@@ -211,5 +232,14 @@ export function MonitorTable({
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+function isSlowMonitor(monitor: MonitorRecord) {
+  return (
+    monitor.status === "up" &&
+    typeof monitor.latencyMs === "number" &&
+    typeof monitor.slowResponseThresholdMs === "number" &&
+    monitor.latencyMs > monitor.slowResponseThresholdMs
   );
 }

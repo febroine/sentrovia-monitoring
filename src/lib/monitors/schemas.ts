@@ -29,6 +29,15 @@ function optionalRequiredString(maxLength: number) {
     .default("");
 }
 
+function optionalPositiveInteger(max: number) {
+  return z
+    .preprocess(
+      (value) => (typeof value === "string" && value.trim().length === 0 ? null : value),
+      z.union([z.coerce.number().int().min(1).max(max), z.literal(null)])
+    )
+    .default(null);
+}
+
 function isSafeHostInput(value: string) {
   const normalized = value.trim();
 
@@ -98,6 +107,7 @@ export const monitorInputSchema = z
     intervalValue: z.coerce.number().int().min(1).max(1440),
     intervalUnit: intervalUnitSchema,
     timeout: z.coerce.number().int().min(1000).max(120000),
+    slowResponseThresholdMs: optionalPositiveInteger(120000),
     retries: z.coerce.number().int().min(1).max(10),
     method: methodSchema,
     tags: z.array(z.string().trim().min(1).max(40)).max(20),
@@ -125,6 +135,14 @@ export const monitorInputSchema = z
           code: z.ZodIssueCode.custom,
           path: ["url"],
           message: "Enter a valid HTTP or HTTPS URL for this monitor type.",
+        });
+      }
+
+      if (value.slowResponseThresholdMs !== null && value.slowResponseThresholdMs >= value.timeout) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["slowResponseThresholdMs"],
+          message: "Slow response threshold must be lower than the hard failure timeout.",
         });
       }
     }

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/token";
 
 const PUBLIC_ROUTES = ["/login", "/signup"];
@@ -13,7 +14,7 @@ export async function proxy(request: NextRequest) {
 
   if (!isPublicRoute(pathname) && !session) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname);
+    loginUrl.searchParams.set("next", resolveSafeAuthRedirect(pathname));
     return NextResponse.redirect(loginUrl);
   }
 

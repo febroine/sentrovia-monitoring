@@ -298,6 +298,17 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
 
   if (result.ok) {
     await appendCheckEvent(monitor, result, rca);
+    const slowResponseMessage = buildSlowResponseMessage(monitor, result);
+    if (slowResponseMessage) {
+      await appendDetailedEvent(monitor, result, "latency", slowResponseMessage, rca, "up");
+      await sendMonitorNotifications({
+        kind: "latency",
+        message: slowResponseMessage,
+        monitor,
+        result,
+        rca,
+      });
+    }
   }
 
   if (!result.ok && failureEventMessage) {
@@ -525,6 +536,23 @@ function buildDowntimeReminderMessage(monitor: Monitor, checkedAt: Date) {
   }
 
   return `Service has been down for ${durationMinutes}m.`;
+}
+
+function buildSlowResponseMessage(monitor: Monitor, result: Awaited<ReturnType<typeof checkMonitor>>) {
+  if (!supportsSlowResponseThreshold(monitor) || typeof result.latencyMs !== "number") {
+    return null;
+  }
+
+  const thresholdMs = monitor.slowResponseThresholdMs;
+  if (thresholdMs === null || result.latencyMs <= thresholdMs) {
+    return null;
+  }
+
+  return `Service is online but slow: ${result.latencyMs}ms exceeded the ${thresholdMs}ms threshold.`;
+}
+
+function supportsSlowResponseThreshold(monitor: Monitor) {
+  return monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json";
 }
 
 async function appendCheckEvent(

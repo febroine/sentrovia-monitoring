@@ -24,6 +24,7 @@ const DELIVERY_RESPONSE_BODY_LIMIT_BYTES = 4_000;
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 const TELEGRAM_TRUNCATION_SUFFIX = "\n\n...[truncated]";
 const TELEGRAM_PHOTO_CAPTION_LIMIT = 1024;
+const OUTBOUND_WEBHOOK_REDIRECT_MODE = "manual";
 
 export async function getDeliveryOverview(userId: string): Promise<DeliveryOverview> {
   const [endpoint, historyRows] = await Promise.all([
@@ -298,6 +299,7 @@ export async function sendChannelWebhookDelivery(
     const body = { content: message };
     const response = await fetch(safeDestination, {
       method: "POST",
+      redirect: OUTBOUND_WEBHOOK_REDIRECT_MODE,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal: buildDeliveryAbortSignal(),
@@ -445,6 +447,7 @@ async function attemptWebhookDelivery(
     const body = JSON.stringify(payload);
     const response = await fetch(safeEndpointUrl, {
       method: "POST",
+      redirect: OUTBOUND_WEBHOOK_REDIRECT_MODE,
       headers: buildWebhookHeaders(body, secret),
       body,
       signal: buildDeliveryAbortSignal(),

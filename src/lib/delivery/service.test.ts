@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     insert: vi.fn(),
     update: vi.fn(),
   },
+  getSettings: vi.fn(),
 }));
 
 vi.mock("nodemailer", () => ({
@@ -27,7 +28,16 @@ vi.mock("@/lib/settings/smtp", () => ({
   getSmtpSettings: mocks.getSmtpSettings,
 }));
 
-import { readLimitedResponseText, sendEmailDelivery, sendTelegramDelivery } from "@/lib/delivery/service";
+vi.mock("@/lib/settings/service", () => ({
+  getSettings: mocks.getSettings,
+}));
+
+import {
+  readLimitedResponseText,
+  sendChannelWebhookDelivery,
+  sendEmailDelivery,
+  sendTelegramDelivery,
+} from "@/lib/delivery/service";
 
 describe("delivery service", () => {
   beforeEach(() => {
@@ -43,6 +53,7 @@ describe("delivery service", () => {
     mocks.db.update.mockReturnValue({
       set: vi.fn(() => ({ where: vi.fn(() => ({ returning: mocks.updateReturning })) })),
     });
+    mocks.getSettings.mockResolvedValue(null);
   });
 
   it("does not build email attachments when SMTP configuration is incomplete", async () => {
@@ -164,6 +175,23 @@ describe("delivery service", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendMessage");
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendPhoto");
+  });
+
+  it("does not follow redirects for outbound channel webhooks", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.getSettings.mockResolvedValue({
+      notifications: {
+        discordEnabled: true,
+        discordWebhookUrl: "https://8.8.8.8/hooks/sentrovia",
+      },
+    });
+
+    const result = await sendChannelWebhookDelivery("user-1", "discord", "test", "Down");
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+
+    expect(result?.status).toBe("delivered");
+    expect(request.redirect).toBe("manual");
   });
 
   it("keeps telegram text delivery successful when screenshot upload fails", async () => {

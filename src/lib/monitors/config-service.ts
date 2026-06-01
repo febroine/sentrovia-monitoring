@@ -12,7 +12,17 @@ export async function buildMonitorConfigBundle(userId: string): Promise<MonitorC
     version: 1,
     exportedAt: new Date().toISOString(),
     source: "sentrovia",
-    monitors: monitors.map((monitor) => toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord)),
+    monitors: monitors.map((monitor) =>
+      redactMonitorExportSecrets(toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord))
+    ),
+  };
+}
+
+export function redactMonitorExportSecrets(monitor: MonitorPayload): MonitorPayload {
+  return {
+    ...monitor,
+    heartbeatToken: "",
+    telegramBotToken: "",
   };
 }
 

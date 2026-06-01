@@ -205,6 +205,7 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     intervalValue: record.intervalValue,
     intervalUnit: record.intervalUnit,
     timeout: record.timeout,
+    slowResponseThresholdMs: record.slowResponseThresholdMs,
     retries: record.retries,
     method: record.method,
     tags: record.tags,

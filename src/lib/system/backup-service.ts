@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { parse, stringify } from "yaml";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import { companyInputSchema } from "@/lib/companies/schemas";
+import { redactMonitorExportSecrets } from "@/lib/monitors/config-service";
 import { createManyMonitors, listMonitors } from "@/lib/monitors/service";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { toMonitorPayload } from "@/lib/monitors/targets";
@@ -34,7 +35,7 @@ export async function buildWorkspaceBackupBundle(userId: string): Promise<Worksp
       description: company.description ?? "",
       isActive: company.isActive,
     })),
-    monitors: monitorRows.map((monitor) => toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord)),
+    monitors: monitorRows.map((monitor) => redactMonitorExportSecrets(toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord))),
   };
 }
 

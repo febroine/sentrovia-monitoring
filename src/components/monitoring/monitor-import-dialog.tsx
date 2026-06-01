@@ -30,6 +30,7 @@ const DEFAULT_MAPPING = [
   "intervalValue=intervalValue",
   "intervalUnit=intervalUnit",
   "timeout=timeout",
+  "slowResponseThresholdMs=slowResponseThresholdMs",
   "retries=retries",
   "method=method",
   "tags=tags",
@@ -238,6 +239,15 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
+  const nullableNumberValue = (target: string) => {
+    const raw = read(target);
+    if (raw.length === 0) {
+      return null;
+    }
+
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
 
   return {
     ...DEFAULT_MONITOR_FORM,
@@ -266,6 +276,7 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     intervalValue: numberValue("intervalValue", DEFAULT_MONITOR_FORM.intervalValue),
     intervalUnit: (read("intervalUnit") || DEFAULT_MONITOR_FORM.intervalUnit) as MonitorPayload["intervalUnit"],
     timeout: numberValue("timeout", DEFAULT_MONITOR_FORM.timeout),
+    slowResponseThresholdMs: nullableNumberValue("slowResponseThresholdMs"),
     retries: numberValue("retries", DEFAULT_MONITOR_FORM.retries),
     method: (read("method") || DEFAULT_MONITOR_FORM.method) as MonitorPayload["method"],
     tags: read("tags").split("|").map((tag) => tag.trim()).filter(Boolean),

@@ -13,6 +13,7 @@ export interface SettingsPayload {
     notifyOnDown: boolean;
     notifyOnRecovery: boolean;
     notifyOnStatusChange: boolean;
+    notifyOnLatency: boolean;
     prolongedDowntimeEnabled: boolean;
     prolongedDowntimeMinutes: number;
     alertDedupMinutes: number;
@@ -113,6 +114,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     notifyOnDown: true,
     notifyOnRecovery: true,
     notifyOnStatusChange: false,
+    notifyOnLatency: true,
     prolongedDowntimeEnabled: true,
     prolongedDowntimeMinutes: 180,
     alertDedupMinutes: 15,

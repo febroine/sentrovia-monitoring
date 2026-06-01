@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { AuthError } from "@/lib/auth/errors";
-import { assertAuthRateLimit, recordAuthFailure } from "@/lib/auth/rate-limit";
+import { assertAuthRateLimit, recordAuthFailure, resetAuthRateLimitForTests } from "@/lib/auth/rate-limit";
 
 describe("auth rate limiting", () => {
+  beforeEach(() => {
+    resetAuthRateLimitForTests();
+    delete process.env.AUTH_TRUST_PROXY_HEADERS;
+  });
+
   it("blocks repeated login failures for the same identifier even when forwarded IP changes", () => {
     const email = "rate-limit-login@example.com";
 
@@ -32,6 +37,8 @@ describe("auth rate limiting", () => {
   });
 
   it("keeps the in-memory limiter bounded under many unique identifiers", () => {
+    process.env.AUTH_TRUST_PROXY_HEADERS = "true";
+
     for (let attempt = 0; attempt < 4000; attempt += 1) {
       recordAuthFailure(
         buildRequest(`203.0.113.${attempt % 255}`),
@@ -46,6 +53,16 @@ describe("auth rate limiting", () => {
     }
 
     expect(() => assertAuthRateLimit(buildRequest("203.0.113.250"), "login", freshEmail)).toThrow(AuthError);
+  });
+
+  it("does not trust spoofable forwarded IP headers unless explicitly enabled", () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const request = buildRequest(`198.51.100.${attempt + 1}`);
+      assertAuthRateLimit(request, "register", null);
+      recordAuthFailure(request, "register", null);
+    }
+
+    expect(() => assertAuthRateLimit(buildRequest("198.51.100.99"), "register", null)).toThrow(AuthError);
   });
 });
 

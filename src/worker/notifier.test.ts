@@ -231,6 +231,23 @@ describe("worker notifier", () => {
     expect(buildEmailAttachments).not.toHaveBeenCalled();
     expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
   });
+
+  it("sends latency notifications through the normal delivery channels", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
+
+    const sent = await sendMonitorNotifications({
+      ...buildNotificationContext("latency"),
+      message: "Service is online but slow.",
+    });
+
+    expect(sent).toBe(true);
+    expect(mocks.hasRecentMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "latency" })
+    );
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "latency" })
+    );
+  });
 });
 
 function buildDeliveryResult(status: "delivered" | "failed" | "retrying") {
@@ -296,6 +313,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalValue: 5,
     intervalUnit: "dk",
     timeout: 5000,
+    slowResponseThresholdMs: null,
     retries: 2,
     method: "GET",
     databaseSsl: true,

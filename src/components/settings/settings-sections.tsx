@@ -32,6 +32,8 @@ const TEMPLATE_TOKENS = [
   "{event_state}",
   "{status_code}",
   "{status_label}",
+  "{latency_ms}",
+  "{slow_threshold_ms}",
   "{checked_at_local}",
   "{downtime_started_at_local}",
   "{downtime_duration}",
@@ -75,6 +77,12 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
           description="Include HTTP status code transitions in outbound notifications."
           checked={settings.notifications.notifyOnStatusChange}
           onChange={(checked) => updateSetting("notifications.notifyOnStatusChange", checked)}
+        />
+        <ToggleRow
+          label="Slow response alerts"
+          description="Notify when a monitor stays online but exceeds its slow response threshold."
+          checked={settings.notifications.notifyOnLatency}
+          onChange={(checked) => updateSetting("notifications.notifyOnLatency", checked)}
         />
         <ToggleRow
           label="Prolonged downtime reminders"

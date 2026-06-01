@@ -59,6 +59,29 @@ describe("monitor input schema", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("treats blank slow response thresholds as disabled", () => {
+    const parsed = monitorInputSchema.parse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      slowResponseThresholdMs: "   ",
+    });
+
+    expect(parsed.slowResponseThresholdMs).toBeNull();
+  });
+
+  it("rejects slow response thresholds that cannot fire before hard timeout", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      timeout: 5000,
+      slowResponseThresholdMs: 5000,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects short custom heartbeat tokens", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,

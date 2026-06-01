@@ -26,5 +26,6 @@ export function payloadFromMonitor(monitor: MonitorRecord): MonitorPayload {
     emailSubject: monitor.emailSubject ?? DEFAULT_MONITOR_FORM.emailSubject,
     emailBody: monitor.emailBody ?? DEFAULT_MONITOR_FORM.emailBody,
     sendIncidentScreenshot: monitor.sendIncidentScreenshot,
+    slowResponseThresholdMs: monitor.slowResponseThresholdMs,
   };
 }
