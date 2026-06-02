@@ -2,6 +2,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorIncidents, monitors, userSettings, users } from "@/lib/db/schema";
 import { buildMonitorHealthSummary } from "@/lib/monitors/health";
+import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { getSettings } from "@/lib/settings/service";
 import { resolveTimeDisplaySettings } from "@/lib/time";
 
@@ -130,22 +131,5 @@ export function normalizePublicServiceStatus(status: string) {
 }
 
 export function sanitizePublicMonitorUrl(value: string) {
-  if (!value.includes("://")) {
-    return sanitizePlainMonitorTarget(value);
-  }
-
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return sanitizePlainMonitorTarget(value);
-  }
-}
-
-function sanitizePlainMonitorTarget(value: string) {
-  return value.replace(/[?#].*$/, "").replace(/^([^:/?#]+:\/\/)?[^@\s/]+@/, "$1");
+  return sanitizeMonitorUrlForDisplay(value);
 }

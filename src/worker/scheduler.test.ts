@@ -30,12 +30,15 @@ const mocks = vi.hoisted(() => ({
   claimDueMonitors: vi.fn(),
   countDueMonitors: vi.fn(),
   incrementWorkerCheckedCount: vi.fn(),
+  hasRecentMonitorEvent: vi.fn(),
   isMonitorActive: vi.fn(),
+  releaseMonitorLeaseForMaintenance: vi.fn(),
   openOrUpdateIncident: vi.fn(),
   recordMonitorResult: vi.fn(),
   recordWorkerCycleMetric: vi.fn(),
   resolveIncident: vi.fn(),
   sendMonitorNotifications: vi.fn(),
+  findActiveMaintenanceWindowForMonitor: vi.fn(),
   buildFailureScreenshotAttachment: vi.fn(),
   updateWorkerState: vi.fn(),
   runMonitorDiagnostics: vi.fn(),
@@ -51,6 +54,10 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/lib/incidents/service", () => ({
   openOrUpdateIncident: mocks.openOrUpdateIncident,
   resolveIncident: mocks.resolveIncident,
+}));
+
+vi.mock("@/lib/maintenance/service", () => ({
+  findActiveMaintenanceWindowForMonitor: mocks.findActiveMaintenanceWindowForMonitor,
 }));
 
 vi.mock("@/lib/diagnostics/service", () => ({
@@ -71,10 +78,12 @@ vi.mock("@/lib/monitors/service", () => ({
   appendMonitorCheck: mocks.appendMonitorCheck,
   appendMonitorDiagnostic: mocks.appendMonitorDiagnostic,
   appendMonitorEvent: mocks.appendMonitorEvent,
+  hasRecentMonitorEvent: mocks.hasRecentMonitorEvent,
   claimDueMonitors: mocks.claimDueMonitors,
   countDueMonitors: mocks.countDueMonitors,
   incrementWorkerCheckedCount: mocks.incrementWorkerCheckedCount,
   isMonitorActive: mocks.isMonitorActive,
+  releaseMonitorLeaseForMaintenance: mocks.releaseMonitorLeaseForMaintenance,
   recordMonitorResult: mocks.recordMonitorResult,
   updateWorkerState: mocks.updateWorkerState,
 }));
@@ -120,6 +129,8 @@ describe("monitoring scheduler verification flow", () => {
     mocks.appendIncidentEvent.mockResolvedValue(null);
     mocks.appendMonitorDiagnostic.mockResolvedValue(null);
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
+    mocks.findActiveMaintenanceWindowForMonitor.mockResolvedValue(null);
     mocks.isMonitorActive.mockResolvedValue(true);
     mocks.recordMonitorResult.mockResolvedValue({ id: "monitor-1" } as Monitor);
     mocks.recordWorkerCycleMetric.mockResolvedValue(null);
@@ -601,6 +612,32 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
     expect(mocks.appendMonitorEvent).not.toHaveBeenCalled();
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+  });
+
+  it("releases the lease and skips checks during suppressing maintenance windows", async () => {
+    const monitor = buildMonitor({ status: "up", retries: 3 });
+    mocks.dueMonitors = [monitor];
+    mocks.findActiveMaintenanceWindowForMonitor.mockResolvedValue({
+      id: "maintenance-1",
+      name: "ERP patch",
+      suppressChecks: true,
+    });
+    mocks.releaseMonitorLeaseForMaintenance.mockResolvedValue(monitor);
+
+    await runMonitoringCycle();
+
+    expect(mocks.checkMonitor).not.toHaveBeenCalled();
+    expect(mocks.releaseMonitorLeaseForMaintenance).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.any(Date),
+      "lease-1"
+    );
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "maintenance-check-skip",
+        message: "Health check skipped by maintenance window: ERP patch",
+      })
+    );
   });
 });
 

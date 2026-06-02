@@ -7,12 +7,10 @@ type HeartbeatRouteContext = {
   params: Promise<{ token: string }>;
 };
 
-export async function GET(_request: NextRequest, context: HeartbeatRouteContext) {
-  const { token } = await context.params;
+export async function GET() {
   return NextResponse.json(
     {
       message: "Heartbeat endpoints require POST requests.",
-      endpoint: `/api/monitors/heartbeat/${encodeURIComponent(token)}`,
     },
     {
       status: 405,

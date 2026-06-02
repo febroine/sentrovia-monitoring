@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   BellRing,
+  DownloadCloud,
   ExternalLink,
   FileText,
   FolderArchive,
@@ -10,8 +11,10 @@ import {
   Palette,
   RadioTower,
   Radar,
+  RefreshCw,
   Rows3,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
 import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
 import { SavedRecipientsManager } from "@/components/settings/saved-recipients-manager";
@@ -647,6 +650,99 @@ export function DataSettingsTab({ settings, updateSetting }: TabProps) {
       />
     </SectionCard>
   );
+}
+
+type UpdateStatus = {
+  currentVersion: string;
+  repository: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string | null;
+  releaseName: string | null;
+  publishedAt: string | null;
+  notes: string | null;
+  checkedAt: string;
+  status: "ok" | "error" | "unconfigured";
+  message: string;
+};
+
+export function UpdateAssistantTab() {
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function loadUpdateStatus() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/updates", { cache: "no-store" });
+      const data = (await response.json().catch(() => ({}))) as { update?: UpdateStatus; message?: string };
+      if (!response.ok) {
+        throw new Error(data.message ?? "Unable to check for updates.");
+      }
+
+      setUpdate(data.update ?? null);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to check for updates.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadUpdateStatus();
+  }, []);
+
+  return (
+    <SectionCard
+      title="Update Assistant"
+      description="Check the latest GitHub release and keep server update decisions visible."
+      icon={DownloadCloud}
+      iconClassName="text-emerald-600 dark:text-emerald-300"
+    >
+      {message ? <div className="rounded-lg border px-4 py-3 text-sm">{message}</div> : null}
+      <div className="grid gap-3 md:grid-cols-3">
+        <UpdateMetric label="Installed" value={update?.currentVersion ?? "-"} />
+        <UpdateMetric label="Latest" value={update?.latestVersion ?? "-"} />
+        <UpdateMetric label="Status" value={loading ? "Checking" : update?.updateAvailable ? "Update Available" : "Up To Date"} />
+      </div>
+      <div className="rounded-xl border bg-muted/15 p-4 text-sm">
+        <p className="font-medium">{update?.releaseName ?? update?.message ?? "Release information is not available yet."}</p>
+        {update?.publishedAt ? <p className="mt-1 text-xs text-muted-foreground">Published {formatDate(update.publishedAt)}</p> : null}
+        {update?.notes ? <p className="mt-3 whitespace-pre-wrap text-muted-foreground">{update.notes}</p> : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={() => void loadUpdateStatus()} disabled={loading}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+        {update?.releaseUrl ? (
+          <a
+            href={update.releaseUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open Release
+          </a>
+        ) : null}
+      </div>
+    </SectionCard>
+  );
+}
+
+function UpdateMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border p-4">
+      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="mt-2 text-lg font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 function SectionCard({

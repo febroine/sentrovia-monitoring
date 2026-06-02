@@ -40,6 +40,8 @@ Sentrovia is built for the next operational question: "Is it really down, what e
 Docker Compose is the fastest way to try Sentrovia.
 
 ```bash
+cp .env.example .env
+# Edit .env and set strong AUTH_SECRET, APP_ENCRYPTION_SECRET, and POSTGRES_PASSWORD values.
 docker compose up --build
 ```
 
@@ -56,7 +58,7 @@ The Compose stack starts:
 
 The web container waits for PostgreSQL, applies the database schema, applies manual migrations, and then starts the application. The worker starts after the web service is healthy.
 
-For production, set strong secrets in an `.env` file before running Compose:
+Compose requires strong secrets in an `.env` file before it starts:
 
 ```bash
 AUTH_SECRET=replace-with-a-strong-32-character-secret

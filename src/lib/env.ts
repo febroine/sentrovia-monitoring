@@ -7,7 +7,7 @@ const MAX_WORKER_POLL_INTERVAL_MS = 600_000;
 const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@localhost:5433/uptimemonitoring";
 const DEFAULT_AUTH_SECRET = "change-me-before-production";
 const DEFAULT_APP_ENCRYPTION_SECRET = "change-me-before-production-encryption";
-const PLACEHOLDER_SECRET_MARKERS = ["change-me", "replace-this", "replace-with"];
+const PLACEHOLDER_SECRET_MARKERS = ["change-me", "please-change", "replace-this", "replace-with", "local-docker"];
 
 function parseNumber(value: string | undefined, fallback: number) {
   if (!value) {

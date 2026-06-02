@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ElementType, type ReactNode } from "react";
-import { Bell, Clock3, Database, Globe, Mail, Palette, RadioTower, ShieldCheck } from "lucide-react";
+import { Bell, Clock3, Database, DownloadCloud, Globe, Mail, Palette, RadioTower, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,10 +11,11 @@ import {
   MonitoringSettingsTab,
   NotificationSettingsTab,
   PublicStatusSettingsTab,
+  UpdateAssistantTab,
 } from "@/components/settings/settings-sections";
 import { useSettingsStore } from "@/stores/use-settings-store";
 
-type TabId = "notifications" | "monitoring" | "publicStatus" | "appearance" | "data";
+type TabId = "notifications" | "monitoring" | "publicStatus" | "appearance" | "data" | "updates";
 
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; tone: string }> = [
   { id: "notifications", label: "Notifications", icon: Bell, tone: "text-emerald-600 dark:text-emerald-400" },
@@ -22,6 +23,7 @@ const tabs: Array<{ id: TabId; label: string; icon: ElementType; tone: string }>
   { id: "publicStatus", label: "Public Status", icon: RadioTower, tone: "text-rose-600 dark:text-rose-400" },
   { id: "appearance", label: "Appearance", icon: Palette, tone: "text-violet-600 dark:text-violet-400" },
   { id: "data", label: "Data", icon: Database, tone: "text-amber-600 dark:text-amber-400" },
+  { id: "updates", label: "Updates", icon: DownloadCloud, tone: "text-emerald-600 dark:text-emerald-400" },
 ];
 
 export default function SettingsPageClient() {
@@ -140,6 +142,9 @@ export default function SettingsPageClient() {
               </TabsContent>
               <TabsContent value="data">
                 <DataSettingsTab settings={settings} updateSetting={updateSetting} />
+              </TabsContent>
+              <TabsContent value="updates">
+                <UpdateAssistantTab />
               </TabsContent>
 
               <div className="sticky bottom-4 pt-2">

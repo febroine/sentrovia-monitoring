@@ -4,6 +4,7 @@ import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
 import { companies, monitorChecks, monitorEvents, monitors, reportSchedules } from "@/lib/db/schema";
 import { sendEmailDelivery } from "@/lib/delivery/service";
+import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { buildPrintableReportHtml, buildReportCsv, buildReportFileSlug } from "@/lib/reports/export";
 import { buildReportPdf } from "@/lib/reports/pdf";
 import { getSettings } from "@/lib/settings/service";
@@ -718,7 +719,7 @@ function buildMonitorBreakdown(
       return {
         monitorId: monitor.id,
         name: monitor.name,
-        url: monitor.url,
+        url: sanitizeMonitorUrlForDisplay(monitor.url),
         companyName: monitor.companyName ?? monitor.company,
         status: monitor.status,
         currentStatusCode: monitor.statusCode,

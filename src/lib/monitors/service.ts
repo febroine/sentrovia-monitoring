@@ -431,6 +431,31 @@ export async function recordMonitorResult(
   return monitor;
 }
 
+export async function releaseMonitorLeaseForMaintenance(
+  monitorId: string,
+  nextCheckAt: Date,
+  expectedLeaseToken?: string | null
+) {
+  const [monitor] = await db
+    .update(monitors)
+    .set({
+      nextCheckAt,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(monitors.id, monitorId),
+        eq(monitors.isActive, true),
+        expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
+      )
+    )
+    .returning();
+
+  return monitor ?? null;
+}
+
 export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
   const normalizedToken = normalizeHeartbeatTokenInput(token);
   if (!normalizedToken) {

@@ -77,10 +77,10 @@ export function getMonitorTargetDisplay(input: { monitorType: string; url: strin
   }
 
   if (input.monitorType === "keyword" || input.monitorType === "json") {
-    return input.url.split("#")[0];
+    return sanitizeMonitorUrlForDisplay(input.url);
   }
 
-  return input.url;
+  return sanitizeMonitorUrlForDisplay(input.url);
 }
 
 export function getMonitorTypeLabel(type: MonitorType | string) {
@@ -226,6 +226,23 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
   };
 }
 
+export function sanitizeMonitorUrlForDisplay(value: string) {
+  if (!value.includes("://")) {
+    return sanitizePlainMonitorTarget(value);
+  }
+
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return sanitizePlainMonitorTarget(value);
+  }
+}
+
 function buildPortMonitorTarget(host: string, port: number) {
   const normalizedHost = normalizeHost(host);
   return `tcp://${normalizedHost}:${toPort(port, DEFAULT_PORT_MONITOR_PORT)}`;
@@ -267,6 +284,10 @@ function normalizeHost(value: string) {
 
 function stripProtocol(value: string) {
   return value.replace(/^[a-z]+:\/\//i, "");
+}
+
+function sanitizePlainMonitorTarget(value: string) {
+  return value.replace(/[?#].*$/, "").replace(/^([^:/?#]+:\/\/)?[^@\s/]+@/, "$1");
 }
 
 function stripIpv6Brackets(value: string) {
