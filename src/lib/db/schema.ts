@@ -253,6 +253,9 @@ export const monitorIncidents = pgTable("monitor_incidents", {
   errorMessage: text("error_message"),
   notes: text("notes").default("").notNull(),
   postmortem: text("postmortem").default("").notNull(),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  acknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
+  acknowledgementNote: text("acknowledgement_note").default("").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -458,8 +461,24 @@ export const maintenanceWindows = pgTable("maintenance_windows", {
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
   endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
   timezone: varchar("timezone", { length: 64 }).default("Europe/Istanbul").notNull(),
+  recurrence: varchar("recurrence", { length: 16 }).default("none").notNull(),
+  scope: varchar("scope", { length: 16 }).default("all").notNull(),
+  monitorIds: text("monitor_ids")
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  companyIds: text("company_ids")
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  tags: text("tags")
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
   isActive: boolean("is_active").default(true).notNull(),
   suppressNotifications: boolean("suppress_notifications").default(true).notNull(),
+  suppressChecks: boolean("suppress_checks").default(false).notNull(),
+  reason: text("reason").default("").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

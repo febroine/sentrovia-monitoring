@@ -5,6 +5,7 @@ import type { NotificationContext } from "@/worker/types";
 
 const mocks = vi.hoisted(() => ({
   buildNotificationWebhookPayload: vi.fn(() => Promise.resolve({ ok: true })),
+  appendMonitorEvent: vi.fn(),
   hasRecentMonitorEvent: vi.fn(),
   sendChannelWebhookDelivery: vi.fn(),
   sendEmailDelivery: vi.fn(),
@@ -27,7 +28,12 @@ vi.mock("@/lib/delivery/service", () => ({
 }));
 
 vi.mock("@/lib/monitors/service", () => ({
+  appendMonitorEvent: mocks.appendMonitorEvent,
   hasRecentMonitorEvent: mocks.hasRecentMonitorEvent,
+}));
+
+vi.mock("@/lib/maintenance/service", () => ({
+  findActiveMaintenanceWindowForMonitor: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/lib/settings/service", () => ({

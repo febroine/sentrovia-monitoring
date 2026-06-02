@@ -4,6 +4,7 @@ import type Mail from "nodemailer/lib/mailer";
 import { and, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, webhookEndpoints } from "@/lib/db/schema";
+import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
 import { assertSafeWebhookUrl, isWebhookSafetyError } from "@/lib/security/webhook-safety";
 import { getSettings } from "@/lib/settings/service";
@@ -386,7 +387,7 @@ export async function buildNotificationWebhookPayload(input: {
     organization: settings?.profile.organization || "Sentrovia Monitoring",
     monitor: {
       name: input.monitorName,
-      url: input.url,
+      url: sanitizeMonitorUrlForDisplay(input.url),
       status: input.status,
       statusCode: input.statusCode,
     },

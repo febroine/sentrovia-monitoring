@@ -33,7 +33,7 @@ export function renderNotificationTemplates(
   const htmlDashboardPlaceholder = "__SENTROVIA_DASHBOARD_LINK__";
   const monitorLink =
     context.monitor.monitorType === "http"
-      ? buildSafeAnchor(context.monitor.url, context.monitor.url)
+      ? buildSafeAnchor(displayTarget, displayTarget)
       : escapeHtml(displayTarget);
   const dashboardLink = buildSafeAnchor(buildAppRouteUrl(appUrl, "/monitoring"), domain);
 

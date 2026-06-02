@@ -6,7 +6,8 @@ import {
   sendTelegramDelivery,
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
-import { hasRecentMonitorEvent } from "@/lib/monitors/service";
+import { findActiveMaintenanceWindowForMonitor } from "@/lib/maintenance/service";
+import { appendMonitorEvent, hasRecentMonitorEvent } from "@/lib/monitors/service";
 import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
@@ -112,6 +113,10 @@ async function shouldSendNotification(context: NotificationContext) {
     return false;
   }
 
+  if (await isSuppressedByMaintenance(context)) {
+    return false;
+  }
+
   const settings = await getSettings(context.monitor.userId);
   if (!settings) {
     return false;
@@ -148,6 +153,35 @@ async function shouldSendNotification(context: NotificationContext) {
   }
 
   return false;
+}
+
+async function isSuppressedByMaintenance(context: NotificationContext) {
+  const window = await findActiveMaintenanceWindowForMonitor(context.monitor, context.result.checkedAt);
+  if (!window?.suppressNotifications) {
+    return false;
+  }
+
+  const since = new Date(context.result.checkedAt.getTime() - 15 * 60_000);
+  const alreadyLogged = await hasRecentMonitorEvent({
+    monitorId: context.monitor.id,
+    eventType: "maintenance-suppressed",
+    since,
+    before: context.result.checkedAt,
+  });
+
+  if (!alreadyLogged) {
+    await appendMonitorEvent({
+      monitorId: context.monitor.id,
+      userId: context.monitor.userId,
+      eventType: "maintenance-suppressed",
+      status: context.result.status,
+      statusCode: context.result.statusCode,
+      latencyMs: context.result.latencyMs,
+      message: `Notification suppressed by maintenance window: ${window.name}`,
+    });
+  }
+
+  return true;
 }
 
 async function shouldSendByKind(enabled: boolean, dedupMinutes: number, context: NotificationContext) {
