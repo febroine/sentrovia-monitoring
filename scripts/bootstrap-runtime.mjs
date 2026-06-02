@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
-import { loadEnvConfig } from "@next/env";
+import nextEnv from "@next/env";
 import postgres from "postgres";
 
+const { loadEnvConfig } = nextEnv;
 const mode = process.argv[2];
 const MAX_DB_ATTEMPTS = 30;
 const RETRY_DELAY_MS = 2_000;
@@ -25,6 +26,7 @@ await waitForDatabase(DATABASE_URL);
 
 if (mode === "web") {
   await runStep("npm", ["run", "db:push:bootstrap"], "Applying database schema");
+  await runStep("npm", ["run", "db:manual"], "Applying manual database migrations");
   runForeground("npm", ["run", "start"]);
 } else {
   runForeground("npm", ["run", "worker:start"]);

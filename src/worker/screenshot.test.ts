@@ -15,6 +15,20 @@ describe("failure screenshot capture rules", () => {
     expect(shouldCaptureScreenshot(buildMonitor({ sendIncidentScreenshot: false }))).toBe(false);
   });
 
+  it("reports when screenshots are skipped because the monitor setting is disabled", async () => {
+    const onSkipped = vi.fn();
+
+    await expect(
+      buildFailureScreenshotAttachment(
+        buildMonitor({ sendIncidentScreenshot: false }),
+        new Date("2026-05-15T08:00:00.000Z"),
+        onSkipped
+      )
+    ).resolves.toBeNull();
+
+    expect(onSkipped).toHaveBeenCalledWith("screenshot setting is disabled for this monitor");
+  });
+
   it("skips monitor types that do not render web pages", () => {
     expect(shouldCaptureScreenshot(buildMonitor({ monitorType: "ping", sendIncidentScreenshot: true }))).toBe(false);
   });
@@ -29,13 +43,17 @@ describe("failure screenshot capture rules", () => {
 
   it("skips server-local screenshot targets without blocking the alert", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const onSkipped = vi.fn();
 
     await expect(
       buildFailureScreenshotAttachment(
-        buildMonitor({ url: "http://127.0.0.1:3000/admin", sendIncidentScreenshot: true })
+        buildMonitor({ url: "http://127.0.0.1:3000/admin", sendIncidentScreenshot: true }),
+        new Date("2026-05-15T08:00:00.000Z"),
+        onSkipped
       )
     ).resolves.toBeNull();
 
+    expect(onSkipped).toHaveBeenCalledWith("screenshot target resolves to a server-local address");
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
     warn.mockRestore();
   });

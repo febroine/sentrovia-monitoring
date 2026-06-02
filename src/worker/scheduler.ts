@@ -416,7 +416,23 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
 }
 
 async function buildAlertEmailAttachments(monitor: Monitor, checkedAt: Date) {
-  const screenshot = await buildFailureScreenshotAttachment(monitor, checkedAt);
+  let skippedReason: string | null = null;
+  const screenshot = await buildFailureScreenshotAttachment(monitor, checkedAt, (reason) => {
+    skippedReason = reason;
+  });
+
+  if (skippedReason) {
+    await appendMonitorEvent({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: "screenshot-skipped",
+      status: monitor.status,
+      statusCode: monitor.statusCode,
+      latencyMs: monitor.latencyMs,
+      message: `Failure screenshot skipped: ${skippedReason}`,
+    });
+  }
+
   return screenshot ? [screenshot] : undefined;
 }
 

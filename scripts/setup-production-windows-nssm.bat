@@ -71,6 +71,12 @@ if errorlevel 1 (
   set "EXIT_CODE=1"
   goto :finish
 )
+call npm run db:manual
+if errorlevel 1 (
+  echo [ERROR] Manual database migrations failed.
+  set "EXIT_CODE=1"
+  goto :finish
+)
 echo [OK] Database schema is current.
 
 echo [STEP 5/8] Building production app...

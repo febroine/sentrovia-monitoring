@@ -367,7 +367,54 @@ describe("monitoring scheduler verification flow", () => {
     await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
-      new Date("2026-05-08T07:00:01.000Z")
+      new Date("2026-05-08T07:00:01.000Z"),
+      expect.any(Function)
+    );
+  });
+
+  it("records a monitor event when screenshot capture is skipped", async () => {
+    mocks.buildFailureScreenshotAttachment.mockImplementation(async (_monitor, _checkedAt, onSkipped) => {
+      onSkipped?.("screenshot queue timed out");
+      return null;
+    });
+    mocks.checkResults = [
+      {
+        ok: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: 120,
+        errorMessage: "HTTP 500",
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+        sslExpiresAt: null,
+      },
+      {
+        ok: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: 130,
+        errorMessage: "HTTP 500",
+        checkedAt: new Date("2026-05-08T07:00:01.000Z"),
+        sslExpiresAt: null,
+      },
+    ];
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "up",
+        statusCode: 200,
+        retries: 1,
+        sendIncidentScreenshot: true,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    const notificationContext = getNotificationContext("failure");
+    await expect(notificationContext.buildEmailAttachments?.()).resolves.toBeUndefined();
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "screenshot-skipped",
+        message: "Failure screenshot skipped: screenshot queue timed out",
+      })
     );
   });
 
@@ -398,7 +445,8 @@ describe("monitoring scheduler verification flow", () => {
     await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
-      new Date("2026-05-08T07:00:00.000Z")
+      new Date("2026-05-08T07:00:00.000Z"),
+      expect.any(Function)
     );
   });
 
@@ -437,7 +485,8 @@ describe("monitoring scheduler verification flow", () => {
     await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
-      new Date("2026-05-08T07:00:00.000Z")
+      new Date("2026-05-08T07:00:00.000Z"),
+      expect.any(Function)
     );
   });
 

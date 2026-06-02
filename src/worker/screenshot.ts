@@ -16,9 +16,9 @@ const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
-const MAX_CONCURRENT_SCREENSHOTS = 1;
-const SCREENSHOT_QUEUE_TIMEOUT_MS = 90_000;
-const CHROMIUM_HEADLESS_ARGS = ["--headless=new"];
+const MAX_CONCURRENT_SCREENSHOTS = 3;
+const SCREENSHOT_QUEUE_TIMEOUT_MS = 5 * 60_000;
+const CHROMIUM_HEADLESS_ARGS = ["--headless=new", "--disable-gpu"];
 
 let activeScreenshots = 0;
 const screenshotQueue: Array<ScreenshotQueueEntry> = [];
@@ -30,9 +30,12 @@ type ScreenshotQueueEntry = {
 
 export async function buildFailureScreenshotAttachment(
   monitor: Monitor,
-  capturedAt = new Date()
+  capturedAt = new Date(),
+  onSkipped?: (reason: string) => void
 ): Promise<Mail.Attachment | null> {
-  if (!shouldCaptureScreenshot(monitor)) {
+  const skipReason = getScreenshotSkipReason(monitor);
+  if (skipReason) {
+    onSkipped?.(skipReason);
     return null;
   }
 
@@ -40,23 +43,33 @@ export async function buildFailureScreenshotAttachment(
     await assertScreenshotTargetAllowed(monitor);
     return await withScreenshotSlot(() => captureScreenshotAttachment(monitor, capturedAt));
   } catch (error) {
+    const message = toScreenshotErrorMessage(error);
+    onSkipped?.(message);
     console.warn(
-      `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${toScreenshotErrorMessage(error)}`
+      `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${message}`
     );
     return null;
   }
 }
 
 export function shouldCaptureScreenshot(monitor: Monitor) {
-  if (
-    !monitor.sendIncidentScreenshot ||
-    !SCREENSHOT_MONITOR_TYPES.has(monitor.monitorType) ||
-    (monitor.notificationPref !== "email" && monitor.notificationPref !== "telegram" && monitor.notificationPref !== "both")
-  ) {
-    return false;
+  return getScreenshotSkipReason(monitor) === null;
+}
+
+function getScreenshotSkipReason(monitor: Monitor) {
+  if (!monitor.sendIncidentScreenshot) {
+    return "screenshot setting is disabled for this monitor";
   }
 
-  return true;
+  if (!SCREENSHOT_MONITOR_TYPES.has(monitor.monitorType)) {
+    return "monitor type does not support browser screenshots";
+  }
+
+  if (monitor.notificationPref !== "email" && monitor.notificationPref !== "telegram" && monitor.notificationPref !== "both") {
+    return "monitor notification channel does not support screenshots";
+  }
+
+  return null;
 }
 
 async function assertScreenshotTargetAllowed(monitor: Monitor) {
@@ -185,9 +198,8 @@ function stripTrailingDots(value: string) {
 async function captureScreenshotAttachment(monitor: Monitor, capturedAt: Date): Promise<Mail.Attachment | null> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
-    // Playwright's default headless path can capture Chromium error pages as blank.
     args: CHROMIUM_HEADLESS_ARGS,
-    headless: false,
+    headless: true,
     timeout: SCREENSHOT_TIMEOUT_MS,
   });
 
@@ -237,10 +249,7 @@ async function capturePageScreenshot(monitor: Monitor, page: Page) {
   });
 
   if (content.byteLength > SCREENSHOT_MAX_BYTES) {
-    console.warn(
-      `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes.`
-    );
-    return null;
+    throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
   }
 
   return content;
