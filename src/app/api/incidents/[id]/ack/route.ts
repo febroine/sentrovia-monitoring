@@ -9,6 +9,8 @@ const ackSchema = z.object({
   note: z.string().trim().max(1000).default(""),
 });
 
+export const runtime = "nodejs";
+
 type Params = Promise<{ id: string }>;
 
 export async function POST(request: NextRequest, context: { params: Params }) {

@@ -3,6 +3,8 @@ import { toAuthError } from "@/lib/auth/errors";
 import { getSession } from "@/lib/auth/session";
 import { getIncidentOverview } from "@/lib/incidents/service";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const session = await getSession();

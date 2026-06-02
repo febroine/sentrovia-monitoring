@@ -704,7 +704,7 @@ export function UpdateAssistantTab() {
       <div className="grid gap-3 md:grid-cols-3">
         <UpdateMetric label="Installed" value={update?.currentVersion ?? "-"} />
         <UpdateMetric label="Latest" value={update?.latestVersion ?? "-"} />
-        <UpdateMetric label="Status" value={loading ? "Checking" : update?.updateAvailable ? "Update Available" : "Up To Date"} />
+        <UpdateMetric label="Status" value={resolveUpdateStatusLabel(update, loading)} />
       </div>
       <div className="rounded-xl border bg-muted/15 p-4 text-sm">
         <p className="font-medium">{update?.releaseName ?? update?.message ?? "Release information is not available yet."}</p>
@@ -739,6 +739,14 @@ function UpdateMetric({ label, value }: { label: string; value: string }) {
       <p className="mt-2 text-lg font-semibold">{value}</p>
     </div>
   );
+}
+
+function resolveUpdateStatusLabel(update: UpdateStatus | null, loading: boolean) {
+  if (loading) return "Checking";
+  if (!update) return "Unknown";
+  if (update.status === "error") return "Check Failed";
+  if (update.status === "unconfigured") return "Unconfigured";
+  return update.updateAvailable ? "Update Available" : "Up To Date";
 }
 
 function formatDate(value: string) {

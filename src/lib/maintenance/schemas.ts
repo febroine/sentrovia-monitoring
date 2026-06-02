@@ -3,6 +3,9 @@ import { z } from "zod";
 export const maintenanceScopeSchema = z.enum(["all", "monitors", "companies", "tags"]);
 export const maintenanceRecurrenceSchema = z.enum(["none", "daily", "weekly"]);
 
+const DAILY_RECURRENCE_MAX_MS = 24 * 60 * 60_000;
+const WEEKLY_RECURRENCE_MAX_MS = 7 * DAILY_RECURRENCE_MAX_MS;
+
 export const maintenanceWindowInputSchema = z
   .object({
     name: z.string().trim().min(2).max(160),
@@ -33,6 +36,15 @@ export const maintenanceWindowInputSchema = z
 
     if (!Number.isNaN(startsAt.getTime()) && !Number.isNaN(endsAt.getTime()) && endsAt <= startsAt) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "End time must be after start time." });
+    }
+
+    const durationMs = endsAt.getTime() - startsAt.getTime();
+    if (value.recurrence === "daily" && durationMs > DAILY_RECURRENCE_MAX_MS) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "Daily maintenance windows cannot exceed 24 hours." });
+    }
+
+    if (value.recurrence === "weekly" && durationMs > WEEKLY_RECURRENCE_MAX_MS) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "Weekly maintenance windows cannot exceed 7 days." });
     }
 
     if (!isValidTimeZone(value.timezone)) {

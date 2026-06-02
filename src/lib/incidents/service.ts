@@ -27,7 +27,6 @@ async function listIncidents(userId: string, status?: "open" | "resolved") {
     .where(
       and(
         eq(monitorIncidents.userId, userId),
-        eq(monitors.isActive, true),
         status ? eq(monitorIncidents.status, status) : undefined
       )
     )
@@ -152,38 +151,46 @@ export async function acknowledgeIncident(input: {
   note: string;
 }) {
   const acknowledgedAt = new Date();
-  const [incident] = await db
-    .update(monitorIncidents)
-    .set({
-      acknowledgedAt,
-      acknowledgedBy: input.acknowledgedBy,
-      acknowledgementNote: input.note,
-      updatedAt: acknowledgedAt,
-    })
-    .where(
-      and(
-        eq(monitorIncidents.id, input.incidentId),
-        eq(monitorIncidents.userId, input.userId),
-        eq(monitorIncidents.status, "open"),
-        isNull(monitorIncidents.resolvedAt)
+  const incident = await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(monitorIncidents)
+      .set({
+        acknowledgedAt,
+        acknowledgedBy: input.acknowledgedBy,
+        acknowledgementNote: input.note,
+        updatedAt: acknowledgedAt,
+      })
+      .where(
+        and(
+          eq(monitorIncidents.id, input.incidentId),
+          eq(monitorIncidents.userId, input.userId),
+          eq(monitorIncidents.status, "open"),
+          isNull(monitorIncidents.resolvedAt)
+        )
       )
-    )
-    .returning();
+      .returning();
+
+    if (!updated) {
+      return null;
+    }
+
+    await tx.insert(incidentEvents).values({
+      incidentId: updated.id,
+      monitorId: updated.monitorId,
+      userId: input.userId,
+      eventType: "incident_acknowledged",
+      title: "Incident acknowledged",
+      detail: input.note || "An operator acknowledged this incident.",
+      metadataJson: JSON.stringify({ acknowledgedBy: input.acknowledgedBy }),
+      createdAt: acknowledgedAt,
+    });
+
+    return updated;
+  });
 
   if (!incident) {
     return null;
   }
-
-  await db.insert(incidentEvents).values({
-    incidentId: incident.id,
-    monitorId: incident.monitorId,
-    userId: input.userId,
-    eventType: "incident_acknowledged",
-    title: "Incident acknowledged",
-    detail: input.note || "An operator acknowledged this incident.",
-    metadataJson: JSON.stringify({ acknowledgedBy: input.acknowledgedBy }),
-    createdAt: acknowledgedAt,
-  });
 
   return {
     ...incident,

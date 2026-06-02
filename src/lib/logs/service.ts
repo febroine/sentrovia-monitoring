@@ -33,9 +33,7 @@ export async function listLogs(
   const fromDate = parseDateFilter(filters.from);
   if (fromDate) {
     conditions.push(gte(monitorEvents.createdAt, fromDate));
-    monitorConditions.push(
-      or(gte(monitors.lastCheckedAt, fromDate), gte(monitors.lastSuccessAt, fromDate))!
-    );
+    monitorConditions.push(gte(monitors.lastCheckedAt, fromDate));
   }
 
   const toDate = parseDateFilter(filters.to);
@@ -43,6 +41,7 @@ export async function listLogs(
     const end = new Date(toDate);
     end.setHours(23, 59, 59, 999);
     conditions.push(lte(monitorEvents.createdAt, end));
+    monitorConditions.push(lte(monitors.lastCheckedAt, end));
   }
 
   if (filters.companyQuery?.trim()) {
@@ -161,8 +160,18 @@ function parseDateFilter(value: string | undefined) {
     return null;
   }
 
-  const parsed = new Date(value);
+  const parsed = parseLocalDateInput(value.trim()) ?? new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseLocalDateInput(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day));
 }
 
 function toBoundedInteger(value: number | undefined, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER) {

@@ -5,6 +5,8 @@ import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-bo
 import { maintenanceWindowInputSchema } from "@/lib/maintenance/schemas";
 import { deleteMaintenanceWindow, updateMaintenanceWindow } from "@/lib/maintenance/service";
 
+export const runtime = "nodejs";
+
 type Params = Promise<{ id: string }>;
 
 export async function PATCH(request: NextRequest, context: { params: Params }) {

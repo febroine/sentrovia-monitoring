@@ -5,6 +5,8 @@ import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-bo
 import { maintenanceWindowInputSchema } from "@/lib/maintenance/schemas";
 import { createMaintenanceWindow, listMaintenanceWindows } from "@/lib/maintenance/service";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const session = await getSession();

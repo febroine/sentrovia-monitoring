@@ -48,27 +48,11 @@ type FormState = {
   reason: string;
 };
 
-const DEFAULT_FORM: FormState = {
-  name: "",
-  startsAt: toDateTimeLocal(new Date()),
-  endsAt: toDateTimeLocal(new Date(Date.now() + 60 * 60_000)),
-  timezone: "Europe/Istanbul",
-  recurrence: "none",
-  scope: "all",
-  monitorIds: [],
-  companyIds: [],
-  tags: [],
-  isActive: true,
-  suppressNotifications: true,
-  suppressChecks: false,
-  reason: "",
-};
-
 export function MaintenancePageClient() {
   const [windows, setWindows] = useState<MaintenanceWindow[]>([]);
   const [monitors, setMonitors] = useState<MonitorOption[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const [form, setForm] = useState<FormState>(() => createDefaultForm());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,9 +74,9 @@ export function MaintenancePageClient() {
       const monitorsData = await readJson<{ monitors?: MonitorOption[] }>(monitorsResponse);
       const companiesData = await readJson<{ companies?: CompanyOption[] }>(companiesResponse);
 
-      if (!maintenanceResponse.ok) {
-        throw new Error(maintenanceData.message ?? "Unable to load maintenance windows.");
-      }
+      assertOk(maintenanceResponse, maintenanceData.message, "Unable to load maintenance windows.");
+      assertOk(monitorsResponse, undefined, "Unable to load monitor options.");
+      assertOk(companiesResponse, undefined, "Unable to load company options.");
 
       setWindows(maintenanceData.windows ?? []);
       setMonitors(monitorsData.monitors ?? []);
@@ -156,7 +140,7 @@ export function MaintenancePageClient() {
 
   function resetForm() {
     setEditingId(null);
-    setForm(DEFAULT_FORM);
+    setForm(createDefaultForm());
   }
 
   return (
@@ -404,6 +388,26 @@ function toPayload(form: FormState) {
   };
 }
 
+function createDefaultForm(): FormState {
+  const now = new Date();
+
+  return {
+    name: "",
+    startsAt: toDateTimeLocal(now),
+    endsAt: toDateTimeLocal(new Date(now.getTime() + 60 * 60_000)),
+    timezone: "Europe/Istanbul",
+    recurrence: "none",
+    scope: "all",
+    monitorIds: [],
+    companyIds: [],
+    tags: [],
+    isActive: true,
+    suppressNotifications: true,
+    suppressChecks: false,
+    reason: "",
+  };
+}
+
 function toggleSelection(selected: string[], id: string, checked: boolean) {
   return checked ? Array.from(new Set([...selected, id])) : selected.filter((item) => item !== id);
 }
@@ -419,6 +423,12 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function toMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function assertOk(response: Response, message: string | undefined, fallback: string) {
+  if (!response.ok) {
+    throw new Error(message ?? fallback);
+  }
 }
 
 function formatDate(value: string) {

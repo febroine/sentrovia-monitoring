@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { maintenanceWindowInputSchema } from "@/lib/maintenance/schemas";
 import { isMaintenanceWindowActiveForMonitor } from "@/lib/maintenance/service";
 
 describe("maintenance window matching", () => {
@@ -46,6 +47,27 @@ describe("maintenance window matching", () => {
         new Date("2026-05-10T09:30:00.000Z")
       )
     ).toBe(true);
+  });
+
+  it("rejects recurring windows that exceed their recurrence period", () => {
+    const result = maintenanceWindowInputSchema.safeParse({
+      name: "Long daily window",
+      startsAt: "2026-05-10T09:00:00.000Z",
+      endsAt: "2026-05-11T09:01:00.000Z",
+      timezone: "Europe/Istanbul",
+      recurrence: "daily",
+      scope: "all",
+      monitorIds: [],
+      companyIds: [],
+      tags: [],
+      isActive: true,
+      suppressNotifications: true,
+      suppressChecks: false,
+      reason: "",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe("Daily maintenance windows cannot exceed 24 hours.");
   });
 });
 
