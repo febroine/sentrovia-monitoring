@@ -1,12 +1,37 @@
 import net from "node:net";
 import type { Monitor } from "@/lib/db/schema";
+import { env } from "@/lib/env";
 import { parsePortMonitorTarget } from "@/lib/monitors/targets";
+import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import type { CheckResult } from "@/worker/types";
 
-export function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
+const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
+
+export async function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
   const target = parsePortMonitorTarget(monitor.url);
 
+  try {
+    await assertMonitorNetworkTarget(target.host, {
+      allowPrivateTargets: env.monitorAllowPrivateTargets,
+      message: MONITOR_PUBLIC_TARGET_ERROR,
+    });
+    return await checkTcpPort(monitor, target, checkedAt);
+  } catch (error) {
+    return buildCheckResult(checkedAt, {
+      ok: false,
+      status: "down",
+      statusCode: null,
+      errorMessage: error instanceof Error ? error.message : "TCP check failed",
+    });
+  }
+}
+
+function checkTcpPort(
+  monitor: Monitor,
+  target: ReturnType<typeof parsePortMonitorTarget>,
+  checkedAt: Date
+): Promise<CheckResult> {
   return new Promise((resolve) => {
     const socket = net.createConnection({
       host: target.host,
@@ -22,12 +47,7 @@ export function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
 
       settled = true;
       socket.destroy();
-      resolve({
-        ...result,
-        checkedAt,
-        latencyMs: Math.max(1, Date.now() - checkedAt.getTime()),
-        sslExpiresAt: null,
-      });
+      resolve(buildCheckResult(checkedAt, result));
     };
 
     socket.setTimeout(monitor.timeout, () => {
@@ -55,6 +75,18 @@ export function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
       });
     });
   });
+}
+
+function buildCheckResult(
+  checkedAt: Date,
+  result: Omit<CheckResult, "checkedAt" | "latencyMs" | "sslExpiresAt">
+): CheckResult {
+  return {
+    ...result,
+    checkedAt,
+    latencyMs: Math.max(1, Date.now() - checkedAt.getTime()),
+    sslExpiresAt: null,
+  };
 }
 
 function toNodeFamily(ipFamily: Monitor["ipFamily"]) {

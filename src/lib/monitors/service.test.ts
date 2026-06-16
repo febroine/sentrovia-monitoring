@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterDuplicateMonitorInputs,
   normalizeHeartbeatTokenInput,
   selectDueMonitorsForCycle,
   spreadInitialMonitorChecks,
 } from "@/lib/monitors/service";
+import type { MonitorInput } from "@/lib/monitors/schemas";
+import { buildMonitorIdentityKey } from "@/lib/monitors/targets";
 
 describe("monitor due selection", () => {
   it("prioritizes verification checks before normal due monitors within the batch", () => {
@@ -46,6 +49,48 @@ describe("heartbeat token input", () => {
     const token = "a".repeat(24);
 
     expect(normalizeHeartbeatTokenInput(` ${token} `)).toBe(token);
+  });
+});
+
+describe("monitor import duplicate filtering", () => {
+  it("keeps heartbeat imports with blank tokens because tokens are generated later", () => {
+    const filtered = filterDuplicateMonitorInputs(
+      [
+        buildMonitorInput({ name: "Job A", monitorType: "heartbeat", heartbeatToken: "" }),
+        buildMonitorInput({ name: "Job B", monitorType: "heartbeat", heartbeatToken: "" }),
+      ],
+      new Set()
+    );
+
+    expect(filtered.map((monitor) => monitor.name)).toEqual(["Job A", "Job B"]);
+  });
+
+  it("removes duplicate heartbeat imports when a token is explicitly provided", () => {
+    const token = "heartbeat-token-123456";
+    const filtered = filterDuplicateMonitorInputs(
+      [
+        buildMonitorInput({ name: "Job A", monitorType: "heartbeat", heartbeatToken: token }),
+        buildMonitorInput({ name: "Job B", monitorType: "heartbeat", heartbeatToken: token }),
+      ],
+      new Set()
+    );
+
+    expect(filtered.map((monitor) => monitor.name)).toEqual(["Job A"]);
+  });
+
+  it("removes imports that duplicate existing monitor targets", () => {
+    const existingTargets = new Set([
+      buildMonitorIdentityKey({ monitorType: "http", url: "https://example.com/health" }),
+    ]);
+    const filtered = filterDuplicateMonitorInputs(
+      [
+        buildMonitorInput({ name: "Existing", url: "https://example.com/health" }),
+        buildMonitorInput({ name: "New", url: "https://example.com/status" }),
+      ],
+      existingTargets
+    );
+
+    expect(filtered.map((monitor) => monitor.name)).toEqual(["New"]);
   });
 });
 
@@ -99,5 +144,57 @@ function buildDueMonitor(
     verificationMode,
     nextCheckAt: new Date(nextCheckAt),
     createdAt: new Date("2026-05-08T06:00:00.000Z"),
+  };
+}
+
+function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput {
+  return {
+    name: "Monitor",
+    monitorType: "http",
+    url: "https://example.com/health",
+    portHost: "",
+    portNumber: 443,
+    heartbeatToken: "",
+    heartbeatLastReceivedAt: null,
+    databaseHost: "",
+    databasePort: 5432,
+    databaseName: "",
+    databaseUsername: "",
+    databasePassword: "",
+    databasePasswordConfigured: false,
+    databaseSsl: true,
+    keywordQuery: "",
+    keywordInvert: false,
+    jsonPath: "",
+    jsonExpectedValue: "",
+    jsonMatchMode: "equals",
+    companyId: null,
+    company: null,
+    notificationPref: "none",
+    notifEmail: null,
+    telegramBotToken: null,
+    telegramChatId: null,
+    intervalValue: 5,
+    intervalUnit: "dk",
+    timeout: 5000,
+    slowResponseThresholdMs: null,
+    retries: 3,
+    method: "GET",
+    tags: [],
+    renotifyCount: null,
+    maxRedirects: 5,
+    ipFamily: "auto",
+    checkSslExpiry: false,
+    ignoreSslErrors: false,
+    cacheBuster: false,
+    saveErrorPages: false,
+    saveSuccessPages: false,
+    responseMaxLength: 1024,
+    telegramTemplate: null,
+    emailSubject: null,
+    emailBody: null,
+    sendIncidentScreenshot: false,
+    isActive: true,
+    ...overrides,
   };
 }

@@ -3,12 +3,16 @@ import https from "node:https";
 import tls from "node:tls";
 import type { IncomingMessage } from "node:http";
 import type { Monitor } from "@/lib/db/schema";
+import { env } from "@/lib/env";
+import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import type { CheckResult } from "@/worker/types";
 
 interface HttpResponseSnapshot {
   statusCode: number;
   bodyText: string;
 }
+
+const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
 export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
@@ -109,9 +113,14 @@ function evaluateJsonResponse(monitor: Monitor, bodyText: string) {
   };
 }
 
-function requestWithRedirects(monitor: Monitor, url: string, redirectCount: number): Promise<HttpResponseSnapshot> {
+async function requestWithRedirects(monitor: Monitor, url: string, redirectCount: number): Promise<HttpResponseSnapshot> {
+  const parsed = new URL(url);
+  await assertMonitorNetworkTarget(parsed.hostname, {
+    allowPrivateTargets: env.monitorAllowPrivateTargets,
+    message: MONITOR_PUBLIC_TARGET_ERROR,
+  });
+
   return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
     const transport = parsed.protocol === "https:" ? https : http;
     const request = transport.request(
       parsed,

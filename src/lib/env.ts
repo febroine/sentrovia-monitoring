@@ -4,7 +4,7 @@ const MIN_WORKER_CONCURRENCY = 1;
 const MAX_WORKER_CONCURRENCY = 500;
 const MIN_WORKER_POLL_INTERVAL_MS = 1_000;
 const MAX_WORKER_POLL_INTERVAL_MS = 600_000;
-const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@localhost:5433/uptimemonitoring";
+const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/uptimemonitoring";
 const DEFAULT_AUTH_SECRET = "change-me-before-production";
 const DEFAULT_APP_ENCRYPTION_SECRET = "change-me-before-production-encryption";
 const PLACEHOLDER_SECRET_MARKERS = ["change-me", "please-change", "replace-this", "replace-with", "local-docker"];
@@ -58,7 +58,7 @@ function ensureProductionSecret(name: string, value: string, fallback: string) {
 
 function buildDatabaseUrlFromParts() {
   const host = readString(process.env.POSTGRES_HOST, "localhost");
-  const port = readString(process.env.POSTGRES_PORT, "5433");
+  const port = readString(process.env.POSTGRES_PORT, "5432");
   const user = readString(process.env.POSTGRES_USER, "postgres");
   const password = readString(process.env.POSTGRES_PASSWORD, "postgres");
   const database = readString(process.env.POSTGRES_DB, "uptimemonitoring");
@@ -114,4 +114,5 @@ export const env = {
   workerAutoStart: parseBoolean(process.env.WORKER_AUTO_START, false),
   disableEmbeddedWorkerSpawn: parseBoolean(process.env.DISABLE_EMBEDDED_WORKER_SPAWN, false),
   authAllowPublicSignup: parseBoolean(process.env.AUTH_ALLOW_PUBLIC_SIGNUP, process.env.NODE_ENV !== "production"),
+  monitorAllowPrivateTargets: parseBoolean(process.env.MONITOR_ALLOW_PRIVATE_TARGETS, true),
 };

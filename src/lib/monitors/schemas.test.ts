@@ -59,6 +59,50 @@ describe("monitor input schema", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("allows private network URLs for internal monitor targets", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Internal API",
+      url: "http://10.10.1.25/health",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects metadata URLs for HTTP-based monitors", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Metadata API",
+      url: "http://169.254.169.254/latest/meta-data",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("allows private network hosts for TCP monitors", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Router",
+      monitorType: "port",
+      portHost: "192.168.1.1",
+      notificationPref: "none",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects localhost hosts for TCP monitors", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Localhost",
+      monitorType: "port",
+      portHost: "localhost",
+      notificationPref: "none",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("treats blank slow response thresholds as disabled", () => {
     const parsed = monitorInputSchema.parse({
       ...DEFAULT_MONITOR_FORM,

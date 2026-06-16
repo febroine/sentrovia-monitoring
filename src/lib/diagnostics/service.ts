@@ -4,11 +4,13 @@ import https from "node:https";
 import net from "node:net";
 import tls from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
+import { env } from "@/lib/env";
 import {
   parsePingMonitorTarget,
   parsePortMonitorTarget,
   parsePostgresMonitorTarget,
 } from "@/lib/monitors/targets";
+import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import type {
   DiagnosticFailureCategory,
   DiagnosticPhase,
@@ -22,6 +24,7 @@ const DEFAULT_HTTPS_PORT = 443;
 const DIAGNOSTIC_TIMEOUT_RATIO = 0.6;
 const MIN_DIAGNOSTIC_TIMEOUT_MS = 2_000;
 const MAX_DIAGNOSTIC_TIMEOUT_MS = 10_000;
+const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
 interface DiagnosticTarget {
   host: string;
@@ -47,6 +50,10 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
     });
   }
 
+  await assertMonitorNetworkTarget(target.host, {
+    allowPrivateTargets: env.monitorAllowPrivateTargets,
+    message: MONITOR_PUBLIC_TARGET_ERROR,
+  });
   const dnsResult = await checkDns(target.host);
   if (dnsResult.status === "failed") {
     return buildDiagnosticResult({

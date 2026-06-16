@@ -10,16 +10,36 @@ const RETRY_DELAY_MS = 2_000;
 
 loadEnvConfig(process.cwd());
 
-const DATABASE_URL = process.env.DATABASE_URL;
-
 if (!mode || !["web", "worker"].includes(mode)) {
   console.error("Usage: node scripts/bootstrap-runtime.mjs <web|worker>");
   process.exit(1);
 }
 
+const DATABASE_URL = resolveDatabaseUrl();
+
 if (!DATABASE_URL) {
-  console.error("DATABASE_URL is missing. Sentrovia cannot start without a database connection.");
+  console.error(
+    "Database connection is not configured. Set DATABASE_URL or POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB in .env.local."
+  );
   process.exit(1);
+}
+
+function resolveDatabaseUrl() {
+  if (process.env.DATABASE_URL?.trim()) {
+    return process.env.DATABASE_URL;
+  }
+
+  const host = process.env.POSTGRES_HOST || "localhost";
+  const port = process.env.POSTGRES_PORT || "5432";
+  const user = process.env.POSTGRES_USER;
+  const password = process.env.POSTGRES_PASSWORD;
+  const database = process.env.POSTGRES_DB;
+
+  if (user && password && database) {
+    return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+  }
+
+  return null;
 }
 
 await waitForDatabase(DATABASE_URL);
