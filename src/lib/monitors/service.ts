@@ -26,11 +26,13 @@ import {
 } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { encryptValue } from "@/lib/security/encryption";
+import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const WORKER_STATE_ID = "primary";
 const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
+const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
 export async function listMonitors(userId: string) {
   return db
@@ -230,17 +232,7 @@ export async function createManyMonitors(userId: string, inputs: MonitorInput[],
       })
     )
   );
-  const seenTargets = new Set(existingTargets);
-  const filtered = inputs.filter((input) => {
-    const url = buildCanonicalMonitorTarget(input);
-    const key = buildMonitorIdentityKey({ monitorType: input.monitorType, url });
-    if (seenTargets.has(key)) {
-      return false;
-    }
-
-    seenTargets.add(key);
-    return true;
-  });
+  const filtered = filterDuplicateMonitorInputs(inputs, existingTargets);
   const values = await Promise.all(filtered.map((input) => buildMonitorValues(userId, input, null, database)));
   const valuesWithInitialSchedule = spreadInitialMonitorChecks(values, new Date());
 
@@ -249,6 +241,35 @@ export async function createManyMonitors(userId: string, inputs: MonitorInput[],
   }
 
   return database.insert(monitors).values(valuesWithInitialSchedule).returning();
+}
+
+export function filterDuplicateMonitorInputs(inputs: MonitorInput[], existingTargets: Set<string>) {
+  const seenTargets = new Set(existingTargets);
+
+  return inputs.filter((input) => {
+    const key = buildImportMonitorIdentityKey(input);
+    if (!key) {
+      return true;
+    }
+
+    if (seenTargets.has(key)) {
+      return false;
+    }
+
+    seenTargets.add(key);
+    return true;
+  });
+}
+
+function buildImportMonitorIdentityKey(input: MonitorInput) {
+  if (input.monitorType === "heartbeat" && input.heartbeatToken.trim().length === 0) {
+    return null;
+  }
+
+  return buildMonitorIdentityKey({
+    monitorType: input.monitorType,
+    url: buildCanonicalMonitorTarget(input),
+  });
 }
 
 export function spreadInitialMonitorChecks<T extends { intervalValue: number; intervalUnit: string }>(
@@ -853,6 +874,7 @@ async function buildMonitorValues(
     ...input,
     heartbeatToken: heartbeatToken ?? input.heartbeatToken,
   });
+  await assertMonitorNetworkTargetAllowed(monitorType, url);
   const databasePasswordEncrypted =
     monitorType === "postgres"
       ? resolveDatabasePassword(input, existingMonitor)
@@ -1055,6 +1077,33 @@ function shouldPersistSlowResponseThreshold(
   }
 
   return thresholdMs;
+}
+
+async function assertMonitorNetworkTargetAllowed(monitorType: MonitorInput["monitorType"], url: string) {
+  if (monitorType === "heartbeat") {
+    return;
+  }
+
+  await assertMonitorNetworkTarget(resolveMonitorTargetHostname(monitorType, url), {
+    allowPrivateTargets: env.monitorAllowPrivateTargets,
+    message: MONITOR_PUBLIC_TARGET_ERROR,
+  });
+}
+
+function resolveMonitorTargetHostname(monitorType: MonitorInput["monitorType"], url: string) {
+  if (monitorType === "port") {
+    return parsePortMonitorTarget(url).host;
+  }
+
+  if (monitorType === "ping") {
+    return parsePingMonitorTarget(url).host;
+  }
+
+  if (monitorType === "postgres") {
+    return parsePostgresMonitorTarget(url).host;
+  }
+
+  return new URL(url.split("#")[0]).hostname;
 }
 
 function normalizeJsonMatchMode(value: string | null | undefined): MonitorInput["jsonMatchMode"] {

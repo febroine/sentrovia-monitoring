@@ -1,16 +1,23 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Monitor } from "@/lib/db/schema";
+import { env } from "@/lib/env";
 import { parsePingMonitorTarget } from "@/lib/monitors/targets";
+import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import type { CheckResult } from "@/worker/types";
 
 const execFileAsync = promisify(execFile);
+const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
 export async function checkPingMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
   const target = parsePingMonitorTarget(monitor.url);
 
   try {
+    await assertMonitorNetworkTarget(target.host, {
+      allowPrivateTargets: env.monitorAllowPrivateTargets,
+      message: MONITOR_PUBLIC_TARGET_ERROR,
+    });
     const latencyMs = await measurePingLatency(target.host, monitor.timeout);
     return {
       ok: true,

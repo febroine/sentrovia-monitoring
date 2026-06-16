@@ -1,16 +1,12 @@
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
 import type Mail from "nodemailer/lib/mailer";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
+import { env } from "@/lib/env";
+import {
+  assertMonitorNetworkTarget,
+  normalizeNetworkHostname,
+} from "@/lib/security/public-network-target";
 
-const BLOCKED_SCREENSHOT_HOSTNAMES = new Set([
-  "localhost",
-  "ip6-localhost",
-  "ip6-loopback",
-  "metadata.google.internal",
-]);
-const BLOCKED_SCREENSHOT_HOST_SUFFIXES = [".localhost"];
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
 const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
@@ -19,6 +15,7 @@ const SCREENSHOT_JPEG_QUALITY = 70;
 const MAX_CONCURRENT_SCREENSHOTS = 3;
 const SCREENSHOT_QUEUE_TIMEOUT_MS = 5 * 60_000;
 const CHROMIUM_HEADLESS_ARGS = ["--headless=new", "--disable-gpu"];
+const SCREENSHOT_PUBLIC_TARGET_ERROR = "screenshot target is not allowed by the current network safety policy";
 
 let activeScreenshots = 0;
 const screenshotQueue: Array<ScreenshotQueueEntry> = [];
@@ -78,121 +75,19 @@ async function assertScreenshotTargetAllowed(monitor: Monitor) {
     throw new Error("screenshot target is not a valid URL");
   }
 
-  if (isBlockedScreenshotHostname(hostname)) {
-    throw new Error("screenshot target is a server-local hostname");
-  }
-
-  if (isIP(hostname)) {
-    assertAddressAllowedForScreenshot(hostname);
-    return;
-  }
-
-  const addresses = await resolveScreenshotHostname(hostname);
-  for (const address of addresses) {
-    assertAddressAllowedForScreenshot(address);
-  }
+  await assertMonitorNetworkTarget(hostname, {
+    allowPrivateTargets: env.monitorAllowPrivateTargets,
+    message: SCREENSHOT_PUBLIC_TARGET_ERROR,
+  });
 }
 
 function parseScreenshotHostname(value: string) {
   try {
     const parsed = new URL(stripUrlFragment(value));
-    return normalizeScreenshotHostname(parsed.hostname);
+    return normalizeNetworkHostname(parsed.hostname);
   } catch {
     return null;
   }
-}
-
-function normalizeScreenshotHostname(value: string) {
-  return stripTrailingDots(stripIpv6Brackets(value.trim().toLowerCase()));
-}
-
-function isBlockedScreenshotHostname(hostname: string) {
-  return (
-    BLOCKED_SCREENSHOT_HOSTNAMES.has(hostname) ||
-    BLOCKED_SCREENSHOT_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
-  );
-}
-
-async function resolveScreenshotHostname(hostname: string) {
-  try {
-    const records = await lookup(hostname, { all: true, verbatim: true });
-    return records.map((record) => stripIpv6Brackets(record.address));
-  } catch {
-    return [hostname];
-  }
-}
-
-function assertAddressAllowedForScreenshot(address: string) {
-  if (isServerLocalAddress(address)) {
-    throw new Error("screenshot target resolves to a server-local address");
-  }
-}
-
-function isServerLocalAddress(address: string) {
-  const normalized = stripIpv6Brackets(address.toLowerCase());
-  const mappedIpv4 = parseIpv4MappedIpv6(normalized);
-  const comparable = mappedIpv4 ?? normalized;
-
-  return isLoopbackAddress(comparable) || isLinkLocalAddress(comparable) || isUnspecifiedAddress(comparable);
-}
-
-function isLoopbackAddress(address: string) {
-  if (address === "::1") {
-    return true;
-  }
-
-  const parts = address.split(".").map((part) => Number(part));
-  return parts.length === 4 && parts[0] === 127;
-}
-
-function isLinkLocalAddress(address: string) {
-  if (address.startsWith("fe8") || address.startsWith("fe9") || address.startsWith("fea") || address.startsWith("feb")) {
-    return true;
-  }
-
-  const parts = address.split(".").map((part) => Number(part));
-  return parts.length === 4 && parts[0] === 169 && parts[1] === 254;
-}
-
-function isUnspecifiedAddress(address: string) {
-  return address === "::" || address === "0.0.0.0";
-}
-
-function parseIpv4MappedIpv6(address: string) {
-  if (!address.startsWith("::ffff:")) {
-    return null;
-  }
-
-  const suffix = address.slice("::ffff:".length);
-  if (suffix.includes(".")) {
-    return suffix;
-  }
-
-  const parts = suffix.split(":");
-  if (parts.length !== 2) {
-    return null;
-  }
-
-  const high = Number.parseInt(parts[0], 16);
-  const low = Number.parseInt(parts[1], 16);
-  if (![high, low].every((part) => Number.isInteger(part) && part >= 0 && part <= 0xffff)) {
-    return null;
-  }
-
-  return [
-    (high >> 8) & 0xff,
-    high & 0xff,
-    (low >> 8) & 0xff,
-    low & 0xff,
-  ].join(".");
-}
-
-function stripIpv6Brackets(value: string) {
-  return value.replace(/^\[/, "").replace(/\]$/, "");
-}
-
-function stripTrailingDots(value: string) {
-  return value.replace(/\.+$/, "");
 }
 
 async function captureScreenshotAttachment(monitor: Monitor, capturedAt: Date): Promise<Mail.Attachment | null> {

@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { env } from "@/lib/env";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { isMonitorNetworkHostnameLiteralAllowed } from "@/lib/security/public-network-target";
 
 const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
 const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
@@ -47,10 +49,17 @@ function isSafeHostInput(value: string) {
 function isHttpMonitorUrl(value: string) {
   try {
     const parsed = new URL(value.trim());
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      isAllowedMonitorHostnameLiteral(parsed.hostname)
+    );
   } catch {
     return false;
   }
+}
+
+function isAllowedMonitorHostnameLiteral(hostname: string) {
+  return isMonitorNetworkHostnameLiteralAllowed(hostname, env.monitorAllowPrivateTargets);
 }
 
 function normalizeEmailRecipients(value: string) {
@@ -134,7 +143,7 @@ export const monitorInputSchema = z
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["url"],
-          message: "Enter a valid HTTP or HTTPS URL for this monitor type.",
+          message: "Enter a valid allowed HTTP or HTTPS URL for this monitor type.",
         });
       }
 
@@ -236,6 +245,12 @@ export const monitorInputSchema = z
           path: ["portHost"],
           message: "Enter a valid hostname or IP address without spaces, URL prefixes, or leading dashes.",
         });
+      } else if (!isAllowedMonitorHostnameLiteral(value.portHost)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["portHost"],
+          message: "Enter an allowed hostname or IP address for this monitor.",
+        });
       }
       return;
     }
@@ -265,6 +280,12 @@ export const monitorInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ["databaseHost"],
         message: "Enter a valid database host without spaces, URL prefixes, or leading dashes.",
+      });
+    } else if (!isAllowedMonitorHostnameLiteral(value.databaseHost)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["databaseHost"],
+        message: "Enter an allowed hostname or IP address for the database monitor.",
       });
     }
 

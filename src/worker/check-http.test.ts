@@ -1,7 +1,11 @@
 import http from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
 import { checkHttpMonitor } from "@/worker/check-http";
+
+vi.mock("@/lib/security/public-network-target", () => ({
+  assertMonitorNetworkTarget: vi.fn(),
+}));
 
 const servers: http.Server[] = [];
 

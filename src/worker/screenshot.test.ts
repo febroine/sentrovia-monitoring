@@ -53,8 +53,8 @@ describe("failure screenshot capture rules", () => {
       )
     ).resolves.toBeNull();
 
-    expect(onSkipped).toHaveBeenCalledWith("screenshot target resolves to a server-local address");
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    expect(onSkipped).toHaveBeenCalledWith("screenshot target is not allowed by the current network safety policy");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("network safety policy"));
     warn.mockRestore();
   });
 
@@ -67,7 +67,7 @@ describe("failure screenshot capture rules", () => {
       )
     ).resolves.toBeNull();
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("network safety policy"));
     warn.mockRestore();
   });
 
@@ -80,7 +80,7 @@ describe("failure screenshot capture rules", () => {
       )
     ).resolves.toBeNull();
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("network safety policy"));
     warn.mockRestore();
   });
 
@@ -93,9 +93,10 @@ describe("failure screenshot capture rules", () => {
       )
     ).resolves.toBeNull();
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("server-local"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("network safety policy"));
     warn.mockRestore();
   });
+
 });
 
 describe("failure screenshot request isolation", () => {

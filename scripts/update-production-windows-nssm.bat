@@ -78,7 +78,7 @@ if errorlevel 1 (
 echo [OK] Playwright Chromium is ready.
 
 echo [STEP 5/8] Applying database schema...
-call npm run db:push
+call npm run db:push:bootstrap
 if errorlevel 1 (
   echo [ERROR] Database schema update failed.
   set "EXIT_CODE=1"

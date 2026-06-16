@@ -1,8 +1,12 @@
 import postgres from "postgres";
 import type { Monitor } from "@/lib/db/schema";
+import { env } from "@/lib/env";
 import { parsePostgresMonitorTarget } from "@/lib/monitors/targets";
 import { decryptValue } from "@/lib/security/encryption";
+import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import type { CheckResult } from "@/worker/types";
+
+const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
 export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
@@ -11,6 +15,15 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
 
   if (!target.host || !target.databaseName || !target.databaseUsername || !password) {
     return buildFailure(checkedAt, "Database credentials are incomplete.");
+  }
+
+  try {
+    await assertMonitorNetworkTarget(target.host, {
+      allowPrivateTargets: env.monitorAllowPrivateTargets,
+      message: MONITOR_PUBLIC_TARGET_ERROR,
+    });
+  } catch (error) {
+    return buildFailure(checkedAt, error instanceof Error ? error.message : "Database check failed.");
   }
 
   const connection = postgres(buildConnectionString(target, password), {
