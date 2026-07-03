@@ -61,11 +61,13 @@ The web container waits for PostgreSQL, applies the database schema, applies man
 Compose requires strong secrets in an `.env` file before it starts:
 
 ```bash
-AUTH_SECRET=replace-with-a-strong-32-character-secret
-APP_ENCRYPTION_SECRET=replace-with-a-strong-32-character-encryption-secret
+AUTH_SECRET=example-auth-secret-change-me-32-characters-minimum
+APP_ENCRYPTION_SECRET=example-encryption-secret-change-me-32-characters-minimum
 APP_URL=http://localhost:3000
-POSTGRES_PASSWORD=replace-with-a-strong-database-password
+POSTGRES_PASSWORD=example-postgres-password-change-me
 ```
+
+Replace the `example-*` values locally with long random strings before starting the stack. Do not commit populated environment files.
 
 ## Product Screens
 
@@ -254,15 +256,18 @@ npm run worker:dev
 Create `.env.local` in the project root.
 
 ```bash
-DATABASE_URL=postgres://postgres:postgres@localhost:5433/uptimemonitoring
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5433
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=example-postgres-password-change-me
+POSTGRES_DB=uptimemonitoring
 APP_URL=http://localhost:3000
-AUTH_SECRET=replace-with-a-strong-32-character-secret
-APP_ENCRYPTION_SECRET=replace-with-a-strong-32-character-encryption-secret
+AUTH_SECRET=example-auth-secret-change-me-32-characters-minimum
+APP_ENCRYPTION_SECRET=example-encryption-secret-change-me-32-characters-minimum
 WORKER_CONCURRENCY=20
 WORKER_POLL_INTERVAL_MS=10000
 WORKER_AUTO_START=false
 DISABLE_EMBEDDED_WORKER_SPAWN=false
-AUTH_ALLOW_PUBLIC_SIGNUP=false
 PLAYWRIGHT_BROWSERS_PATH=0
 ```
 
@@ -271,7 +276,7 @@ Production notes:
 - `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be strong non-placeholder values.
 - `APP_URL` should match the URL operators use to open Sentrovia.
 - The web and worker processes must use the same `.env.local` values.
-- `AUTH_ALLOW_PUBLIC_SIGNUP=false` is recommended for production.
+- Public signup is disabled. The first administrator is created through onboarding, and later members are managed by admins.
 - `PLAYWRIGHT_BROWSERS_PATH=0` helps NSSM services find Chromium reliably.
 - Set `AUTH_TRUST_PROXY_HEADERS=true` only if a trusted reverse proxy sanitizes forwarded IP headers.
 

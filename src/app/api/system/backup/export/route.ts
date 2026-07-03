@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
+import { requireAdminSession } from "@/lib/auth/authorization";
 import { toAuthError } from "@/lib/auth/errors";
 import { buildWorkspaceBackupBundle, serializeWorkspaceBackup } from "@/lib/system/backup-service";
 
@@ -7,11 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const session = await requireAdminSession();
 
     const format = request.nextUrl.searchParams.get("format") === "yaml" ? "yaml" : "json";
     const bundle = await buildWorkspaceBackupBundle(session.id);

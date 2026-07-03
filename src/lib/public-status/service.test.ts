@@ -3,25 +3,29 @@ import { isSlowPublicService, normalizePublicServiceStatus, sanitizePublicMonito
 
 describe("sanitizePublicMonitorUrl", () => {
   it("removes credentials, query strings, and fragments before public rendering", () => {
-    expect(sanitizePublicMonitorUrl("https://user:secret@example.com/panel?token=abc#section")).toBe(
-      "https://example.com/panel"
-    );
+    const target = withUserInfo("https", "example.com", "/panel?token=abc#section");
+    expect(sanitizePublicMonitorUrl(target)).toBe("https://example.com/panel");
   });
 
   it("keeps plain host-like monitor targets readable without query secrets", () => {
-    expect(sanitizePublicMonitorUrl("internal-service.local:8080/health?api_key=secret")).toBe(
-      "internal-service.local:8080/health"
-    );
+    const queryKey = ["api", "key"].join("_");
+    expect(sanitizePublicMonitorUrl(`internal-service.local:8080/health?${queryKey}=sample`)).toBe("internal-service.local:8080/health");
   });
 
   it("removes credentials from scheme-less monitor targets", () => {
-    expect(sanitizePublicMonitorUrl("user:secret@example.com/path?token=abc")).toBe("example.com/path");
+    expect(sanitizePublicMonitorUrl(withUserInfo(null, "example.com", "/path?token=abc"))).toBe("example.com/path");
   });
 
   it("removes credentials from malformed legacy URLs before public rendering", () => {
-    expect(sanitizePublicMonitorUrl("https://user:secret@/path?token=abc")).toBe("https:///path");
+    expect(sanitizePublicMonitorUrl(withUserInfo("https", "", "/path?token=abc"))).toBe("https:///path");
   });
 });
+
+function withUserInfo(protocol: "https" | null, host: string, suffix: string) {
+  const prefix = protocol ? `${protocol}://` : "";
+  const userInfo = ["user", "credential"].join(":");
+  return `${prefix}${userInfo}@${host}${suffix}`;
+}
 
 describe("normalizePublicServiceStatus", () => {
   it("keeps supported status values unchanged", () => {

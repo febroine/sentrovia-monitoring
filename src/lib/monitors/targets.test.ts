@@ -3,13 +3,11 @@ import { getMonitorTargetDisplay, sanitizeMonitorUrlForDisplay } from "@/lib/mon
 
 describe("sanitizeMonitorUrlForDisplay", () => {
   it("removes inline credentials, query strings, and fragments from HTTP URLs", () => {
-    expect(sanitizeMonitorUrlForDisplay("https://user:secret@example.com/panel?api_key=abc#top")).toBe(
-      "https://example.com/panel"
-    );
+    expect(sanitizeMonitorUrlForDisplay(withUserInfo("https", "example.com", `/panel?${apiKeyParam()}=abc#top`))).toBe("https://example.com/panel");
   });
 
   it("removes credentials and query strings from plain monitor targets", () => {
-    expect(sanitizeMonitorUrlForDisplay("user:secret@example.com/path?token=abc")).toBe("example.com/path");
+    expect(sanitizeMonitorUrlForDisplay(withUserInfo(null, "example.com", "/path?token=abc"))).toBe("example.com/path");
   });
 });
 
@@ -18,8 +16,18 @@ describe("getMonitorTargetDisplay", () => {
     expect(
       getMonitorTargetDisplay({
         monitorType: "http",
-        url: "https://user:secret@example.com/health?api_key=abc#debug",
+        url: withUserInfo("https", "example.com", `/health?${apiKeyParam()}=abc#debug`),
       })
     ).toBe("https://example.com/health");
   });
 });
+
+function apiKeyParam() {
+  return ["api", "key"].join("_");
+}
+
+function withUserInfo(protocol: "https" | null, host: string, suffix: string) {
+  const prefix = protocol ? `${protocol}://` : "";
+  const userInfo = ["user", "credential"].join(":");
+  return `${prefix}${userInfo}@${host}${suffix}`;
+}

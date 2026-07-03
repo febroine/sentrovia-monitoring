@@ -608,6 +608,8 @@ export function PublicStatusSettingsTab({ settings, updateSetting }: TabProps) {
 }
 
 export function DataSettingsTab({ settings, updateSetting }: TabProps) {
+  const isAdmin = settings.profile.role === "admin";
+
   return (
     <SectionCard
       title="Retention and Backups"
@@ -644,10 +646,18 @@ export function DataSettingsTab({ settings, updateSetting }: TabProps) {
         checked={settings.data.autoBackupEnabled}
         onChange={(checked) => updateSetting("data.autoBackupEnabled", checked)}
       />
-      <BackupRestorePanel
-        lastBackupAt={settings.data.lastBackupAt}
-        onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
-      />
+      {isAdmin ? (
+        <BackupRestorePanel
+          lastBackupAt={settings.data.lastBackupAt}
+          onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
+        />
+      ) : (
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Backup export and restore are available to administrators only.
+          </CardContent>
+        </Card>
+      )}
     </SectionCard>
   );
 }

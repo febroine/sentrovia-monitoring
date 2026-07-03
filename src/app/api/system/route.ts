@@ -1,7 +1,7 @@
 import os from "os";
 import { NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/auth/authorization";
 import { toAuthError } from "@/lib/auth/errors";
-import { getSession } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
@@ -50,11 +50,7 @@ async function getCpuUsage(): Promise<number> {
 
 export async function GET() {
   try {
-    const session = await getSession();
-
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    await requireAdminSession();
 
     const cpuUsage = await getCpuUsage();
     const totalMem = os.totalmem();

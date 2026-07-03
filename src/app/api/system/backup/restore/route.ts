@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { getSession } from "@/lib/auth/session";
+import { requireAdminSession } from "@/lib/auth/authorization";
 import { toAuthError } from "@/lib/auth/errors";
 import { parseWorkspaceBackup, restoreWorkspaceBackup } from "@/lib/system/backup-service";
 import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
@@ -10,11 +10,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const session = await requireAdminSession();
 
     const body = (await readJsonBody(request, WORKSPACE_BACKUP_IMPORT_LIMITS.maxRequestBytes)) as {
       format?: string;

@@ -90,6 +90,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const showChartsSection = data.settings?.appearance.showChartsSection ?? true;
   const showIncidentBanner = data.settings?.appearance.showIncidentBanner ?? true;
   const use24HourClock = data.settings?.appearance.use24HourClock ?? true;
+  const isAdmin = data.settings?.profile.role === "admin";
 
   return (
     <div className="space-y-6">
@@ -117,7 +118,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
-      <SystemStatus use24HourClock={use24HourClock} />
+      {isAdmin ? <SystemStatus use24HourClock={use24HourClock} /> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (

@@ -4,10 +4,9 @@ const MIN_WORKER_CONCURRENCY = 1;
 const MAX_WORKER_CONCURRENCY = 500;
 const MIN_WORKER_POLL_INTERVAL_MS = 1_000;
 const MAX_WORKER_POLL_INTERVAL_MS = 600_000;
-const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/uptimemonitoring";
 const DEFAULT_AUTH_SECRET = "change-me-before-production";
 const DEFAULT_APP_ENCRYPTION_SECRET = "change-me-before-production-encryption";
-const PLACEHOLDER_SECRET_MARKERS = ["change-me", "please-change", "replace-this", "replace-with", "local-docker"];
+const PLACEHOLDER_SECRET_MARKERS = ["change-me", "please-change", "replace-this", "replace-with", "local-docker", "example-"];
 
 function parseNumber(value: string | undefined, fallback: number) {
   if (!value) {
@@ -81,7 +80,7 @@ export function getDatabaseUrl() {
     return buildDatabaseUrlFromParts();
   }
 
-  return DEFAULT_DATABASE_URL;
+  return buildDatabaseUrlFromParts();
 }
 
 export function getAuthSecret() {

@@ -3,6 +3,7 @@ export interface SettingsPayload {
     firstName: string;
     lastName: string;
     email: string;
+    role: "admin" | "member";
     department: string;
     username: string;
     organization: string;
@@ -104,6 +105,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     firstName: "",
     lastName: "",
     email: "",
+    role: "member",
     department: "",
     username: "",
     organization: "",
