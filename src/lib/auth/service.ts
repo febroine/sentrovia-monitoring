@@ -1,11 +1,11 @@
 import bcrypt from "bcryptjs";
-import { count, eq } from "drizzle-orm";
+import { count, eq, or, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
-import type { ChangePasswordInput, LoginInput, RegisterInput } from "@/lib/auth/schemas";
-import { createSessionToken, type SessionUser } from "@/lib/auth/token";
+import type { ChangePasswordInput, LoginInput, MemberCreateInput, OnboardingInput } from "@/lib/auth/schemas";
+import { createSessionToken, type SessionUser, type UserRole } from "@/lib/auth/token";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { env, getAuthSecret } from "@/lib/env";
+import { getAuthSecret } from "@/lib/env";
 
 type AuthSessionRecord = {
   id: string;
@@ -13,6 +13,9 @@ type AuthSessionRecord = {
   lastName: string;
   email: string;
   department: string | null;
+  username: string | null;
+  role: string;
+  sessionVersion: number;
   createdAt: Date;
 };
 
@@ -38,6 +41,9 @@ const sessionColumns = {
   lastName: users.lastName,
   email: users.email,
   department: users.department,
+  username: users.username,
+  role: users.role,
+  sessionVersion: users.sessionVersion,
   createdAt: users.createdAt,
 };
 
@@ -58,6 +64,7 @@ function toSessionUser(user: AuthSessionRecord): SessionUser {
     lastName: user.lastName,
     email: user.email,
     department: user.department,
+    role: toUserRole(user.role),
   };
 }
 
@@ -75,19 +82,45 @@ function ensureAuthRuntimeReady() {
   getAuthSecret();
 }
 
-export async function registerUser(input: RegisterInput) {
+export async function isOnboardingRequired() {
   ensureAuthRuntimeReady();
-  await assertRegistrationAllowed();
+  const [row] = await db.select({ total: count() }).from(users);
+  return (row?.total ?? 0) === 0;
+}
 
-  const existingUser = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, input.email))
-    .limit(1)
-    .then((rows) => rows[0]);
+export async function createInitialAdmin(input: OnboardingInput) {
+  ensureAuthRuntimeReady();
 
-  if (existingUser) {
+  if (!(await isOnboardingRequired())) {
+    throw new AuthError("Workspace onboarding is already complete.", 409);
+  }
+
+  const createdUser = await createUser(input, "admin");
+
+  return {
+    user: toPublicUser(createdUser),
+    token: await createSessionToken(toSessionUser(createdUser), createdUser.sessionVersion),
+  };
+}
+
+export async function createMember(input: MemberCreateInput) {
+  ensureAuthRuntimeReady();
+  const createdUser = await createUser(input, "member");
+
+  return {
+    user: serializeMember(createdUser),
+  };
+}
+
+async function createUser(input: MemberCreateInput | OnboardingInput, role: UserRole) {
+  const existingUser = await findExistingAccount(input.email, input.username);
+
+  if (existingUser?.email === input.email) {
     throw new AuthError("An account with this email already exists.", 409);
+  }
+
+  if (input.username && existingUser?.username === input.username) {
+    throw new AuthError("An account with this username already exists.", 409);
   }
 
   const passwordHash = await bcrypt.hash(input.password, 12);
@@ -99,7 +132,9 @@ export async function registerUser(input: RegisterInput) {
       lastName: input.lastName,
       email: input.email,
       department: input.department,
+      username: input.username ?? null,
       passwordHash,
+      role,
     })
     .returning(sessionColumns);
 
@@ -107,21 +142,18 @@ export async function registerUser(input: RegisterInput) {
     throw new AuthError("Unable to create your account right now.", 500);
   }
 
-  return {
-    user: toPublicUser(createdUser),
-    token: await createSessionToken(toSessionUser(createdUser)),
-  };
+  return createdUser;
 }
 
-async function assertRegistrationAllowed() {
-  if (env.authAllowPublicSignup) {
-    return;
-  }
+async function findExistingAccount(email: string, username: string | null) {
+  const filters = username ? or(eq(users.email, email), sql`lower(${users.username}) = ${username}`) : eq(users.email, email);
 
-  const [row] = await db.select({ total: count() }).from(users);
-  if ((row?.total ?? 0) > 0) {
-    throw new AuthError("Registration is disabled for this installation.", 403);
-  }
+  return db
+    .select({ id: users.id, email: users.email, username: users.username })
+    .from(users)
+    .where(filters)
+    .limit(1)
+    .then((rows) => rows[0]);
 }
 
 export async function loginUser(input: LoginInput) {
@@ -130,24 +162,24 @@ export async function loginUser(input: LoginInput) {
   const user = await db
     .select(loginColumns)
     .from(users)
-    .where(eq(users.email, input.email))
+    .where(or(eq(users.email, input.identifier), sql`lower(${users.username}) = ${input.identifier}`))
     .limit(1)
     .then((rows) => rows[0] as AuthLoginRecord | undefined);
 
   if (!user) {
     await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
-    throw new AuthError("Invalid email or password.", 401);
+    throw new AuthError("Invalid email, username, or password.", 401);
   }
 
   const isPasswordValid = await bcrypt.compare(input.password, user.passwordHash);
 
   if (!isPasswordValid) {
-    throw new AuthError("Invalid email or password.", 401);
+    throw new AuthError("Invalid email, username, or password.", 401);
   }
 
   return {
     user: toPublicUser(user),
-    token: await createSessionToken(toSessionUser(user)),
+    token: await createSessionToken(toSessionUser(user), user.sessionVersion),
   };
 }
 
@@ -179,16 +211,27 @@ export async function changeUserPassword(userId: string, input: ChangePasswordIn
 
   const passwordHash = await bcrypt.hash(input.newPassword, 12);
 
-  await db
+  const [updatedUser] = await db
     .update(users)
     .set({
       passwordHash,
+      sessionVersion: sql`${users.sessionVersion} + 1`,
       updatedAt: new Date(),
     })
-    .where(eq(users.id, userId));
+    .where(eq(users.id, userId))
+    .returning(sessionColumns);
+
+  if (!updatedUser) {
+    throw new AuthError("Unable to update your password right now.", 500);
+  }
+
+  return {
+    user: toSessionUser(updatedUser),
+    sessionVersion: updatedUser.sessionVersion,
+  };
 }
 
-export async function getActiveSessionUser(userId: string) {
+export async function getActiveSessionUser(userId: string, sessionVersion: number) {
   const user = await db
     .select(sessionColumns)
     .from(users)
@@ -196,5 +239,35 @@ export async function getActiveSessionUser(userId: string) {
     .limit(1)
     .then((rows) => rows[0] as AuthSessionRecord | undefined);
 
-  return user ? toSessionUser(user) : null;
+  if (!user || !isCurrentSessionVersion(sessionVersion, user.sessionVersion)) {
+    return null;
+  }
+
+  return {
+    ...toSessionUser(user),
+    sessionVersion: user.sessionVersion,
+  };
+}
+
+export function isCurrentSessionVersion(tokenVersion: number, userVersion: number) {
+  return Number.isInteger(tokenVersion) && tokenVersion === userVersion;
+}
+
+function serializeMember(user: AuthSessionRecord) {
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    department: user.department,
+    role: toUserRole(user.role),
+    username: user.username,
+    organization: null,
+    jobTitle: null,
+    createdAt: user.createdAt.toISOString(),
+  };
+}
+
+function toUserRole(role: string): UserRole {
+  return role === "admin" ? "admin" : "member";
 }

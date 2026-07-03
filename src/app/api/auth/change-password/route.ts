@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { clearAuthFailures, assertAuthRateLimit, recordAuthFailure } from "@/lib/auth/rate-limit";
 import { applyAuthResponseHeaders } from "@/lib/auth/response";
-import { getSession } from "@/lib/auth/session";
+import { applySessionCookie, getSession } from "@/lib/auth/session";
 import { changePasswordSchema, flattenValidationIssues } from "@/lib/auth/schemas";
 import { changeUserPassword } from "@/lib/auth/service";
+import { createSessionToken } from "@/lib/auth/token";
 import { readJsonBody } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
@@ -30,14 +31,14 @@ export async function POST(request: NextRequest) {
       throw new AuthError(flattenValidationIssues(parsed.error), 400);
     }
 
-    await changeUserPassword(session.id, parsed.data);
+    const result = await changeUserPassword(session.id, parsed.data);
     clearAuthFailures(request, "change-password", identifier);
 
-    return applyAuthResponseHeaders(
-      NextResponse.json({
-        message: "Password updated successfully.",
-      })
-    );
+    const response = NextResponse.json({
+      message: "Password updated successfully.",
+    });
+
+    return applySessionCookie(response, await createSessionToken(result.user, result.sessionVersion));
   } catch (error) {
     const authError =
       error instanceof AuthError ? error : toAuthError(error, "Unable to change your password right now.");

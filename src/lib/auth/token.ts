@@ -5,6 +5,8 @@ export const SESSION_COOKIE_NAME = "sentrovia.session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_ISSUER = "sentrovia-auth";
 const SESSION_AUDIENCE = "sentrovia-session";
+export const DEFAULT_SESSION_VERSION = 1;
+export type UserRole = "admin" | "member";
 
 export interface SessionUser {
   id: string;
@@ -12,9 +14,14 @@ export interface SessionUser {
   lastName: string;
   email: string;
   department: string | null;
+  role: UserRole;
 }
 
 export type SessionPayload = SessionUser;
+
+export interface VersionedSessionPayload extends SessionPayload {
+  sessionVersion: number;
+}
 
 function getJwtKey() {
   return new TextEncoder().encode(getAuthSecret());
@@ -30,13 +37,15 @@ function shouldUseSecureSessionCookie() {
   }
 }
 
-export async function createSessionToken(user: SessionUser) {
+export async function createSessionToken(user: SessionUser, sessionVersion = DEFAULT_SESSION_VERSION) {
   return new SignJWT({
     id: user.id,
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
     department: user.department,
+    role: user.role,
+    sessionVersion,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
@@ -47,7 +56,7 @@ export async function createSessionToken(user: SessionUser) {
     .sign(getJwtKey());
 }
 
-export async function verifySessionToken(token?: string | null): Promise<SessionPayload | null> {
+export async function verifySessionToken(token?: string | null): Promise<VersionedSessionPayload | null> {
   if (!token) {
     return null;
   }
@@ -64,6 +73,11 @@ export async function verifySessionToken(token?: string | null): Promise<Session
     const lastName = typeof payload.lastName === "string" ? payload.lastName : null;
     const email = typeof payload.email === "string" ? payload.email : null;
     const department = typeof payload.department === "string" ? payload.department : null;
+    const role = parseUserRole(payload.role);
+    const sessionVersion =
+      typeof payload.sessionVersion === "number" && Number.isInteger(payload.sessionVersion)
+        ? payload.sessionVersion
+        : DEFAULT_SESSION_VERSION;
 
     if (!id || !firstName || !lastName || !email) {
       return null;
@@ -75,10 +89,16 @@ export async function verifySessionToken(token?: string | null): Promise<Session
       lastName,
       email,
       department,
+      role,
+      sessionVersion,
     };
   } catch {
     return null;
   }
+}
+
+function parseUserRole(value: unknown): UserRole {
+  return value === "admin" ? "admin" : "member";
 }
 
 export function getSessionCookieOptions() {

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/token";
 
-const PUBLIC_ROUTES = ["/login", "/signup"];
+const PUBLIC_ROUTES = ["/login", "/onboarding"];
 
 function isPublicRoute(pathname: string) {
   return PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
@@ -24,7 +24,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/login",
-    "/signup",
+    "/onboarding",
     "/dashboard/:path*",
     "/monitoring/:path*",
     "/companies/:path*",
@@ -35,7 +35,6 @@ export const config = {
     "/logs/:path*",
     "/delivery/:path*",
     "/maintenance/:path*",
-    "/incidents/:path*",
     "/reports/:path*",
     "/status-codes/:path*",
     "/settings/:path*",

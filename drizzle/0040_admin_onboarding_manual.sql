@@ -1,0 +1,5 @@
+ALTER TABLE "users"
+ADD COLUMN IF NOT EXISTS "role" varchar(16) DEFAULT 'admin' NOT NULL;
+
+ALTER TABLE "users"
+ALTER COLUMN "role" SET DEFAULT 'member';

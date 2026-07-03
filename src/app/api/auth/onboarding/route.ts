@@ -2,13 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { clearAuthFailures, assertAuthRateLimit, recordAuthFailure } from "@/lib/auth/rate-limit";
 import { applyAuthResponseHeaders } from "@/lib/auth/response";
-import { flattenValidationIssues, registerSchema } from "@/lib/auth/schemas";
+import { flattenValidationIssues, onboardingSchema } from "@/lib/auth/schemas";
 import { applySessionCookie } from "@/lib/auth/session";
-import { registerUser } from "@/lib/auth/service";
+import { createInitialAdmin, isOnboardingRequired } from "@/lib/auth/service";
 import { readJsonBody } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 const AUTH_JSON_BODY_LIMIT_BYTES = 32_000;
+
+export async function GET() {
+  try {
+    return applyAuthResponseHeaders(
+      NextResponse.json({
+        required: await isOnboardingRequired(),
+      })
+    );
+  } catch (error) {
+    const authError = toAuthError(error, "Unable to check workspace setup right now.");
+    return applyAuthResponseHeaders(NextResponse.json({ message: authError.message }, { status: authError.status }));
+  }
+}
 
 export async function POST(request: NextRequest) {
   let submittedEmail: string | null = null;
@@ -16,43 +29,32 @@ export async function POST(request: NextRequest) {
   try {
     const body = await readJsonBody(request, AUTH_JSON_BODY_LIMIT_BYTES);
     submittedEmail = readSubmittedEmail(body);
-    assertAuthRateLimit(request, "register", submittedEmail);
-    const parsed = registerSchema.safeParse(body);
+    assertAuthRateLimit(request, "onboarding", submittedEmail);
 
+    const parsed = onboardingSchema.safeParse(body);
     if (!parsed.success) {
       throw new AuthError(flattenValidationIssues(parsed.error), 400);
     }
 
-    const result = await registerUser(parsed.data);
-    clearAuthFailures(request, "register", parsed.data.email);
+    const result = await createInitialAdmin(parsed.data);
+    clearAuthFailures(request, "onboarding", parsed.data.email);
+
     const response = NextResponse.json(
       {
-        message: "Account created successfully.",
+        message: "Workspace admin created successfully.",
         user: result.user,
       },
-      {
-        status: 201,
-      }
+      { status: 201 }
     );
 
     return applySessionCookie(response, result.token);
   } catch (error) {
-    const authError =
-      error instanceof AuthError
-        ? error
-        : toAuthError(error, "Unable to create your account right now.");
+    const authError = error instanceof AuthError ? error : toAuthError(error, "Unable to finish onboarding right now.");
     if (shouldRecordFailure(authError.status)) {
-      recordAuthFailure(request, "register", submittedEmail);
+      recordAuthFailure(request, "onboarding", submittedEmail);
     }
 
-    return applyAuthResponseHeaders(NextResponse.json(
-      {
-        message: authError.message,
-      },
-      {
-        status: authError.status,
-      }
-    ));
+    return applyAuthResponseHeaders(NextResponse.json({ message: authError.message }, { status: authError.status }));
   }
 }
 

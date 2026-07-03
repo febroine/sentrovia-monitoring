@@ -2,7 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckSquare, Mail, Pencil, Search, SearchX, Square, Trash2, UserRound, UsersRound } from "lucide-react";
+import {
+  CheckSquare,
+  Mail,
+  Pencil,
+  Plus,
+  Search,
+  SearchX,
+  ShieldCheck,
+  Square,
+  Trash2,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,12 +25,33 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { MemberRecord } from "@/lib/members/types";
 
-const EMPTY_FORM = { username: "", email: "" };
+type MemberRole = MemberRecord["role"];
+type CreateMemberForm = {
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  department: string;
+  password: string;
+  confirmPassword: string;
+};
+
+const EMPTY_EDIT_FORM = { username: "", email: "" };
+const EMPTY_CREATE_FORM: CreateMemberForm = {
+  firstName: "",
+  lastName: "",
+  username: "",
+  email: "",
+  department: "",
+  password: "",
+  confirmPassword: "",
+};
 
 export default function MembersPageClient() {
   const router = useRouter();
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState<MemberRole>("member");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +59,11 @@ export default function MembersPageClient() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingMember, setEditingMember] = useState<MemberRecord | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
+  const [createForm, setCreateForm] = useState<CreateMemberForm>(EMPTY_CREATE_FORM);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const isAdmin = currentUserRole === "admin";
 
   useEffect(() => {
     void loadMembers();
@@ -39,7 +76,7 @@ export default function MembersPageClient() {
     }
 
     return members.filter((member) =>
-      [member.firstName, member.lastName, member.email, member.username ?? "", member.organization ?? ""]
+      [member.firstName, member.lastName, member.email, member.username ?? "", member.organization ?? "", member.role]
         .join(" ")
         .toLowerCase()
         .includes(query)
@@ -48,13 +85,10 @@ export default function MembersPageClient() {
 
   const totals = {
     members: members.length,
+    admins: members.filter((member) => member.role === "admin").length,
     departments: new Set(members.map((member) => member.department).filter(Boolean)).size,
-    organizations: new Set(members.map((member) => member.organization).filter(Boolean)).size,
   };
-  const selectableFilteredIds = filtered
-    .filter((member) => member.id === currentUserId)
-    .map((member) => member.id);
-
+  const selectableFilteredIds = filtered.filter((member) => canSelectMember(member)).map((member) => member.id);
   const allFilteredSelected = selectableFilteredIds.length > 0 && selectableFilteredIds.every((id) => selectedIds.has(id));
   const singleSelected = selectedIds.size === 1 ? members.find((member) => selectedIds.has(member.id)) ?? null : null;
 
@@ -63,18 +97,50 @@ export default function MembersPageClient() {
 
     try {
       const response = await fetch("/api/members", { cache: "no-store" });
-      const data = (await response.json()) as { currentUserId?: string; members?: MemberRecord[]; message?: string };
+      const data = (await response.json()) as {
+        currentUserId?: string;
+        currentUserRole?: MemberRole;
+        members?: MemberRecord[];
+        message?: string;
+      };
       if (!response.ok) {
         throw new Error(data.message ?? "Unable to load members.");
       }
 
       setCurrentUserId(data.currentUserId ?? "");
+      setCurrentUserRole(data.currentUserRole ?? "member");
       setMembers(data.members ?? []);
+      setSelectedIds(new Set());
       setError(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to load members.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function createMember() {
+    setSaving(true);
+
+    try {
+      const response = await fetch("/api/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(createForm),
+      });
+      const data = (await response.json()) as { member?: MemberRecord; message?: string };
+      if (!response.ok || !data.member) {
+        throw new Error(data.message ?? "Unable to add the member.");
+      }
+
+      setMembers((current) => sortMembers([...current, data.member as MemberRecord]));
+      setCreateForm(EMPTY_CREATE_FORM);
+      setCreateOpen(false);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to add the member.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -89,7 +155,7 @@ export default function MembersPageClient() {
       const response = await fetch(`/api/members/${editingMember.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(editForm),
       });
       const data = (await response.json()) as { member?: MemberRecord; message?: string };
       if (!response.ok || !data.member) {
@@ -141,17 +207,21 @@ export default function MembersPageClient() {
     }
   }
 
-  async function confirmDeleteTargets() {
-    await deleteMembersByIds(deleteTargetIds);
+  function canSelectMember(member: MemberRecord) {
+    return isAdmin || member.id === currentUserId;
   }
 
-  function toggleSelect(id: string) {
+  function toggleSelect(member: MemberRecord) {
+    if (!canSelectMember(member)) {
+      return;
+    }
+
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
+      if (next.has(member.id)) {
+        next.delete(member.id);
       } else {
-        next.add(id);
+        next.add(member.id);
       }
       return next;
     });
@@ -170,13 +240,13 @@ export default function MembersPageClient() {
   }
 
   function openEdit(member: MemberRecord) {
-    if (member.id !== currentUserId) {
+    if (!isAdmin && member.id !== currentUserId) {
       setError("You can only edit your own username and email address.");
       return;
     }
 
     setEditingMember(member);
-    setForm({
+    setEditForm({
       username: member.username ?? "",
       email: member.email,
     });
@@ -184,40 +254,46 @@ export default function MembersPageClient() {
 
   function openDeleteConfirmation(memberIds: string[]) {
     const uniqueIds = Array.from(new Set(memberIds.filter(Boolean)));
-    const ownIds = uniqueIds.filter((id) => id === currentUserId);
-    if (ownIds.length === 0) {
-      setError("You can only delete your own account.");
+    const allowedIds = isAdmin ? uniqueIds : uniqueIds.filter((id) => id === currentUserId);
+    if (allowedIds.length === 0) {
+      setError(isAdmin ? "Select at least one member." : "You can only delete your own account.");
       return;
     }
 
-    setDeleteTargetIds(ownIds);
+    setDeleteTargetIds(allowedIds);
   }
 
   function closeDeleteConfirmation() {
-    if (saving) {
-      return;
+    if (!saving) {
+      setDeleteTargetIds([]);
     }
-
-    setDeleteTargetIds([]);
   }
 
   const deleteTargets = members.filter((member) => deleteTargetIds.includes(member.id));
   const deleteIncludesCurrentUser = deleteTargets.some((member) => member.id === currentUserId);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-200">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Members</h1>
           <p className="text-sm text-muted-foreground">
-            Review all registered users from one place. Account details are self-editable, and account removal is limited to your own profile.
+            {isAdmin
+              ? "Manage workspace access, add operators, and remove accounts from one admin view."
+              : "Review and maintain your own account details."}
           </p>
         </div>
-        <div className="flex w-full max-w-sm items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:max-w-lg sm:flex-row sm:items-center">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search members" className="pl-9" />
           </div>
+          {isAdmin ? (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus data-icon="inline-start" />
+              Add member
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={() => void loadMembers()} disabled={loading}>
             Refresh
           </Button>
@@ -227,24 +303,26 @@ export default function MembersPageClient() {
       {error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div> : null}
 
       <div className="grid gap-3 md:grid-cols-3">
-        <MetricCard label="Total members" value={String(totals.members)} icon={UsersRound} tone="neutral" />
-        <MetricCard label="Departments" value={String(totals.departments)} icon={UserRound} tone="green" />
-        <MetricCard label="Organizations" value={String(totals.organizations)} icon={Mail} tone="amber" />
+        <MetricCard label="Visible members" value={String(totals.members)} icon={UsersRound} />
+        <MetricCard label="Admins" value={String(totals.admins)} icon={ShieldCheck} />
+        <MetricCard label="Departments" value={String(totals.departments)} icon={Mail} />
       </div>
 
       {selectedIds.size > 0 ? (
         <div className="flex flex-col gap-3 rounded-xl border border-sky-500/15 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
-            <p className="text-xs text-muted-foreground">Edit and deletion actions are limited to your own account.</p>
+            <p className="text-xs text-muted-foreground">
+              {isAdmin ? "Admins can edit or remove selected accounts." : "Edit and deletion actions are limited to your own account."}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => singleSelected && openEdit(singleSelected)} disabled={!singleSelected}>
-              <Pencil className="mr-2 h-4 w-4" />
+              <Pencil data-icon="inline-start" />
               Edit selected
             </Button>
             <Button variant="destructive" size="sm" onClick={() => openDeleteConfirmation(Array.from(selectedIds))} disabled={saving}>
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 data-icon="inline-start" />
               Delete selected
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
@@ -256,8 +334,10 @@ export default function MembersPageClient() {
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/10 pb-4">
-          <CardTitle className="text-base">Registered users</CardTitle>
-          <CardDescription>All members are visible here. Editing and deletion are limited to your own account.</CardDescription>
+          <CardTitle className="text-base">Workspace users</CardTitle>
+          <CardDescription>
+            {isAdmin ? "All members are visible here. New accounts are created by admins." : "Only your own profile is visible here."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -270,14 +350,14 @@ export default function MembersPageClient() {
                     className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={selectableFilteredIds.length === 0}
                   >
-                    {allFilteredSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
+                    {allFilteredSelected ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
                 <TableHead>Username</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead>Organization</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="w-28 pr-6 text-right">Action</TableHead>
               </TableRow>
@@ -291,11 +371,7 @@ export default function MembersPageClient() {
               {!loading && filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8}>
-                    <EmptyState
-                      icon={SearchX}
-                      title="No members found"
-                      description="Try another search term or refresh the member list."
-                    />
+                    <EmptyState icon={SearchX} title="No members found" description="Try another search term or refresh the member list." />
                   </TableCell>
                 </TableRow>
               ) : null}
@@ -304,17 +380,17 @@ export default function MembersPageClient() {
                   <TableCell className="pl-4">
                     <button
                       type="button"
-                      onClick={() => toggleSelect(member.id)}
+                      onClick={() => toggleSelect(member)}
                       className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={member.id !== currentUserId}
+                      disabled={!canSelectMember(member)}
                     >
-                      {selectedIds.has(member.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
+                      {selectedIds.has(member.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                     </button>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="rounded-xl border bg-muted/20 p-2.5">
-                        <UserRound className="h-4 w-4 text-muted-foreground" />
+                        <UserRound className="size-4 text-muted-foreground" />
                       </div>
                       <div>
                         <p className="font-medium">{member.firstName} {member.lastName}</p>
@@ -325,9 +401,9 @@ export default function MembersPageClient() {
                     </div>
                   </TableCell>
                   <TableCell>{member.email}</TableCell>
+                  <TableCell><RoleBadge role={member.role} /></TableCell>
                   <TableCell>{member.username ?? "--"}</TableCell>
                   <TableCell>{member.department ?? "--"}</TableCell>
-                  <TableCell>{member.organization ?? "--"}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className="border-border/70 text-muted-foreground">
                       {new Date(member.createdAt).toLocaleDateString()}
@@ -335,21 +411,11 @@ export default function MembersPageClient() {
                   </TableCell>
                   <TableCell className="pr-4 text-right md:pr-6">
                     <div className="flex justify-end gap-1 pr-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(member)}
-                        disabled={member.id !== currentUserId}
-                      >
-                        <Pencil className="h-4 w-4" />
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(member)} disabled={!isAdmin && member.id !== currentUserId}>
+                        <Pencil className="size-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openDeleteConfirmation([member.id])}
-                        disabled={saving || member.id !== currentUserId}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                      <Button variant="ghost" size="sm" onClick={() => openDeleteConfirmation([member.id])} disabled={saving || (!isAdmin && member.id !== currentUserId)}>
+                        <Trash2 className="size-4 text-destructive" />
                       </Button>
                     </div>
                   </TableCell>
@@ -360,18 +426,27 @@ export default function MembersPageClient() {
         </CardContent>
       </Card>
 
+      <CreateMemberDialog
+        open={createOpen}
+        form={createForm}
+        saving={saving}
+        onOpenChange={setCreateOpen}
+        onChange={setCreateForm}
+        onSubmit={() => void createMember()}
+      />
+
       <Dialog open={Boolean(editingMember)} onOpenChange={(open) => !open && setEditingMember(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit member</DialogTitle>
             <DialogDescription>Update the username and email address used by this workspace user.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <Field label="Username">
-              <Input value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} placeholder="operator-name" />
+              <Input value={editForm.username} onChange={(event) => setEditForm((current) => ({ ...current, username: event.target.value }))} placeholder="operator-name" />
             </Field>
             <Field label="Email">
-              <Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+              <Input type="email" value={editForm.email} onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))} />
             </Field>
           </div>
           <DialogFooter>
@@ -390,9 +465,9 @@ export default function MembersPageClient() {
               {deleteIncludesCurrentUser ? " Your current session will be closed immediately after deletion." : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
             <p className="text-sm font-medium text-destructive">Please confirm before continuing.</p>
-            <div className="space-y-2 text-sm text-muted-foreground">
+            <div className="flex flex-col gap-2 text-sm text-muted-foreground">
               {deleteTargets.map((member) => (
                 <div key={member.id} className="flex min-w-0 flex-col gap-1 rounded-lg border border-border/70 bg-background/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <span className="font-medium text-foreground">
@@ -406,7 +481,7 @@ export default function MembersPageClient() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeDeleteConfirmation} disabled={saving}>Cancel</Button>
-            <Button variant="destructive" onClick={() => void confirmDeleteTargets()} disabled={saving}>
+            <Button variant="destructive" onClick={() => void deleteMembersByIds(deleteTargetIds)} disabled={saving}>
               {saving ? "Deleting..." : `Delete ${deleteTargets.length === 1 ? "member" : "members"}`}
             </Button>
           </DialogFooter>
@@ -416,27 +491,90 @@ export default function MembersPageClient() {
   );
 }
 
+function CreateMemberDialog({
+  open,
+  form,
+  saving,
+  onOpenChange,
+  onChange,
+  onSubmit,
+}: {
+  open: boolean;
+  form: CreateMemberForm;
+  saving: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: (form: CreateMemberForm) => void;
+  onSubmit: () => void;
+}) {
+  function updateField(field: keyof CreateMemberForm, value: string) {
+    onChange({ ...form, [field]: value });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add member</DialogTitle>
+          <DialogDescription>Create a member account. The new user can sign in from the login page.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="First name">
+            <Input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
+          </Field>
+          <Field label="Last name">
+            <Input value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
+          </Field>
+          <Field label="Username">
+            <Input
+              value={form.username}
+              onChange={(event) => updateField("username", event.target.value)}
+              placeholder="operator.name"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+          </Field>
+          <Field label="Email">
+            <Input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} />
+          </Field>
+          <Field label="Department">
+            <Input value={form.department} onChange={(event) => updateField("department", event.target.value)} />
+          </Field>
+          <Field label="Password">
+            <Input type="password" minLength={12} maxLength={128} value={form.password} onChange={(event) => updateField("password", event.target.value)} />
+          </Field>
+          <Field label="Confirm password">
+            <Input type="password" minLength={12} maxLength={128} value={form.confirmPassword} onChange={(event) => updateField("confirmPassword", event.target.value)} />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={onSubmit} disabled={saving}>{saving ? "Creating..." : "Create member"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MetricCard({
   label,
   value,
   icon: Icon,
-  tone,
 }: {
   label: string;
   value: string;
   icon: typeof UsersRound;
-  tone: "neutral" | "green" | "amber";
 }) {
   return (
     <Card className="overflow-hidden">
-      <CardContent className={`border-l-2 px-4 py-3 ${tone === "green" ? "border-l-emerald-500" : tone === "amber" ? "border-l-amber-500" : "border-l-slate-400"}`}>
+      <CardContent className="border-l-2 border-l-slate-400 px-4 py-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
+          <div className="flex flex-col gap-1">
             <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
             <p className="text-xl font-semibold tracking-tight">{value}</p>
           </div>
           <div className="rounded-xl bg-muted/70 p-2.5">
-            <Icon className="h-4 w-4" />
+            <Icon className="size-4" />
           </div>
         </div>
       </CardContent>
@@ -444,11 +582,23 @@ function MetricCard({
   );
 }
 
+function RoleBadge({ role }: { role: MemberRole }) {
+  return <Badge variant={role === "admin" ? "default" : "secondary"}>{role === "admin" ? "Admin" : "Member"}</Badge>;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
       <Label>{label}</Label>
       {children}
     </div>
   );
+}
+
+function sortMembers(members: MemberRecord[]) {
+  return [...members].sort((a, b) => {
+    const nameA = `${a.firstName} ${a.lastName}`.toLowerCase();
+    const nameB = `${b.firstName} ${b.lastName}`.toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
 }

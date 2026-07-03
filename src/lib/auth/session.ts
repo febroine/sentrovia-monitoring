@@ -6,18 +6,18 @@ import { getActiveSessionUser } from "@/lib/auth/service";
 import {
   SESSION_COOKIE_NAME,
   getSessionCookieOptions,
-  type SessionPayload,
+  type VersionedSessionPayload,
   verifySessionToken,
 } from "@/lib/auth/token";
 
-export const getSession = cache(async (): Promise<SessionPayload | null> => {
+export const getSession = cache(async (): Promise<VersionedSessionPayload | null> => {
   const cookieStore = await cookies();
   const tokenPayload = await verifySessionToken(cookieStore.get(SESSION_COOKIE_NAME)?.value);
   if (!tokenPayload) {
     return null;
   }
 
-  return getActiveSessionUser(tokenPayload.id);
+  return getActiveSessionUser(tokenPayload.id, tokenPayload.sessionVersion);
 });
 
 export function applySessionCookie(response: NextResponse, token: string) {

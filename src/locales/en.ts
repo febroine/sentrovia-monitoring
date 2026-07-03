@@ -28,7 +28,6 @@ export const en = {
     members: "Members",
     logs: "Event Logs",
     maintenance: "Maintenance",
-    incidents: "Incidents",
     delivery: "Delivery",
     reports: "Reports",
     settings: "Settings"

@@ -84,9 +84,9 @@ export function AuthShell({
   formEyebrow: string;
   formTitle: string;
   formDescription: string;
-  footerPrompt: string;
-  footerHref: string;
-  footerLabel: string;
+  footerPrompt?: string;
+  footerHref?: string;
+  footerLabel?: string;
   children: React.ReactNode;
 }) {
   const palette = toneClasses[tone];
@@ -195,22 +195,24 @@ export function AuthShell({
 
                 <CardContent>{children}</CardContent>
 
-                <CardFooter className="flex-col items-stretch gap-4 bg-muted/25">
-                  <Separator />
-                  <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-muted-foreground">{footerPrompt}</p>
-                    <Link
-                      href={footerHref}
-                      className={cn(
-                        "inline-flex items-center gap-2 font-medium transition-colors",
-                        palette.buttonLink
-                      )}
-                    >
-                      {footerLabel}
-                      <ArrowRight className="size-4" />
-                    </Link>
-                  </div>
-                </CardFooter>
+                {footerPrompt && footerHref && footerLabel ? (
+                  <CardFooter className="flex-col items-stretch gap-4 bg-muted/25">
+                    <Separator />
+                    <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-muted-foreground">{footerPrompt}</p>
+                      <Link
+                        href={footerHref}
+                        className={cn(
+                          "inline-flex items-center gap-2 font-medium transition-colors",
+                          palette.buttonLink
+                        )}
+                      >
+                        {footerLabel}
+                        <ArrowRight className="size-4" />
+                      </Link>
+                    </div>
+                  </CardFooter>
+                ) : null}
               </Card>
             </div>
           </section>

@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     }
 
     const { id } = await context.params;
-    if (id !== session.id) {
+    if (id !== session.id && session.role !== "admin") {
       return NextResponse.json({ message: "You can only edit your own account." }, { status: 403 });
     }
 

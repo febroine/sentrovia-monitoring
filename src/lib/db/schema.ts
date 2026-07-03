@@ -25,6 +25,8 @@ export const users = pgTable(
     jobTitle: varchar("job_title", { length: 120 }),
     phone: varchar("phone", { length: 40 }),
     passwordHash: text("password_hash").notNull(),
+    role: varchar("role", { length: 16 }).default("member").notNull(),
+    sessionVersion: integer("session_version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

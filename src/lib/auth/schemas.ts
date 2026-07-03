@@ -9,31 +9,65 @@ const passwordSchema = z
   .regex(/[0-9]/, "Password must include at least one number.")
   .regex(/[^A-Za-z0-9]/, "Password must include at least one special character.");
 
-export const registerSchema = z
+const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, "Username must be at least 3 characters long.")
+  .max(80, "Username is too long.")
+  .regex(/^[A-Za-z0-9._-]+$/, "Username can only include letters, numbers, dots, underscores, and dashes.")
+  .transform((value) => value.toLowerCase());
+
+const optionalUsernameSchema = z
+  .preprocess((value) => {
+    if (typeof value !== "string") {
+      return value;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }, usernameSchema.optional())
+  .transform((value) => value ?? null);
+
+const accountSetupShape = {
+  firstName: z
+    .string()
+    .trim()
+    .min(2, "First name must be at least 2 characters long.")
+    .max(80, "First name is too long."),
+  lastName: z
+    .string()
+    .trim()
+    .min(2, "Last name must be at least 2 characters long.")
+    .max(80, "Last name is too long."),
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email address.")
+    .transform((value) => value.toLowerCase()),
+  department: z
+    .string()
+    .trim()
+    .max(120, "Department is too long.")
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : null)),
+  password: passwordSchema,
+  confirmPassword: z.string().min(1, "Please confirm your password."),
+};
+
+export const memberCreateSchema = z
   .object({
-    firstName: z
-      .string()
-      .trim()
-      .min(2, "First name must be at least 2 characters long.")
-      .max(80, "First name is too long."),
-    lastName: z
-      .string()
-      .trim()
-      .min(2, "Last name must be at least 2 characters long.")
-      .max(80, "Last name is too long."),
-    email: z
-      .string()
-      .trim()
-      .email("Enter a valid email address.")
-      .transform((value) => value.toLowerCase()),
-    department: z
-      .string()
-      .trim()
-      .max(120, "Department is too long.")
-      .optional()
-      .transform((value) => (value && value.length > 0 ? value : null)),
-    password: passwordSchema,
-    confirmPassword: z.string().min(1, "Please confirm your password."),
+    ...accountSetupShape,
+    username: optionalUsernameSchema,
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match.",
+  });
+
+export const onboardingSchema = z
+  .object({
+    ...accountSetupShape,
+    username: usernameSchema,
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],
@@ -41,10 +75,11 @@ export const registerSchema = z
   });
 
 export const loginSchema = z.object({
-  email: z
+  identifier: z
     .string()
     .trim()
-    .email("Enter a valid email address.")
+    .min(3, "Enter your email or username.")
+    .max(255, "Email or username is too long.")
     .transform((value) => value.toLowerCase()),
   password: z.string().min(1, "Password is required."),
 });
@@ -60,7 +95,8 @@ export const changePasswordSchema = z
     message: "Passwords do not match.",
   });
 
-export type RegisterInput = z.infer<typeof registerSchema>;
+export type MemberCreateInput = z.infer<typeof memberCreateSchema>;
+export type OnboardingInput = z.infer<typeof onboardingSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 

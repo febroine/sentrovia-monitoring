@@ -36,7 +36,7 @@
     "jose": "^6.2.2",
     "lucide-react": "^1.7.0",
     "next": "^16.2.4",
-    "nodemailer": "^8.0.5",
+    "nodemailer": "9.0.3",
     "pdfkit": "^0.18.0",
     "playwright": "^1.60.0",
     "postgres": "^3.4.9",
@@ -44,7 +44,7 @@
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.5",
     "yaml": "^2.8.3",
     "zod": "^4.3.6",
     "zustand": "^5.0.12"
@@ -57,12 +57,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.10",
-    "esbuild": "^0.27.7",
+    "esbuild": "0.28.1",
     "eslint": "^9",
     "eslint-config-next": "^16.2.4",
-    "postcss": "^8.5.14",
+    "postcss": "8.5.16",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.5"
+  },
+  "overrides": {
+    "postcss": "8.5.16"
   }
 }

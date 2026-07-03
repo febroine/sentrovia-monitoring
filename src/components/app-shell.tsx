@@ -7,7 +7,7 @@ import BottomNav from '@/components/bottom-nav';
 import { APPEARANCE_SETTINGS_UPDATED_EVENT } from '@/stores/use-settings-store';
 import { cn } from '@/lib/utils';
 
-const AUTH_ROUTES = ['/login', '/signup'];
+const AUTH_ROUTES = ['/login', '/onboarding'];
 const PUBLIC_ROUTES = ['/status'];
 type AppearanceState = {
   reduceMotion: boolean;

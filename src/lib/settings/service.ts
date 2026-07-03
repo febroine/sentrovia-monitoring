@@ -570,7 +570,7 @@ async function updateUserCompat(
     lastName: input.profile.lastName,
     email: input.profile.email,
     department: emptyToNull(input.profile.department),
-    username: emptyToNull(input.profile.username),
+    username: normalizeUsername(input.profile.username),
     organization: emptyToNull(input.profile.organization),
     jobTitle: emptyToNull(input.profile.jobTitle),
     phone: emptyToNull(input.profile.phone),
@@ -583,6 +583,11 @@ async function updateUserCompat(
   }
 
   await executor.update(users).set(filteredValues).where(eq(users.id, userId));
+}
+
+function normalizeUsername(value: string) {
+  const username = value.trim().toLowerCase();
+  return username.length > 0 ? username : null;
 }
 
 async function clearInheritedMonitorTemplates(

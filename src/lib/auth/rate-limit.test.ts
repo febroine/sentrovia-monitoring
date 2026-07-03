@@ -22,17 +22,17 @@ describe("auth rate limiting", () => {
     ).toThrow(AuthError);
   });
 
-  it("blocks repeated register failures for the same identifier even when forwarded IP changes", () => {
-    const email = "rate-limit-register@example.com";
+  it("blocks repeated onboarding failures for the same identifier even when forwarded IP changes", () => {
+    const email = "rate-limit-onboarding@example.com";
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const request = buildRequest(`198.51.100.${attempt + 1}`);
-      assertAuthRateLimit(request, "register", email);
-      recordAuthFailure(request, "register", email);
+      assertAuthRateLimit(request, "onboarding", email);
+      recordAuthFailure(request, "onboarding", email);
     }
 
     expect(() =>
-      assertAuthRateLimit(buildRequest("198.51.100.99"), "register", email)
+      assertAuthRateLimit(buildRequest("198.51.100.99"), "onboarding", email)
     ).toThrow(AuthError);
   });
 
@@ -58,11 +58,11 @@ describe("auth rate limiting", () => {
   it("does not trust spoofable forwarded IP headers unless explicitly enabled", () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const request = buildRequest(`198.51.100.${attempt + 1}`);
-      assertAuthRateLimit(request, "register", null);
-      recordAuthFailure(request, "register", null);
+      assertAuthRateLimit(request, "onboarding", null);
+      recordAuthFailure(request, "onboarding", null);
     }
 
-    expect(() => assertAuthRateLimit(buildRequest("198.51.100.99"), "register", null)).toThrow(AuthError);
+    expect(() => assertAuthRateLimit(buildRequest("198.51.100.99"), "onboarding", null)).toThrow(AuthError);
   });
 });
 

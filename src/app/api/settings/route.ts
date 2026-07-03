@@ -44,13 +44,17 @@ export async function PATCH(request: NextRequest) {
 
     return applySessionCookie(
       response,
-      await createSessionToken({
-        id: session.id,
-        firstName: parsed.data.profile.firstName,
-        lastName: parsed.data.profile.lastName,
-        email: parsed.data.profile.email,
-        department: parsed.data.profile.department || null,
-      })
+      await createSessionToken(
+        {
+          id: session.id,
+          firstName: parsed.data.profile.firstName,
+          lastName: parsed.data.profile.lastName,
+          email: parsed.data.profile.email,
+          department: parsed.data.profile.department || null,
+          role: session.role,
+        },
+        session.sessionVersion
+      )
     );
   } catch (error) {
     const authError = toAuthError(error, "Unable to save settings right now.");

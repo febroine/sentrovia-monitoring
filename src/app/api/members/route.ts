@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { clearSessionCookie } from "@/lib/auth/session";
-import { toAuthError } from "@/lib/auth/errors";
+import { AuthError, toAuthError } from "@/lib/auth/errors";
+import { flattenValidationIssues, memberCreateSchema } from "@/lib/auth/schemas";
+import { createMember } from "@/lib/auth/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { deleteMembers, listMembers } from "@/lib/members/service";
 
@@ -19,9 +21,10 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const members = await listMembers();
+    const members = await listMembers(session.id, session.role);
     return NextResponse.json({
       currentUserId: session.id,
+      currentUserRole: session.role,
       members: members.map((member) => ({
         ...member,
         createdAt: member.createdAt.toISOString(),
@@ -29,6 +32,31 @@ export async function GET() {
     });
   } catch (error) {
     const authError = toAuthError(error, "Unable to load members right now.");
+    return NextResponse.json({ message: authError.message }, { status: authError.status });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    if (session.role !== "admin") {
+      throw new AuthError("Only admins can add members.", 403);
+    }
+
+    const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
+    const parsed = memberCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new AuthError(flattenValidationIssues(parsed.error), 400);
+    }
+
+    const result = await createMember(parsed.data);
+    return NextResponse.json({ member: result.user }, { status: 201 });
+  } catch (error) {
+    const authError = toAuthError(error, "Unable to add member right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });
   }
 }
@@ -46,11 +74,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Select at least one member." }, { status: 400 });
     }
 
-    if (parsed.data.ids.some((id) => id !== session.id)) {
-      return NextResponse.json({ message: "You can only delete your own account." }, { status: 403 });
-    }
-
-    const deleted = await deleteMembers(session.id, parsed.data.ids);
+    const deleted = await deleteMembers(session.id, session.role, parsed.data.ids);
     const deletedIds = deleted.map((member) => member.id);
     const response = NextResponse.json({
       ids: deletedIds,

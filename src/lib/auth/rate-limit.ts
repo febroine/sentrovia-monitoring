@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { AuthError } from "@/lib/auth/errors";
 
-type AuthAction = "login" | "register" | "change-password";
+type AuthAction = "login" | "onboarding" | "change-password";
 
 type RateLimitRule = {
   windowMs: number;
@@ -21,7 +21,7 @@ const RATE_LIMITS: Record<AuthAction, RateLimitRule> = {
     maxAttempts: 8,
     blockMs: 15 * 60 * 1000,
   },
-  register: {
+  onboarding: {
     windowMs: 30 * 60 * 1000,
     maxAttempts: 5,
     blockMs: 30 * 60 * 1000,

@@ -57,14 +57,14 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
 
   if (databaseError?.code === "ECONNREFUSED" || databaseError?.errno === "ECONNREFUSED") {
     return new AuthError(
-      "Database is unavailable. Start the PostgreSQL service and run `npm run db:push` once before registering.",
+      "Database is unavailable. Start the PostgreSQL service and run `npm run db:push` once before onboarding.",
       503
     );
   }
 
   if (databaseError?.code === "42P01") {
     return new AuthError(
-      "Database schema is missing. Run `npm run db:push` before registering.",
+      "Database schema is missing. Run `npm run db:push` before onboarding.",
       503
     );
   }

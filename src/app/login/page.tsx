@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   ArrowRight,
   BellRing,
@@ -30,6 +30,27 @@ export default function LoginPage() {
   const [isNavigating, startTransition] = useTransition();
   const busy = submitting || isNavigating;
 
+  useEffect(() => {
+    let active = true;
+
+    void fetch("/api/auth/onboarding", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { required?: boolean };
+        if (active && data.required) {
+          router.replace("/onboarding");
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -37,7 +58,7 @@ export default function LoginPage() {
 
     const formData = new FormData(event.currentTarget);
     const payload = {
-      email: String(formData.get("email") ?? ""),
+      identifier: String(formData.get("identifier") ?? ""),
       password: String(formData.get("password") ?? ""),
     };
 
@@ -86,8 +107,8 @@ export default function LoginPage() {
         {
           icon: TimerReset,
           title: "Verification Timeline",
-          description: "See whether a failure is still being confirmed or has already become a real incident.",
-          meta: "INCIDENT CLARITY",
+          description: "See whether a failure is still being confirmed or has already become a verified outage.",
+          meta: "OUTAGE CLARITY",
         },
         {
           icon: BellRing,
@@ -111,23 +132,20 @@ export default function LoginPage() {
       statsDescription="Sentrovia is designed as an operational workspace: checks, verification, delivery, logs, and worker state all read from the same durable model."
       formEyebrow="Sign In"
       formTitle="Open the Sentrovia workspace"
-      formDescription="Use your registered operator email and password to continue into the monitoring console."
-      footerPrompt="Need an account?"
-      footerHref="/signup"
-      footerLabel="Create one here"
+      formDescription="Use your email address or username with your password to continue into the monitoring console."
     >
       <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit}>
-        <FieldBlock label="Email" htmlFor="email">
+        <FieldBlock label="Email or Username" htmlFor="identifier">
           <Input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
+            id="identifier"
+            name="identifier"
+            type="text"
+            autoComplete="username"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
             required
-            placeholder="name@company.com"
+            placeholder="name@company.com or aykut.bayram"
             className={inputClassName}
           />
         </FieldBlock>
