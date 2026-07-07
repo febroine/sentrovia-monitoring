@@ -2,18 +2,15 @@ import { env } from "@/lib/env";
 import { runMonitorDiagnostics } from "@/lib/diagnostics/service";
 import { openOrUpdateIncident, resolveIncident } from "@/lib/incidents/service";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
-import { findActiveMaintenanceWindowForMonitor } from "@/lib/maintenance/service";
 import {
   appendMonitorCheck,
   appendIncidentEvent as persistIncidentEvent,
   appendMonitorDiagnostic,
   appendMonitorEvent,
-  hasRecentMonitorEvent,
   incrementWorkerCheckedCount,
   countDueMonitors,
   claimDueMonitors,
   isMonitorActive,
-  releaseMonitorLeaseForMaintenance,
   recordMonitorResult,
   updateWorkerState,
 } from "@/lib/monitors/service";
@@ -26,7 +23,6 @@ import { buildFailureScreenshotAttachment } from "@/worker/screenshot";
 const VERIFICATION_TIMEOUT_STEP_RATIO = 0.5;
 const MAX_VERIFICATION_TIMEOUT_MULTIPLIER = 2;
 const MAX_VERIFICATION_TIMEOUT_MS = 120_000;
-const MAINTENANCE_SKIP_EVENT_DEDUP_MS = 15 * 60_000;
 
 type MonitorCycleResult = {
   finalStatus: "up" | "down" | "pending";
@@ -116,11 +112,6 @@ export async function runMonitoringCycle() {
 }
 
 async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
-  const maintenanceSkip = await releaseIfCheckIsSuppressed(monitor);
-  if (maintenanceSkip) {
-    return maintenanceSkip;
-  }
-
   const threshold = Math.max(1, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
@@ -424,50 +415,6 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   };
 }
 
-async function releaseIfCheckIsSuppressed(monitor: Monitor): Promise<MonitorCycleResult | null> {
-  const activeWindow = await findActiveMaintenanceWindowForMonitor(monitor);
-  if (!activeWindow?.suppressChecks) {
-    return null;
-  }
-
-  const checkedAt = new Date();
-  const nextCheckAt = calculateNextCheckAt(monitor, checkedAt);
-  const released = await releaseMonitorLeaseForMaintenance(monitor.id, nextCheckAt, monitor.leaseToken);
-  if (!released) {
-    return null;
-  }
-
-  await appendMaintenanceSkipEvent(monitor, activeWindow.name, checkedAt);
-
-  return {
-    finalStatus: toCycleStatus(monitor.status),
-    latencyMs: null,
-  };
-}
-
-async function appendMaintenanceSkipEvent(monitor: Monitor, windowName: string, checkedAt: Date) {
-  const alreadyLogged = await hasRecentMonitorEvent({
-    monitorId: monitor.id,
-    eventType: "maintenance-check-skip",
-    since: new Date(checkedAt.getTime() - MAINTENANCE_SKIP_EVENT_DEDUP_MS),
-    before: checkedAt,
-  });
-
-  if (alreadyLogged) {
-    return;
-  }
-
-  await appendMonitorEvent({
-    monitorId: monitor.id,
-    userId: monitor.userId,
-    eventType: "maintenance-check-skip",
-    status: monitor.status,
-    statusCode: monitor.statusCode,
-    latencyMs: monitor.latencyMs,
-    message: `Health check skipped by maintenance window: ${windowName}`,
-  });
-}
-
 async function buildAlertEmailAttachments(monitor: Monitor, checkedAt: Date) {
   let skippedReason: string | null = null;
   const screenshot = await buildFailureScreenshotAttachment(monitor, checkedAt, (reason) => {
@@ -622,14 +569,6 @@ function buildSlowResponseMessage(monitor: Monitor, result: Awaited<ReturnType<t
 
 function supportsSlowResponseThreshold(monitor: Monitor) {
   return monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json";
-}
-
-function toCycleStatus(status: string): MonitorCycleResult["finalStatus"] {
-  if (status === "up" || status === "down") {
-    return status;
-  }
-
-  return "pending";
 }
 
 async function appendCheckEvent(

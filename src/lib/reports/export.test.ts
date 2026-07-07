@@ -1,45 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { buildPrintableReportHtml, buildReportCsv, buildReportFileSlug } from "@/lib/reports/export";
-import { buildReportPdf } from "@/lib/reports/pdf";
+import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
 import type { GeneratedReport } from "@/lib/reports/types";
 
 describe("report exports", () => {
-  it("includes report v2 operational details in csv and html exports", () => {
+  it("builds an HTML-only report with URL-based monitor identity", () => {
     const report = buildSampleReport();
-    const csv = buildReportCsv(report);
     const html = buildPrintableReportHtml(report);
 
-    expect(csv.startsWith("\uFEFF")).toBe(true);
-    expect(csv).toContain("Health score");
-    expect(csv).toContain("P95 latency");
-    expect(csv).toContain("Recent failures");
-    expect(csv).toContain('"Monitor","Company","URL"');
-    expect(html).toContain("Recommended actions");
-    expect(html).toContain("Recent failure events");
-    expect(html).toContain("P95");
+    expect(html).toContain("Service snapshot");
+    expect(html).toContain("What needs attention");
+    expect(html).toContain("Failure details");
+    expect(html).toContain("Top failing URLs");
+    expect(html).toContain("URL breakdown");
+    expect(html).toContain("https://api.example.com");
+    expect(html).toContain("The service did not accept a TCP connection before the timeout.");
+    expect(html).not.toContain("Status codes");
+    expect(html).not.toContain(">Checks<");
+    expect(html).not.toContain("Export CSV");
+    expect(html).not.toContain("PDF");
     expect(buildReportFileSlug(report)).toBe("weekly-workspace-report-2026-05-05");
-  });
-
-  it("builds a non-empty pdf attachment", async () => {
-    const pdf = await buildReportPdf(buildSampleReport());
-
-    expect(pdf.byteLength).toBeGreaterThan(1_000);
-    expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
-  });
-
-  it("neutralizes spreadsheet formulas in csv cells", () => {
-    const report = buildSampleReport();
-    report.monitorBreakdown[0].name = '=HYPERLINK("https://evil.example","open")';
-    report.monitorBreakdown[0].companyName = "+SUM(1,1)";
-    report.monitorBreakdown[0].url = "@malicious";
-    report.recentFailures[0].rcaSummary = "-10+10";
-
-    const csv = buildReportCsv(report);
-
-    expect(csv).toContain(`"'=HYPERLINK(""https://evil.example"",""open"")"`);
-    expect(csv).toContain(`"'+SUM(1,1)"`);
-    expect(csv).toContain(`"'@malicious"`);
-    expect(csv).toContain(`"'-10+10"`);
   });
 });
 
@@ -76,22 +55,24 @@ function buildSampleReport(): GeneratedReport {
       healthScore: 72,
       healthStatus: "Watch",
     },
-    recommendations: ["1 monitor is currently down. Prioritize active incidents before scheduled maintenance."],
+    recommendations: ["1 URL is currently down. Prioritize active incidents and restore service health."],
     statusCodes: [
       { statusCode: 200, count: 18 },
       { statusCode: 500, count: 2 },
     ],
-    slowMonitors: [{ monitorId: "m1", name: "API", averageLatencyMs: 640, checks: 10 }],
+    slowMonitors: [{ monitorId: "m1", name: "API", url: "https://api.example.com", averageLatencyMs: 640, checks: 10 }],
     failingMonitors: [
-      { monitorId: "m1", name: "API", failures: 2, lastFailureAt: "2026-05-05T07:30:00.000Z" },
+      { monitorId: "m1", name: "API", url: "https://api.example.com", failures: 2, lastFailureAt: "2026-05-05T07:30:00.000Z" },
     ],
     recentFailures: [
       {
         monitorId: "m1",
         name: "API",
+        url: "https://api.example.com",
         statusCode: 500,
-        message: "Failed",
-        rcaSummary: "Server error",
+        message: "connect ETIMEDOUT 5.9.81.212:443",
+        rcaSummary: null,
+        detail: "The service did not accept a TCP connection before the timeout. Target: 5.9.81.212:443. Original error: connect ETIMEDOUT 5.9.81.212:443",
         createdAt: "2026-05-05T07:30:00.000Z",
       },
     ],
@@ -105,7 +86,7 @@ function buildSampleReport(): GeneratedReport {
         currentStatusCode: 500,
         lastCheckedAt: "2026-05-05T07:30:00.000Z",
         lastFailureAt: "2026-05-05T07:30:00.000Z",
-        lastErrorMessage: "HTTP 500",
+        lastErrorMessage: "The service did not accept a TCP connection before the timeout.",
         uptimePct: 80,
         averageLatencyMs: 640,
         p95LatencyMs: 900,

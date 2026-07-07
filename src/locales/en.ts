@@ -27,7 +27,6 @@ export const en = {
     companies: "Companies",
     members: "Members",
     logs: "Event Logs",
-    maintenance: "Maintenance",
     delivery: "Delivery",
     reports: "Reports",
     settings: "Settings"

@@ -140,7 +140,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Which delivery channels exist right now?",
         answer:
-          "Sentrovia currently supports email, Telegram, Discord webhook, and generic webhooks. Slack and maintenance-window controls are no longer part of the active product surface.",
+          "Sentrovia currently supports email, Telegram, Discord webhook, and generic webhooks. Slack controls are no longer part of the active product surface.",
       },
       {
         question: "Can I test channels without triggering a real outage?",

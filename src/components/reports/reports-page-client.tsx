@@ -7,7 +7,6 @@ import {
   CalendarDays,
   Copy,
   Download,
-  FileText,
   Mail,
   PlayCircle,
   Search,
@@ -28,7 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CompanyRecord } from "@/lib/companies/types";
-import { buildPrintableReportHtml, buildReportCsv, buildReportFileSlug } from "@/lib/reports/export";
+import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
 import type {
   GeneratedReport,
   ReportCadence,
@@ -54,9 +53,7 @@ type DraftReport = {
   companyId: string;
   recipients: string;
   deliveryDetailLevel: "summary" | "standard" | "full";
-  attachCsv: boolean;
   attachHtml: boolean;
-  attachPdf: boolean;
   includeIncidentSummary: boolean;
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string;
@@ -74,9 +71,7 @@ type DraftSchedule = {
   nextRunAt: string;
   isActive: boolean;
   deliveryDetailLevel: "summary" | "standard" | "full";
-  attachCsv: boolean;
   attachHtml: boolean;
-  attachPdf: boolean;
   includeIncidentSummary: boolean;
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string;
@@ -91,9 +86,7 @@ const EMPTY_REPORT_DRAFT: DraftReport = {
   companyId: "",
   recipients: "",
   deliveryDetailLevel: "standard",
-  attachCsv: true,
   attachHtml: true,
-  attachPdf: true,
   includeIncidentSummary: true,
   includeMonitorBreakdown: true,
   emailSubjectTemplate: "",
@@ -111,9 +104,7 @@ const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
   nextRunAt: "",
   isActive: true,
   deliveryDetailLevel: "standard",
-  attachCsv: true,
   attachHtml: true,
-  attachPdf: true,
   includeIncidentSummary: true,
   includeMonitorBreakdown: true,
   emailSubjectTemplate: "",
@@ -301,7 +292,7 @@ export default function ReportsPageClient() {
         reportTitle: data.report.title,
         recipients: parseRecipients(previewDraft.recipients),
       });
-      setMessage("Report sent successfully with CSV and print-ready HTML attachments.");
+      setMessage("Report sent successfully with an HTML attachment.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to send the report.");
     } finally {
@@ -473,9 +464,7 @@ export default function ReportsPageClient() {
       nextRunAt: toLocalDateTime(schedule.nextRunAt),
       isActive: schedule.isActive,
       deliveryDetailLevel: schedule.deliveryDetailLevel,
-      attachCsv: schedule.attachCsv,
       attachHtml: schedule.attachHtml,
-      attachPdf: schedule.attachPdf,
       includeIncidentSummary: schedule.includeIncidentSummary,
       includeMonitorBreakdown: schedule.includeMonitorBreakdown,
       emailSubjectTemplate: schedule.emailSubjectTemplate ?? "",
@@ -485,34 +474,12 @@ export default function ReportsPageClient() {
     setActiveTab("schedules");
   }
 
-  function exportPreviewCsv() {
+  function exportPreviewHtml() {
     if (!preview) {
       return;
     }
 
-    downloadFile(buildReportCsv(preview), `${buildReportFileSlug(preview)}.csv`, "text/csv;charset=utf-8");
-  }
-
-  function exportPreviewPdf() {
-    if (!preview) {
-      return;
-    }
-
-    const printDocument = buildPrintableReportHtml(preview, { autoPrint: true });
-    const printBlob = new Blob([printDocument], { type: "text/html;charset=utf-8" });
-    const printUrl = URL.createObjectURL(printBlob);
-    const printWindow = window.open(printUrl, "_blank", "width=960,height=720");
-
-    if (!printWindow) {
-      URL.revokeObjectURL(printUrl);
-      setMessage("Pop-up blocked. Allow pop-ups to export a print-ready PDF view.");
-      return;
-    }
-
-    printWindow.focus();
-    window.setTimeout(() => {
-      URL.revokeObjectURL(printUrl);
-    }, 60_000);
+    downloadFile(buildPrintableReportHtml(preview), `${buildReportFileSlug(preview)}.html`, "text/html;charset=utf-8");
   }
 
   const previewRecipients = parseRecipients(previewDraft.recipients);
@@ -522,29 +489,22 @@ export default function ReportsPageClient() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      <header className="overflow-hidden rounded-3xl border border-violet-500/15 bg-[radial-gradient(circle_at_top_left,rgba(124,58,237,0.18),transparent_38%),linear-gradient(180deg,rgba(15,23,42,0.45),rgba(15,23,42,0.08))]">
-        <div className="border-l-4 border-l-violet-500 px-5 py-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="border-violet-500/25 bg-violet-500/10 text-violet-200">
-                  Reports
-                </Badge>
-                <Badge variant="outline" className="border-sky-500/25 bg-sky-500/10 text-sky-200">
-                  Weekly / Monthly / All time
-                </Badge>
-              </div>
-              <div className="space-y-1">
-                <h1 className="text-2xl font-semibold tracking-tight text-white">Reporting Center</h1>
-                <p className="max-w-3xl text-sm leading-6 text-slate-200/85">
-                  Build manual previews, schedule recurring delivery, and keep workspace or company reporting in one polished command deck.
-                </p>
-              </div>
+      <header className="overflow-hidden rounded-3xl border border-border/70 bg-card/80 shadow-sm">
+        <div className="px-5 py-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                Preview HTML reports, schedule recurring delivery, and review existing report plans without extra export formats.
+              </p>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[420px]">
-              <HeroStat icon={CalendarDays} label="Next send" value={summary.nextRunLabel} detail="Closest scheduled delivery" />
-              <HeroStat icon={Mail} label="Recipients" value={String(summary.recipientCount)} detail="Unique emails across schedules" />
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">
+                HTML only
+              </Badge>
+              <Badge variant="outline" className="border-border/70 text-muted-foreground">
+                Next: {summary.nextRunLabel}
+              </Badge>
             </div>
           </div>
         </div>
@@ -552,56 +512,11 @@ export default function ReportsPageClient() {
 
       {message ? <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">{message}</div> : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard icon={CalendarDays} label="Active schedules" value={String(summary.activeSchedules)} description="Auto-send schedules currently enabled." tone="violet" />
         <SummaryCard icon={Sparkles} label="Weekly" value={String(summary.weeklySchedules)} description="Weekly report automations." tone="sky" />
-        <SummaryCard icon={BarChart3} label="Monthly" value={String(summary.monthlySchedules)} description="Monthly report automations." tone="amber" />
-        <SummaryCard icon={FileText} label="All time" value={String(summary.allTimeSchedules)} description="Schedules that cover the full history." tone="sky" />
         <SummaryCard icon={Building2} label="Company scoped" value={String(summary.companySchedules)} description="Schedules tied to a single company." tone="emerald" />
-        <SummaryCard icon={Mail} label="Paused" value={String(summary.pausedSchedules)} description="Schedules waiting to be re-enabled." tone="slate" />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="overflow-hidden border-border/70">
-          <CardHeader className="border-b pb-4">
-            <CardTitle className="text-base">Quick launch</CardTitle>
-            <CardDescription>
-              Use a preset to jump into the report type you create most often.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 pt-4 sm:grid-cols-3">
-            <PresetButton
-              title="Weekly workspace"
-              detail="Fast global pulse"
-              onClick={() => applyPreviewPreset("global", "weekly", "operations")}
-            />
-            <PresetButton
-              title="Monthly executive"
-              detail="Leadership snapshot"
-              onClick={() => applyPreviewPreset("global", "monthly", "executive")}
-            />
-            <PresetButton
-              title="Company report"
-              detail="Scoped client view"
-              onClick={() => applyPreviewPreset("company", "weekly", "client")}
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden border-border/70">
-          <CardHeader className="border-b pb-4">
-            <CardTitle className="text-base">Schedule pulse</CardTitle>
-            <CardDescription>
-              Keep an eye on upcoming sends and the latest delivery outcome.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 pt-4 sm:grid-cols-2 xl:grid-cols-4">
-            <PulseMetric label="Next run" value={summary.nextRunLabel} />
-            <PulseMetric label="Last delivered" value={summary.lastDeliveredLabel} />
-            <PulseMetric label="Successful sends" value={String(summary.deliveredSchedules)} />
-            <PulseMetric label="Failed sends" value={String(summary.failedSchedules)} />
-          </CardContent>
-        </Card>
+        <SummaryCard icon={Mail} label="Recipients" value={String(summary.recipientCount)} description="Unique emails across schedules." tone="slate" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
@@ -742,8 +657,7 @@ export default function ReportsPageClient() {
           {preview ? (
             <ReportPreviewPanel
               report={preview}
-              onExportCsv={exportPreviewCsv}
-              onExportPdf={exportPreviewPdf}
+              onExportHtml={exportPreviewHtml}
             />
           ) : (
             <BuilderEmptyState
@@ -999,33 +913,6 @@ function SummaryCard({
   );
 }
 
-function HeroStat({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">{label}</p>
-          <p className="text-lg font-semibold text-white">{value}</p>
-          <p className="text-xs text-slate-300/80">{detail}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-white/5 p-2">
-          <Icon className="h-4 w-4 text-white" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ReportModeButton({
   active,
   title,
@@ -1098,9 +985,7 @@ function TemplateStrip({
 type ReportDeliveryDraft = Pick<
   DraftReport,
   | "deliveryDetailLevel"
-  | "attachCsv"
   | "attachHtml"
-  | "attachPdf"
   | "includeIncidentSummary"
   | "includeMonitorBreakdown"
   | "emailSubjectTemplate"
@@ -1137,9 +1022,12 @@ function ReportDeliveryComposer({
             </Select>
           </Field>
           <div className="grid gap-2">
-            <CompactToggle label="CSV" checked={draft.attachCsv} onChange={(attachCsv) => onChange({ attachCsv })} />
-            <CompactToggle label="HTML" checked={draft.attachHtml} onChange={(attachHtml) => onChange({ attachHtml })} />
-            <CompactToggle label="PDF" checked={draft.attachPdf} onChange={(attachPdf) => onChange({ attachPdf })} />
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">HTML only</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Scheduled and manual report deliveries include one browser-ready HTML file. CSV, XLSX, and PDF exports are disabled.
+              </p>
+            </div>
             <CompactToggle
               label="Failures"
               checked={draft.includeIncidentSummary}
@@ -1247,41 +1135,6 @@ function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
         <DetailBlock label="Recipients" value={delivery.recipients.join(", ") || "No recipients"} />
       </CardContent>
     </Card>
-  );
-}
-
-function PresetButton({
-  title,
-  detail,
-  onClick,
-}: {
-  title: string;
-  detail: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-2xl border border-border/70 bg-background px-4 py-4 text-left transition hover:border-border hover:bg-muted/10"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">{title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-        </div>
-        <WandSparkles className="h-4 w-4 text-violet-500" />
-      </div>
-    </button>
-  );
-}
-
-function PulseMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm font-medium">{value}</p>
-    </div>
   );
 }
 
@@ -1415,12 +1268,10 @@ function DetailBlock({ label, value }: { label: string; value: string }) {
 
 function ReportPreviewPanel({
   report,
-  onExportCsv,
-  onExportPdf,
+  onExportHtml,
 }: {
   report: GeneratedReport;
-  onExportCsv: () => void;
-  onExportPdf: () => void;
+  onExportHtml: () => void;
 }) {
   const maxFailureCount = Math.max(1, ...report.failingMonitors.map((monitor) => monitor.failures));
 
@@ -1442,13 +1293,9 @@ function ReportPreviewPanel({
               <Badge variant="outline" className="border-border/70 bg-background/80">
                 {report.workspaceName}
               </Badge>
-              <Button variant="outline" size="sm" onClick={onExportCsv}>
+              <Button variant="outline" size="sm" onClick={onExportHtml}>
                 <Download className="mr-2 h-4 w-4" />
-                Export CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={onExportPdf}>
-                <FileText className="mr-2 h-4 w-4" />
-                Export PDF
+                Download HTML
               </Button>
             </div>
           </div>
@@ -1462,7 +1309,6 @@ function ReportPreviewPanel({
             <PreviewMetric label="Failures" value={String(report.summary.failureEvents)} />
             <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failures" />
             <PreviewMetric label="Failure rate" value={`${report.summary.failureRatePct.toFixed(2)}%`} />
-            <PreviewMetric label="Checks" value={String(report.summary.totalChecks)} detail={`${report.summary.upChecks} up / ${report.summary.downChecks} down`} />
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
@@ -1471,26 +1317,13 @@ function ReportPreviewPanel({
             <StateChip tone="amber" label="Pending now" value={String(report.summary.currentlyPending)} />
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {report.statusCodes.length === 0 ? (
-              <Badge variant="outline" className="border-border/70 text-muted-foreground">
-                No status code distribution yet
-              </Badge>
-            ) : (
-              report.statusCodes.map((item) => (
-                <Badge key={`${item.statusCode}-${item.count}`} variant="outline" className="border-border/70">
-                  HTTP {item.statusCode} / {item.count}
-                </Badge>
-              ))
-            )}
-          </div>
         </CardContent>
       </Card>
 
       <Card className="overflow-hidden border-sky-500/15">
         <CardHeader className="border-b bg-sky-500/5">
           <CardTitle className="text-base">Operational recommendations</CardTitle>
-          <CardDescription>Generated from current status, failure frequency, latency, and status code distribution.</CardDescription>
+          <CardDescription>Generated from current status, failure frequency, latency, and affected services.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 pt-4 md:grid-cols-2">
           {report.recommendations.map((item, index) => (
@@ -1515,7 +1348,7 @@ function ReportPreviewPanel({
                 <div key={monitor.monitorId} className="rounded-2xl border border-border/70 bg-background/80 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium">{monitor.name}</p>
+                      <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {monitor.lastFailureAt ? `Last failure ${new Date(monitor.lastFailureAt).toLocaleString()}` : "No timestamp recorded"}
                       </p>
@@ -1544,8 +1377,8 @@ function ReportPreviewPanel({
                 <div key={monitor.monitorId} className="rounded-2xl border border-border/70 bg-background/80 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium">{monitor.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{monitor.checks} latency samples</p>
+                      <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Average latency in this report window</p>
                     </div>
                     <span className="text-xs font-medium text-muted-foreground">{monitor.averageLatencyMs}ms avg</span>
                   </div>
@@ -1569,13 +1402,13 @@ function ReportPreviewPanel({
               <div key={`${event.monitorId}-${event.createdAt}`} className="rounded-2xl border border-border/70 bg-background/80 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p className="text-sm font-medium">{event.name}</p>
+                    <p className="text-sm font-medium [overflow-wrap:anywhere]">{event.url}</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       {new Date(event.createdAt).toLocaleString()} / HTTP {event.statusCode ?? "N/A"}
                     </p>
                   </div>
                   <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                    {event.rcaSummary ?? event.message ?? "No RCA detail recorded."}
+                    {event.detail}
                   </p>
                 </div>
               </div>
@@ -1594,12 +1427,12 @@ function ReportPreviewPanel({
             <div key={monitor.monitorId} className="rounded-2xl border border-border/70 bg-background/80 p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-sm font-medium">{monitor.name}</p>
+                  <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {monitor.companyName ?? "No company"} / {monitor.url}
+                    {monitor.companyName ?? "No company"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Status {monitor.status} / HTTP {monitor.currentStatusCode ?? "N/A"} / {monitor.totalChecks} checks / {monitor.failures} failures
+                    Status {monitor.status} / HTTP {monitor.currentStatusCode ?? "N/A"} / {monitor.failures} failures
                   </p>
                   {monitor.lastErrorMessage ? (
                     <p className="mt-2 text-xs leading-5 text-destructive">{monitor.lastErrorMessage}</p>
@@ -1609,7 +1442,6 @@ function ReportPreviewPanel({
                   <Badge variant="outline" className="border-border/70">Uptime {monitor.uptimePct.toFixed(2)}%</Badge>
                   <Badge variant="outline" className="border-border/70">Avg latency {monitor.averageLatencyMs}ms</Badge>
                   <Badge variant="outline" className="border-border/70">P95 {monitor.p95LatencyMs}ms</Badge>
-                  <Badge variant="outline" className="border-border/70">{monitor.upChecks} up / {monitor.downChecks} down</Badge>
                   <Badge variant="outline" className="border-border/70">Last checked {monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : "N/A"}</Badge>
                 </div>
               </div>
@@ -1738,9 +1570,9 @@ function getCadenceLabel(cadence: ReportCadence) {
 function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {
   return {
     deliveryDetailLevel: draft.deliveryDetailLevel,
-    attachCsv: draft.attachCsv,
-    attachHtml: draft.attachHtml,
-    attachPdf: draft.attachPdf,
+    attachCsv: false,
+    attachHtml: true,
+    attachPdf: false,
     includeIncidentSummary: draft.includeIncidentSummary,
     includeMonitorBreakdown: draft.includeMonitorBreakdown,
     emailSubjectTemplate: draft.emailSubjectTemplate.trim() || null,
@@ -1750,13 +1582,7 @@ function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {
 }
 
 function buildSchedulePackageLabel(schedule: ReportScheduleRecord) {
-  const attachments = [
-    schedule.attachCsv ? "CSV" : null,
-    schedule.attachHtml ? "HTML" : null,
-    schedule.attachPdf ? "PDF" : null,
-  ].filter(Boolean);
-
-  return `${schedule.deliveryDetailLevel} / ${attachments.join(", ") || "no attachments"}`;
+  return `${schedule.deliveryDetailLevel} / HTML`;
 }
 
 function getScheduleDeliveryStatusLabel(schedule: ReportScheduleRecord) {

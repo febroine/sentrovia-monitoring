@@ -94,21 +94,25 @@ export interface GeneratedReport {
   slowMonitors: Array<{
     monitorId: string;
     name: string;
+    url: string;
     averageLatencyMs: number;
     checks: number;
   }>;
   failingMonitors: Array<{
     monitorId: string;
     name: string;
+    url: string;
     failures: number;
     lastFailureAt: string | null;
   }>;
   recentFailures: Array<{
     monitorId: string;
     name: string;
+    url: string;
     statusCode: number | null;
     message: string | null;
     rcaSummary: string | null;
+    detail: string;
     createdAt: string;
   }>;
   monitorBreakdown: Array<{

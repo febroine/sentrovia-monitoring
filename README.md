@@ -421,7 +421,6 @@ Good next steps:
 - demo video or GIF
 - hosted demo instance
 - role-based access controls
-- maintenance windows
 - escalation policies
 - multi-region workers
 - DNS-specific monitors

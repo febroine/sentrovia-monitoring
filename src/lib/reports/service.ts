@@ -5,8 +5,7 @@ import { db } from "@/lib/db";
 import { companies, monitorChecks, monitorEvents, monitors, reportSchedules } from "@/lib/db/schema";
 import { sendEmailDelivery } from "@/lib/delivery/service";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
-import { buildPrintableReportHtml, buildReportCsv, buildReportFileSlug } from "@/lib/reports/export";
-import { buildReportPdf } from "@/lib/reports/pdf";
+import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
 import { getSettings } from "@/lib/settings/service";
 import type {
   GeneratedReport,
@@ -39,9 +38,9 @@ type ReportDeliveryOptions = {
 
 const DEFAULT_REPORT_DELIVERY_OPTIONS: ReportDeliveryOptions = {
   deliveryDetailLevel: "standard",
-  attachCsv: true,
+  attachCsv: false,
   attachHtml: true,
-  attachPdf: true,
+  attachPdf: false,
   includeIncidentSummary: true,
   includeMonitorBreakdown: true,
   emailSubjectTemplate: null,
@@ -188,9 +187,9 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
       lastDeliveredAt: null,
       lastErrorMessage: null,
       deliveryDetailLevel: existing.deliveryDetailLevel,
-      attachCsv: existing.attachCsv,
-      attachHtml: existing.attachHtml,
-      attachPdf: existing.attachPdf,
+      attachCsv: false,
+      attachHtml: true,
+      attachPdf: false,
       includeIncidentSummary: existing.includeIncidentSummary,
       includeMonitorBreakdown: existing.includeMonitorBreakdown,
       emailSubjectTemplate: existing.emailSubjectTemplate,
@@ -257,7 +256,6 @@ export async function generateReportPreview(
     },
     failingMonitors,
     slowMonitors,
-    statusCodes: statusCodeSummary,
   });
 
   return {
@@ -313,7 +311,7 @@ export async function dispatchReportNow(
 
   const report = await generateReportPreview(userId, input);
   const deliveryOptions = normalizeReportDeliveryOptions(input);
-  const attachments = await buildReportAttachments(report, deliveryOptions);
+  const attachments = await buildReportAttachments(report);
   const message = buildReportMessage(report, deliveryOptions);
   const delivery = await sendEmailDelivery({
     userId,
@@ -629,6 +627,7 @@ function buildSlowMonitorSummary(
   monitorRows: Array<{
     id: string;
     name: string;
+    url: string;
   }>,
   checksByMonitor: Map<
     string,
@@ -648,6 +647,7 @@ function buildSlowMonitorSummary(
       return {
         monitorId: monitor.id,
         name: monitor.name,
+        url: sanitizeMonitorUrlForDisplay(monitor.url),
         averageLatencyMs: averageValue(latencies),
         checks: latencies.length,
       };
@@ -660,6 +660,7 @@ function buildFailingMonitorSummary(
   monitorRows: Array<{
     id: string;
     name: string;
+    url: string;
   }>,
   failuresByMonitor: Map<
     string,
@@ -675,6 +676,7 @@ function buildFailingMonitorSummary(
       return {
         monitorId: monitor.id,
         name: monitor.name,
+        url: sanitizeMonitorUrlForDisplay(monitor.url),
         failures: failures.length,
         lastFailureAt: failures[0]?.createdAt.toISOString() ?? null,
       };
@@ -725,7 +727,13 @@ function buildMonitorBreakdown(
         currentStatusCode: monitor.statusCode,
         lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
         lastFailureAt: monitor.lastFailureAt?.toISOString() ?? null,
-        lastErrorMessage: monitor.lastErrorMessage,
+        lastErrorMessage: monitor.lastErrorMessage
+          ? formatFailureDetail({
+              message: monitor.lastErrorMessage,
+              rcaSummary: null,
+              statusCode: monitor.statusCode,
+            })
+          : null,
         uptimePct:
           settledChecks.length > 0 ? roundToTwoDecimals((upChecks / settledChecks.length) * 100) : 100,
         averageLatencyMs: averageValue(latencies),
@@ -757,16 +765,23 @@ function buildRecentFailures(
   monitorRows: Array<{
     id: string;
     name: string;
+    url: string;
   }>
 ) {
-  const monitorNameMap = new Map(monitorRows.map((monitor) => [monitor.id, monitor.name]));
+  const monitorLookup = new Map(monitorRows.map((monitor) => [monitor.id, monitor]));
 
   return failureEvents.slice(0, RECENT_FAILURE_LIMIT).map((event) => ({
     monitorId: event.monitorId,
-    name: monitorNameMap.get(event.monitorId) ?? "Unknown monitor",
+    name: monitorLookup.get(event.monitorId)?.name ?? "Unknown monitor",
+    url: sanitizeMonitorUrlForDisplay(monitorLookup.get(event.monitorId)?.url ?? "Unknown URL"),
     statusCode: event.statusCode,
     message: event.message,
     rcaSummary: event.rcaSummary,
+    detail: formatFailureDetail({
+      message: event.message,
+      rcaSummary: event.rcaSummary,
+      statusCode: event.statusCode,
+    }),
     createdAt: event.createdAt.toISOString(),
   }));
 }
@@ -775,7 +790,6 @@ function buildRecommendations({
   summary,
   failingMonitors,
   slowMonitors,
-  statusCodes,
 }: {
   summary: {
     currentlyDown: number;
@@ -784,25 +798,17 @@ function buildRecommendations({
     p95LatencyMs: number;
     failureRatePct: number;
   };
-  failingMonitors: Array<{ name: string; failures: number }>;
-  slowMonitors: Array<{ name: string; averageLatencyMs: number }>;
-  statusCodes: Array<{ statusCode: number; count: number }>;
+  failingMonitors: Array<{ url: string; failures: number }>;
+  slowMonitors: Array<{ url: string; averageLatencyMs: number }>;
 }) {
   const recommendations: string[] = [];
-  const serverErrorCount = statusCodes
-    .filter((item) => item.statusCode >= 500)
-    .reduce((sum, item) => sum + item.count, 0);
 
   if (summary.currentlyDown > 0) {
-    recommendations.push(`${summary.currentlyDown} monitor is currently down. Prioritize active incidents before scheduled maintenance.`);
+    recommendations.push(`${formatUrlCount(summary.currentlyDown)} currently ${summary.currentlyDown === 1 ? "is" : "are"} down. Prioritize active incidents and restore service health.`);
   }
 
   if (summary.impactedMonitors > 0) {
-    recommendations.push(`${summary.impactedMonitors} monitor had at least one failure in this period. Review the failing monitor list for repeated patterns.`);
-  }
-
-  if (serverErrorCount > 0) {
-    recommendations.push(`${serverErrorCount} server-side HTTP error checks were recorded. Check upstream application logs around the listed failure times.`);
+    recommendations.push(`${formatUrlCount(summary.impactedMonitors)} had at least one failure in this period. Review the failing URL list for repeated patterns.`);
   }
 
   if (summary.p95LatencyMs >= 1_500) {
@@ -815,12 +821,12 @@ function buildRecommendations({
 
   const topFailing = failingMonitors[0];
   if (topFailing && topFailing.failures >= 3) {
-    recommendations.push(`${topFailing.name} is the most repeated failure source with ${topFailing.failures} events.`);
+    recommendations.push(`${topFailing.url} is the most repeated failure source with ${topFailing.failures} events.`);
   }
 
   const topSlow = slowMonitors[0];
   if (topSlow && topSlow.averageLatencyMs >= 1_000) {
-    recommendations.push(`${topSlow.name} has the highest average latency at ${topSlow.averageLatencyMs}ms.`);
+    recommendations.push(`${topSlow.url} has the highest average latency at ${topSlow.averageLatencyMs}ms.`);
   }
 
   if (recommendations.length === 0) {
@@ -828,6 +834,55 @@ function buildRecommendations({
   }
 
   return recommendations.slice(0, 5);
+}
+
+function formatUrlCount(count: number) {
+  return `${count} ${count === 1 ? "URL" : "URLs"}`;
+}
+
+function formatFailureDetail({
+  message,
+  rcaSummary,
+  statusCode,
+}: {
+  message: string | null;
+  rcaSummary: string | null;
+  statusCode: number | null;
+}) {
+  const rawDetail = rcaSummary?.trim() || message?.trim();
+  if (!rawDetail) {
+    return statusCode
+      ? `The URL returned HTTP ${statusCode}, but no additional error detail was recorded.`
+      : "The URL failed, but no additional error detail was recorded.";
+  }
+
+  const timedOut = rawDetail.match(/connect\s+ETIMEDOUT\s+([^\s]+)/i);
+  if (timedOut) {
+    return `The service did not accept a TCP connection before the timeout. Target: ${timedOut[1]}. Original error: ${rawDetail}`;
+  }
+
+  const refused = rawDetail.match(/connect\s+ECONNREFUSED\s+([^\s]+)/i);
+  if (refused) {
+    return `The host was reachable, but the target port refused the connection. Target: ${refused[1]}. Original error: ${rawDetail}`;
+  }
+
+  if (/\b(ENOTFOUND|EAI_AGAIN)\b/i.test(rawDetail)) {
+    return `DNS resolution failed for the target URL. Verify the domain name and DNS provider health. Original error: ${rawDetail}`;
+  }
+
+  if (/certificate|self[-\s]?signed|CERT_|TLS|SSL/i.test(rawDetail)) {
+    return `TLS or certificate validation failed while connecting to the service. Review the certificate chain, expiry, and hostname. Original error: ${rawDetail}`;
+  }
+
+  if (statusCode && statusCode >= 500) {
+    return `The service returned HTTP ${statusCode}, which usually points to an upstream application or server-side failure. Detail: ${rawDetail}`;
+  }
+
+  if (statusCode && statusCode >= 400) {
+    return `The service returned HTTP ${statusCode}. Check whether the monitored endpoint now requires auth, changed route, or rejects the request. Detail: ${rawDetail}`;
+  }
+
+  return rawDetail;
 }
 
 function buildHealthScore({
@@ -873,10 +928,10 @@ function buildReportMessage(report: GeneratedReport, options: ReportDeliveryOpti
         : `[${report.workspaceName} Operations Report]`;
   const introLine =
     report.template === "executive"
-      ? "A concise leadership snapshot of uptime, risk, and recent service movement."
+      ? "Here is the service health summary for this period, focused on uptime and active risk."
       : report.template === "client"
-        ? "A customer-friendly reliability summary focused on visible service health."
-        : "An operator-ready report focused on detailed runtime behavior, checks, and failures.";
+        ? "Here is the customer-facing reliability summary for this period."
+        : "Here is the reliability summary for this period, with the URLs that need attention first.";
   const subject = renderReportTemplate(options.emailSubjectTemplate, report) || `${subjectPrefix} ${report.title}`;
   const intro = renderReportTemplate(options.emailIntroTemplate, report) || introLine;
   const lines = [
@@ -887,28 +942,24 @@ function buildReportMessage(report: GeneratedReport, options: ReportDeliveryOpti
     `${report.periodLabel} (${new Date(report.periodStartedAt).toLocaleString()} - ${new Date(report.periodEndedAt).toLocaleString()})`,
     "",
     `Health score: ${report.summary.healthScore}/100 (${report.summary.healthStatus})`,
-    `Monitors: ${report.summary.monitorCount}`,
+    `URLs tracked: ${report.summary.monitorCount}`,
     `Currently up: ${report.summary.currentlyUp}`,
     `Currently down: ${report.summary.currentlyDown}`,
     `Currently pending: ${report.summary.currentlyPending}`,
-    `Checks: ${report.summary.totalChecks}`,
-    `Up checks: ${report.summary.upChecks}`,
-    `Down checks: ${report.summary.downChecks}`,
-    `Pending checks: ${report.summary.pendingChecks}`,
     `Uptime: ${report.summary.uptimePct.toFixed(2)}%`,
     `Average latency: ${report.summary.averageLatencyMs}ms`,
     `P95 latency: ${report.summary.p95LatencyMs}ms`,
     `Failure events: ${report.summary.failureEvents}`,
     `Failure rate: ${report.summary.failureRatePct.toFixed(2)}%`,
-    `Impacted monitors: ${report.summary.impactedMonitors}`,
+    `Impacted URLs: ${report.summary.impactedMonitors}`,
     "",
-    "Recommended actions:",
+    "What needs attention:",
     ...report.recommendations.map((item) => `- ${item}`),
     "",
     ...buildReportTextDetailLines(report, options),
     "",
     "Attachments:",
-    ...buildAttachmentTextLines(options),
+    ...buildAttachmentTextLines(),
   ];
 
   return {
@@ -930,7 +981,7 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
             <table role="presentation" width="720" cellpadding="0" cellspacing="0" style="width:720px;max-width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
               <tr>
                 <td style="padding:24px;background:#0f172a;color:#ffffff;">
-                  <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#93c5fd;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.templateLabel)}</div>
+                  <div style="font-size:13px;font-weight:700;color:#93c5fd;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.templateLabel)}</div>
                   <h1 style="margin:8px 0 8px;font-size:24px;line-height:1.25;">${escapeHtml(report.title)}</h1>
                   <div style="font-size:14px;line-height:1.6;color:#cbd5e1;">${escapeHtml(report.workspaceName)} / ${escapeHtml(report.periodLabel)} / ${escapeHtml(scopeLabel)}</div>
                   <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#e2e8f0;">${escapeHtml(introLine)}</p>
@@ -941,22 +992,23 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
                       ${renderEmailMetric("Health score", `${report.summary.healthScore}/100`, report.summary.healthStatus)}
-                      ${renderEmailMetric("Uptime", `${report.summary.uptimePct.toFixed(2)}%`, `${report.summary.upChecks}/${report.summary.totalChecks} successful`)}
+                      ${renderEmailMetric("Uptime", `${report.summary.uptimePct.toFixed(2)}%`, "Availability for this period")}
                       ${renderEmailMetric("P95 latency", `${report.summary.p95LatencyMs}ms`, `${report.summary.averageLatencyMs}ms average`)}
                     </tr>
                     <tr>
                       ${renderEmailMetric("Down now", String(report.summary.currentlyDown), `${report.summary.currentlyUp} up, ${report.summary.currentlyPending} pending`)}
-                      ${renderEmailMetric("Failures", String(report.summary.failureEvents), `${report.summary.impactedMonitors} impacted monitors`)}
-                      ${renderEmailMetric("Failure rate", `${report.summary.failureRatePct.toFixed(2)}%`, `${report.summary.downChecks} failed checks`)}
+                      ${renderEmailMetric("Failures", String(report.summary.failureEvents), `${report.summary.impactedMonitors} impacted URLs`)}
+                      ${renderEmailMetric("Failure rate", `${report.summary.failureRatePct.toFixed(2)}%`, "Share of unavailable results")}
                     </tr>
                   </table>
                 </td>
               </tr>
+              ${renderEmailSnapshotSection(report, scopeLabel, generatedAt)}
               ${renderReportEmailDetailSections(report, options)}
               <tr>
                 <td style="padding:18px 24px 24px;">
                   <div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:14px 16px;color:#1e3a8a;font-size:13px;line-height:1.6;">
-                    ${escapeHtml(buildAttachmentSummary(options))} Generated at ${escapeHtml(generatedAt)}.
+                    ${escapeHtml(buildAttachmentSummary())} Generated at ${escapeHtml(generatedAt)}.
                   </div>
                 </td>
               </tr>
@@ -975,24 +1027,24 @@ function buildReportTextDetailLines(report: GeneratedReport, options: ReportDeli
 
   const lines = [
     "",
-    "Top slow monitors:",
+    "Latency watchlist:",
     ...report.slowMonitors
       .slice(0, options.deliveryDetailLevel === "full" ? 8 : 5)
-      .map((monitor) => `- ${monitor.name}: ${monitor.averageLatencyMs}ms avg over ${monitor.checks} checks`),
+      .map((monitor) => `- ${monitor.url}: ${monitor.averageLatencyMs}ms average latency`),
     "",
-    "Top failing monitors:",
+    "Top failing URLs:",
     ...report.failingMonitors
       .slice(0, options.deliveryDetailLevel === "full" ? 8 : 5)
-      .map((monitor) => `- ${monitor.name}: ${monitor.failures} failures`),
+      .map((monitor) => `- ${monitor.url}: ${monitor.failures} failures`),
   ];
 
   if (options.includeIncidentSummary) {
     lines.push(
       "",
-      "Recent failures:",
+      "Failure details:",
       ...report.recentFailures
         .slice(0, options.deliveryDetailLevel === "full" ? 8 : 5)
-        .map((event) => `- ${event.name}: ${event.statusCode ?? "N/A"} at ${new Date(event.createdAt).toLocaleString()} - ${event.rcaSummary ?? event.message ?? "No detail"}`)
+        .map((event) => `- ${event.url}: ${event.statusCode ?? "N/A"} at ${new Date(event.createdAt).toLocaleString()} - ${event.detail}`)
     );
   }
 
@@ -1001,28 +1053,27 @@ function buildReportTextDetailLines(report: GeneratedReport, options: ReportDeli
 
 function renderReportEmailDetailSections(report: GeneratedReport, options: ReportDeliveryOptions) {
   if (options.deliveryDetailLevel === "summary") {
-    return renderEmailListSection("Recommended actions", report.recommendations);
+    return renderEmailListSection("What needs attention", report.recommendations);
   }
 
   const detailLimit = options.deliveryDetailLevel === "full" ? 8 : 5;
   const sections = [
-    renderEmailListSection("Recommended actions", report.recommendations),
+    renderEmailListSection("What needs attention", report.recommendations),
     renderEmailTableSection(
-      "Top failing monitors",
-      ["Monitor", "Failures", "Last failure"],
+      "Top failing URLs",
+      ["URL", "Failures", "Last failure"],
       report.failingMonitors.slice(0, detailLimit).map((monitor) => [
-        monitor.name,
+        monitor.url,
         String(monitor.failures),
         monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : "--",
       ])
     ),
     renderEmailTableSection(
       "Latency watchlist",
-      ["Monitor", "Average", "Checks"],
+      ["URL", "Average"],
       report.slowMonitors.slice(0, detailLimit).map((monitor) => [
-        monitor.name,
+        monitor.url,
         `${monitor.averageLatencyMs}ms`,
-        String(monitor.checks),
       ])
     ),
   ];
@@ -1030,12 +1081,12 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
   if (options.includeIncidentSummary) {
     sections.push(
       renderEmailTableSection(
-        "Recent failure events",
-        ["Monitor", "Code", "Detail"],
+        "Failure details",
+        ["URL", "Code", "Detail"],
         report.recentFailures.slice(0, detailLimit).map((event) => [
-          event.name,
+          event.url,
           event.statusCode ? String(event.statusCode) : "--",
-          event.rcaSummary ?? event.message ?? new Date(event.createdAt).toLocaleString(),
+          event.detail,
         ])
       )
     );
@@ -1044,10 +1095,10 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
   if (options.includeMonitorBreakdown && options.deliveryDetailLevel === "full") {
     sections.push(
       renderEmailTableSection(
-        "Monitor breakdown",
-        ["Monitor", "Uptime", "P95"],
+        "URL breakdown",
+        ["URL", "Uptime", "P95"],
         report.monitorBreakdown.slice(0, detailLimit).map((monitor) => [
-          monitor.name,
+          monitor.url,
           `${monitor.uptimePct.toFixed(2)}%`,
           `${monitor.p95LatencyMs}ms`,
         ])
@@ -1063,8 +1114,8 @@ type ReportAttachmentRequest = {
   build: () => Mail.Attachment | Promise<Mail.Attachment>;
 };
 
-async function buildReportAttachments(report: GeneratedReport, options: ReportDeliveryOptions): Promise<Mail.Attachment[]> {
-  const requests = getReportAttachmentRequests(report, options);
+async function buildReportAttachments(report: GeneratedReport): Promise<Mail.Attachment[]> {
+  const requests = getReportAttachmentRequests(report);
   const attachments: Mail.Attachment[] = [];
 
   for (const request of requests) {
@@ -1077,42 +1128,18 @@ async function buildReportAttachments(report: GeneratedReport, options: ReportDe
   return attachments;
 }
 
-function getReportAttachmentRequests(report: GeneratedReport, options: ReportDeliveryOptions): ReportAttachmentRequest[] {
+function getReportAttachmentRequests(report: GeneratedReport): ReportAttachmentRequest[] {
   const fileSlug = buildReportFileSlug(report);
   const requests: ReportAttachmentRequest[] = [];
 
-  if (options.attachCsv) {
-    requests.push({
-      label: "CSV",
-      build: () => ({
-        filename: `${fileSlug}.csv`,
-        content: buildReportCsv(report),
-        contentType: "text/csv; charset=utf-8",
-      }),
-    });
-  }
-
-  if (options.attachHtml) {
-    requests.push({
-      label: "HTML",
-      build: () => ({
-        filename: `${fileSlug}.html`,
-        content: buildPrintableReportHtml(report),
-        contentType: "text/html; charset=utf-8",
-      }),
-    });
-  }
-
-  if (options.attachPdf) {
-    requests.push({
-      label: "PDF",
-      build: async () => ({
-        filename: `${fileSlug}.pdf`,
-        content: await buildReportPdf(report),
-        contentType: "application/pdf",
-      }),
-    });
-  }
+  requests.push({
+    label: "HTML",
+    build: () => ({
+      filename: `${fileSlug}.html`,
+      content: buildPrintableReportHtml(report),
+      contentType: "text/html; charset=utf-8",
+    }),
+  });
 
   return requests;
 }
@@ -1130,12 +1157,32 @@ function renderEmailMetric(label: string, value: string, detail: string) {
   return `
     <td width="33.33%" style="padding:0 6px 12px;vertical-align:top;">
       <div style="border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#ffffff;">
-        <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(label)}</div>
+        <div style="font-size:12px;font-weight:700;color:#64748b;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(label)}</div>
         <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;color:#0f172a;">${escapeHtml(value)}</div>
         <div style="margin-top:4px;font-size:12px;line-height:1.5;color:#64748b;">${escapeHtml(detail)}</div>
       </div>
     </td>
   `;
+}
+
+function renderEmailSnapshotSection(report: GeneratedReport, scopeLabel: string, generatedAt: string) {
+  const topFailingUrl = report.failingMonitors[0]?.url ?? "No failing URL in this period";
+  const slowestUrl = report.slowMonitors[0]
+    ? `${report.slowMonitors[0].url} (${report.slowMonitors[0].averageLatencyMs}ms avg)`
+    : "No latency data in this period";
+  const rows = [
+    ["Reporting window", report.periodLabel],
+    ["Generated", generatedAt],
+    ["Scope", scopeLabel],
+    [
+      "Current state",
+      `${report.summary.currentlyUp} up, ${report.summary.currentlyDown} down, ${report.summary.currentlyPending} pending`,
+    ],
+    ["Most affected URL", topFailingUrl],
+    ["Slowest URL", slowestUrl],
+  ];
+
+  return renderEmailTableSection("Service snapshot", ["Item", "Detail"], rows);
 }
 
 function renderEmailListSection(title: string, items: string[]) {
@@ -1162,7 +1209,7 @@ function renderEmailListSection(title: string, items: string[]) {
 }
 
 function renderEmailTableSection(title: string, headers: string[], rows: string[][]) {
-  const safeRows = rows.length > 0 ? rows : [["No data", "--", "--"]];
+  const safeRows = rows.length > 0 ? rows : [headers.map((_, index) => (index === 0 ? "No data" : "--"))];
 
   return `
     <tr>
@@ -1171,7 +1218,7 @@ function renderEmailTableSection(title: string, headers: string[], rows: string[
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
           <thead>
             <tr>
-              ${headers.map((header) => `<th align="left" style="padding:10px 12px;background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(header)}</th>`).join("")}
+              ${headers.map((header) => `<th align="left" style="padding:10px 12px;background:#f1f5f9;color:#475569;font-size:12px;font-weight:700;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(header)}</th>`).join("")}
             </tr>
           </thead>
           <tbody>
@@ -1241,9 +1288,9 @@ function serializeSchedule(
     lastStatus: row.lastStatus as ReportScheduleStatus,
     lastErrorMessage: row.lastErrorMessage,
     deliveryDetailLevel: resolveDeliveryDetailLevel(row.deliveryDetailLevel),
-    attachCsv: row.attachCsv,
-    attachHtml: row.attachHtml,
-    attachPdf: row.attachPdf,
+    attachCsv: false,
+    attachHtml: true,
+    attachPdf: false,
     includeIncidentSummary: row.includeIncidentSummary,
     includeMonitorBreakdown: row.includeMonitorBreakdown,
     emailSubjectTemplate: row.emailSubjectTemplate,
@@ -1257,9 +1304,9 @@ function serializeSchedule(
 function scheduleToDeliveryInput(schedule: typeof reportSchedules.$inferSelect | ReportScheduleRecord) {
   return {
     deliveryDetailLevel: resolveDeliveryDetailLevel(schedule.deliveryDetailLevel),
-    attachCsv: schedule.attachCsv,
-    attachHtml: schedule.attachHtml,
-    attachPdf: schedule.attachPdf,
+    attachCsv: false,
+    attachHtml: true,
+    attachPdf: false,
     includeIncidentSummary: schedule.includeIncidentSummary,
     includeMonitorBreakdown: schedule.includeMonitorBreakdown,
     emailSubjectTemplate: schedule.emailSubjectTemplate,
@@ -1271,9 +1318,9 @@ function scheduleToDeliveryInput(schedule: typeof reportSchedules.$inferSelect |
 function normalizeReportDeliveryOptions(input: Partial<ReportPreviewInput> | Record<string, unknown>): ReportDeliveryOptions {
   return {
     deliveryDetailLevel: resolveDeliveryDetailLevel(input.deliveryDetailLevel),
-    attachCsv: booleanOption(input.attachCsv, DEFAULT_REPORT_DELIVERY_OPTIONS.attachCsv),
-    attachHtml: booleanOption(input.attachHtml, DEFAULT_REPORT_DELIVERY_OPTIONS.attachHtml),
-    attachPdf: booleanOption(input.attachPdf, DEFAULT_REPORT_DELIVERY_OPTIONS.attachPdf),
+    attachCsv: false,
+    attachHtml: true,
+    attachPdf: false,
     includeIncidentSummary:
       booleanOption(input.includeIncidentSummary, DEFAULT_REPORT_DELIVERY_OPTIONS.includeIncidentSummary),
     includeMonitorBreakdown:
@@ -1462,34 +1509,12 @@ function renderReportTemplate(template: string | null, report: GeneratedReport) 
   );
 }
 
-function buildAttachmentTextLines(options: ReportDeliveryOptions) {
-  const lines: string[] = [];
-
-  if (options.attachCsv) {
-    lines.push("- CSV report package for spreadsheets and handoff");
-  }
-
-  if (options.attachHtml) {
-    lines.push("- Print-ready HTML report for browser/PDF export");
-  }
-
-  if (options.attachPdf) {
-    lines.push("- PDF report attachment for direct sharing");
-  }
-
-  return lines.length > 0 ? lines : ["- No file attachments configured"];
+function buildAttachmentTextLines() {
+  return ["- HTML report attachment for browser viewing"];
 }
 
-function buildAttachmentSummary(options: ReportDeliveryOptions) {
-  const enabled = [
-    options.attachCsv ? "CSV" : null,
-    options.attachHtml ? "HTML" : null,
-    options.attachPdf ? "PDF" : null,
-  ].filter(Boolean);
-
-  return enabled.length > 0
-    ? `${enabled.join(", ")} attachments are included for handoff, audit, and sharing.`
-    : "This delivery was configured without file attachments.";
+function buildAttachmentSummary() {
+  return "The HTML report attachment is included for browser viewing and sharing.";
 }
 
 function toMessage(error: unknown) {

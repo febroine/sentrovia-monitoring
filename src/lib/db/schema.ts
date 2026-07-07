@@ -83,7 +83,6 @@ export const userSettings = pgTable(
     monitoringTimeout: integer("monitoring_timeout").default(5000).notNull(),
     monitoringRetries: integer("monitoring_retries").default(3).notNull(),
     monitoringMethod: varchar("monitoring_method", { length: 10 }).default("GET").notNull(),
-    monitoringMaintenanceWindow: varchar("monitoring_maintenance_window", { length: 120 }),
     monitoringResponseMaxLength: integer("monitoring_response_max_length").default(1024).notNull(),
     monitoringMaxRedirects: integer("monitoring_max_redirects").default(5).notNull(),
     monitoringCheckSslExpiry: boolean("monitoring_check_ssl_expiry").default(false).notNull(),
@@ -379,11 +378,11 @@ export const reportSchedules = pgTable("report_schedules", {
   lastStatus: varchar("last_status", { length: 16 }).default("idle").notNull(),
   lastErrorMessage: text("last_error_message"),
   deliveryDetailLevel: varchar("delivery_detail_level", { length: 16 }).default("standard").notNull(),
-  attachCsv: boolean("attach_csv").default(true).notNull(),
+  attachCsv: boolean("attach_csv").default(false).notNull(),
   attachHtml: boolean("attach_html").default(true).notNull(),
   includeIncidentSummary: boolean("include_incident_summary").default(true).notNull(),
   includeMonitorBreakdown: boolean("include_monitor_breakdown").default(true).notNull(),
-  attachPdf: boolean("attach_pdf").default(true).notNull(),
+  attachPdf: boolean("attach_pdf").default(false).notNull(),
   emailSubjectTemplate: text("email_subject_template"),
   emailIntroTemplate: text("email_intro_template"),
   reportBrandName: varchar("report_brand_name", { length: 120 }),
@@ -451,38 +450,5 @@ export const incidentEvents = pgTable(
     index("incident_events_incident_created_idx").on(table.incidentId, table.createdAt),
   ]
 );
-
-export const maintenanceWindows = pgTable("maintenance_windows", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 160 }).notNull(),
-  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
-  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
-  timezone: varchar("timezone", { length: 64 }).default("Europe/Istanbul").notNull(),
-  recurrence: varchar("recurrence", { length: 16 }).default("none").notNull(),
-  scope: varchar("scope", { length: 16 }).default("all").notNull(),
-  monitorIds: text("monitor_ids")
-    .array()
-    .notNull()
-    .default(sql`ARRAY[]::text[]`),
-  companyIds: text("company_ids")
-    .array()
-    .notNull()
-    .default(sql`ARRAY[]::text[]`),
-  tags: text("tags")
-    .array()
-    .notNull()
-    .default(sql`ARRAY[]::text[]`),
-  isActive: boolean("is_active").default(true).notNull(),
-  suppressNotifications: boolean("suppress_notifications").default(true).notNull(),
-  suppressChecks: boolean("suppress_checks").default(false).notNull(),
-  reason: text("reason").default("").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
 
 export type Monitor = typeof monitors.$inferSelect;

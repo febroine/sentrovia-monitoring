@@ -1,143 +1,21 @@
 import type { GeneratedReport } from "@/lib/reports/types";
 
 const EMPTY_REPORT_VALUE = "--";
-const UTF8_BOM = "\uFEFF";
-const DANGEROUS_CSV_CELL_PREFIXES = ["=", "+", "-", "@", "\t", "\r", "\n"];
 
 export function buildReportFileSlug(report: GeneratedReport) {
   const generatedDate = report.generatedAt.slice(0, 10);
   return slugify(`${report.title} ${generatedDate}`);
 }
 
-export function buildReportCsv(report: GeneratedReport) {
-  const rows: Array<Array<string>> = [
-    ["Report", report.title],
-    ["Workspace", report.workspaceName],
-    ["Template", report.templateLabel],
-    ["Scope", report.scope === "company" ? report.companyName ?? "Company" : "Global workspace"],
-    ["Period", report.periodLabel],
-    ["Generated", new Date(report.generatedAt).toLocaleString()],
-    ["Health score", `${report.summary.healthScore}/100 (${report.summary.healthStatus})`],
-    ["Monitors", String(report.summary.monitorCount)],
-    ["Currently up", String(report.summary.currentlyUp)],
-    ["Currently down", String(report.summary.currentlyDown)],
-    ["Currently pending", String(report.summary.currentlyPending)],
-    ["Checks", String(report.summary.totalChecks)],
-    ["Up checks", String(report.summary.upChecks)],
-    ["Down checks", String(report.summary.downChecks)],
-    ["Pending checks", String(report.summary.pendingChecks)],
-    ["Uptime", `${report.summary.uptimePct.toFixed(2)}%`],
-    ["Average latency", `${report.summary.averageLatencyMs}ms`],
-    ["P95 latency", `${report.summary.p95LatencyMs}ms`],
-    ["Failures", String(report.summary.failureEvents)],
-    ["Failure rate", `${report.summary.failureRatePct.toFixed(2)}%`],
-    ["Impacted monitors", String(report.summary.impactedMonitors)],
-    [""],
-    ["Recommended actions"],
-    ...report.recommendations.map((item) => [item]),
-    [""],
-    ["Status code", "Count"],
-    ...buildStatusCodeRows(report),
-    [""],
-    ["Top slow monitors", "Average latency", "Checks"],
-    ...buildSlowMonitorRows(report),
-    [""],
-    ["Top failing monitors", "Failures", "Last failure"],
-    ...buildFailingMonitorRows(report),
-    [""],
-    ["Recent failures", "Status code", "Time", "Detail"],
-    ...buildRecentFailureRows(report),
-    [""],
-    ["Monitor", "Company", "URL", "Status", "Current code", "Uptime", "Avg latency", "P95 latency", "Checks", "Up checks", "Down checks", "Pending checks", "Failures", "Last checked", "Last failure", "Last error"],
-    ...report.monitorBreakdown.map((monitor) => [
-      monitor.name,
-      monitor.companyName ?? EMPTY_REPORT_VALUE,
-      monitor.url,
-      monitor.status,
-      reportValue(monitor.currentStatusCode),
-      `${monitor.uptimePct.toFixed(2)}%`,
-      `${monitor.averageLatencyMs}ms`,
-      `${monitor.p95LatencyMs}ms`,
-      String(monitor.totalChecks),
-      String(monitor.upChecks),
-      String(monitor.downChecks),
-      String(monitor.pendingChecks),
-      String(monitor.failures),
-      monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : EMPTY_REPORT_VALUE,
-      monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE,
-      monitor.lastErrorMessage ?? EMPTY_REPORT_VALUE,
-    ]),
-  ];
-
-  return UTF8_BOM + toCsv(rows);
-}
-
 export function buildPrintableReportHtml(
   report: GeneratedReport,
   options: { autoPrint?: boolean } = {}
 ) {
-  const breakdownRows = report.monitorBreakdown
-    .map(
-      (monitor) => `
-        <tr>
-          <td>${escapeHtml(reportValue(monitor.name))}</td>
-          <td>${escapeHtml(reportValue(monitor.companyName))}</td>
-          <td>${escapeHtml(reportValue(monitor.status))}</td>
-          <td>${escapeHtml(reportValue(monitor.currentStatusCode))}</td>
-          <td>${escapeHtml(`${monitor.uptimePct.toFixed(2)}%`)}</td>
-          <td>${escapeHtml(`${monitor.averageLatencyMs}ms`)}</td>
-          <td>${escapeHtml(`${monitor.p95LatencyMs}ms`)}</td>
-          <td>${escapeHtml(String(monitor.totalChecks))}</td>
-          <td>${escapeHtml(String(monitor.failures))}</td>
-          <td>${escapeHtml(monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE)}</td>
-        </tr>
-      `
-    )
-    .join("");
-  const statusCodeRows = buildStatusCodeRows(report)
-    .map(
-      ([statusCode, count]) => `
-        <tr>
-          <td>${escapeHtml(statusCode)}</td>
-          <td>${escapeHtml(count)}</td>
-        </tr>
-      `
-    )
-    .join("");
-  const recentFailureRows = buildRecentFailureRows(report)
-    .map(
-      ([name, statusCode, time, detail]) => `
-        <tr>
-          <td>${escapeHtml(name)}</td>
-          <td>${escapeHtml(statusCode)}</td>
-          <td>${escapeHtml(time)}</td>
-          <td>${escapeHtml(detail)}</td>
-        </tr>
-      `
-    )
-    .join("");
-  const slowMonitorRows = buildSlowMonitorRows(report)
-    .map(
-      ([name, latency, checks]) => `
-        <tr>
-          <td>${escapeHtml(name)}</td>
-          <td>${escapeHtml(latency)}</td>
-          <td>${escapeHtml(checks)}</td>
-        </tr>
-      `
-    )
-    .join("");
-  const failingMonitorRows = buildFailingMonitorRows(report)
-    .map(
-      ([name, failures, lastFailure]) => `
-        <tr>
-          <td>${escapeHtml(name)}</td>
-          <td>${escapeHtml(failures)}</td>
-          <td>${escapeHtml(lastFailure)}</td>
-        </tr>
-      `
-    )
-    .join("");
+  const breakdownRows = report.monitorBreakdown.map(renderMonitorBreakdownRow).join("");
+  const recentFailureRows = buildRecentFailureRows(report).map(renderRecentFailureRow).join("");
+  const slowMonitorRows = buildSlowMonitorRows(report).map(renderTwoColumnRow).join("");
+  const failingMonitorRows = buildFailingMonitorRows(report).map(renderThreeColumnRow).join("");
+  const snapshotRows = buildServiceSnapshotRows(report).map(renderSnapshotRow).join("");
   const autoPrintScript = options.autoPrint
     ? `
         <script>
@@ -155,153 +33,322 @@ export function buildPrintableReportHtml(
         <meta charset="utf-8" />
         <title>${escapeHtml(report.title)}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 32px; color: #111827; -webkit-locale: "en"; }
-          .eyebrow, .stat-label, th { -webkit-locale: "en"; font-feature-settings: "locl" 0; }
-          .hero { border: 1px solid #e5e7eb; border-radius: 20px; padding: 24px; margin-bottom: 24px; }
-          .eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; margin-bottom: 8px; }
-          .summary { color: #475569; margin: 8px 0 0; }
-          .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
-          .stat { border: 1px solid #e5e7eb; border-radius: 16px; padding: 14px; }
-          .stat.emphasis { border-color: #bfdbfe; background: #eff6ff; }
-          .stat-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #64748b; }
-          .stat-value { font-size: 24px; font-weight: 700; margin-top: 8px; }
-          .recommendations { border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 16px; padding: 16px 18px; margin-bottom: 24px; }
-          .recommendations li { margin: 6px 0; color: #1e3a8a; }
-          .section-title { font-size: 18px; font-weight: 700; margin: 28px 0 12px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-          th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
-          th { color: #475569; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
-          .grid-two { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          :root {
+            color-scheme: light;
+            --bg: #f6f8fb;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --ink: #111827;
+            --muted: #64748b;
+            --line: #dbe3ef;
+            --accent: #2563eb;
+            --good: #059669;
+            --warn: #d97706;
+            --bad: #dc2626;
+          }
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            -webkit-locale: "en";
+          }
+          main { max-width: 1120px; margin: 0 auto; padding: 36px 28px 48px; }
+          .report-shell { display: grid; gap: 22px; }
+          .hero {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: linear-gradient(135deg, #0f172a 0%, #172554 58%, #1e3a8a 100%);
+            color: #fff;
+            padding: 28px;
+          }
+          .report-type, .stat-label, th {
+            -webkit-locale: "en";
+            font-feature-settings: "locl" 0;
+            letter-spacing: 0;
+          }
+          .report-type { color: #bfdbfe; font-size: 13px; font-weight: 700; }
+          h1 { margin: 10px 0 0; font-size: 30px; line-height: 1.12; letter-spacing: 0; }
+          .summary { margin: 12px 0 0; color: #dbeafe; font-size: 14px; line-height: 1.6; }
+          .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+          .stat {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: var(--surface);
+            padding: 16px;
+            min-height: 104px;
+          }
+          .stat.emphasis { border-color: #93c5fd; background: #eff6ff; }
+          .stat-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+          .stat-value { margin-top: 8px; font-size: 26px; line-height: 1.1; font-weight: 750; }
+          .stat-note { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+          .panel {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: var(--surface);
+            overflow: hidden;
+          }
+          .panel-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+            border-bottom: 1px solid var(--line);
+            background: var(--surface-soft);
+            padding: 18px 20px;
+          }
+          .panel-title { margin: 0; font-size: 17px; font-weight: 750; }
+          .panel-note { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+          .panel-body { padding: 18px 20px; }
+          .recommendations {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+          }
+          .recommendations li {
+            border: 1px solid #bfdbfe;
+            border-radius: 14px;
+            background: #eff6ff;
+            color: #1e3a8a;
+            padding: 13px 14px;
+            font-size: 13px;
+            line-height: 1.55;
+          }
+          .grid-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border-bottom: 1px solid var(--line); padding: 12px 10px; text-align: left; vertical-align: top; }
+          th { color: var(--muted); font-size: 12px; font-weight: 750; }
+          td { color: #334155; font-size: 13px; line-height: 1.5; }
+          tr:last-child td { border-bottom: 0; }
+          .url { color: #0f172a; font-weight: 650; overflow-wrap: anywhere; }
+          .muted { color: var(--muted); }
+          .status { display: inline-block; border-radius: 999px; padding: 4px 9px; font-size: 11px; font-weight: 700; }
+          .status-up { background: #dcfce7; color: #166534; }
+          .status-down { background: #fee2e2; color: #991b1b; }
+          .status-pending { background: #fef3c7; color: #92400e; }
+          @media (max-width: 820px) {
+            main { padding: 18px 12px 28px; }
+            .stats, .grid-two, .recommendations { grid-template-columns: 1fr; }
+            .panel-header { display: block; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+          }
           @media print {
-            body { margin: 16px; }
+            body { background: #fff; }
+            main { padding: 12px; max-width: none; }
+            .panel, .stat, .hero { break-inside: avoid; }
           }
         </style>
         ${autoPrintScript}
       </head>
       <body>
-        <div class="hero">
-          <div class="eyebrow">${escapeHtml(report.templateLabel)}</div>
-          <h1>${escapeHtml(report.title)}</h1>
-          <p class="summary">${escapeHtml(report.workspaceName)} | ${escapeHtml(report.periodLabel)} | ${escapeHtml(
-            new Date(report.generatedAt).toLocaleString()
-          )}</p>
-        </div>
+        <main>
+          <div class="report-shell">
+            <section class="hero">
+              <div class="report-type">${escapeHtml(report.templateLabel)}</div>
+              <h1>${escapeHtml(report.title)}</h1>
+              <p class="summary">${escapeHtml(report.workspaceName)} &middot; ${escapeHtml(report.periodLabel)} &middot; Generated ${escapeHtml(
+                new Date(report.generatedAt).toLocaleString()
+              )}</p>
+            </section>
 
-        <div class="stats">
-          <div class="stat emphasis"><div class="stat-label">Health score</div><div class="stat-value">${report.summary.healthScore}/100</div></div>
-          <div class="stat"><div class="stat-label">Monitors</div><div class="stat-value">${report.summary.monitorCount}</div></div>
-          <div class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${report.summary.uptimePct.toFixed(
-            2
-          )}%</div></div>
-          <div class="stat"><div class="stat-label">P95 latency</div><div class="stat-value">${report.summary.p95LatencyMs}ms</div></div>
-          <div class="stat"><div class="stat-label">Avg latency</div><div class="stat-value">${report.summary.averageLatencyMs}ms</div></div>
-          <div class="stat"><div class="stat-label">Failures</div><div class="stat-value">${report.summary.failureEvents}</div></div>
-          <div class="stat"><div class="stat-label">Failure rate</div><div class="stat-value">${report.summary.failureRatePct.toFixed(
-            2
-          )}%</div></div>
-          <div class="stat"><div class="stat-label">Impacted</div><div class="stat-value">${report.summary.impactedMonitors}</div></div>
-        </div>
+            <section class="stats">
+              <article class="stat emphasis"><div class="stat-label">Health</div><div class="stat-value">${report.summary.healthScore}/100</div><div class="stat-note">${escapeHtml(report.summary.healthStatus)}</div></article>
+              <article class="stat"><div class="stat-label">URLs tracked</div><div class="stat-value">${report.summary.monitorCount}</div><div class="stat-note">${report.summary.currentlyDown} down now</div></article>
+              <article class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${report.summary.uptimePct.toFixed(2)}%</div><div class="stat-note">Availability for this period</div></article>
+              <article class="stat"><div class="stat-label">P95 latency</div><div class="stat-value">${report.summary.p95LatencyMs}ms</div><div class="stat-note">${report.summary.averageLatencyMs}ms average</div></article>
+              <article class="stat"><div class="stat-label">Failures</div><div class="stat-value">${report.summary.failureEvents}</div><div class="stat-note">${report.summary.impactedMonitors} impacted URLs</div></article>
+              <article class="stat"><div class="stat-label">Failure rate</div><div class="stat-value">${report.summary.failureRatePct.toFixed(2)}%</div><div class="stat-note">Share of unavailable results</div></article>
+              <article class="stat"><div class="stat-label">Up now</div><div class="stat-value">${report.summary.currentlyUp}</div><div class="stat-note">Currently healthy URLs</div></article>
+              <article class="stat"><div class="stat-label">Pending now</div><div class="stat-value">${report.summary.currentlyPending}</div><div class="stat-note">Awaiting confirmation</div></article>
+            </section>
 
-        <div class="recommendations">
-          <div class="eyebrow">Recommended actions</div>
-          <ul>
-            ${report.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-          </ul>
-        </div>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">Service snapshot</h2>
+                  <p class="panel-note">The key context for reading this report.</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>Item</th><th>Detail</th></tr></thead>
+                  <tbody>${snapshotRows}</tbody>
+                </table>
+              </div>
+            </section>
 
-        <div class="grid-two">
-          <div>
-            <div class="section-title">Status codes</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Status code</th>
-                  <th>Count</th>
-                </tr>
-              </thead>
-              <tbody>${statusCodeRows}</tbody>
-            </table>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">What needs attention</h2>
+                  <p class="panel-note">Practical items to review from this period.</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <ul class="recommendations">
+                  ${report.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                </ul>
+              </div>
+            </section>
+
+            <section class="grid-two">
+              <article class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">Top failing URLs</h2>
+                    <p class="panel-note">The URLs that failed most often in this period.</p>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <table>
+                    <thead><tr><th>URL</th><th>Failures</th><th>Last failure</th></tr></thead>
+                    <tbody>${failingMonitorRows}</tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">Latency watchlist</h2>
+                    <p class="panel-note">The slowest URLs by average response time.</p>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <table>
+                    <thead><tr><th>URL</th><th>Average latency</th></tr></thead>
+                    <tbody>${slowMonitorRows}</tbody>
+                  </table>
+                </div>
+              </article>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">Failure details</h2>
+                  <p class="panel-note">Recent failures with readable network context.</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>URL</th><th>Code</th><th>Time</th><th>Detail</th></tr></thead>
+                  <tbody>${recentFailureRows}</tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">URL breakdown</h2>
+                  <p class="panel-note">Ranked by failures first, then latency.</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>URL</th><th>Company</th><th>Status</th><th>Code</th><th>Uptime</th><th>Avg latency</th><th>P95</th><th>Failures</th><th>Last failure</th></tr></thead>
+                  <tbody>${breakdownRows}</tbody>
+                </table>
+              </div>
+            </section>
           </div>
-          <div>
-            <div class="section-title">Top slow monitors</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Monitor</th>
-                  <th>Average latency</th>
-                  <th>Checks</th>
-                </tr>
-              </thead>
-              <tbody>${slowMonitorRows}</tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="section-title">Top failing monitors</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Monitor</th>
-              <th>Failures</th>
-              <th>Last failure</th>
-            </tr>
-          </thead>
-          <tbody>${failingMonitorRows}</tbody>
-        </table>
-
-        <div class="section-title">Recent failure events</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Monitor</th>
-              <th>Code</th>
-              <th>Time</th>
-              <th>Detail</th>
-            </tr>
-          </thead>
-          <tbody>${recentFailureRows}</tbody>
-        </table>
-
-        <div class="section-title">Monitor breakdown</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Monitor</th>
-              <th>Company</th>
-              <th>Status</th>
-              <th>Code</th>
-              <th>Uptime</th>
-              <th>Avg latency</th>
-              <th>P95</th>
-              <th>Checks</th>
-              <th>Failures</th>
-              <th>Last failure</th>
-            </tr>
-          </thead>
-          <tbody>${breakdownRows}</tbody>
-        </table>
+        </main>
       </body>
     </html>
   `;
 }
 
-function buildStatusCodeRows(report: GeneratedReport) {
-  if (report.statusCodes.length === 0) {
-    return [["No data", "0"]];
-  }
+function renderMonitorBreakdownRow(monitor: GeneratedReport["monitorBreakdown"][number]) {
+  const statusClass = monitor.status === "up" ? "status-up" : monitor.status === "down" ? "status-down" : "status-pending";
 
-  return report.statusCodes.map((item) => [String(item.statusCode), String(item.count)]);
+  return `
+    <tr>
+      <td><div class="url">${escapeHtml(reportValue(monitor.url))}</div>${monitor.lastErrorMessage ? `<div class="muted">${escapeHtml(monitor.lastErrorMessage)}</div>` : ""}</td>
+      <td>${escapeHtml(reportValue(monitor.companyName))}</td>
+      <td><span class="status ${statusClass}">${escapeHtml(reportValue(monitor.status))}</span></td>
+      <td>${escapeHtml(reportValue(monitor.currentStatusCode))}</td>
+      <td>${escapeHtml(`${monitor.uptimePct.toFixed(2)}%`)}</td>
+      <td>${escapeHtml(`${monitor.averageLatencyMs}ms`)}</td>
+      <td>${escapeHtml(`${monitor.p95LatencyMs}ms`)}</td>
+      <td>${escapeHtml(String(monitor.failures))}</td>
+      <td>${escapeHtml(monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE)}</td>
+    </tr>
+  `;
+}
+
+function renderRecentFailureRow([url, statusCode, time, detail]: string[]) {
+  return `
+    <tr>
+      <td><div class="url">${escapeHtml(url)}</div></td>
+      <td>${escapeHtml(statusCode)}</td>
+      <td>${escapeHtml(time)}</td>
+      <td>${escapeHtml(detail)}</td>
+    </tr>
+  `;
+}
+
+function renderTwoColumnRow([first, second]: string[]) {
+  return `
+    <tr>
+      <td><div class="url">${escapeHtml(first)}</div></td>
+      <td>${escapeHtml(second)}</td>
+    </tr>
+  `;
+}
+
+function renderSnapshotRow([label, detail]: string[]) {
+  return `
+    <tr>
+      <td><strong>${escapeHtml(label)}</strong></td>
+      <td>${escapeHtml(detail)}</td>
+    </tr>
+  `;
+}
+
+function renderThreeColumnRow([first, second, third]: string[]) {
+  return `
+    <tr>
+      <td><div class="url">${escapeHtml(first)}</div></td>
+      <td>${escapeHtml(second)}</td>
+      <td>${escapeHtml(third)}</td>
+    </tr>
+  `;
+}
+
+function buildServiceSnapshotRows(report: GeneratedReport) {
+  const generatedAt = new Date(report.generatedAt).toLocaleString();
+  const scopeLabel = report.scope === "company" ? report.companyName ?? "Company" : "Workspace";
+  const topFailingUrl = report.failingMonitors[0]?.url ?? "No failing URL in this period";
+  const slowestUrl = report.slowMonitors[0]
+    ? `${report.slowMonitors[0].url} (${report.slowMonitors[0].averageLatencyMs}ms avg)`
+    : "No latency data in this period";
+
+  return [
+    ["Reporting window", report.periodLabel],
+    ["Generated", generatedAt],
+    ["Scope", scopeLabel],
+    [
+      "Current state",
+      `${report.summary.currentlyUp} up, ${report.summary.currentlyDown} down, ${report.summary.currentlyPending} pending`,
+    ],
+    ["Most affected URL", topFailingUrl],
+    ["Slowest URL", slowestUrl],
+  ];
 }
 
 function buildSlowMonitorRows(report: GeneratedReport) {
   if (report.slowMonitors.length === 0) {
-    return [["No data", "0ms", "0"]];
+    return [["No data", "0ms"]];
   }
 
   return report.slowMonitors.map((monitor) => [
-    monitor.name,
+    monitor.url,
     `${monitor.averageLatencyMs}ms`,
-    String(monitor.checks),
   ]);
 }
 
@@ -311,7 +358,7 @@ function buildFailingMonitorRows(report: GeneratedReport) {
   }
 
   return report.failingMonitors.map((monitor) => [
-    monitor.name,
+    monitor.url,
     String(monitor.failures),
     monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE,
   ]);
@@ -323,31 +370,11 @@ function buildRecentFailureRows(report: GeneratedReport) {
   }
 
   return report.recentFailures.map((event) => [
-    event.name,
+    event.url,
     reportValue(event.statusCode),
     new Date(event.createdAt).toLocaleString(),
-    event.rcaSummary ?? event.message ?? EMPTY_REPORT_VALUE,
+    event.detail,
   ]);
-}
-
-function toCsv(rows: Array<Array<string>>) {
-  return rows
-    .map((row) =>
-      row
-        .map((value) => `"${escapeCsvValue(value)}"`)
-        .join(",")
-    )
-    .join("\n");
-}
-
-function escapeCsvValue(value: string) {
-  const text = String(value ?? "");
-  const trimmedStart = text.trimStart();
-  const safeText = DANGEROUS_CSV_CELL_PREFIXES.some((prefix) => trimmedStart.startsWith(prefix))
-    ? `'${text}`
-    : text;
-
-  return safeText.replaceAll('"', '""');
 }
 
 function reportValue(value: string | number | null | undefined) {
