@@ -1,14 +1,27 @@
 import { getHttpStatusMeta } from "@/lib/http/status-codes";
 import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
-import { DEFAULT_NOTIFICATION_TEMPLATES, type SettingsPayload } from "@/lib/settings/types";
+import {
+  DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE,
+  getDefaultNotificationTemplates,
+  type NotificationLanguage,
+  type SettingsPayload,
+} from "@/lib/settings/types";
 import type { NotificationContext } from "@/worker/types";
 
 const LEGACY_DEFAULT_EMAIL_SUBJECTS = new Set([
-  normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultEmailSubjectTemplate),
+  ...Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
+    normalizeForComparison(templates.defaultEmailSubjectTemplate)
+  ),
 ]);
-const LEGACY_DEFAULT_EMAIL_BODIES = new Set([normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultEmailBodyTemplate)]);
+const LEGACY_DEFAULT_EMAIL_BODIES = new Set(
+  Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
+    normalizeForComparison(templates.defaultEmailBodyTemplate)
+  )
+);
 const LEGACY_DEFAULT_TELEGRAM_TEMPLATES = new Set([
-  normalizeForComparison(DEFAULT_NOTIFICATION_TEMPLATES.defaultTelegramTemplate),
+  ...Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
+    normalizeForComparison(templates.defaultTelegramTemplate)
+  ),
   normalizeForComparison(
     "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}"
   ),
@@ -20,15 +33,19 @@ export function renderNotificationTemplates(
   appUrl: string
 ) {
   const statusMeta = getHttpStatusMeta(context.result.statusCode);
+  const language = settings.notifications.notificationLanguage;
   const domain = getDomain(context.monitor.url);
   const displayTarget = getMonitorTargetDisplay(context.monitor);
   const organization = settings.profile.organization || "Sentrovia Monitoring";
   const statusCode = String(context.result.statusCode ?? "N/A");
-  const statusLabel = statusMeta?.label ?? (context.result.ok ? "Healthy Response" : "Unavailable");
+  const statusLabel = localizeStatusLabel(language, context, statusMeta?.label);
   const localTime = formatLocalDateTime(context.result.checkedAt);
-  const eventState = resolveEventState(context);
+  const eventState = resolveEventState(context, language);
   const downtimeStartedAt = context.monitor.lastFailureAt ? new Date(context.monitor.lastFailureAt) : context.result.checkedAt;
   const downtimeDuration = formatDuration(context.result.checkedAt.getTime() - downtimeStartedAt.getTime());
+  const message = localizeMessage(language, context);
+  const rcaTitle = localizeRcaTitle(language, context);
+  const rcaSummary = localizeRcaSummary(language, context);
   const htmlUrlPlaceholder = "__SENTROVIA_URL_LINK__";
   const htmlDashboardPlaceholder = "__SENTROVIA_DASHBOARD_LINK__";
   const monitorLink =
@@ -55,16 +72,17 @@ export function renderNotificationTemplates(
     "{downtime_duration}": downtimeDuration,
     "{downtime_minutes}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 60_000))),
     "{downtime_hours}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 3_600_000))),
-    "{message}": context.message,
+    "{message}": message,
+    "{failure_reason}": localizeFailureReason(language, context.result.failureReason),
     "{rca_type}": context.rca.type,
-    "{rca_title}": context.rca.title,
-    "{rca_summary}": context.rca.summary,
+    "{rca_title}": rcaTitle,
+    "{rca_summary}": rcaSummary,
     "{organization}": organization,
   };
 
-  const subjectTemplate = resolveSubjectTemplate(context, settings);
-  const bodyTemplate = normalizeTemplate(resolveEmailBodyTemplate(context, settings));
-  const telegramTemplate = normalizeTemplate(resolveTelegramTemplate(context, settings));
+  const subjectTemplate = resolveSubjectTemplate(context, settings, language);
+  const bodyTemplate = normalizeTemplate(resolveEmailBodyTemplate(context, settings, language));
+  const telegramTemplate = normalizeTemplate(resolveTelegramTemplate(context, settings, language));
   const renderedTextBody = applyTemplate(bodyTemplate, textReplacements);
   const renderedHtmlSource = applyTemplate(bodyTemplate, {
     ...textReplacements,
@@ -83,46 +101,77 @@ export function renderNotificationTemplates(
   };
 }
 
-function resolveSubjectTemplate(context: NotificationContext, settings: SettingsPayload) {
+function resolveSubjectTemplate(
+  context: NotificationContext,
+  settings: SettingsPayload,
+  language: NotificationLanguage
+) {
   if (context.kind === "downtime-reminder") {
-    return settings.notifications.prolongedDowntimeEmailSubjectTemplate;
+    return resolveLanguageDefault(
+      settings.notifications.prolongedDowntimeEmailSubjectTemplate,
+      "prolongedDowntimeEmailSubjectTemplate",
+      language
+    );
   }
 
-  const fallback =
+  const fallbackKey =
     context.kind === "recovery"
-      ? settings.notifications.recoveryEmailSubjectTemplate
-      : settings.notifications.defaultEmailSubjectTemplate;
+      ? "recoveryEmailSubjectTemplate"
+      : "defaultEmailSubjectTemplate";
+  const fallback = resolveLanguageDefault(settings.notifications[fallbackKey], fallbackKey, language);
 
   return resolveMonitorTemplate(context.monitor.emailSubject, fallback, LEGACY_DEFAULT_EMAIL_SUBJECTS);
 }
 
-function resolveEmailBodyTemplate(context: NotificationContext, settings: SettingsPayload) {
+function resolveEmailBodyTemplate(
+  context: NotificationContext,
+  settings: SettingsPayload,
+  language: NotificationLanguage
+) {
   if (context.kind === "downtime-reminder") {
-    return settings.notifications.prolongedDowntimeEmailBodyTemplate;
+    return resolveLanguageDefault(
+      settings.notifications.prolongedDowntimeEmailBodyTemplate,
+      "prolongedDowntimeEmailBodyTemplate",
+      language
+    );
   }
 
-  const fallback =
+  const fallbackKey =
     context.kind === "recovery"
-      ? settings.notifications.recoveryEmailBodyTemplate
-      : settings.notifications.defaultEmailBodyTemplate;
+      ? "recoveryEmailBodyTemplate"
+      : "defaultEmailBodyTemplate";
+  const fallback = resolveLanguageDefault(settings.notifications[fallbackKey], fallbackKey, language);
 
   return resolveMonitorTemplate(context.monitor.emailBody, fallback, LEGACY_DEFAULT_EMAIL_BODIES);
 }
 
-function resolveTelegramTemplate(context: NotificationContext, settings: SettingsPayload) {
+function resolveTelegramTemplate(
+  context: NotificationContext,
+  settings: SettingsPayload,
+  language: NotificationLanguage
+) {
   if (context.kind === "downtime-reminder") {
-    return settings.notifications.prolongedDowntimeTelegramTemplate;
+    return resolveLanguageDefault(
+      settings.notifications.prolongedDowntimeTelegramTemplate,
+      "prolongedDowntimeTelegramTemplate",
+      language
+    );
   }
 
-  const fallback =
+  const fallbackKey =
     context.kind === "recovery"
-      ? settings.notifications.recoveryTelegramTemplate
-      : settings.notifications.defaultTelegramTemplate;
+      ? "recoveryTelegramTemplate"
+      : "defaultTelegramTemplate";
+  const fallback = resolveLanguageDefault(settings.notifications[fallbackKey], fallbackKey, language);
 
   return resolveMonitorTemplate(context.monitor.telegramTemplate, fallback, LEGACY_DEFAULT_TELEGRAM_TEMPLATES);
 }
 
-function resolveEventState(context: NotificationContext) {
+function resolveEventState(context: NotificationContext, language: NotificationLanguage) {
+  if (language === "tr") {
+    return resolveTurkishEventState(context);
+  }
+
   if (context.kind === "downtime-reminder") {
     return "DOWN";
   }
@@ -131,7 +180,267 @@ function resolveEventState(context: NotificationContext) {
     return "SLOW";
   }
 
+  if (context.kind === "failure" && context.result.failureReason === "timeout") {
+    return "TIMEOUT";
+  }
+
   return context.result.status === "up" ? "UP" : "DOWN";
+}
+
+function resolveTurkishEventState(context: NotificationContext) {
+  if (context.kind === "downtime-reminder") {
+    return "ERİŞİLEMİYOR";
+  }
+
+  if (context.kind === "latency") {
+    return "YAVAŞ";
+  }
+
+  if (context.kind === "failure" && context.result.failureReason === "timeout") {
+    return "ZAMAN AŞIMI";
+  }
+
+  return context.result.status === "up" ? "ERİŞİLEBİLİR" : "ERİŞİLEMİYOR";
+}
+
+function localizeStatusLabel(
+  language: NotificationLanguage,
+  context: NotificationContext,
+  fallbackLabel: string | undefined
+) {
+  if (language !== "tr") {
+    return fallbackLabel ?? (context.result.ok ? "Healthy Response" : "Unavailable");
+  }
+
+  const statusCode = context.result.statusCode;
+  if (context.result.ok) {
+    return "Sağlıklı yanıt";
+  }
+
+  if (statusCode === null) {
+    return "Ulaşılamıyor";
+  }
+
+  if (statusCode >= 500) {
+    return "Sunucu hatası";
+  }
+
+  if (statusCode >= 400) {
+    return "İstemci hatası";
+  }
+
+  if (statusCode >= 300) {
+    return "Yönlendirme";
+  }
+
+  return fallbackLabel ?? "Ulaşılamıyor";
+}
+
+function localizeFailureReason(language: NotificationLanguage, reason: string | null | undefined) {
+  if (language !== "tr") {
+    return reason ?? "none";
+  }
+
+  switch (reason) {
+    case "timeout":
+      return "zaman aşımı";
+    case "http_status":
+      return "http durum kodu";
+    case "dns":
+      return "dns";
+    case "tls":
+      return "tls sertifika";
+    case "connection":
+      return "bağlantı";
+    case "assertion":
+      return "içerik doğrulama";
+    case "redirect":
+      return "yönlendirme";
+    case "database":
+      return "veritabanı";
+    case "network":
+      return "ağ";
+    default:
+      return "yok";
+  }
+}
+
+function localizeMessage(language: NotificationLanguage, context: NotificationContext) {
+  if (language !== "tr") {
+    return context.message;
+  }
+
+  return translateTurkishPatternMessage(context.message)
+    ?? translateTurkishStaticMessage(context.message)
+    ?? translateTurkishReasonMessage(context)
+    ?? context.message;
+}
+
+function translateTurkishPatternMessage(message: string) {
+  const timeoutMatch = message.match(/^Service did not respond within (.+)\.$/);
+  if (timeoutMatch) {
+    return `Servis ${timeoutMatch[1]} içinde yanıt vermedi.`;
+  }
+
+  const tcpTimeoutMatch = message.match(/^TCP service did not respond within (.+)\.$/);
+  if (tcpTimeoutMatch) {
+    return `TCP servisi ${tcpTimeoutMatch[1]} içinde yanıt vermedi.`;
+  }
+
+  const httpStatusMatch = message.match(/^Service returned HTTP (\d+)\.$/);
+  if (httpStatusMatch) {
+    return `Servis HTTP ${httpStatusMatch[1]} döndürdü.`;
+  }
+
+  const slowMatch = message.match(/^Service is online but slow: (\d+)ms exceeded the (\d+)ms threshold\.$/);
+  if (slowMatch) {
+    return `Servis çalışıyor ancak yavaş: ${slowMatch[1]}ms yanıt süresi ${slowMatch[2]}ms eşiğini aştı.`;
+  }
+
+  const downtimeHoursMatch = message.match(/^Service has been down for (\d+)h (\d+)m\.$/);
+  if (downtimeHoursMatch) {
+    return `Servis ${downtimeHoursMatch[1]}s ${downtimeHoursMatch[2]}dk süredir down.`;
+  }
+
+  const downtimeMinutesMatch = message.match(/^Service has been down for (\d+)m\.$/);
+  if (downtimeMinutesMatch) {
+    return `Servis ${downtimeMinutesMatch[1]}dk süredir down.`;
+  }
+
+  const statusChangeMatch = message.match(/^Status code changed from (\d+) to (\d+)\.$/);
+  if (statusChangeMatch) {
+    return `Durum kodu ${statusChangeMatch[1]} değerinden ${statusChangeMatch[2]} değerine değişti.`;
+  }
+
+  return null;
+}
+
+function translateTurkishStaticMessage(message: string) {
+  if (message === "Service recovered and is responding again.") {
+    return "Servis düzeldi ve yeniden yanıt veriyor.";
+  }
+
+  if (message === "DNS resolution failed for the monitored target.") {
+    return "İzlenen hedef için DNS çözümlemesi başarısız oldu.";
+  }
+
+  if (message === "TLS or certificate validation failed for the monitored target.") {
+    return "İzlenen hedef için TLS veya sertifika doğrulaması başarısız oldu.";
+  }
+
+  if (message === "Connection failed before the service returned a response.") {
+    return "Servis yanıt döndürmeden önce bağlantı başarısız oldu.";
+  }
+
+  if (message === "Response assertion failed.") {
+    return "Yanıt doğrulaması başarısız oldu.";
+  }
+
+  if (message === "Health check failed.") {
+    return "Sağlık kontrolü başarısız oldu.";
+  }
+
+  return null;
+}
+
+function translateTurkishReasonMessage(context: NotificationContext) {
+  switch (context.result.failureReason) {
+    case "timeout":
+      return "Servis yapılandırılan timeout süresi içinde yanıt vermedi.";
+    case "dns":
+      return "İzlenen hedef için DNS çözümlemesi başarısız oldu.";
+    case "tls":
+      return "İzlenen hedef için TLS veya sertifika doğrulaması başarısız oldu.";
+    case "connection":
+      return "Servis yanıt döndürmeden önce bağlantı başarısız oldu.";
+    case "assertion":
+      return "Yanıt doğrulaması başarısız oldu.";
+    case "database":
+      return "Veritabanı kontrolü başarısız oldu.";
+    default:
+      return null;
+  }
+}
+
+function localizeRcaTitle(language: NotificationLanguage, context: NotificationContext) {
+  if (language !== "tr") {
+    return context.rca.title;
+  }
+
+  switch (context.result.failureReason) {
+    case "timeout":
+      return "Zaman Aşımı";
+    case "dns":
+      return "DNS Çözümleme Hatası";
+    case "tls":
+      return "TLS/Sertifika Hatası";
+    case "connection":
+      return "Bağlantı Hatası";
+    case "assertion":
+      return "Doğrulama Hatası";
+    case "database":
+      return "Veritabanı Bağlantı Hatası";
+    default:
+      break;
+  }
+
+  if (context.result.statusCode && context.result.statusCode >= 500) {
+    return "Sunucu Hatası";
+  }
+
+  if (context.result.statusCode && context.result.statusCode >= 400) {
+    return "İstemci Hatası";
+  }
+
+  return context.result.ok ? "Sağlıklı Yanıt" : "Ağ Hatası";
+}
+
+function localizeRcaSummary(language: NotificationLanguage, context: NotificationContext) {
+  if (language !== "tr") {
+    return context.rca.summary;
+  }
+
+  switch (context.result.failureReason) {
+    case "timeout":
+      return "Servis yapılandırılan timeout süresi içinde yanıt vermedi.";
+    case "dns":
+      return "Worker hedef host adını IP adresine çözümleyemedi.";
+    case "tls":
+      return "İstek TLS el sıkışması veya sertifika doğrulaması sırasında başarısız oldu.";
+    case "connection":
+      return "Hedefe bağlantı kurulmadan veya yanıt alınmadan önce bağlantı başarısız oldu.";
+    case "assertion":
+      return "Servis yanıt verdi ancak beklenen içerik veya JSON koşulu sağlanmadı.";
+    case "database":
+      return "Veritabanı bağlantısı veya doğrulama sorgusu başarısız oldu.";
+    default:
+      break;
+  }
+
+  if (context.result.statusCode && context.result.statusCode >= 500) {
+    return "İstek uygulama katmanına ulaştı ancak servis veya bağımlı bir sistem hata döndürdü.";
+  }
+
+  if (context.result.statusCode && context.result.statusCode >= 400) {
+    return "Endpoint erişilebilir durumda ancak isteği geçersiz, yetkisiz veya beklenen koşullara uymadığı için reddetti.";
+  }
+
+  return context.result.ok
+    ? "Endpoint beklenen başarı aralığında yanıt verdi."
+    : "Geçerli bir uygulama yanıtı alınmadan önce ağ katmanında hata oluştu.";
+}
+
+function resolveLanguageDefault(
+  template: string,
+  key: keyof typeof DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE.en,
+  language: NotificationLanguage
+) {
+  const normalized = normalizeForComparison(template);
+  const isDefaultTemplate = Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).some(
+    (templates) => normalizeForComparison(templates[key]) === normalized
+  );
+
+  return isDefaultTemplate ? getDefaultNotificationTemplates(language)[key] : template;
 }
 
 function resolveMonitorTemplate(template: string | null, fallback: string, legacyDefaults: Set<string>) {

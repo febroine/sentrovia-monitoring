@@ -3,6 +3,7 @@ import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePortMonitorTarget } from "@/lib/monitors/targets";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
@@ -23,6 +24,7 @@ export async function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
       status: "down",
       statusCode: null,
       errorMessage: error instanceof Error ? error.message : "TCP check failed",
+      failureReason: classifyFailureMessage(error instanceof Error ? error.message : "TCP check failed", "connection"),
     });
   }
 }
@@ -55,7 +57,8 @@ function checkTcpPort(
         ok: false,
         status: "down",
         statusCode: null,
-        errorMessage: `TCP check timed out after ${monitor.timeout}ms`,
+        errorMessage: `TCP service did not respond within ${formatTimeoutDuration(monitor.timeout)}.`,
+        failureReason: "timeout",
       });
     });
     socket.once("connect", () => {
@@ -72,6 +75,7 @@ function checkTcpPort(
         status: "down",
         statusCode: null,
         errorMessage: error.message,
+        failureReason: classifyFailureMessage(error.message, "connection"),
       });
     });
   });

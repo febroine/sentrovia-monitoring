@@ -4,7 +4,13 @@ import { monitors, userSettings, users } from "@/lib/db/schema";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-safety";
 import type { SettingsInput } from "@/lib/settings/schemas";
-import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
+import {
+  DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE,
+  DEFAULT_SETTINGS,
+  getDefaultNotificationTemplates,
+  type NotificationLanguage,
+  type SettingsPayload,
+} from "@/lib/settings/types";
 
 type DatabaseErrorShape = {
   code?: string;
@@ -19,6 +25,8 @@ type ExistingNotificationTemplates = {
   defaultEmailBodyTemplate?: unknown;
   defaultTelegramTemplate?: unknown;
 };
+type NotificationTemplateKey = keyof typeof DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE.en;
+type NotificationTemplateSets = Record<NotificationTemplateKey, Set<string>>;
 type MonitorTemplateKey = "emailSubject" | "emailBody" | "telegramTemplate";
 type SelectableColumn<T extends Record<string, string>> = {
   propertyName: keyof T & string;
@@ -60,6 +68,7 @@ const LEGACY_TELEGRAM_TEMPLATES = {
 const USER_SETTINGS_COLUMN_MAP = {
   id: "id",
   userId: "user_id",
+  notificationLanguage: "notification_language",
   notifyOnDown: "notify_on_down",
   notifyOnRecovery: "notify_on_recovery",
   notifyOnStatusChange: "notify_on_status_change",
@@ -135,6 +144,10 @@ function stringOrDefault(value: unknown, fallback: string) {
   return typeof value === "string" ? value : fallback;
 }
 
+function languageOrDefault(value: unknown): NotificationLanguage {
+  return value === "tr" ? "tr" : "en";
+}
+
 function resolveWorkspaceTemplate(value: unknown, fallback: string, legacyDefaults: Set<string>) {
   const template = stringOrEmpty(value);
   const normalized = normalizeTemplateForComparison(template);
@@ -144,6 +157,25 @@ function resolveWorkspaceTemplate(value: unknown, fallback: string, legacyDefaul
 
 function normalizeTemplateForComparison(value: string) {
   return value.replaceAll("\r\n", "\n").replaceAll("\\n", "\n").trim();
+}
+
+function buildLegacyNotificationTemplateSets(): NotificationTemplateSets {
+  const entries = Object.keys(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE.en).map((key) => {
+    const templateKey = key as NotificationTemplateKey;
+    const templates: string[] = Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE)
+      .map((languageTemplates) => languageTemplates[templateKey]);
+
+    if (templateKey in LEGACY_TELEGRAM_TEMPLATES) {
+      templates.push(...LEGACY_TELEGRAM_TEMPLATES[templateKey as keyof typeof LEGACY_TELEGRAM_TEMPLATES]);
+    }
+
+    return [
+      templateKey,
+      new Set(templates.map(normalizeTemplateForComparison)),
+    ] as const;
+  });
+
+  return Object.fromEntries(entries) as NotificationTemplateSets;
 }
 
 function booleanOrDefault(value: unknown, fallback: boolean) {
@@ -174,6 +206,9 @@ function dateOrNull(value: unknown) {
 export async function getSettings(userId: string): Promise<SettingsPayload | null> {
   const [user, settings] = await Promise.all([readUserCompat(userId), readUserSettingsCompat(userId)]);
   if (!user) return null;
+  const notificationLanguage = languageOrDefault(settings?.notificationLanguage);
+  const notificationTemplates = getDefaultNotificationTemplates(notificationLanguage);
+  const legacyNotificationTemplates = buildLegacyNotificationTemplateSets();
 
   return {
     profile: {
@@ -188,6 +223,7 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       phone: stringOrEmpty(user.phone),
     },
     notifications: {
+      notificationLanguage,
       notifyOnDown: booleanOrDefault(settings?.notifyOnDown, DEFAULT_SETTINGS.notifications.notifyOnDown),
       notifyOnRecovery: booleanOrDefault(settings?.notifyOnRecovery, DEFAULT_SETTINGS.notifications.notifyOnRecovery),
       notifyOnStatusChange: booleanOrDefault(
@@ -222,36 +258,50 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       ),
       discordWebhookUrl: stringOrEmpty(settings?.discordWebhookUrl),
       discordEnabled: booleanOrDefault(settings?.discordEnabled, DEFAULT_SETTINGS.notifications.discordEnabled),
-      defaultEmailSubjectTemplate:
-        stringOrEmpty(settings?.defaultEmailSubjectTemplate) || DEFAULT_SETTINGS.notifications.defaultEmailSubjectTemplate,
-      defaultEmailBodyTemplate:
-        stringOrEmpty(settings?.defaultEmailBodyTemplate) || DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
+      defaultEmailSubjectTemplate: resolveWorkspaceTemplate(
+        settings?.defaultEmailSubjectTemplate,
+        notificationTemplates.defaultEmailSubjectTemplate,
+        legacyNotificationTemplates.defaultEmailSubjectTemplate
+      ),
+      defaultEmailBodyTemplate: resolveWorkspaceTemplate(
+        settings?.defaultEmailBodyTemplate,
+        notificationTemplates.defaultEmailBodyTemplate,
+        legacyNotificationTemplates.defaultEmailBodyTemplate
+      ),
       defaultTelegramTemplate: resolveWorkspaceTemplate(
         settings?.defaultTelegramTemplate,
-        DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
-        LEGACY_TELEGRAM_TEMPLATES.defaultTelegramTemplate
+        notificationTemplates.defaultTelegramTemplate,
+        legacyNotificationTemplates.defaultTelegramTemplate
       ),
-      recoveryEmailSubjectTemplate:
-        stringOrEmpty(settings?.recoveryEmailSubjectTemplate) ||
-        DEFAULT_SETTINGS.notifications.recoveryEmailSubjectTemplate,
-      recoveryEmailBodyTemplate:
-        stringOrEmpty(settings?.recoveryEmailBodyTemplate) ||
-        DEFAULT_SETTINGS.notifications.recoveryEmailBodyTemplate,
+      recoveryEmailSubjectTemplate: resolveWorkspaceTemplate(
+        settings?.recoveryEmailSubjectTemplate,
+        notificationTemplates.recoveryEmailSubjectTemplate,
+        legacyNotificationTemplates.recoveryEmailSubjectTemplate
+      ),
+      recoveryEmailBodyTemplate: resolveWorkspaceTemplate(
+        settings?.recoveryEmailBodyTemplate,
+        notificationTemplates.recoveryEmailBodyTemplate,
+        legacyNotificationTemplates.recoveryEmailBodyTemplate
+      ),
       recoveryTelegramTemplate: resolveWorkspaceTemplate(
         settings?.recoveryTelegramTemplate,
-        DEFAULT_SETTINGS.notifications.recoveryTelegramTemplate,
-        LEGACY_TELEGRAM_TEMPLATES.recoveryTelegramTemplate
+        notificationTemplates.recoveryTelegramTemplate,
+        legacyNotificationTemplates.recoveryTelegramTemplate
       ),
-      prolongedDowntimeEmailSubjectTemplate:
-        stringOrEmpty(settings?.prolongedDowntimeEmailSubjectTemplate) ||
-        DEFAULT_SETTINGS.notifications.prolongedDowntimeEmailSubjectTemplate,
-      prolongedDowntimeEmailBodyTemplate:
-        stringOrEmpty(settings?.prolongedDowntimeEmailBodyTemplate) ||
-        DEFAULT_SETTINGS.notifications.prolongedDowntimeEmailBodyTemplate,
+      prolongedDowntimeEmailSubjectTemplate: resolveWorkspaceTemplate(
+        settings?.prolongedDowntimeEmailSubjectTemplate,
+        notificationTemplates.prolongedDowntimeEmailSubjectTemplate,
+        legacyNotificationTemplates.prolongedDowntimeEmailSubjectTemplate
+      ),
+      prolongedDowntimeEmailBodyTemplate: resolveWorkspaceTemplate(
+        settings?.prolongedDowntimeEmailBodyTemplate,
+        notificationTemplates.prolongedDowntimeEmailBodyTemplate,
+        legacyNotificationTemplates.prolongedDowntimeEmailBodyTemplate
+      ),
       prolongedDowntimeTelegramTemplate: resolveWorkspaceTemplate(
         settings?.prolongedDowntimeTelegramTemplate,
-        DEFAULT_SETTINGS.notifications.prolongedDowntimeTelegramTemplate,
-        LEGACY_TELEGRAM_TEMPLATES.prolongedDowntimeTelegramTemplate
+        notificationTemplates.prolongedDowntimeTelegramTemplate,
+        legacyNotificationTemplates.prolongedDowntimeTelegramTemplate
       ),
       statusCodeAlertCodes: stringOrDefault(
         settings?.statusCodeAlertCodes,
@@ -480,6 +530,7 @@ export async function upsertSettings(
 
   const values = {
     userId,
+    notificationLanguage: input.notifications.notificationLanguage,
     notifyOnDown: input.notifications.notifyOnDown,
     notifyOnRecovery: input.notifications.notifyOnRecovery,
     notifyOnStatusChange: input.notifications.notifyOnStatusChange,

@@ -11,6 +11,7 @@ export interface SettingsPayload {
     phone: string;
   };
   notifications: {
+    notificationLanguage: NotificationLanguage;
     notifyOnDown: boolean;
     notifyOnRecovery: boolean;
     notifyOnStatusChange: boolean;
@@ -82,7 +83,10 @@ export interface SettingsPayload {
   };
 }
 
-export const DEFAULT_NOTIFICATION_TEMPLATES = {
+export type NotificationLanguage = "en" | "tr";
+
+export const DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE = {
+  en: {
   defaultEmailSubjectTemplate: "[Sentrovia] {domain} is {event_state} ({status_code})",
   defaultEmailBodyTemplate:
     "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
@@ -98,7 +102,31 @@ export const DEFAULT_NOTIFICATION_TEMPLATES = {
     "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
   prolongedDowntimeTelegramTemplate:
     "Monitor: {domain} ({url}) is still DOWN for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+  },
+  tr: {
+    defaultEmailSubjectTemplate: "[Sentrovia] {domain} {event_state} durumunda ({status_code})",
+    defaultEmailBodyTemplate:
+      "Monitör: {domain} ({url_link}) şu anda {event_state}\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+    defaultTelegramTemplate:
+      "Monitör: {domain} ({url}) şu anda {event_state}\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+    recoveryEmailSubjectTemplate: "[Sentrovia] {domain} düzeldi ({status_code})",
+    recoveryEmailBodyTemplate:
+      "Monitör: {domain} ({url_link}) düzeldi\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+    recoveryTelegramTemplate:
+      "Monitör: {domain} ({url}) düzeldi\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+    prolongedDowntimeEmailSubjectTemplate: "[Sentrovia] {domain} {downtime_duration} süredir DOWN",
+    prolongedDowntimeEmailBodyTemplate:
+      "Monitör: {domain} ({url_link}) {downtime_duration} süredir down\nBaşlangıç: {downtime_started_at_local}\nSon kontrol: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+    prolongedDowntimeTelegramTemplate:
+      "Monitör: {domain} ({url}) {downtime_duration} süredir hala DOWN\nBaşlangıç: {downtime_started_at_local}\nSon kontrol: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+  },
 } as const;
+
+export const DEFAULT_NOTIFICATION_TEMPLATES = DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE.en;
+
+export function getDefaultNotificationTemplates(language: NotificationLanguage) {
+  return DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE[language];
+}
 
 export const DEFAULT_SETTINGS: SettingsPayload = {
   profile: {
@@ -113,6 +141,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     phone: "",
   },
   notifications: {
+    notificationLanguage: "en",
     notifyOnDown: true,
     notifyOnRecovery: true,
     notifyOnStatusChange: false,
@@ -138,7 +167,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   },
   monitoring: {
     interval: "5m",
-    timeout: 5000,
+    timeout: 60000,
     retries: 3,
     batchSize: 20,
     method: "GET",

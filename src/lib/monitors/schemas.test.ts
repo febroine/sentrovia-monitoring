@@ -126,6 +126,28 @@ describe("monitor input schema", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("normalizes custom expected HTTP status codes", () => {
+    const parsed = monitorInputSchema.parse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Private API",
+      url: "https://api.example.com/private",
+      expectedStatusCodes: "401, 200 204;401",
+    });
+
+    expect(parsed.expectedStatusCodes).toBe("200, 204, 401");
+  });
+
+  it("rejects invalid custom expected HTTP status codes", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Private API",
+      url: "https://api.example.com/private",
+      expectedStatusCodes: "ok, nope",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects short custom heartbeat tokens", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,

@@ -68,6 +68,30 @@ describe("settings schema", () => {
     expect(parsed.notifications.savedEmailRecipients).toEqual(["ops@example.com", "noc@example.com"]);
   });
 
+  it("defaults legacy notification language to English", () => {
+    const parsed = settingsSchema.parse({
+      ...buildSettingsPayload(),
+      notifications: {
+        ...buildSettingsPayload().notifications,
+        notificationLanguage: undefined,
+      },
+    });
+
+    expect(parsed.notifications.notificationLanguage).toBe("en");
+  });
+
+  it("accepts Turkish notification language", () => {
+    const parsed = settingsSchema.parse({
+      ...buildSettingsPayload(),
+      notifications: {
+        ...buildSettingsPayload().notifications,
+        notificationLanguage: "tr",
+      },
+    });
+
+    expect(parsed.notifications.notificationLanguage).toBe("tr");
+  });
+
   it("normalizes valid monitoring intervals", () => {
     const parsed = settingsSchema.parse({
       ...buildSettingsPayload(),

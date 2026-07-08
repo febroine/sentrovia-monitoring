@@ -45,6 +45,7 @@ export const userSettings = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    notificationLanguage: varchar("notification_language", { length: 8 }).default("en").notNull(),
     notifyOnDown: boolean("notify_on_down").default(true).notNull(),
     notifyOnRecovery: boolean("notify_on_recovery").default(true).notNull(),
     notifyOnStatusChange: boolean("notify_on_status_change").default(false).notNull(),
@@ -80,7 +81,7 @@ export const userSettings = pgTable(
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     monitoringInterval: varchar("monitoring_interval", { length: 16 }).default("5m").notNull(),
-    monitoringTimeout: integer("monitoring_timeout").default(5000).notNull(),
+    monitoringTimeout: integer("monitoring_timeout").default(60000).notNull(),
     monitoringRetries: integer("monitoring_retries").default(3).notNull(),
     monitoringMethod: varchar("monitoring_method", { length: 10 }).default("GET").notNull(),
     monitoringResponseMaxLength: integer("monitoring_response_max_length").default(1024).notNull(),
@@ -167,8 +168,9 @@ export const monitors = pgTable("monitors", {
   heartbeatLastReceivedAt: timestamp("heartbeat_last_received_at", { withTimezone: true }),
   intervalValue: integer("interval_value").default(5).notNull(),
   intervalUnit: varchar("interval_unit", { length: 8 }).default("dk").notNull(),
-  timeout: integer("timeout").default(5000).notNull(),
+  timeout: integer("timeout").default(60000).notNull(),
   slowResponseThresholdMs: integer("slow_response_threshold_ms"),
+  expectedStatusCodes: varchar("expected_status_codes", { length: 500 }),
   retries: integer("retries").default(3).notNull(),
   method: varchar("method", { length: 10 }).default("GET").notNull(),
   databaseSsl: boolean("database_ssl").default(true).notNull(),

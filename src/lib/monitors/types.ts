@@ -59,6 +59,7 @@ export interface MonitorRecord {
   intervalUnit: IntervalUnit;
   timeout: number;
   slowResponseThresholdMs: number | null;
+  expectedStatusCodes: string | null;
   retries: number;
   method: HttpMethod;
   tags: string[];
@@ -258,6 +259,7 @@ export interface MonitorPayload {
   intervalUnit: IntervalUnit;
   timeout: number;
   slowResponseThresholdMs: number | null;
+  expectedStatusCodes: string;
   retries: number;
   method: HttpMethod;
   tags: string[];
@@ -328,8 +330,9 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   telegramChatId: "",
   intervalValue: 5,
   intervalUnit: "dk",
-  timeout: 5000,
+  timeout: 60000,
   slowResponseThresholdMs: null,
+  expectedStatusCodes: "",
   retries: 3,
   method: "GET",
   tags: [],

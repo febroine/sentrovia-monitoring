@@ -64,6 +64,83 @@ describe("http monitor checks", () => {
     expect(result.status).toBe("up");
     expect(result.statusCode).toBe(200);
   });
+
+  it("allows configured non-2xx status codes as healthy responses", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(401, { "Content-Type": "text/plain" });
+      response.end("auth required");
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        url: `http://127.0.0.1:${resolveServerPort(server)}/private`,
+        expectedStatusCodes: "200, 401",
+      })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("up");
+    expect(result.statusCode).toBe(401);
+    expect(result.failureReason).toBeUndefined();
+  });
+
+  it("does not follow redirects when the redirect status is explicitly expected", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(302, { Location: "/healthy" });
+      response.end();
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        url: `http://127.0.0.1:${resolveServerPort(server)}/redirect`,
+        expectedStatusCodes: "302",
+        maxRedirects: 5,
+      })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("up");
+    expect(result.statusCode).toBe(302);
+  });
+
+  it("classifies unexpected HTTP status codes separately from network failures", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(500, { "Content-Type": "text/plain" });
+      response.end("failed");
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        url: `http://127.0.0.1:${resolveServerPort(server)}/failed`,
+      })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(500);
+    expect(result.failureReason).toBe("http_status");
+    expect(result.errorMessage).toBe("Service returned HTTP 500.");
+  });
+
+  it("classifies request timeout failures with a timeout-specific message", async () => {
+    const server = await createServer((_, response) => {
+      setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "text/plain" });
+        response.end("late");
+      }, 80);
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        url: `http://127.0.0.1:${resolveServerPort(server)}/slow`,
+        timeout: 20,
+      })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.failureReason).toBe("timeout");
+    expect(result.errorMessage).toBe("Service did not respond within 20ms.");
+  });
 });
 
 function createServer(handler: http.RequestListener) {
@@ -122,6 +199,7 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalUnit: "dk",
     timeout: 5000,
     slowResponseThresholdMs: null,
+    expectedStatusCodes: null,
     retries: 3,
     method: "GET",
     databaseSsl: true,
