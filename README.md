@@ -88,10 +88,10 @@ It is built for teams that do not want an alert every time a single request time
 Docker Compose is the fastest way to run Sentrovia locally.
 
 ```bash
-cp .env.example .env
-# Edit .env and replace every example secret with a strong value.
 docker compose up --build
 ```
+
+For local evaluation, Compose supplies development defaults for PostgreSQL, auth, encryption, web, and worker settings. Create a `.env` file only when you want to override those defaults.
 
 Open the app:
 
@@ -106,9 +106,9 @@ The stack starts:
 
 On first launch, Sentrovia shows onboarding and creates the first administrator. Public signup is disabled after onboarding; admins manage members from inside the app.
 
-## Required Environment
+## Environment
 
-Start from `.env.example` and replace the placeholder values.
+Local Docker startup works without a `.env` file. For production or shared servers, start from `.env.example` and replace every placeholder value with a strong value.
 
 ```bash
 POSTGRES_USER=postgres
