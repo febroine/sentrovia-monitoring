@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
     ports:
       - "5433:5432"
@@ -50,15 +50,15 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-uptimemonitoring}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
-      APP_URL: ${APP_URL:?Set APP_URL in .env}
-      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:?Set APP_ENCRYPTION_SECRET in .env}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       DISABLE_EMBEDDED_WORKER_SPAWN: "true"
@@ -84,19 +84,21 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-uptimemonitoring}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
-      APP_URL: ${APP_URL:?Set APP_URL in .env}
-      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:?Set APP_ENCRYPTION_SECRET in .env}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       WORKER_AUTO_START: "true"
     command: npm run docker:worker
+    healthcheck:
+      disable: true
 
 volumes:
   pgdata:
