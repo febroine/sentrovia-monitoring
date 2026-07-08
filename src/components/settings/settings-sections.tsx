@@ -113,7 +113,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         />
         <ToggleRow
           label="Slow response alerts"
-          description="Notify when a monitor stays online but exceeds its slow response threshold."
+          description="Notify when a monitor stays online but exceeds its slow response threshold. Turn this off if you only want confirmed down alerts."
           checked={settings.notifications.notifyOnLatency}
           onChange={(checked) => updateSetting("notifications.notifyOnLatency", checked)}
         />

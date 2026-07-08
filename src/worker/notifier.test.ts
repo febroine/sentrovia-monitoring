@@ -5,6 +5,7 @@ import type { NotificationContext } from "@/worker/types";
 
 const mocks = vi.hoisted(() => ({
   buildNotificationWebhookPayload: vi.fn(() => Promise.resolve({ ok: true })),
+  getSettings: vi.fn(),
   hasRecentMonitorEvent: vi.fn(),
   sendChannelWebhookDelivery: vi.fn(),
   sendEmailDelivery: vi.fn(),
@@ -31,15 +32,7 @@ vi.mock("@/lib/monitors/service", () => ({
 }));
 
 vi.mock("@/lib/settings/service", () => ({
-  getSettings: () =>
-    Promise.resolve({
-      ...DEFAULT_SETTINGS,
-      notifications: {
-        ...DEFAULT_SETTINGS.notifications,
-        alertDedupMinutes: 15,
-        notifyOnRecovery: true,
-      },
-    }),
+  getSettings: mocks.getSettings,
 }));
 
 vi.mock("@/worker/templates", () => ({
@@ -56,6 +49,14 @@ import { sendMonitorNotifications } from "@/worker/notifier";
 describe("worker notifier", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        alertDedupMinutes: 15,
+        notifyOnRecovery: true,
+      },
+    });
     mocks.hasRecentMonitorEvent.mockResolvedValue(true);
     mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
     mocks.sendTelegramDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
@@ -248,6 +249,26 @@ describe("worker notifier", () => {
       expect.objectContaining({ kind: "latency" })
     );
   });
+
+  it("does not send latency notifications when slow response alerts are disabled", async () => {
+    mocks.getSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        notifyOnLatency: false,
+      },
+    });
+
+    const sent = await sendMonitorNotifications({
+      ...buildNotificationContext("latency"),
+      message: "Service is online but slow.",
+    });
+
+    expect(sent).toBe(false);
+    expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+    expect(mocks.sendTelegramDelivery).not.toHaveBeenCalled();
+  });
 });
 
 function buildDeliveryResult(status: "delivered" | "failed" | "retrying") {
@@ -305,6 +326,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     verificationFailureCount: 0,
     latencyMs: 120,
     notificationPref: "email",
+    notificationLanguage: "default",
     notifEmail: "alerts@example.com",
     telegramBotToken: null,
     telegramChatId: null,

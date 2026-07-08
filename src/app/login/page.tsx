@@ -202,6 +202,10 @@ export default function LoginPage() {
             </>
           )}
         </Button>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Forgot password? Contact your workspace admin.
+        </p>
       </form>
     </AuthShell>
   );
