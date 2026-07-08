@@ -83,6 +83,23 @@ describe("notification templates", () => {
     expect(rendered.telegramBody).toContain("Detay: Servis HTTP 500 döndürdü.");
   });
 
+  it("lets monitor language override the workspace notification language", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({
+        notificationLanguage: "tr",
+        emailSubject: DEFAULT_SETTINGS.notifications.defaultEmailSubjectTemplate,
+        emailBody: DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
+        telegramTemplate: DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+      }),
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.subject).toContain("durumunda");
+    expect(rendered.textBody).toContain("Durum:");
+    expect(rendered.telegramBody).toContain("Kök neden:");
+  });
+
   it("localizes timeout details in Turkish notifications", () => {
     const rendered = renderNotificationTemplates(
       buildContext({ lastErrorMessage: "timeout" }),
@@ -252,6 +269,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     verificationFailureCount: 0,
     latencyMs: 120,
     notificationPref: "email",
+    notificationLanguage: "default",
     notifEmail: "alerts@example.com",
     telegramBotToken: null,
     telegramChatId: null,

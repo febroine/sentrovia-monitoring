@@ -49,6 +49,17 @@ describe("monitor input schema", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts monitor-level notification language overrides", () => {
+    const parsed = monitorInputSchema.parse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      notificationLanguage: "tr",
+    });
+
+    expect(parsed.notificationLanguage).toBe("tr");
+  });
+
   it("rejects non-http URLs for HTTP-based monitors", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,

@@ -863,6 +863,7 @@ async function buildMonitorValues(
     companyId: companyRecord?.id ?? null,
     company: companyRecord?.name ?? input.company,
     notificationPref: input.notificationPref,
+    notificationLanguage: input.notificationLanguage,
     notifEmail: input.notifEmail,
     telegramBotToken: input.telegramBotToken,
     telegramChatId: input.telegramChatId,

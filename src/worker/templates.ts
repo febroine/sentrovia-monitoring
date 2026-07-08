@@ -33,7 +33,10 @@ export function renderNotificationTemplates(
   appUrl: string
 ) {
   const statusMeta = getHttpStatusMeta(context.result.statusCode);
-  const language = settings.notifications.notificationLanguage;
+  const language = resolveNotificationLanguage(
+    context.monitor.notificationLanguage,
+    settings.notifications.notificationLanguage
+  );
   const domain = getDomain(context.monitor.url);
   const displayTarget = getMonitorTargetDisplay(context.monitor);
   const organization = settings.profile.organization || "Sentrovia Monitoring";
@@ -99,6 +102,13 @@ export function renderNotificationTemplates(
     }),
     telegramBody: toPlainText(applyTemplate(telegramTemplate, textReplacements)),
   };
+}
+
+function resolveNotificationLanguage(
+  monitorLanguage: string | null | undefined,
+  workspaceLanguage: NotificationLanguage
+): NotificationLanguage {
+  return monitorLanguage === "en" || monitorLanguage === "tr" ? monitorLanguage : workspaceLanguage;
 }
 
 function resolveSubjectTemplate(

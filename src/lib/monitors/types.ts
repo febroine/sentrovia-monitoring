@@ -1,7 +1,8 @@
-import type { SettingsPayload } from "@/lib/settings/types";
+import type { NotificationLanguage, SettingsPayload } from "@/lib/settings/types";
 
 export type SiteStatus = "up" | "down" | "pending";
 export type NotificationPref = "email" | "telegram" | "both" | "none";
+export type MonitorNotificationLanguage = "default" | NotificationLanguage;
 export type IntervalUnit = "sn" | "dk" | "sa";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 export type IpFamily = "auto" | "ipv4" | "ipv6";
@@ -52,6 +53,7 @@ export interface MonitorRecord {
   verificationFailureCount: number;
   latencyMs: number | null;
   notificationPref: NotificationPref;
+  notificationLanguage: MonitorNotificationLanguage;
   notifEmail: string | null;
   telegramBotToken: string | null;
   telegramChatId: string | null;
@@ -252,6 +254,7 @@ export interface MonitorPayload {
   companyId: string;
   company: string;
   notificationPref: NotificationPref;
+  notificationLanguage: MonitorNotificationLanguage;
   notifEmail: string;
   telegramBotToken: string;
   telegramChatId: string;
@@ -325,6 +328,7 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   companyId: "",
   company: "",
   notificationPref: "email",
+  notificationLanguage: "default",
   notifEmail: "",
   telegramBotToken: "",
   telegramChatId: "",

@@ -199,6 +199,7 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     companyId: record.companyId ?? "",
     company: record.company ?? "",
     notificationPref: record.notificationPref,
+    notificationLanguage: record.notificationLanguage,
     notifEmail: record.notifEmail ?? "",
     telegramBotToken: record.telegramBotToken ?? "",
     telegramChatId: record.telegramChatId ?? "",

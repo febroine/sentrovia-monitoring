@@ -5,6 +5,7 @@ import { isMonitorNetworkHostnameLiteralAllowed } from "@/lib/security/public-ne
 
 const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
 const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
+const notificationLanguageSchema = z.enum(["default", "en", "tr"]);
 const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
 const ipFamilySchema = z.enum(["auto", "ipv4", "ipv6"]);
 const methodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
@@ -118,6 +119,7 @@ export const monitorInputSchema = z
       .transform((value) => (value && value.length > 0 ? value : null)),
     company: optionalString(160),
     notificationPref: notificationPrefSchema,
+    notificationLanguage: notificationLanguageSchema.default("default"),
     notifEmail: z
       .string()
       .trim()

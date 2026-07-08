@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { MonitorPayload, NotificationPref } from "@/lib/monitors/types";
+import type { MonitorNotificationLanguage, MonitorPayload, NotificationPref } from "@/lib/monitors/types";
 
 const MONITOR_TEMPLATE_TOKENS = [
   "{domain}",
@@ -47,6 +47,25 @@ export function NotificationMonitorSettings({
             <SelectItem value="both">Email + Telegram</SelectItem>
           </SelectContent>
         </Select>
+      </Field>
+
+      <Field label="Notification language">
+        <Select
+          value={values.notificationLanguage}
+          onValueChange={(value) => onFieldChange("notificationLanguage", value as MonitorNotificationLanguage)}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Workspace default</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+            <SelectItem value="tr">Turkish</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Overrides the workspace language for email and Telegram notifications on this monitor.
+        </p>
       </Field>
 
       {(values.notificationPref === "email" || values.notificationPref === "both") && (

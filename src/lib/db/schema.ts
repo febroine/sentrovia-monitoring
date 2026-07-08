@@ -161,6 +161,7 @@ export const monitors = pgTable("monitors", {
   verificationFailureCount: integer("verification_failure_count").default(0).notNull(),
   latencyMs: integer("latency_ms"),
   notificationPref: varchar("notification_pref", { length: 16 }).default("none").notNull(),
+  notificationLanguage: varchar("notification_language", { length: 8 }).default("default").notNull(),
   notifEmail: text("notif_email"),
   telegramBotToken: text("telegram_bot_token"),
   telegramChatId: varchar("telegram_chat_id", { length: 120 }),
