@@ -1,20 +1,28 @@
 services:
   db:
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: example-postgres-password-change-me
+      POSTGRES_DB: uptimemonitoring
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d uptimemonitoring"]
 
   web:
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
-      APP_URL: ${APP_URL:-http://localhost:3000}
-      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
+      DATABASE_URL: postgres://postgres:example-postgres-password-change-me@db:5432/uptimemonitoring
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: example-postgres-password-change-me
+      POSTGRES_DB: uptimemonitoring
+      APP_URL: http://localhost:3000
+      AUTH_SECRET: sentrovia-compose-auth-secret-20260708-minimum-32
+      APP_ENCRYPTION_SECRET: sentrovia-compose-encryption-secret-20260708-minimum-32
 
   worker:
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
-      APP_URL: ${APP_URL:-http://localhost:3000}
-      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
+      DATABASE_URL: postgres://postgres:example-postgres-password-change-me@db:5432/uptimemonitoring
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: example-postgres-password-change-me
+      POSTGRES_DB: uptimemonitoring
+      APP_URL: http://localhost:3000
+      AUTH_SECRET: sentrovia-compose-auth-secret-20260708-minimum-32
+      APP_ENCRYPTION_SECRET: sentrovia-compose-encryption-secret-20260708-minimum-32

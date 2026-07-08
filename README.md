@@ -91,7 +91,7 @@ Docker Compose is the fastest way to run Sentrovia locally.
 docker compose up --build
 ```
 
-Local startup uses `docker-compose.override.yml` automatically. That file supplies development defaults for PostgreSQL, auth, encryption, web, and worker settings, so a clean local checkout can start with one command. Create a `.env` file only when you want to override those defaults.
+Local startup uses the default Compose files automatically. They provide development-only values for PostgreSQL, auth, encryption, web, and worker settings, so a clean local checkout can start with one command even if `.env.example` has placeholder values.
 
 Open the app:
 
@@ -117,7 +117,7 @@ Use this only for local development because it deletes the local PostgreSQL data
 
 ## Environment
 
-Local Docker startup works without a `.env` file because the committed Compose override provides development defaults. Production and shared servers must use explicit environment values.
+Local Docker startup works without a `.env` file because the default Compose setup provides development-only values. Production and shared servers must use explicit environment values.
 
 ```bash
 POSTGRES_USER=postgres
@@ -138,12 +138,13 @@ Production notes:
 - `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be long, random, non-placeholder values.
 - `APP_URL` must match the real URL operators use.
 - The web process and worker process must use the same environment values.
-- For production Compose, use the base file explicitly so local override defaults are not applied:
+- Do not use `.env.example` values directly in production; copy the file and replace every placeholder.
+- For production Compose, include the strict production override so missing secrets fail fast:
 
 ```bash
 cp .env.example .env
 # Edit .env and replace every placeholder value.
-docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 - Set `AUTH_TRUST_PROXY_HEADERS=true` only behind a trusted reverse proxy that sanitizes forwarded headers.
