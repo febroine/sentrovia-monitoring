@@ -106,6 +106,15 @@ The stack starts:
 
 On first launch, Sentrovia shows onboarding and creates the first administrator. Public signup is disabled after onboarding; admins manage members from inside the app.
 
+If PostgreSQL was already started once with a different password, the existing Docker volume keeps that old password. For a clean local reset, stop the stack and remove the local database volume:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+Use this only for local development because it deletes the local PostgreSQL data.
+
 ## Environment
 
 Local Docker startup works without a `.env` file. For production or shared servers, start from `.env.example` and replace every placeholder value with a strong value.
