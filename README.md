@@ -182,6 +182,23 @@ npm run db:push
 npm run db:manual
 ```
 
+Manual migrations live in `drizzle/*_manual.sql`. In normal use, run one command:
+
+```bash
+npm run db:manual
+```
+
+The command records applied files in `public.sentrovia_manual_migrations`, skips files with the same checksum on later
+runs, and stops if an already applied file was edited. Docker users usually do not run this manually because the web
+container runs it during startup.
+
+Advanced recovery option: if you know a production database already has all current manual SQL applied and you only want
+to create the migration ledger without executing those files, run:
+
+```bash
+npm run db:manual:baseline
+```
+
 ## Updating Sentrovia
 
 Sentrovia checks GitHub Releases from **Settings -> Updates**. The app never updates itself from the browser; admins run the shown commands on the host so updates stay explicit and auditable.
@@ -202,7 +219,9 @@ git checkout vX.Y.Z
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-The Docker web service runs schema bootstrap and manual migrations during startup. These commands keep your `.env` files and PostgreSQL Docker volume in place.
+The Docker web service runs schema bootstrap and `npm run db:manual` during startup. These commands keep your `.env`
+files and PostgreSQL Docker volume in place. Manual migrations are ledger-backed, so already applied
+`drizzle/*_manual.sql` files are skipped and new files, such as `0044_notification_language_manual.sql`, are applied.
 
 Windows/NSSM or manual Node.js services:
 
