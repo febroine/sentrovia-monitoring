@@ -570,7 +570,7 @@ function AdminIdentityFields({ ready }: { ready: boolean }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FieldBlock label="Username" htmlFor="username">
-          <Input id="username" name="username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={!ready} placeholder="aykut.bayram" className={inputClassName} />
+          <Input id="username" name="username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={!ready} placeholder="your.username" className={inputClassName} />
         </FieldBlock>
         <FieldBlock label="Email" htmlFor="email">
           <Input id="email" name="email" type="email" autoComplete="email" required disabled={!ready} placeholder="name@company.com" className={inputClassName} />
