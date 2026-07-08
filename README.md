@@ -182,6 +182,45 @@ npm run db:push
 npm run db:manual
 ```
 
+## Updating Sentrovia
+
+Sentrovia checks GitHub Releases from **Settings -> Updates**. The app never updates itself from the browser; admins run the shown commands on the host so updates stay explicit and auditable.
+
+Local/demo Docker checkout:
+
+```bash
+git fetch --tags origin
+git checkout vX.Y.Z
+docker compose up -d --build
+```
+
+Production Docker Compose:
+
+```bash
+git fetch --tags origin
+git checkout vX.Y.Z
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+The Docker web service runs schema bootstrap and manual migrations during startup. These commands keep your `.env` files and PostgreSQL Docker volume in place.
+
+Windows/NSSM or manual Node.js services:
+
+```bat
+nssm stop sentrovia-worker
+nssm stop sentrovia-web
+git fetch --tags origin
+git checkout vX.Y.Z
+npm ci
+npm run db:push
+npm run db:manual
+npm run build
+nssm start sentrovia-web
+nssm start sentrovia-worker
+```
+
+Create or verify a backup before updating production. For Windows/NSSM installs, `scripts\update-production-windows-nssm.bat` can still be used after checking out the target release.
+
 ## How Failure Verification Works
 
 Sentrovia avoids noisy first-failure alerts.
@@ -294,7 +333,9 @@ Update an existing server:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\install-windows-nssm.ps1
+git fetch --tags origin
+git checkout vX.Y.Z
+.\scripts\update-production-windows-nssm.bat
 ```
 
 Useful service commands:

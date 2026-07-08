@@ -3,6 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   BellRing,
+  Check,
+  Clipboard,
   DownloadCloud,
   ExternalLink,
   FileText,
@@ -13,6 +15,7 @@ import {
   Radar,
   RefreshCw,
   Rows3,
+  Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
@@ -689,12 +692,21 @@ type UpdateStatus = {
   checkedAt: string;
   status: "ok" | "error" | "unconfigured";
   message: string;
+  recommendedCommands: string[];
+  dockerCommands: string[];
+  serviceCommands: string[];
+  backupReminder: string;
+  requiresManualAction: boolean;
 };
+
+type UpdateInstallProfile = "docker" | "service";
 
 export function UpdateAssistantTab() {
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [installProfile, setInstallProfile] = useState<UpdateInstallProfile>("docker");
+  const [copiedProfile, setCopiedProfile] = useState<UpdateInstallProfile | null>(null);
 
   async function loadUpdateStatus() {
     setLoading(true);
@@ -718,10 +730,30 @@ export function UpdateAssistantTab() {
     void loadUpdateStatus();
   }, []);
 
+  const selectedCommands = update
+    ? installProfile === "docker"
+      ? update.dockerCommands
+      : update.serviceCommands
+    : [];
+
+  async function copySelectedCommands() {
+    if (selectedCommands.length === 0) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(selectedCommands.join("\n"));
+      setCopiedProfile(installProfile);
+      window.setTimeout(() => setCopiedProfile(null), 1800);
+    } catch {
+      setMessage("Unable to copy commands. Select the command block manually.");
+    }
+  }
+
   return (
     <SectionCard
       title="Update Assistant"
-      description="Check the latest GitHub release and keep server update decisions visible."
+      description="Check the latest GitHub release and follow safe host-side update commands."
       icon={DownloadCloud}
       iconClassName="text-emerald-600 dark:text-emerald-300"
     >
@@ -731,11 +763,33 @@ export function UpdateAssistantTab() {
         <UpdateMetric label="Latest" value={update?.latestVersion ?? "-"} />
         <UpdateMetric label="Status" value={resolveUpdateStatusLabel(update, loading)} />
       </div>
-      <div className="rounded-xl border bg-muted/15 p-4 text-sm">
-        <p className="font-medium">{update?.releaseName ?? update?.message ?? "Release information is not available yet."}</p>
-        {update?.publishedAt ? <p className="mt-1 text-xs text-muted-foreground">Published {formatDate(update.publishedAt)}</p> : null}
-        {update?.notes ? <p className="mt-3 whitespace-pre-wrap text-muted-foreground">{update.notes}</p> : null}
-      </div>
+      <UpdateStatusBanner update={update} loading={loading} />
+      {update?.backupReminder ? (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          {update.backupReminder}
+        </div>
+      ) : null}
+      <ReleaseNotes update={update} />
+      {update ? (
+        <div className="space-y-3 rounded-xl border bg-muted/15 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-medium">Host-side update commands</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Sentrovia does not self-update from the browser. Run these commands on the server that hosts the app.
+              </p>
+            </div>
+            <ProfileSelector value={installProfile} onChange={setInstallProfile} />
+          </div>
+          {update.status === "unconfigured" ? <RepositoryHint /> : null}
+          <CommandBlock
+            commands={selectedCommands}
+            copied={copiedProfile === installProfile}
+            description={resolveProfileDescription(installProfile)}
+            onCopy={() => void copySelectedCommands()}
+          />
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => void loadUpdateStatus()} disabled={loading}>
           <RefreshCw className="mr-2 h-4 w-4" />
@@ -755,6 +809,124 @@ export function UpdateAssistantTab() {
       </div>
     </SectionCard>
   );
+}
+
+function UpdateStatusBanner({ update, loading }: { update: UpdateStatus | null; loading: boolean }) {
+  const label = resolveUpdateStatusLabel(update, loading);
+  const detail = loading
+    ? "Checking GitHub Releases..."
+    : update?.message ?? "Release information is not available yet.";
+  const className = update?.updateAvailable
+    ? "border-primary/30 bg-primary/10 text-primary-foreground"
+    : update?.status === "error" || update?.status === "unconfigured"
+      ? "border-amber-500/25 bg-amber-500/10 text-amber-100"
+      : "border-emerald-500/25 bg-emerald-500/10 text-emerald-100";
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-sm ${className}`}>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-medium">{label}</p>
+        {update?.checkedAt ? <p className="text-xs opacity-80">Checked {formatDate(update.checkedAt)}</p> : null}
+      </div>
+      <p className="mt-1 text-xs opacity-85">{detail}</p>
+    </div>
+  );
+}
+
+function ReleaseNotes({ update }: { update: UpdateStatus | null }) {
+  return (
+    <div className="rounded-xl border bg-muted/15 p-4 text-sm">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="font-medium">{update?.releaseName ?? update?.message ?? "Release information is not available yet."}</p>
+          {update?.publishedAt ? <p className="mt-1 text-xs text-muted-foreground">Published {formatDate(update.publishedAt)}</p> : null}
+        </div>
+        {update?.repository ? <Badge variant="outline">{update.repository}</Badge> : null}
+      </div>
+      {update?.notes ? <p className="mt-3 whitespace-pre-wrap text-muted-foreground">{update.notes}</p> : null}
+    </div>
+  );
+}
+
+function ProfileSelector({
+  value,
+  onChange,
+}: {
+  value: UpdateInstallProfile;
+  onChange: (value: UpdateInstallProfile) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border bg-background p-1">
+      <ProfileButton active={value === "docker"} onClick={() => onChange("docker")}>
+        Docker Compose
+      </ProfileButton>
+      <ProfileButton active={value === "service"} onClick={() => onChange("service")}>
+        Git + npm service
+      </ProfileButton>
+    </div>
+  );
+}
+
+function ProfileButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <Button type="button" variant={active ? "secondary" : "ghost"} size="sm" onClick={onClick} className="h-7">
+      {children}
+    </Button>
+  );
+}
+
+function CommandBlock({
+  commands,
+  copied,
+  description,
+  onCopy,
+}: {
+  commands: string[];
+  copied: boolean;
+  description: string;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border bg-background">
+      <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Terminal className="mt-0.5 h-4 w-4 text-muted-foreground" />
+          <p className="text-xs leading-5 text-muted-foreground">{description}</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onCopy} disabled={commands.length === 0}>
+          {copied ? <Check className="mr-2 h-4 w-4" /> : <Clipboard className="mr-2 h-4 w-4" />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <pre className="max-h-80 overflow-auto p-4 text-xs leading-6 text-foreground">
+        <code>{commands.join("\n")}</code>
+      </pre>
+    </div>
+  );
+}
+
+function RepositoryHint() {
+  return (
+    <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
+      Repository metadata is missing. Set `APP_UPDATE_REPO=owner/repository` or keep the GitHub repository field in `package.json`, then restart the app.
+    </div>
+  );
+}
+
+function resolveProfileDescription(profile: UpdateInstallProfile) {
+  if (profile === "service") {
+    return "For Windows/NSSM or manual Node.js service installs. Stop services first, update the checkout, apply schema changes, build, then start services again.";
+  }
+
+  return "For Docker Compose installs. The web container runs schema bootstrap and manual migrations during startup.";
 }
 
 function UpdateMetric({ label, value }: { label: string; value: string }) {

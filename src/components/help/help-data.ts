@@ -233,7 +233,12 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "How should I update a Docker deployment?",
         answer:
-          "Pull the latest repository changes on the host, run npm run db:push if the release adds schema changes, then rebuild and restart the containers with docker compose up --build -d.",
+          "Use Settings > Updates to find the latest GitHub Release tag. On the host, run git fetch --tags origin, git checkout vX.Y.Z, then docker compose up -d --build. Production installs that use the strict Compose file should run docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build. The Docker web service runs schema bootstrap and manual migrations during startup, and these commands keep .env files and PostgreSQL volumes in place.",
+      },
+      {
+        question: "How should I update a Windows/NSSM or manual Node.js deployment?",
+        answer:
+          "Stop sentrovia-worker and sentrovia-web, fetch and checkout the target GitHub Release tag, run npm ci, npm run db:push, npm run db:manual, npm run build, then start sentrovia-web and sentrovia-worker again. For NSSM installs, scripts\\update-production-windows-nssm.bat can run the service-side update steps after you check out the target release.",
       },
       {
         question: "What should I do after changing environment variables in Docker mode?",
