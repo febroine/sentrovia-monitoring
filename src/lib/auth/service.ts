@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getAuthSecret } from "@/lib/env";
 
+const ONBOARDING_ADVISORY_LOCK_KEY = 77_481_307;
+
 type AuthSessionRecord = {
   id: string;
   firstName: string;
@@ -27,6 +29,8 @@ type PasswordRecord = {
   id: string;
   passwordHash: string;
 };
+
+type UserCreateExecutor = Pick<typeof db, "insert" | "select">;
 
 interface PublicUser extends SessionUser {
   fullName: string;
@@ -82,20 +86,25 @@ function ensureAuthRuntimeReady() {
   getAuthSecret();
 }
 
-export async function isOnboardingRequired() {
+export async function isOnboardingRequired(executor: Pick<typeof db, "select"> = db) {
   ensureAuthRuntimeReady();
-  const [row] = await db.select({ total: count() }).from(users);
+  const [row] = await executor.select({ total: count() }).from(users);
   return (row?.total ?? 0) === 0;
 }
 
 export async function createInitialAdmin(input: OnboardingInput) {
   ensureAuthRuntimeReady();
+  const passwordHash = await bcrypt.hash(input.password, 12);
 
-  if (!(await isOnboardingRequired())) {
-    throw new AuthError("Workspace onboarding is already complete.", 409);
-  }
+  const createdUser = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${ONBOARDING_ADVISORY_LOCK_KEY})`);
 
-  const createdUser = await createUser(input, "admin");
+    if (!(await isOnboardingRequired(tx))) {
+      throw new AuthError("Workspace onboarding is already complete.", 409);
+    }
+
+    return createUserWithPasswordHash(input, "admin", passwordHash, tx);
+  });
 
   return {
     user: toPublicUser(createdUser),
@@ -105,15 +114,25 @@ export async function createInitialAdmin(input: OnboardingInput) {
 
 export async function createMember(input: MemberCreateInput) {
   ensureAuthRuntimeReady();
-  const createdUser = await createUser(input, "member");
+  const createdUser = await createUser(input, "member", db);
 
   return {
     user: serializeMember(createdUser),
   };
 }
 
-async function createUser(input: MemberCreateInput | OnboardingInput, role: UserRole) {
-  const existingUser = await findExistingAccount(input.email, input.username);
+async function createUser(input: MemberCreateInput | OnboardingInput, role: UserRole, executor: UserCreateExecutor) {
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  return createUserWithPasswordHash(input, role, passwordHash, executor);
+}
+
+async function createUserWithPasswordHash(
+  input: MemberCreateInput | OnboardingInput,
+  role: UserRole,
+  passwordHash: string,
+  executor: UserCreateExecutor
+) {
+  const existingUser = await findExistingAccount(input.email, input.username, executor);
 
   if (existingUser?.email === input.email) {
     throw new AuthError("An account with this email already exists.", 409);
@@ -123,9 +142,7 @@ async function createUser(input: MemberCreateInput | OnboardingInput, role: User
     throw new AuthError("An account with this username already exists.", 409);
   }
 
-  const passwordHash = await bcrypt.hash(input.password, 12);
-
-  const [createdUser] = await db
+  const [createdUser] = await executor
     .insert(users)
     .values({
       firstName: input.firstName,
@@ -145,10 +162,10 @@ async function createUser(input: MemberCreateInput | OnboardingInput, role: User
   return createdUser;
 }
 
-async function findExistingAccount(email: string, username: string | null) {
+async function findExistingAccount(email: string, username: string | null, executor: Pick<typeof db, "select">) {
   const filters = username ? or(eq(users.email, email), sql`lower(${users.username}) = ${username}`) : eq(users.email, email);
 
-  return db
+  return executor
     .select({ id: users.id, email: users.email, username: users.username })
     .from(users)
     .where(filters)

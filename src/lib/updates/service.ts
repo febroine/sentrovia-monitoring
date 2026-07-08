@@ -2,6 +2,8 @@ import packageJson from "../../../package.json";
 
 const GITHUB_RELEASE_TIMEOUT_MS = 8_000;
 const FALLBACK_RELEASE_TAG = "<release-tag>";
+const GITHUB_REPOSITORY_PART_PATTERN = /^[A-Za-z0-9_.-]+$/;
+const RELEASE_TAG_PATTERN = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/i;
 const BACKUP_REMINDER =
   "Before updating, export or verify a recent backup. The update commands keep .env files and PostgreSQL volumes in place, but backups protect you from operator mistakes and failed migrations.";
 
@@ -88,7 +90,7 @@ function parseRepositorySlug(value: string) {
   const normalized = value.trim();
   const directMatch = normalized.match(/^([^/\s]+)\/([^/\s]+)$/);
   if (directMatch) {
-    return `${directMatch[1]}/${directMatch[2].replace(/\.git$/i, "")}`;
+    return buildRepositorySlug(directMatch[1], directMatch[2]);
   }
 
   const urlMatch = normalized.match(/github\.com[:/]([^/\s]+)\/([^#?\s]+?)(?:\.git)?(?:[#?].*)?$/i);
@@ -96,15 +98,31 @@ function parseRepositorySlug(value: string) {
     return null;
   }
 
-  return `${urlMatch[1]}/${urlMatch[2].replace(/\.git$/i, "")}`;
+  return buildRepositorySlug(urlMatch[1], urlMatch[2]);
+}
+
+function buildRepositorySlug(owner: string, repository: string) {
+  const normalizedOwner = owner.trim();
+  const normalizedRepository = repository.trim().replace(/\.git$/i, "");
+
+  if (
+    !GITHUB_REPOSITORY_PART_PATTERN.test(normalizedOwner) ||
+    !GITHUB_REPOSITORY_PART_PATTERN.test(normalizedRepository)
+  ) {
+    return null;
+  }
+
+  return `${normalizedOwner}/${normalizedRepository}`;
 }
 
 async function fetchLatestGitHubRelease(repository: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), GITHUB_RELEASE_TIMEOUT_MS);
+  const [owner, repo] = repository.split("/");
+  const releaseUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/latest`;
 
   try {
-    const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
+    const response = await fetch(releaseUrl, {
       headers: { Accept: "application/vnd.github+json" },
       signal: controller.signal,
     });
@@ -145,7 +163,7 @@ function truncateNotes(value: string) {
 
 function resolveTargetTag(rawTag: string | undefined, latestVersion: string | null) {
   const tag = rawTag?.trim();
-  if (tag) {
+  if (tag && RELEASE_TAG_PATTERN.test(tag)) {
     return tag;
   }
 

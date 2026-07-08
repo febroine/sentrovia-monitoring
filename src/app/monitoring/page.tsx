@@ -68,6 +68,7 @@ export default function MonitoringPage() {
   const [tagPatchOpen, setTagPatchOpen] = useState(false);
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
+  const [workspaceSettings, setWorkspaceSettings] = useState<SettingsPayload | null>(null);
   const [defaultForm, setDefaultForm] = useState(DEFAULT_MONITOR_FORM);
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, MonitorHistoryPoint[]>>({});
   const [diagnosticsByMonitor, setDiagnosticsByMonitor] = useState<Record<string, MonitorDiagnosticRecord[]>>({});
@@ -121,12 +122,14 @@ export default function MonitoringPage() {
       const settingsData = await readJsonOrNull<{ settings?: SettingsPayload | null }>(settingsResponse);
 
       setCompanies(companiesResponse.ok ? companiesData?.companies ?? [] : []);
+      setWorkspaceSettings(settingsResponse.ok ? settingsData?.settings ?? null : null);
       setSavedEmails(
         settingsResponse.ok ? settingsData?.settings?.notifications.savedEmailRecipients ?? [] : []
       );
       setDefaultForm(buildDefaultMonitorForm(settingsResponse.ok ? settingsData?.settings ?? null : null));
     } catch {
       setCompanies([]);
+      setWorkspaceSettings(null);
       setSavedEmails([]);
       setDefaultForm(buildDefaultMonitorForm(null));
     }
@@ -300,7 +303,7 @@ export default function MonitoringPage() {
         </div>
       ) : null}
 
-      <WorkerPulseCard />
+      {workspaceSettings?.profile.role === "admin" ? <WorkerPulseCard /> : null}
       <MonitorStats monitors={monitors} />
 
       <div className="flex flex-col gap-3 sm:flex-row">

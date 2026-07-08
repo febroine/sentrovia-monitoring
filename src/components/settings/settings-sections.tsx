@@ -52,13 +52,17 @@ const TEMPLATE_TOKENS = [
 
 interface TabProps {
   settings: SettingsPayload;
+  saving: boolean;
+  saveSettings: () => Promise<void>;
   updateSetting: (
     path: string,
     value: string | number | boolean | string[]
   ) => void;
 }
 
-export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
+export function NotificationSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
+  const { saveSection, savingSection } = useSectionSave(saveSettings);
+
   return (
     <div className="space-y-6">
       <SectionCard
@@ -66,6 +70,14 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
         description="These switches are read by the worker before sending down, recovery, latency, SSL, or status-change notifications."
         icon={BellRing}
         iconClassName="text-amber-600 dark:text-amber-300"
+        action={
+          <SectionSaveButton
+            sectionId="alert-conditions"
+            saving={saving}
+            savingSection={savingSection}
+            onSave={saveSection}
+          />
+        }
       >
         <Field label="Notification language" hint="Email and Telegram notification templates use this language unless a monitor has a custom override.">
           <Select
@@ -144,6 +156,14 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
         description="The worker uses these credentials directly. Passwords are encrypted before they are stored."
         icon={Mail}
         iconClassName="text-sky-600 dark:text-sky-300"
+        action={
+          <SectionSaveButton
+            sectionId="smtp-delivery"
+            saving={saving}
+            savingSection={savingSection}
+            onSave={saveSection}
+          />
+        }
       >
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Host">
@@ -227,6 +247,14 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
         description="Mirror the same worker notifications to collaboration tools through incoming webhooks."
         icon={Rows3}
         iconClassName="text-violet-600 dark:text-violet-300"
+        action={
+          <SectionSaveButton
+            sectionId="additional-notification-channels"
+            saving={saving}
+            savingSection={savingSection}
+            onSave={saveSection}
+          />
+        }
       >
         <NotificationChannelsEditor settings={settings} updateSetting={updateSetting} />
       </SectionCard>
@@ -236,6 +264,14 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
         description="These templates are used when a monitor does not override its own email or Telegram content."
         icon={FileText}
         iconClassName="text-emerald-600 dark:text-emerald-300"
+        action={
+          <SectionSaveButton
+            sectionId="notification-templates"
+            saving={saving}
+            savingSection={savingSection}
+            onSave={saveSection}
+          />
+        }
       >
         <div className="rounded-xl border bg-muted/20 p-4">
           <p className="text-sm font-medium">Available template tokens</p>
@@ -320,13 +356,23 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
   );
 }
 
-export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
+export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
+  const { saveSection, savingSection } = useSectionSave(saveSettings);
+
   return (
     <SectionCard
       title="Default Monitor Configuration"
       description="If a site-level setting is omitted during manual creation or CSV import, these values are applied automatically."
       icon={Radar}
       iconClassName="text-rose-600 dark:text-rose-300"
+      action={
+        <SectionSaveButton
+          sectionId="default-monitor-configuration"
+          saving={saving}
+          savingSection={savingSection}
+          onSave={saveSection}
+        />
+      }
     >
       <div className="rounded-2xl border bg-muted/15 p-4">
         <p className="text-sm font-medium">Override behavior</p>
@@ -476,13 +522,23 @@ export function MonitoringSettingsTab({ settings, updateSetting }: TabProps) {
   );
 }
 
-export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
+export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
+  const { saveSection, savingSection } = useSectionSave(saveSettings);
+
   return (
     <SectionCard
       title="Workspace Experience"
       description="These preferences are stored per user and shape dashboard density, motion, and landing behavior."
       icon={Palette}
       iconClassName="text-violet-600 dark:text-violet-300"
+      action={
+        <SectionSaveButton
+          sectionId="workspace-experience"
+          saving={saving}
+          savingSection={savingSection}
+          onSave={saveSection}
+        />
+      }
     >
       <ToggleRow
         label="Reduce motion"
@@ -576,7 +632,8 @@ export function AppearanceSettingsTab({ settings, updateSetting }: TabProps) {
   );
 }
 
-export function PublicStatusSettingsTab({ settings, updateSetting }: TabProps) {
+export function PublicStatusSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
+  const { saveSection, savingSection } = useSectionSave(saveSettings);
   const statusPath = settings.publicStatus.slug ? `/status/${settings.publicStatus.slug}` : "/status/your-status-slug";
 
   return (
@@ -585,6 +642,14 @@ export function PublicStatusSettingsTab({ settings, updateSetting }: TabProps) {
       description="Publish a read-only status page that exposes active monitor health without requiring a login."
       icon={RadioTower}
       iconClassName="text-rose-600 dark:text-rose-300"
+      action={
+        <SectionSaveButton
+          sectionId="public-status-page"
+          saving={saving}
+          savingSection={savingSection}
+          onSave={saveSection}
+        />
+      }
     >
       <ToggleRow
         label="Publish public status page"
@@ -625,7 +690,8 @@ export function PublicStatusSettingsTab({ settings, updateSetting }: TabProps) {
   );
 }
 
-export function DataSettingsTab({ settings, updateSetting }: TabProps) {
+export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
+  const { saveSection, savingSection } = useSectionSave(saveSettings);
   const isAdmin = settings.profile.role === "admin";
 
   return (
@@ -634,6 +700,14 @@ export function DataSettingsTab({ settings, updateSetting }: TabProps) {
       description="Operational policies for data retention, event cleanup, and automated backup windows."
       icon={FolderArchive}
       iconClassName="text-amber-600 dark:text-amber-300"
+      action={
+        <SectionSaveButton
+          sectionId="retention-and-backups"
+          saving={saving}
+          savingSection={savingSection}
+          onSave={saveSection}
+        />
+      }
     >
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Retention period (days)">
@@ -950,32 +1024,84 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
+function useSectionSave(saveSettings: () => Promise<void>) {
+  const [savingSection, setSavingSection] = useState<string | null>(null);
+
+  async function saveSection(sectionId: string) {
+    if (savingSection) {
+      return;
+    }
+
+    setSavingSection(sectionId);
+    try {
+      await saveSettings();
+    } finally {
+      setSavingSection(null);
+    }
+  }
+
+  return { saveSection, savingSection };
+}
+
+function SectionSaveButton({
+  sectionId,
+  saving,
+  savingSection,
+  onSave,
+}: {
+  sectionId: string;
+  saving: boolean;
+  savingSection: string | null;
+  onSave: (sectionId: string) => Promise<void>;
+}) {
+  const isSavingThisSection = saving && savingSection === sectionId;
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={saving}
+      onClick={() => void onSave(sectionId)}
+      className="shrink-0"
+    >
+      <Check className="mr-2 h-4 w-4" />
+      {isSavingThisSection ? "Saving..." : "Save"}
+    </Button>
+  );
+}
+
 function SectionCard({
   title,
   description,
   children,
   icon: Icon,
   iconClassName,
+  action,
 }: {
   title: string;
   description: string;
   children: ReactNode;
   icon?: React.ElementType;
   iconClassName?: string;
+  action?: ReactNode;
 }) {
   return (
     <Card>
       <CardHeader className="border-b bg-muted/20 px-6 py-5">
-        <div className="flex items-start gap-4">
-          {Icon ? (
-            <div className="rounded-2xl border border-border/70 bg-background/80 p-2.5 shadow-sm">
-              <Icon className={iconClassName ?? "text-primary"} />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            {Icon ? (
+              <div className="rounded-2xl border border-border/70 bg-background/80 p-2.5 shadow-sm">
+                <Icon className={iconClassName ?? "text-primary"} />
+              </div>
+            ) : null}
+            <div className="space-y-1">
+              <CardTitle className="text-base">{title}</CardTitle>
+              <CardDescription>{description}</CardDescription>
             </div>
-          ) : null}
-          <div className="space-y-1">
-            <CardTitle className="text-base">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
           </div>
+          {action ? <div className="sm:pt-0.5">{action}</div> : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-6 md:p-7">{children}</CardContent>

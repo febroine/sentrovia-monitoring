@@ -132,19 +132,19 @@ export default function SettingsPageClient() {
           ) : (
             <>
               <TabsContent value="notifications">
-                <NotificationSettingsTab settings={settings} updateSetting={updateSetting} />
+                <NotificationSettingsTab settings={settings} saving={saving} saveSettings={saveSettings} updateSetting={updateSetting} />
               </TabsContent>
               <TabsContent value="monitoring">
-                <MonitoringSettingsTab settings={settings} updateSetting={updateSetting} />
+                <MonitoringSettingsTab settings={settings} saving={saving} saveSettings={saveSettings} updateSetting={updateSetting} />
               </TabsContent>
               <TabsContent value="publicStatus">
-                <PublicStatusSettingsTab settings={settings} updateSetting={updateSetting} />
+                <PublicStatusSettingsTab settings={settings} saving={saving} saveSettings={saveSettings} updateSetting={updateSetting} />
               </TabsContent>
               <TabsContent value="appearance">
-                <AppearanceSettingsTab settings={settings} updateSetting={updateSetting} />
+                <AppearanceSettingsTab settings={settings} saving={saving} saveSettings={saveSettings} updateSetting={updateSetting} />
               </TabsContent>
               <TabsContent value="data">
-                <DataSettingsTab settings={settings} updateSetting={updateSetting} />
+                <DataSettingsTab settings={settings} saving={saving} saveSettings={saveSettings} updateSetting={updateSetting} />
               </TabsContent>
               {isAdmin ? (
                 <TabsContent value="updates">
