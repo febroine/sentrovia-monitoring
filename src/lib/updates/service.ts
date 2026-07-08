@@ -1,6 +1,9 @@
 import packageJson from "../../../package.json";
 
 const GITHUB_RELEASE_TIMEOUT_MS = 8_000;
+const FALLBACK_RELEASE_TAG = "<release-tag>";
+const BACKUP_REMINDER =
+  "Before updating, export or verify a recent backup. The update commands keep .env files and PostgreSQL volumes in place, but backups protect you from operator mistakes and failed migrations.";
 
 type GitHubRelease = {
   tag_name?: string;
@@ -9,6 +12,8 @@ type GitHubRelease = {
   published_at?: string;
   body?: string;
 };
+
+export type UpdateStatus = Awaited<ReturnType<typeof getUpdateStatus>>;
 
 export async function getUpdateStatus() {
   const currentVersion = packageJson.version;
@@ -27,12 +32,14 @@ export async function getUpdateStatus() {
       checkedAt: new Date().toISOString(),
       status: "unconfigured" as const,
       message: "Repository metadata is not configured.",
+      ...buildUpdateGuidance(null),
     };
   }
 
   try {
     const release = await fetchLatestGitHubRelease(repository);
     const latestVersion = normalizeVersion(release.tag_name ?? "");
+    const targetTag = resolveTargetTag(release.tag_name, latestVersion);
 
     return {
       currentVersion,
@@ -46,6 +53,7 @@ export async function getUpdateStatus() {
       checkedAt: new Date().toISOString(),
       status: "ok" as const,
       message: latestVersion ? "Latest GitHub release checked." : "Latest release does not include a version tag.",
+      ...buildUpdateGuidance(targetTag),
     };
   } catch (error) {
     return {
@@ -60,6 +68,7 @@ export async function getUpdateStatus() {
       checkedAt: new Date().toISOString(),
       status: "error" as const,
       message: error instanceof Error ? error.message : "Unable to check for updates.",
+      ...buildUpdateGuidance(null),
     };
   }
 }
@@ -132,4 +141,42 @@ function compareVersions(left: string, right: string) {
 function truncateNotes(value: string) {
   const trimmed = value.trim();
   return trimmed.length > 1200 ? `${trimmed.slice(0, 1200).trimEnd()}...` : trimmed || null;
+}
+
+function resolveTargetTag(rawTag: string | undefined, latestVersion: string | null) {
+  const tag = rawTag?.trim();
+  if (tag) {
+    return tag;
+  }
+
+  return latestVersion ? `v${latestVersion}` : FALLBACK_RELEASE_TAG;
+}
+
+export function buildUpdateGuidance(targetTag: string | null) {
+  const tag = targetTag ?? FALLBACK_RELEASE_TAG;
+  const dockerCommands = [
+    "git fetch --tags origin",
+    `git checkout ${tag}`,
+    "docker compose up -d --build",
+  ];
+  const serviceCommands = [
+    "nssm stop sentrovia-worker",
+    "nssm stop sentrovia-web",
+    "git fetch --tags origin",
+    `git checkout ${tag}`,
+    "npm ci",
+    "npm run db:push",
+    "npm run db:manual",
+    "npm run build",
+    "nssm start sentrovia-web",
+    "nssm start sentrovia-worker",
+  ];
+
+  return {
+    recommendedCommands: dockerCommands,
+    dockerCommands,
+    serviceCommands,
+    backupReminder: BACKUP_REMINDER,
+    requiresManualAction: true,
+  };
 }

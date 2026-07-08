@@ -87,21 +87,21 @@ export type NotificationLanguage = "en" | "tr";
 
 export const DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE = {
   en: {
-  defaultEmailSubjectTemplate: "[Sentrovia] {domain} is {event_state} ({status_code})",
-  defaultEmailBodyTemplate:
-    "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-  defaultTelegramTemplate:
-    "Monitor: {domain} ({url}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-  recoveryEmailSubjectTemplate: "[Sentrovia] {domain} recovered ({status_code})",
-  recoveryEmailBodyTemplate:
-    "Monitor: {domain} ({url_link}) recovered\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-  recoveryTelegramTemplate:
-    "Monitor: {domain} ({url}) recovered\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-  prolongedDowntimeEmailSubjectTemplate: "[Sentrovia] {domain} has been DOWN for {downtime_duration}",
-  prolongedDowntimeEmailBodyTemplate:
-    "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
-  prolongedDowntimeTelegramTemplate:
-    "Monitor: {domain} ({url}) is still DOWN for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    defaultEmailSubjectTemplate: "[Sentrovia] {domain} is {event_state} ({status_code})",
+    defaultEmailBodyTemplate:
+      "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    defaultTelegramTemplate:
+      "Monitor: {domain} ({url}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    recoveryEmailSubjectTemplate: "[Sentrovia] {domain} recovered ({status_code})",
+    recoveryEmailBodyTemplate:
+      "Monitor: {domain} ({url_link}) recovered\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    recoveryTelegramTemplate:
+      "Monitor: {domain} ({url}) recovered\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    prolongedDowntimeEmailSubjectTemplate: "[Sentrovia] {domain} has been DOWN for {downtime_duration}",
+    prolongedDowntimeEmailBodyTemplate:
+      "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    prolongedDowntimeTelegramTemplate:
+      "Monitor: {domain} ({url}) is still DOWN for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
   },
   tr: {
     defaultEmailSubjectTemplate: "[Sentrovia] {domain} {event_state} durumunda ({status_code})",

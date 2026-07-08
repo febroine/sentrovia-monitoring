@@ -17,19 +17,22 @@ import { useSettingsStore } from "@/stores/use-settings-store";
 
 type TabId = "notifications" | "monitoring" | "publicStatus" | "appearance" | "data" | "updates";
 
-const tabs: Array<{ id: TabId; label: string; icon: ElementType; tone: string }> = [
+const tabs: Array<{ id: TabId; label: string; icon: ElementType; tone: string; adminOnly?: boolean }> = [
   { id: "notifications", label: "Notifications", icon: Bell, tone: "text-emerald-600 dark:text-emerald-400" },
   { id: "monitoring", label: "Monitoring", icon: Globe, tone: "text-sky-600 dark:text-sky-400" },
   { id: "publicStatus", label: "Public Status", icon: RadioTower, tone: "text-rose-600 dark:text-rose-400" },
   { id: "appearance", label: "Appearance", icon: Palette, tone: "text-violet-600 dark:text-violet-400" },
   { id: "data", label: "Data", icon: Database, tone: "text-amber-600 dark:text-amber-400" },
-  { id: "updates", label: "Updates", icon: DownloadCloud, tone: "text-emerald-600 dark:text-emerald-400" },
+  { id: "updates", label: "Updates", icon: DownloadCloud, tone: "text-emerald-600 dark:text-emerald-400", adminOnly: true },
 ];
 
 export default function SettingsPageClient() {
   const [activeTab, setActiveTab] = useState<TabId>("notifications");
   const { settings, loading, saving, error, message, loadSettings, saveSettings, updateSetting } =
     useSettingsStore();
+  const isAdmin = settings.profile.role === "admin";
+  const visibleTabs = tabs.filter((tab) => !tab.adminOnly || isAdmin);
+  const effectiveActiveTab = !isAdmin && activeTab === "updates" ? "notifications" : activeTab;
 
   useEffect(() => {
     void loadSettings();
@@ -103,13 +106,13 @@ export default function SettingsPageClient() {
       </div>
 
       <Tabs
-        value={activeTab}
+        value={effectiveActiveTab}
         onValueChange={(value) => setActiveTab(value as TabId)}
         orientation="vertical"
         className="gap-8 md:grid md:grid-cols-[220px_minmax(0,1fr)]"
       >
         <TabsList className="h-fit w-full flex-col items-stretch rounded-2xl border bg-card p-2 shadow-sm">
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} className="h-auto w-full justify-start rounded-xl px-3 py-3 text-left">
               <span className="flex min-w-0 items-center gap-3">
                 <span className="rounded-xl border bg-muted/30 p-2">
@@ -143,9 +146,11 @@ export default function SettingsPageClient() {
               <TabsContent value="data">
                 <DataSettingsTab settings={settings} updateSetting={updateSetting} />
               </TabsContent>
-              <TabsContent value="updates">
-                <UpdateAssistantTab />
-              </TabsContent>
+              {isAdmin ? (
+                <TabsContent value="updates">
+                  <UpdateAssistantTab />
+                </TabsContent>
+              ) : null}
 
               <div className="sticky bottom-4 pt-2">
                 <Card className="overflow-hidden border-border/60 shadow-sm">

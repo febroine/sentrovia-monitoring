@@ -99,6 +99,103 @@ describe("notification templates", () => {
     expect(rendered.textBody).toContain("Servis 60s içinde yanıt vermedi.");
     expect(rendered.telegramBody).toContain("ZAMAN AŞIMI");
   });
+
+  it("uses Turkish defaults when stored templates still contain legacy English defaults", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({
+        emailSubject: DEFAULT_SETTINGS.notifications.defaultEmailSubjectTemplate,
+        emailBody: DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
+        telegramTemplate: DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+      }),
+      {
+        ...DEFAULT_SETTINGS,
+        notifications: {
+          ...DEFAULT_SETTINGS.notifications,
+          notificationLanguage: "tr",
+          defaultEmailSubjectTemplate: DEFAULT_SETTINGS.notifications.defaultEmailSubjectTemplate,
+          defaultEmailBodyTemplate: DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
+          defaultTelegramTemplate: DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+        },
+      },
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.subject).toContain("ERİŞİLEMİYOR");
+    expect(rendered.textBody).toContain("Monitör:");
+    expect(rendered.telegramBody).toContain("Kök neden:");
+    expect(rendered.telegramBody).not.toContain("Root cause:");
+  });
+
+  it("localizes recovery, latency, and downtime reminder notifications in Turkish", () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        notificationLanguage: "tr" as const,
+      },
+    };
+    const baseContext = buildContext();
+
+    const recovery = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "recovery",
+        message: "Service recovered and is responding again.",
+        result: {
+          ...baseContext.result,
+          ok: true,
+          status: "up",
+          statusCode: 200,
+          errorMessage: null,
+          failureReason: null,
+        },
+      },
+      settings,
+      "https://sentrovia.example.com"
+    );
+    const latency = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "latency",
+        message: "Service is online but slow: 18000ms exceeded the 10000ms threshold.",
+        result: {
+          ...baseContext.result,
+          ok: true,
+          status: "up",
+          statusCode: 200,
+          latencyMs: 18000,
+          errorMessage: null,
+          failureReason: null,
+        },
+        monitor: {
+          ...baseContext.monitor,
+          slowResponseThresholdMs: 10000,
+        },
+      },
+      settings,
+      "https://sentrovia.example.com"
+    );
+    const reminder = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "downtime-reminder",
+        message: "Service has been down for 3h 0m.",
+        monitor: {
+          ...baseContext.monitor,
+          lastFailureAt: new Date("2026-05-13T05:00:00.000Z"),
+        },
+      },
+      settings,
+      "https://sentrovia.example.com"
+    );
+
+    expect(recovery.subject).toContain("düzeldi");
+    expect(recovery.telegramBody).toContain("Servis düzeldi ve yeniden yanıt veriyor.");
+    expect(latency.subject).toContain("YAVAŞ");
+    expect(latency.textBody).toContain("Servis çalışıyor ancak yavaş");
+    expect(reminder.subject).toContain("3h süredir DOWN");
+    expect(reminder.telegramBody).toContain("Servis 3s 0dk süredir down.");
+  });
 });
 
 function buildContext(monitorOverrides: Partial<Monitor> = {}): NotificationContext {

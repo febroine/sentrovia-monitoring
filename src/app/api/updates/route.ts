@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/auth/authorization";
 import { toAuthError } from "@/lib/auth/errors";
-import { getSession } from "@/lib/auth/session";
 import { getUpdateStatus } from "@/lib/updates/service";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    await requireAdminSession();
 
     return NextResponse.json({ update: await getUpdateStatus() });
   } catch (error) {
