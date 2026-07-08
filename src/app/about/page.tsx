@@ -36,7 +36,7 @@ const overviewCards = [
   {
     title: "Operator-facing control plane",
     description:
-      "The Next.js console focuses on visibility and configuration: dashboards, worker insights, monitoring, reports, members, settings, help, and delivery tooling.",
+      "The Next.js console focuses on visibility and configuration: dashboards, worker insights, monitoring, HTML reports, members, settings, guided updates, help, and delivery tooling.",
     icon: LayoutDashboard,
     accent: "border-l-violet-500",
   },
@@ -45,7 +45,7 @@ const overviewCards = [
 const runtimeFlow = [
   {
     title: "Operators save monitoring intent in the web console",
-    body: "Monitor definitions, defaults, report schedules, companies, members, and delivery settings enter the system through authenticated Next.js route handlers.",
+    body: "Monitor definitions, defaults, report schedules, companies, members, notification language, and delivery settings enter the system through authenticated Next.js route handlers.",
     icon: Workflow,
   },
   {
@@ -65,12 +65,12 @@ const runtimeFlow = [
   },
   {
     title: "Verification mode filters transient failures",
-    body: "A first failure does not immediately become a confirmed outage. Sentrovia schedules one-minute confirmation checks and only escalates once the threshold is met.",
+    body: "A first failure does not immediately become a confirmed outage. Sentrovia schedules confirmation checks, treats hard timeouts as availability failures, and keeps slow-but-successful responses online as degraded latency signals.",
     icon: ShieldCheck,
   },
   {
     title: "Delivery and reporting are routed from the worker",
-    body: "When a confirmed state change or due report requires outbound work, Sentrovia renders templates, resolves recipients, and records per-channel outcomes.",
+    body: "When a confirmed state change, latency warning, or due report requires outbound work, Sentrovia renders templates, resolves recipients, sends HTML reports, and records per-channel outcomes.",
     icon: BellRing,
   },
   {
@@ -102,7 +102,7 @@ const stackSections = [
     items: [
       "Dedicated Node worker process for checks, retries, and scheduled reports",
       "Worker observability dashboard for backlog, cycle, and runtime error insight",
-      "Monitoring as Code, CSV import, company grouping, and delivery history",
+      "HTML-only reports, notification language selection, CSV monitor import, company grouping, and delivery history",
     ],
   },
   {
@@ -110,17 +110,23 @@ const stackSections = [
     items: [
       "Docker Compose for db + web + worker orchestration",
       "Heartbeat-backed worker visibility instead of UI simulation",
-      "Backup and restore flows for self-hosted workspaces",
+      "First-run admin onboarding, backup and restore, and guided GitHub Release update commands",
     ],
   },
 ];
 
 const apiGroups = [
   {
-    title: "Configuration APIs",
-    routes: ["/api/settings", "/api/companies", "/api/members"],
+    title: "Authentication and Workspace APIs",
+    routes: ["/api/auth/onboarding", "/api/auth/login", "/api/auth/session", "/api/members"],
     description:
-      "These routes persist operator intent: defaults, companies, members, and workspace behavior.",
+      "These routes handle first-admin onboarding, login-only access after setup, session refresh, and admin-managed member operations.",
+  },
+  {
+    title: "Configuration APIs",
+    routes: ["/api/settings", "/api/companies", "/api/updates"],
+    description:
+      "These routes persist operator intent and expose safe operational guidance: defaults, companies, workspace behavior, and GitHub Release update metadata.",
   },
   {
     title: "Monitoring APIs",
@@ -144,17 +150,19 @@ const apiGroups = [
 
 const implementationNotes = [
   "Workspace defaults are active behavior, not cosmetic preferences. They feed create, import, and update fallback chains.",
-  "Verification mode exists to confirm instability before delivery begins, which keeps alerting calmer under transient failures.",
+  "Verification mode exists to confirm instability before outage delivery begins; slow successful responses stay online and notify as latency only after repeated slow checks.",
   "Worker heartbeat and cycle metrics live in the database so the console can distinguish a healthy UI from a stale monitoring engine.",
-  "Reports are part of the product runtime now, not a side export. The worker can pick up due schedules and send them like any other operational task.",
+  "Reports are part of the product runtime now. The worker sends one readable HTML report instead of CSV, XLSX, and PDF export bundles.",
+  "Settings cards can save their own operational group while still using the same validated settings API behind the scenes.",
+  "The update assistant is intentionally guided: it shows GitHub Release data and host-side commands, but the browser never rewrites the running application.",
 ];
 
 const productSurfaces = [
   "Monitoring dashboard with live runtime and company health",
   "Worker Insights dashboard with backlog, cycle, and error visibility",
-  "Reports center with preview studio and schedule manager",
-  "Delivery console for testing, retrying, and auditing outbound channels",
-  "Members, companies, and settings for workspace operations",
+  "Reports center with preview studio, schedule manager, and HTML report delivery",
+  "Delivery console for testing, retrying, auditing outbound channels, and validating templates",
+  "Members, companies, settings cards, and guided updates for workspace operations",
 ];
 
 const workerDeepDive = [
@@ -206,17 +214,17 @@ const reportsDeepDive = [
   {
     title: "How reports are built",
     body:
-      "Reports are generated from persisted monitor checks and company relationships. The reports center can preview weekly, monthly, company-scoped, and global workspace summaries before sending them.",
+      "Reports are generated from persisted monitor checks, monitor URLs, latency samples, failure events, and company relationships. The reports center can preview weekly, monthly, company-scoped, and global workspace summaries before sending them.",
   },
   {
     title: "How schedules run",
     body:
-      "Scheduled reports live in the database with cadence, recipients, scope, and next-run time. The worker picks up due schedules during its cycle, generates the report payload, sends it, and updates the schedule status.",
+      "Scheduled reports live in the database with cadence, recipients, scope, and next-run time. The worker picks up due schedules during its cycle, generates one browser-ready HTML attachment, sends it, and updates the schedule status.",
   },
   {
-    title: "What the user controls",
+    title: "What the report intentionally leaves out",
     body:
-      "Operators can create schedules, choose recipients, preview report output, send a report immediately, and manage multiple saved schedules from the reports surface without leaving the app.",
+      "The report avoids CSV, XLSX, PDF, status-code tables, and check-count labels so recipients receive one readable operational summary instead of several overlapping exports.",
   },
 ];
 
@@ -229,12 +237,12 @@ const notificationDeepDive = [
   {
     title: "Template model",
     body:
-      "The app has workspace-level default templates for email and Telegram, while monitors can still override their own subject/body when needed. Prolonged downtime reminders have their own dedicated template fields as well.",
+      "The app has workspace-level default templates for email and Telegram in English or Turkish, while monitors can still override their own subject/body when needed. Prolonged downtime reminders have their own dedicated template fields as well.",
   },
   {
     title: "Delivery decision flow",
     body:
-      "The worker decides whether an event should notify at all, applies dedup rules, respects per-monitor channel preferences, renders the final message, and only then dispatches through the enabled channel integrations.",
+      "The worker decides whether an event should notify at all, applies dedup rules, respects per-monitor channel preferences, renders the final message in the configured language, and only then dispatches through the enabled channel integrations.",
   },
 ];
 
@@ -301,7 +309,7 @@ export default function AboutPage() {
               <CardContent className="grid gap-3 sm:grid-cols-3">
                 <MetricCard label="Services" value="3" detail="db + web + worker" />
                 <MetricCard label="Monitor Types" value="7" detail="http to heartbeat" />
-                <MetricCard label="Reports" value="Built-in" detail="preview + scheduled send" />
+                <MetricCard label="Reports" value="HTML" detail="preview + scheduled send" />
               </CardContent>
             </Card>
           </div>
@@ -348,9 +356,9 @@ export default function AboutPage() {
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <MetricCard label="Worker Insights" value="Live" detail="backlog, cycles, failures, errors" />
-            <MetricCard label="Reports" value="Expanded" detail="preview studio + schedule manager" />
-            <MetricCard label="Heartbeat" value="Built-in" detail="cron or job monitoring endpoint" />
-            <MetricCard label="Delivery" value="Auditable" detail="history, retries, channel outcomes" />
+            <MetricCard label="Reports" value="HTML Only" detail="preview, schedule, one readable attachment" />
+            <MetricCard label="Onboarding" value="Admin First" detail="first account becomes workspace admin" />
+            <MetricCard label="Updates" value="Guided" detail="release notes + copyable host commands" />
           </CardContent>
         </Card>
       </section>

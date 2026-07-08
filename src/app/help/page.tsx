@@ -24,8 +24,8 @@ export default function HelpPage() {
                 </h1>
                 <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
                   This page explains the real system, not just the screens. It covers worker scheduling,
-                  verification mode, monitor types, delivery decisions, reports, backup flows,
-                  logs, worker insights, and Docker runtime behavior in one readable place.
+                  verification mode, timeout and latency behavior, notification delivery, HTML reports,
+                  guided updates, backups, worker insights, and Docker runtime behavior in one readable place.
                 </p>
               </div>
             </div>
@@ -55,18 +55,18 @@ export default function HelpPage() {
       <section className="grid gap-4 lg:grid-cols-3">
         <FeatureCard
           icon={Clock3}
-          title="Verification-Aware Monitoring"
-          text="Pending, verifying, confirmed outage, and recovery states are separated so Sentrovia does not overreact to the first failure."
+          title="Timeout-Aware Monitoring"
+          text="Timeouts, HTTP failures, slow responses, verification, confirmed outages, and recovery states are documented as separate behaviors."
         />
         <FeatureCard
           icon={Radar}
-          title="Worker Insights"
-          text="Backlog, cycle duration, failing monitors, and worker-level errors stay visible in a dedicated dashboard instead of hiding behind generic health badges."
+          title="Readable Reports"
+          text="Reports now focus on HTML delivery, affected URLs, latency context, and failure detail instead of noisy export bundles."
         />
         <FeatureCard
           icon={Sparkles}
-          title="Operationally Readable"
-          text="Logs, timelines, delivery history, and dashboards read from the same durable store, which keeps the console consistent under load."
+          title="Guided Operations"
+          text="Onboarding, member management, notification language, settings saves, and update commands are explained around the actual operator workflow."
         />
       </section>
 

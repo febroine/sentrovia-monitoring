@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { requireAdminSession } from "@/lib/auth/authorization";
 import { AuthError, toAuthError } from "@/lib/auth/errors";
-import { getSession } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { updateWorkerState, getWorkerState } from "@/lib/monitors/service";
@@ -58,11 +58,7 @@ function serializeWorkerState(
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const session = await requireAdminSession();
 
     const observabilityRange = resolveObservabilityRange(request);
     const state = await getWorkerState();
@@ -92,11 +88,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const session = await requireAdminSession();
 
     const action = await readWorkerAction(request);
     const desiredState = action === "start" ? "running" : "stopped";

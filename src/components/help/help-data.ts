@@ -23,7 +23,8 @@ export type HelpCategory = {
 export const quickNotes = [
   "If monitors look stale, open Worker Insights first and check heartbeat, backlog, and recent errors.",
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
-  "If you updated the code and behavior looks odd, restart the affected web and worker processes before debugging deeper.",
+  "If a timeout alert feels noisy, check whether it was a confirmed timeout outage or a slow-but-online latency warning.",
+  "If a new release is available, use Settings > Updates for host-side commands instead of expecting the browser to update the app.",
 ];
 
 export const helpCategories: HelpCategory[] = [
@@ -48,6 +49,11 @@ export const helpCategories: HelpCategory[] = [
         question: "What is Verification Mode?",
         answer:
           "Verification Mode starts after the first failure. Instead of confirming an outage immediately, Sentrovia schedules one-minute confirmation checks and waits until the configured threshold is reached.",
+      },
+      {
+        question: "How are timeout, HTTP failure, and slow response different?",
+        answer:
+          "HTTP 4xx or 5xx responses, assertion failures, DNS, TLS, connection errors, and hard request timeouts are availability failures. A timeout still needs verification before it becomes a confirmed outage. A response that completes after the slow-response threshold stays up, appears degraded on public status pages, and only sends a latency warning after repeated slow checks.",
       },
       {
         question: "What does the retries field control right now?",
@@ -143,6 +149,16 @@ export const helpCategories: HelpCategory[] = [
           "Sentrovia currently supports email, Telegram, Discord webhook, and generic webhooks. Slack controls are no longer part of the active product surface.",
       },
       {
+        question: "Can notifications be sent in Turkish?",
+        answer:
+          "Yes. Settings > Notifications includes a notification language option. Email and Telegram default templates are rendered in the selected language unless a monitor-level custom template overrides the workspace default.",
+      },
+      {
+        question: "Why do notification cards have separate Save buttons?",
+        answer:
+          "Notification settings are grouped by operational concern: alert conditions, SMTP delivery, additional channels, and templates. Each card can be saved from its own header, while the page-level save action remains available for broader changes.",
+      },
+      {
         question: "Can I test channels without triggering a real outage?",
         answer:
           "Yes. The Delivery area includes test tooling so you can validate SMTP, Telegram, Discord, and webhook destinations without waiting for a real monitor failure.",
@@ -179,7 +195,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What can the Reports page generate?",
         answer:
-          "You can generate weekly or monthly reports, either for the whole workspace or for a single company. The same page also previews summaries, sends reports immediately, and manages recurring schedules.",
+          "You can generate weekly or monthly reports for the whole workspace or for a single company. The same page previews summaries, sends reports immediately, and manages recurring schedules.",
       },
       {
         question: "What is the difference between Preview Studio and Schedule Manager?",
@@ -189,12 +205,22 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What is included in a generated report?",
         answer:
-          "A report includes monitor count, current state mix, uptime percentage, average latency, failure count, status-code distribution, top failing monitors, latency watchlist, and a ranked monitor breakdown for the selected period.",
+          "A report includes monitor count, current state mix, uptime percentage, average latency, failure count, affected URLs, latency watchlist, recent failure details, and a ranked monitor breakdown for the selected period. It uses monitor URLs instead of arbitrary monitor names so recipients can understand the affected service quickly.",
+      },
+      {
+        question: "Which file formats are sent with reports?",
+        answer:
+          "Scheduled and manual report delivery sends one browser-ready HTML attachment. CSV, XLSX, and PDF report attachments are intentionally disabled so recipients get one readable report instead of multiple overlapping exports.",
+      },
+      {
+        question: "Why is there no status-code table or checks count in the report?",
+        answer:
+          "The current report focuses on operator decisions rather than raw counters. Status-code tables and check-count labels were removed to keep the report easier to read, while failure details and latency context remain visible.",
       },
       {
         question: "Can I create company-specific reports?",
         answer:
-          "Yes. Company-scoped reporting is built in. Choose company scope, select the target company, and Sentrovia limits the report to that company’s monitors and history.",
+          "Yes. Company-scoped reporting is built in. Choose company scope, select the target company, and Sentrovia limits the report to that company's monitors and history.",
       },
       {
         question: "How are scheduled reports delivered?",
@@ -221,6 +247,16 @@ export const helpCategories: HelpCategory[] = [
           "The Docker stack runs PostgreSQL, the Next.js web console, and the worker as separate services. The worker is not simulated in the browser. Its health is inferred from heartbeat rows and stored worker state in the database.",
       },
       {
+        question: "What happens on the first install?",
+        answer:
+          "The first boot starts with onboarding. The first user enters their own email, username, and password, then Sentrovia creates that account with admin privileges. Signup is closed after onboarding; future access uses login, and admins manage members from the Members page.",
+      },
+      {
+        question: "Do I need to create every environment value manually?",
+        answer:
+          "Production installs should keep a real .env file with explicit secrets. Docker Compose can prepare the PostgreSQL, web, and worker services, but secrets such as AUTH_SECRET and database credentials should be stable values that survive updates and container restarts.",
+      },
+      {
         question: "Can I tell if the worker is truly alive?",
         answer:
           "Yes. Dashboard and Monitoring surfaces show worker heartbeat age, last cycle time, checked count, process state, backlog, and recent worker errors. In Docker mode, stale heartbeat is still the clearest sign of a worker problem.",
@@ -233,7 +269,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "How should I update a Docker deployment?",
         answer:
-          "Use Settings > Updates to find the latest GitHub Release tag. On the host, run git fetch --tags origin, git checkout vX.Y.Z, then docker compose up -d --build. Production installs that use the strict Compose file should run docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build. The Docker web service runs schema bootstrap and manual migrations during startup, and these commands keep .env files and PostgreSQL volumes in place.",
+          "Use Settings > Updates to find the latest GitHub Release tag, release notes, and copyable host-side commands. The app does not update itself from the browser. Docker installs usually fetch tags, check out the target release, then rebuild and restart with Docker Compose while keeping .env files and PostgreSQL volumes in place.",
       },
       {
         question: "How should I update a Windows/NSSM or manual Node.js deployment?",

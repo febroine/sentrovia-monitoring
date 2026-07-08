@@ -7,9 +7,20 @@ import { updateMember } from "@/lib/members/service";
 
 export const runtime = "nodejs";
 
+const memberUsernameUpdateSchema = z
+  .string()
+  .trim()
+  .max(80, "Username is too long.")
+  .transform((value) => value.toLowerCase())
+  .refine((value) => value.length === 0 || value.length >= 3, "Username must be at least 3 characters long.")
+  .refine(
+    (value) => value.length === 0 || /^[a-z0-9._-]+$/.test(value),
+    "Username can only include letters, numbers, dots, underscores, and dashes."
+  );
+
 const memberUpdateSchema = z.object({
-  username: z.string().trim().max(80).default(""),
-  email: z.string().trim().email(),
+  username: memberUsernameUpdateSchema.default(""),
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
 });
 
 type Params = Promise<{ id: string }>;

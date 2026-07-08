@@ -54,6 +54,26 @@ describe("update service", () => {
     expect(status.recommendedCommands).toContain("git checkout <release-tag>");
   });
 
+  it("does not place invalid release tags into shell commands", async () => {
+    process.env.APP_UPDATE_REPO = "aykutbyrm/sentrovia-monitoring";
+    mockLatestRelease("v1.2.3; rm -rf .");
+
+    const status = await getUpdateStatus();
+
+    expect(status.latestVersion).toBeNull();
+    expect(status.dockerCommands).toContain("git checkout <release-tag>");
+    expect(status.dockerCommands.join("\n")).not.toContain("rm -rf");
+  });
+
+  it("rejects unsafe repository metadata", async () => {
+    process.env.APP_UPDATE_REPO = "owner/repo;bad";
+
+    const status = await getUpdateStatus();
+
+    expect(status.status).toBe("unconfigured");
+    expect(status.repository).toBeNull();
+  });
+
   it("returns error status when the GitHub release check fails", async () => {
     process.env.APP_UPDATE_REPO = "aykutbyrm/sentrovia-monitoring";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 500 })));

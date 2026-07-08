@@ -67,7 +67,9 @@ export default function OnboardingPage() {
     let active = true;
 
     void fetch("/api/auth/onboarding", { cache: "no-store" })
-      .then(async (response) => handleReadinessResponse(response, () => active, router.replace, setReady, setError))
+      .then(async (response) =>
+        handleReadinessResponse(response, () => active, (href) => router.replace(href), setReady, setError)
+      )
       .catch(() => {
         if (active) {
           setError("Unable to check workspace setup.");
