@@ -145,7 +145,7 @@ export default function LoginPage() {
             autoCorrect="off"
             spellCheck={false}
             required
-            placeholder="name@company.com or aykut.bayram"
+            placeholder="name@company.com or username"
             className={inputClassName}
           />
         </FieldBlock>
