@@ -5,6 +5,7 @@ import type { IncomingMessage } from "node:http";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
 interface HttpResponseSnapshot {
@@ -27,31 +28,46 @@ export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
       status: result.ok ? "up" : "down",
       statusCode: response.statusCode,
       errorMessage: result.errorMessage,
+      failureReason: result.failureReason,
       sslExpiresAt,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Request failed";
     return buildCheckResult(checkedAt, {
       ok: false,
       status: "down",
       statusCode: null,
-      errorMessage: error instanceof Error ? error.message : "Request failed",
+      errorMessage: formatRequestFailureMessage(message, monitor.timeout),
+      failureReason: classifyFailureMessage(message),
       sslExpiresAt: null,
     });
   }
 }
 
 function evaluateHttpResponse(monitor: Monitor, statusCode: number, bodyText: string) {
-  if (statusCode >= 300 && statusCode < 400) {
+  const hasCustomExpectedStatusCodes = hasExpectedStatusCodeOverride(monitor.expectedStatusCodes);
+
+  if (!isExpectedStatusCode(monitor.expectedStatusCodes, statusCode)) {
     return {
       ok: false,
+      failureReason: "http_status" as const,
+      errorMessage: `Service returned HTTP ${statusCode}.`,
+    };
+  }
+
+  if (!hasCustomExpectedStatusCodes && statusCode >= 300 && statusCode < 400) {
+    return {
+      ok: false,
+      failureReason: "redirect" as const,
       errorMessage: `HTTP ${statusCode} redirect response was not followed within the configured redirect limit.`,
     };
   }
 
-  if (statusCode < 200 || statusCode >= 400) {
+  if (!hasCustomExpectedStatusCodes && (statusCode < 200 || statusCode >= 400)) {
     return {
       ok: false,
-      errorMessage: `HTTP ${statusCode}`,
+      failureReason: "http_status" as const,
+      errorMessage: `Service returned HTTP ${statusCode}.`,
     };
   }
 
@@ -79,7 +95,7 @@ function evaluateKeywordResponse(monitor: Monitor, bodyText: string) {
     ? `Keyword assertion failed because "${query}" was still present in the response body.`
     : `Keyword assertion failed because "${query}" was not found in the response body.`;
 
-  return { ok: false, errorMessage: message };
+  return { ok: false, failureReason: "assertion" as const, errorMessage: message };
 }
 
 function evaluateJsonResponse(monitor: Monitor, bodyText: string) {
@@ -90,6 +106,7 @@ function evaluateJsonResponse(monitor: Monitor, bodyText: string) {
   } catch {
     return {
       ok: false,
+      failureReason: "assertion" as const,
       errorMessage: "JSON assertion failed because the response body is not valid JSON.",
     };
   }
@@ -106,6 +123,7 @@ function evaluateJsonResponse(monitor: Monitor, bodyText: string) {
 
   return {
     ok: false,
+    failureReason: "assertion" as const,
     errorMessage:
       matchMode === "exists"
         ? `JSON assertion failed because path "${monitor.jsonPath}" was not present.`
@@ -134,7 +152,13 @@ async function requestWithRedirects(monitor: Monitor, url: string, redirectCount
         const statusCode = response.statusCode ?? 0;
         const location = response.headers.location;
 
-        if (statusCode >= 300 && statusCode < 400 && location && redirectCount < monitor.maxRedirects) {
+        if (
+          statusCode >= 300
+          && statusCode < 400
+          && location
+          && redirectCount < monitor.maxRedirects
+          && !isCustomExpectedStatusCode(monitor.expectedStatusCodes, statusCode)
+        ) {
           response.resume();
           const nextUrl = new URL(location, parsed).toString();
           resolve(requestWithRedirects(monitor, nextUrl, redirectCount + 1));
@@ -300,4 +324,39 @@ function buildCheckResult(
     checkedAt,
     latencyMs: Math.max(1, Date.now() - checkedAt.getTime()),
   };
+}
+
+function isExpectedStatusCode(expectedStatusCodes: string | null, statusCode: number) {
+  const expected = parseExpectedStatusCodes(expectedStatusCodes);
+  if (expected.size > 0) {
+    return expected.has(statusCode);
+  }
+
+  return statusCode >= 200 && statusCode < 400;
+}
+
+function hasExpectedStatusCodeOverride(expectedStatusCodes: string | null) {
+  return parseExpectedStatusCodes(expectedStatusCodes).size > 0;
+}
+
+function isCustomExpectedStatusCode(expectedStatusCodes: string | null, statusCode: number) {
+  const expected = parseExpectedStatusCodes(expectedStatusCodes);
+  return expected.size > 0 && expected.has(statusCode);
+}
+
+function parseExpectedStatusCodes(value: string | null) {
+  return new Set(
+    (value ?? "")
+      .split(/[,\s;]+/)
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item >= 100 && item <= 599)
+  );
+}
+
+function formatRequestFailureMessage(message: string, timeoutMs: number) {
+  if (classifyFailureMessage(message) === "timeout") {
+    return `Service did not respond within ${formatTimeoutDuration(timeoutMs)}.`;
+  }
+
+  return message;
 }

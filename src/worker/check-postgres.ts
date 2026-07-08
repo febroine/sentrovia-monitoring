@@ -4,7 +4,8 @@ import { env } from "@/lib/env";
 import { parsePostgresMonitorTarget } from "@/lib/monitors/targets";
 import { decryptValue } from "@/lib/security/encryption";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
-import type { CheckResult } from "@/worker/types";
+import { classifyFailureMessage } from "@/worker/failure-reasons";
+import type { CheckFailureReason, CheckResult } from "@/worker/types";
 
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
@@ -14,7 +15,7 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
   const password = decryptValue(monitor.databasePasswordEncrypted);
 
   if (!target.host || !target.databaseName || !target.databaseUsername || !password) {
-    return buildFailure(checkedAt, "Database credentials are incomplete.");
+    return buildFailure(checkedAt, "Database credentials are incomplete.", "database");
   }
 
   try {
@@ -23,7 +24,8 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
       message: MONITOR_PUBLIC_TARGET_ERROR,
     });
   } catch (error) {
-    return buildFailure(checkedAt, error instanceof Error ? error.message : "Database check failed.");
+    const message = error instanceof Error ? error.message : "Database check failed.";
+    return buildFailure(checkedAt, message, classifyFailureMessage(message, "database"));
   }
 
   const connection = postgres(buildConnectionString(target, password), {
@@ -43,7 +45,8 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
 
     return buildSuccess(checkedAt);
   } catch (error) {
-    return buildFailure(checkedAt, error instanceof Error ? error.message : "Database check failed.");
+    const message = error instanceof Error ? error.message : "Database check failed.";
+    return buildFailure(checkedAt, message, classifyFailureMessage(message, "database"));
   } finally {
     timeoutGuard.cancel();
     await connection.end().catch(() => undefined);
@@ -92,12 +95,17 @@ function buildSuccess(checkedAt: Date): CheckResult {
   };
 }
 
-function buildFailure(checkedAt: Date, errorMessage: string): CheckResult {
+function buildFailure(
+  checkedAt: Date,
+  errorMessage: string,
+  failureReason: CheckFailureReason
+): CheckResult {
   return {
     ok: false,
     status: "down",
     statusCode: null,
     errorMessage,
+    failureReason,
     checkedAt,
     latencyMs: Math.max(1, Date.now() - checkedAt.getTime()),
     sslExpiresAt: null,

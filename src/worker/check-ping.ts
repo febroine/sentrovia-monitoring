@@ -4,6 +4,7 @@ import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePingMonitorTarget } from "@/lib/monitors/targets";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { classifyFailureMessage } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
 const execFileAsync = promisify(execFile);
@@ -29,12 +30,14 @@ export async function checkPingMonitor(monitor: Monitor): Promise<CheckResult> {
       sslExpiresAt: null,
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Ping failed";
     return {
       ok: false,
       status: "down",
       statusCode: null,
       latencyMs: null,
-      errorMessage: error instanceof Error ? error.message : "Ping failed",
+      errorMessage: message,
+      failureReason: classifyFailureMessage(message, "network"),
       checkedAt,
       sslExpiresAt: null,
     };

@@ -35,6 +35,7 @@ export const settingsSchema = z.object({
     phone: optionalString(40),
   }),
   notifications: z.object({
+    notificationLanguage: z.enum(["en", "tr"]).default("en"),
     notifyOnDown: z.boolean(),
     notifyOnRecovery: z.boolean(),
     notifyOnStatusChange: z.boolean(),

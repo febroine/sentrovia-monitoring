@@ -69,6 +69,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     url: context.monitor.url,
     status: context.result.status,
     statusCode: context.result.statusCode,
+    failureReason: context.result.failureReason ?? null,
     message: context.message,
     checkedAt: context.result.checkedAt,
     rcaTitle: context.rca.title,

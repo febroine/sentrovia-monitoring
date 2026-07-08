@@ -53,22 +53,68 @@ describe("notification templates", () => {
     expect(rendered.telegramBody).toContain("Monitor: api.example.com");
     expect(rendered.telegramBody).toContain("Status: 500 -");
     expect(rendered.telegramBody).toContain("Root cause: The service returned an error response.");
-    expect(rendered.telegramBody).toContain("Details: Service is unavailable.");
+    expect(rendered.telegramBody).toContain("Details: Service returned HTTP 500.");
     expect(rendered.telegramBody).toContain("Organization: Sentrovia Monitoring");
+  });
+
+  it("renders email and telegram defaults in Turkish when selected", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({
+        emailSubject: DEFAULT_SETTINGS.notifications.defaultEmailSubjectTemplate,
+        emailBody: DEFAULT_SETTINGS.notifications.defaultEmailBodyTemplate,
+        telegramTemplate: DEFAULT_SETTINGS.notifications.defaultTelegramTemplate,
+      }),
+      {
+        ...DEFAULT_SETTINGS,
+        notifications: {
+          ...DEFAULT_SETTINGS.notifications,
+          notificationLanguage: "tr",
+        },
+      },
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.subject).toContain("durumunda");
+    expect(rendered.subject).toContain("ERİŞİLEMİYOR");
+    expect(rendered.subject).not.toContain("DOWN");
+    expect(rendered.textBody).toContain("Monit");
+    expect(rendered.textBody).toContain("Durum:");
+    expect(rendered.textBody).toContain("Servis HTTP 500 döndürdü.");
+    expect(rendered.telegramBody).toContain("Detay: Servis HTTP 500 döndürdü.");
+  });
+
+  it("localizes timeout details in Turkish notifications", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({ lastErrorMessage: "timeout" }),
+      {
+        ...DEFAULT_SETTINGS,
+        notifications: {
+          ...DEFAULT_SETTINGS.notifications,
+          notificationLanguage: "tr",
+        },
+      },
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.textBody).toContain("Servis 60s içinde yanıt vermedi.");
+    expect(rendered.telegramBody).toContain("ZAMAN AŞIMI");
   });
 });
 
 function buildContext(monitorOverrides: Partial<Monitor> = {}): NotificationContext {
+  const failureReason = monitorOverrides.lastErrorMessage === "timeout" ? "timeout" : "http_status";
+
   return {
     kind: "failure",
-    message: "Service is unavailable.",
+    message: failureReason === "timeout" ? "Service did not respond within 60s." : "Service returned HTTP 500.",
     monitor: buildMonitor(monitorOverrides),
     result: {
       ok: false,
       status: "down",
-      statusCode: 500,
+      statusCode: failureReason === "timeout" ? null : 500,
       latencyMs: null,
-      errorMessage: "HTTP 500",
+      errorMessage: failureReason === "timeout" ? "Service did not respond within 60s." : "HTTP 500",
+      failureReason,
       checkedAt: new Date("2026-05-13T08:00:00.000Z"),
       sslExpiresAt: null,
     },
@@ -118,6 +164,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalUnit: "dk",
     timeout: 5000,
     slowResponseThresholdMs: null,
+    expectedStatusCodes: null,
     retries: 2,
     method: "GET",
     databaseSsl: true,

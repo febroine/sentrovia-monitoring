@@ -24,6 +24,7 @@ export function analyzeRootCause(input: {
   statusCode: number | null;
   errorMessage: string | null;
   ok: boolean;
+  failureReason?: string | null;
 }): RootCauseAnalysis {
   if (input.ok) {
     return {
@@ -36,7 +37,7 @@ export function analyzeRootCause(input: {
 
   const error = (input.errorMessage ?? "").toLowerCase();
 
-  if (isDnsError(error)) {
+  if (input.failureReason === "dns" || isDnsError(error)) {
     return buildRca(
       "dns",
       "DNS Resolution Failure",
@@ -45,7 +46,7 @@ export function analyzeRootCause(input: {
     );
   }
 
-  if (error.includes("timed out")) {
+  if (input.failureReason === "timeout" || error.includes("timed out")) {
     return buildRca(
       "timeout",
       "Request Timeout",
@@ -54,7 +55,7 @@ export function analyzeRootCause(input: {
     );
   }
 
-  if (error.includes("refused") || error.includes("econnrefused")) {
+  if (input.failureReason === "connection" || error.includes("refused") || error.includes("econnrefused")) {
     return buildRca(
       "connection-refused",
       "Connection Refused",
@@ -63,7 +64,7 @@ export function analyzeRootCause(input: {
     );
   }
 
-  if (isSslError(error)) {
+  if (input.failureReason === "tls" || isSslError(error)) {
     return buildRca(
       "ssl",
       "SSL/TLS Failure",
@@ -81,7 +82,7 @@ export function analyzeRootCause(input: {
     );
   }
 
-  if (isDatabaseError(error)) {
+  if (input.failureReason === "database" || isDatabaseError(error)) {
     return buildRca(
       "database",
       "Database Connectivity Failure",

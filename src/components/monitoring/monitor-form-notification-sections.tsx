@@ -11,6 +11,7 @@ const MONITOR_TEMPLATE_TOKENS = [
   "{event_state}",
   "{status_code}",
   "{status_label}",
+  "{failure_reason}",
   "{latency_ms}",
   "{slow_threshold_ms}",
   "{checked_at_local}",

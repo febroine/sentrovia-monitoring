@@ -154,15 +154,27 @@ export function GeneralMonitorSettings({
           </div>
 
           {isHttpMonitor || isKeywordMonitor || isJsonMonitor ? (
-            <Field label="URL">
-              <Input
-                type="url"
-                value={values.url}
-                onChange={(event) => onFieldChange("url", event.target.value)}
-                placeholder="https://example.com/health"
-                required
-              />
-            </Field>
+            <div className="space-y-4">
+              <Field label="URL">
+                <Input
+                  type="url"
+                  value={values.url}
+                  onChange={(event) => onFieldChange("url", event.target.value)}
+                  placeholder="https://example.com/health"
+                  required
+                />
+              </Field>
+              <Field label="Expected status codes">
+                <Input
+                  value={values.expectedStatusCodes}
+                  onChange={(event) => onFieldChange("expectedStatusCodes", event.target.value)}
+                  placeholder="Default: any 2xx/3xx response"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Optional. Use comma-separated codes such as 200, 204, or 401 when a specific response is healthy.
+                </p>
+              </Field>
+            </div>
           ) : null}
 
           {isKeywordMonitor ? (

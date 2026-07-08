@@ -147,7 +147,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     }
   } else if (hadConfirmedIncident) {
     checkStatus = "down";
-    failureEventMessage = result.errorMessage ?? "Health check failed.";
+    failureEventMessage = buildFailureEventMessage(result);
     const recorded = await recordActiveMonitorResult(monitor, {
       status: "down",
       statusCode: result.statusCode,
@@ -184,7 +184,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
 
     incidentConfirmedThisCycle = confirmedIncident;
     checkStatus = confirmedIncident ? "down" : "pending";
-    failureEventMessage = confirmedIncident ? result.errorMessage ?? "Health check failed." : null;
+    failureEventMessage = confirmedIncident ? buildFailureEventMessage(result) : null;
 
     const recorded = await recordActiveMonitorResult(monitor, {
       status: result.ok ? "up" : confirmedIncident ? "down" : "pending",
@@ -301,13 +301,15 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     const slowResponseMessage = buildSlowResponseMessage(monitor, result);
     if (slowResponseMessage) {
       await appendDetailedEvent(monitor, result, "latency", slowResponseMessage, rca, "up");
-      await sendMonitorNotifications({
-        kind: "latency",
-        message: slowResponseMessage,
-        monitor,
-        result,
-        rca,
-      });
+      if (isRepeatedSlowResponse(monitor, result)) {
+        await sendMonitorNotifications({
+          kind: "latency",
+          message: slowResponseMessage,
+          monitor,
+          result,
+          rca,
+        });
+      }
     }
   }
 
@@ -331,6 +333,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
       metadata: {
         statusCode: result.statusCode,
         latencyMs: result.latencyMs,
+        failureReason: result.failureReason ?? null,
         diagnosticSummary: diagnostic?.summary ?? null,
       },
       createdAt: result.checkedAt,
@@ -494,6 +497,7 @@ function buildAttemptMetadata(result: Awaited<ReturnType<typeof checkMonitor>>, 
     threshold,
     statusCode: result.statusCode,
     latencyMs: result.latencyMs,
+    failureReason: result.failureReason ?? null,
     errorMessage: result.errorMessage,
   };
 }
@@ -567,8 +571,45 @@ function buildSlowResponseMessage(monitor: Monitor, result: Awaited<ReturnType<t
   return `Service is online but slow: ${result.latencyMs}ms exceeded the ${thresholdMs}ms threshold.`;
 }
 
+function isRepeatedSlowResponse(monitor: Monitor, result: Awaited<ReturnType<typeof checkMonitor>>) {
+  if (!supportsSlowResponseThreshold(monitor) || typeof result.latencyMs !== "number") {
+    return false;
+  }
+
+  const thresholdMs = monitor.slowResponseThresholdMs;
+  return typeof thresholdMs === "number" && typeof monitor.latencyMs === "number" && monitor.latencyMs > thresholdMs;
+}
+
 function supportsSlowResponseThreshold(monitor: Monitor) {
   return monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json";
+}
+
+function buildFailureEventMessage(result: Awaited<ReturnType<typeof checkMonitor>>) {
+  if (result.failureReason === "timeout") {
+    return result.errorMessage ?? "Timeout confirmed: service did not respond within the configured timeout.";
+  }
+
+  if (result.failureReason === "http_status" && result.statusCode !== null) {
+    return `Service returned HTTP ${result.statusCode}.`;
+  }
+
+  if (result.failureReason === "dns") {
+    return result.errorMessage ?? "DNS resolution failed for the monitored target.";
+  }
+
+  if (result.failureReason === "tls") {
+    return result.errorMessage ?? "TLS or certificate validation failed for the monitored target.";
+  }
+
+  if (result.failureReason === "connection") {
+    return result.errorMessage ?? "Connection failed before the service returned a response.";
+  }
+
+  if (result.failureReason === "assertion") {
+    return result.errorMessage ?? "Response assertion failed.";
+  }
+
+  return result.errorMessage ?? "Health check failed.";
 }
 
 async function appendCheckEvent(

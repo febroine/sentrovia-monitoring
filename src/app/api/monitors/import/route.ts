@@ -88,7 +88,7 @@ function applyImportDefaults(
   }
 
   if (!record.timeout) {
-    record.timeout = settings?.monitoring.timeout ?? 5000;
+    record.timeout = settings?.monitoring.timeout ?? 60000;
   }
 
   if (!record.monitorType) {

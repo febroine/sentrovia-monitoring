@@ -873,6 +873,7 @@ async function buildMonitorValues(
     intervalUnit: input.intervalUnit,
     timeout: input.timeout,
     slowResponseThresholdMs: shouldPersistSlowResponseThreshold(monitorType, input.slowResponseThresholdMs),
+    expectedStatusCodes: shouldPersistExpectedStatusCodes(monitorType, input.expectedStatusCodes),
     retries: input.retries,
     method: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? "GET" : input.method,
     databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
@@ -1052,6 +1053,17 @@ function shouldPersistSlowResponseThreshold(
   }
 
   return thresholdMs;
+}
+
+function shouldPersistExpectedStatusCodes(
+  monitorType: MonitorInput["monitorType"],
+  expectedStatusCodes: string
+) {
+  if (monitorType !== "http" && monitorType !== "keyword" && monitorType !== "json") {
+    return null;
+  }
+
+  return expectedStatusCodes || null;
 }
 
 async function assertMonitorNetworkTargetAllowed(monitorType: MonitorInput["monitorType"], url: string) {

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     statusCode: 500,
     latencyMs: 120,
     errorMessage: "HTTP 500" as string | null,
+    failureReason: "http_status" as null | "timeout" | "http_status" | "dns" | "tls" | "connection" | "assertion" | "redirect" | "network" | "database",
     checkedAt: new Date("2026-05-08T07:00:00.000Z"),
     sslExpiresAt: null,
   },
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     statusCode: number | null;
     latencyMs: number | null;
     errorMessage: string | null;
+    failureReason?: null | "timeout" | "http_status" | "dns" | "tls" | "connection" | "assertion" | "redirect" | "network" | "database";
     checkedAt: Date;
     sslExpiresAt: Date | null;
   }>,
@@ -109,6 +111,7 @@ describe("monitoring scheduler verification flow", () => {
       statusCode: 500,
       latencyMs: 120,
       errorMessage: "HTTP 500",
+      failureReason: "http_status",
       checkedAt: new Date("2026-05-08T07:00:00.000Z"),
       sslExpiresAt: null,
     };
@@ -292,6 +295,87 @@ describe("monitoring scheduler verification flow", () => {
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
+    );
+  });
+
+  it("records first slow response without sending a latency notification", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 21,
+      errorMessage: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "up",
+        latencyMs: 10,
+        notificationPref: "email",
+        slowResponseThresholdMs: 20,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "latency",
+        status: "up",
+        message: "Service is online but slow: 21ms exceeded the 20ms threshold.",
+      })
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "latency" })
+    );
+  });
+
+  it("sends confirmed timeout failures with timeout-specific language", async () => {
+    mocks.checkResults = [
+      {
+        ok: false,
+        status: "down",
+        statusCode: null,
+        latencyMs: 5000,
+        errorMessage: "Service did not respond within 5s.",
+        failureReason: "timeout",
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+        sslExpiresAt: null,
+      },
+      {
+        ok: false,
+        status: "down",
+        statusCode: null,
+        latencyMs: 7500,
+        errorMessage: "Service did not respond within 7.5s.",
+        failureReason: "timeout",
+        checkedAt: new Date("2026-05-08T07:00:01.000Z"),
+        sslExpiresAt: null,
+      },
+    ];
+    mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, retries: 1 })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.openOrUpdateIncident).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: null,
+        errorMessage: "Service did not respond within 7.5s.",
+      })
+    );
+    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "outage_confirmed",
+        detail: "Service did not respond within 7.5s.",
+        metadata: expect.objectContaining({ failureReason: "timeout" }),
+      })
+    );
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "failure",
+        message: "Service did not respond within 7.5s.",
+      })
     );
   });
 
@@ -654,6 +738,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalUnit: "dk",
     timeout: 5000,
     slowResponseThresholdMs: null,
+    expectedStatusCodes: null,
     retries: 3,
     method: "GET",
     databaseSsl: true,

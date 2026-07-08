@@ -1,75 +1,49 @@
-<p align="center">
-  <img src="docs/screenshots/banner.png" alt="Sentrovia" width="100%">
-</p>
-
 # Sentrovia
 
-Self-hosted monitoring for teams that want fewer false alarms, stronger evidence, and a clean operations console.
+<p align="center">
+  <img src="docs/screenshots/banner.png" alt="Sentrovia banner" width="100%">
+</p>
 
-Sentrovia monitors websites, APIs, TCP ports, PostgreSQL endpoints, ping targets, JSON assertions, keyword checks, and heartbeat jobs. It verifies failures before alerting, stores worker state in PostgreSQL, sends rich email and Telegram notifications, captures Chromium screenshots for confirmed outages, and can publish public status pages and scheduled reports.
+<p align="center">
+  <strong>Verification-aware monitoring for internal teams.</strong><br>
+  Fewer false alarms, clearer evidence, and a clean operations console.
+</p>
 
-<p align="left">
+<p align="center">
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16.2-black?style=flat-square&logo=next.js" />
   <img alt="React" src="https://img.shields.io/badge/React-19-0f172a?style=flat-square&logo=react" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-First-2563eb?style=flat-square&logo=typescript&logoColor=white" />
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-0f172a?style=flat-square&logo=postgresql" />
   <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2563eb?style=flat-square&logo=docker&logoColor=white" />
-  <img alt="Windows Service" src="https://img.shields.io/badge/Windows-NSSM-059669?style=flat-square" />
 </p>
 
-## Why Sentrovia?
+## What Is Sentrovia?
 
-Most small monitoring tools answer one question: "Did this check fail?"
+Sentrovia is a self-hosted monitoring platform for websites, APIs, TCP ports, PostgreSQL endpoints, ping targets, JSON assertions, keyword checks, and heartbeat jobs.
 
-Sentrovia is built for the next operational question: "Is it really down, what evidence do we have, who was notified, and what happened afterwards?"
+It is built for teams that do not want an alert every time a single request times out. Sentrovia verifies failures first, records evidence, then sends notifications when an outage is confirmed.
 
-- Verified outage confirmation before down alerts
-- One-minute rechecks while a failure is being confirmed
-- Escalating verification timeouts to reduce false positives
-- Slow-response alerts without marking the service down
-- Screenshot evidence after confirmed HTTP, keyword, and JSON outages
-- Email, Telegram, Discord, and generic webhook delivery
-- Multiple email recipients per monitor
-- Delivery history, retry visibility, and failed delivery details
-- Public status pages
-- Scheduled reports with HTML, CSV, and PDF attachments
-- Windows NSSM service deployment for internal servers
+**Good fit for:**
 
-## Quick Start With Docker
+- Internal IT and operations teams
+- Windows-heavy environments
+- Teams that need PostgreSQL-backed worker state
+- Operators who want alert history, delivery visibility, and HTML reports
 
-Docker Compose is the fastest way to try Sentrovia.
+## Highlights
 
-```bash
-cp .env.example .env
-# Edit .env and set strong AUTH_SECRET, APP_ENCRYPTION_SECRET, and POSTGRES_PASSWORD values.
-docker compose up --build
-```
+| Area | What Sentrovia Does |
+| --- | --- |
+| ✅ Verified alerts | Rechecks failures before sending down notifications |
+| 🧪 Monitor types | HTTP, keyword, JSON, TCP, PostgreSQL, ping, heartbeat |
+| 📸 Evidence | Captures Chromium screenshots for confirmed HTTP-style outages |
+| 📬 Notifications | Email, Telegram, Discord, and generic webhooks |
+| 📊 Reports | Scheduled and manual HTML reports |
+| 🌐 Status pages | Public pages for service health |
+| 👥 Members | First admin onboarding, then admin-managed members |
+| 🪟 Windows ready | NSSM service scripts for web and worker processes |
 
-Then open:
-
-[http://localhost:3000](http://localhost:3000)
-
-The Compose stack starts:
-
-- PostgreSQL
-- the Next.js web console
-- the background worker
-- Playwright Chromium for screenshot evidence
-
-The web container waits for PostgreSQL, applies the database schema, applies manual migrations, and then starts the application. The worker starts after the web service is healthy.
-
-Compose requires strong secrets in an `.env` file before it starts:
-
-```bash
-AUTH_SECRET=example-auth-secret-change-me-32-characters-minimum
-APP_ENCRYPTION_SECRET=example-encryption-secret-change-me-32-characters-minimum
-APP_URL=http://localhost:3000
-POSTGRES_PASSWORD=example-postgres-password-change-me
-```
-
-Replace the `example-*` values locally with long random strings before starting the stack. Do not commit populated environment files.
-
-## Product Screens
+## Screenshots
 
 ### Dashboard and Monitoring
 
@@ -79,16 +53,12 @@ Replace the `example-*` values locally with long random strings before starting 
       <img src="./docs/screenshots/dashboard.png" alt="Sentrovia dashboard" />
     </td>
     <td width="50%">
-      <img src="./docs/screenshots/monitoring.png" alt="Sentrovia monitoring view" />
+      <img src="./docs/screenshots/monitoring.png" alt="Sentrovia monitoring page" />
     </td>
   </tr>
   <tr>
-    <td>
-      <sub>Live operational summaries, worker health, runtime state, recent incidents, and system visibility.</sub>
-    </td>
-    <td>
-      <sub>Monitor inventory with verification state, bulk actions, active toggles, history strips, and company assignment.</sub>
-    </td>
+    <td><sub>Workspace health, worker state, recent activity, and system visibility.</sub></td>
+    <td><sub>Monitor inventory, verification state, bulk actions, history strips, and company assignment.</sub></td>
   </tr>
 </table>
 
@@ -104,12 +74,8 @@ Replace the `example-*` values locally with long random strings before starting 
     </td>
   </tr>
   <tr>
-    <td>
-      <sub>Delivery testing, immutable delivery history, webhook retries, and outbound channel diagnostics.</sub>
-    </td>
-    <td>
-      <sub>Built-in operational documentation for checks, workers, reports, notification behavior, and troubleshooting.</sub>
-    </td>
+    <td><sub>Delivery testing, immutable history, retry visibility, and channel diagnostics.</sub></td>
+    <td><sub>Built-in operational documentation for checks, workers, reports, notifications, and troubleshooting.</sub></td>
   </tr>
 </table>
 
@@ -117,125 +83,58 @@ Replace the `example-*` values locally with long random strings before starting 
   <img src="./docs/screenshots/about.png" alt="Sentrovia about page" />
 </p>
 
-<p align="center">
-  <sub>The About page explains the architecture, worker behavior, report flow, notification engine, and execution path from browser input to persisted result.</sub>
-</p>
+## Quick Start With Docker
 
-## Core Capabilities
+Docker Compose is the fastest way to run Sentrovia locally.
 
-### Monitoring engine
-
-- HTTP and HTTPS checks
-- Keyword assertions
-- JSON path assertions
-- TCP port reachability checks
-- PostgreSQL connectivity checks
-- ICMP ping checks
-- Cron and heartbeat monitoring
-- Per-monitor interval, timeout, retry, method, redirect, SSL, cache, and response-size controls
-- Per-monitor active or disabled state
-- Cold-start spread for imported monitors
-- Verification mode before down alerts
-- Slow-response threshold with degraded status
-- Check history, event history, diagnostics, and timeline details
-
-### Alerting and evidence
-
-- SMTP email alerts
-- Multiple monitor recipients
-- Telegram alerts
-- Discord webhook alerts
-- Generic webhook delivery
-- Workspace-level templates
-- Monitor-level template overrides
-- Down, recovery, status-change, latency, and prolonged-downtime templates
-- Chromium screenshot evidence for confirmed HTTP, keyword, and JSON outages
-- Delivery history with status, attempts, response code, payload summary, and error details
-
-### Reports and status pages
-
-- Weekly and monthly reports
-- Workspace-wide and company-scoped reports
-- Manual report preview
-- Scheduled report delivery through the worker
-- Configurable report brand name
-- HTML, CSV, and PDF attachments
-- Public status pages with operational, degraded, and outage states
-
-### Operations and governance
-
-- Company records and grouped monitor ownership
-- Member directory
-- Settings and appearance controls
-- Saved log presets
-- Worker heartbeat, backlog, cycle metrics, and health state
-- Workspace backup and restore
-- Security hardening for auth, exports, webhooks, heartbeat routes, and redirects
-
-## How Verification Works
-
-Sentrovia avoids noisy first-failure alerts.
-
-```mermaid
-flowchart LR
-    A["Worker checks monitor"] --> B{"Check failed?"}
-    B -- "No" --> C["Persist UP result"]
-    B -- "Yes" --> D["Enter verification mode"]
-    D --> E["Recheck every 1 minute"]
-    E --> F{"Threshold reached?"}
-    F -- "No" --> E
-    F -- "Yes" --> G["Run final confirmation with larger timeout"]
-    G --> H{"Still failing?"}
-    H -- "No" --> C
-    H -- "Yes" --> I["Confirm outage"]
-    I --> J["Record RCA, diagnostics, timeline"]
-    J --> K["Send alerts with optional screenshot evidence"]
+```bash
+cp .env.example .env
+# Edit .env and replace every example secret with a strong value.
+docker compose up --build
 ```
 
-That means down emails are tied to confirmed state transitions, not one unlucky timeout.
+Open the app:
 
-## Screenshot Evidence
+[http://localhost:3000](http://localhost:3000)
 
-Sentrovia can attach browser screenshots to confirmed outage alerts.
+The stack starts:
 
-- Captured only after verification confirms the outage
-- Available for HTTP, keyword, and JSON monitors
-- Uses Playwright Chromium
-- Captures Chromium's own network error page when the target cannot load
-- Best effort: the alert still goes out if Chromium fails
-- Queue and concurrency limits protect the worker from too much browser work
-- Skipped screenshots are recorded as `screenshot-skipped` monitor events
+- PostgreSQL
+- Next.js web console
+- Background worker
+- Playwright Chromium for screenshot evidence
 
-Production note for non-Docker servers:
+On first launch, Sentrovia shows onboarding and creates the first administrator. Public signup is disabled after onboarding; admins manage members from inside the app.
 
-```bat
-set PLAYWRIGHT_BROWSERS_PATH=0
-npx playwright install chromium
+## Required Environment
+
+Start from `.env.example` and replace the placeholder values.
+
+```bash
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=example-postgres-password-change-me
+POSTGRES_DB=uptimemonitoring
+
+APP_URL=http://localhost:3000
+AUTH_SECRET=example-auth-secret-change-me-32-characters-minimum
+APP_ENCRYPTION_SECRET=example-encryption-secret-change-me-32-characters-minimum
+
+WORKER_CONCURRENCY=20
+WORKER_POLL_INTERVAL_MS=10000
+MONITOR_ALLOW_PRIVATE_TARGETS=true
 ```
 
-## Sentrovia vs Uptime Kuma
+Production notes:
 
-Uptime Kuma is excellent when you want a lightweight, friendly uptime dashboard.
-
-Sentrovia is aimed at teams that need a more operations-heavy internal workflow:
-
-| Area | Uptime Kuma | Sentrovia |
-| --- | --- | --- |
-| Basic uptime checks | Strong | Strong |
-| Verification before down alerts | Limited | Built around it |
-| One-minute failure rechecks | Basic retry behavior | Explicit verification cycle |
-| Slow response vs down | Basic latency visibility | Separate degraded/slow alert path |
-| Screenshot evidence | Not a core workflow | Built into confirmed outage alerts |
-| Reports | Limited | Scheduled HTML, CSV, PDF reports |
-| Delivery history | Limited | Stored delivery events and retry visibility |
-| Windows NSSM deployment | Manual | Documented scripts and service model |
-| Internal operations console | Lightweight | Designed for durable worker state and auditability |
-
-If you need a simple public uptime page, Uptime Kuma may be enough. If you need verified alerts, screenshot evidence, report delivery, and Windows-friendly internal deployment, Sentrovia is designed for that niche.
+- `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be long, random, non-placeholder values.
+- `APP_URL` must match the real URL operators use.
+- The web process and worker process must use the same environment values.
+- Set `AUTH_TRUST_PROXY_HEADERS=true` only behind a trusted reverse proxy that sanitizes forwarded headers.
+- Use `PLAYWRIGHT_BROWSERS_PATH=0` when running Playwright Chromium from a Windows service.
 
 ## Local Development
 
-Run PostgreSQL in Docker and the app locally:
+Run PostgreSQL in Docker and the app on your machine:
 
 ```bash
 docker compose up -d db
@@ -251,89 +150,133 @@ Start the worker in a second terminal:
 npm run worker:dev
 ```
 
-## Environment
-
-Create `.env.local` in the project root.
+Useful commands:
 
 ```bash
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5433
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=example-postgres-password-change-me
-POSTGRES_DB=uptimemonitoring
-APP_URL=http://localhost:3000
-AUTH_SECRET=example-auth-secret-change-me-32-characters-minimum
-APP_ENCRYPTION_SECRET=example-encryption-secret-change-me-32-characters-minimum
-WORKER_CONCURRENCY=20
-WORKER_POLL_INTERVAL_MS=10000
-WORKER_AUTO_START=false
-DISABLE_EMBEDDED_WORKER_SPAWN=false
-PLAYWRIGHT_BROWSERS_PATH=0
+npm run dev
+npm run build
+npm run start
+npm run worker:dev
+npm run worker:start
+npm run lint
+npm run test
+npm run db:push
+npm run db:manual
 ```
 
-Production notes:
+## How Failure Verification Works
 
-- `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be strong non-placeholder values.
-- `APP_URL` should match the URL operators use to open Sentrovia.
-- The web and worker processes must use the same `.env.local` values.
-- Public signup is disabled. The first administrator is created through onboarding, and later members are managed by admins.
-- `PLAYWRIGHT_BROWSERS_PATH=0` helps NSSM services find Chromium reliably.
-- Set `AUTH_TRUST_PROXY_HEADERS=true` only if a trusted reverse proxy sanitizes forwarded IP headers.
+Sentrovia avoids noisy first-failure alerts.
+
+```mermaid
+flowchart LR
+    A["Worker checks target"] --> B{"Did it fail?"}
+    B -- "No" --> C["Store healthy result"]
+    B -- "Yes" --> D["Enter verification mode"]
+    D --> E["Recheck every minute"]
+    E --> F{"Threshold reached?"}
+    F -- "No" --> E
+    F -- "Yes" --> G["Final confirmation with larger timeout"]
+    G --> H{"Still failing?"}
+    H -- "No" --> C
+    H -- "Yes" --> I["Confirm outage"]
+    I --> J["Record diagnostics and timeline"]
+    J --> K["Send notifications with optional screenshot"]
+```
+
+That means down alerts are tied to confirmed state transitions, not one unlucky timeout.
+
+## Timeout and Slow Response Rules
+
+Sentrovia separates availability failures from degraded latency:
+
+- `2xx` and `3xx` responses are healthy by default.
+- `4xx`, `5xx`, DNS, TLS, connection, assertion, and timeout errors are failures.
+- A timeout enters verification first; Sentrovia sends an outage notification only after the configured retry threshold confirms it.
+- A response that finishes after the slow-response threshold stays `up`, appears degraded on status pages, and sends a latency notification only after repeated slow checks.
+- HTTP monitors can define custom expected status codes, such as `200, 204, 401`, when a non-standard response is still healthy.
+
+## Monitoring
+
+Sentrovia supports:
+
+- HTTP and HTTPS checks
+- Keyword assertions
+- JSON path assertions
+- TCP port reachability
+- PostgreSQL connectivity
+- ICMP ping checks
+- Cron and heartbeat monitoring
+
+Each monitor can define its own interval, timeout, retry behavior, HTTP method, redirect behavior, SSL behavior, cache behavior, response-size limit, active state, and slow-response threshold.
+
+## Notifications and Evidence
+
+Notification channels:
+
+- SMTP email
+- Telegram
+- Discord webhook
+- Generic webhook
+
+Evidence features:
+
+- Screenshot capture after confirmed HTTP, keyword, and JSON outages
+- Delivery history with status, attempt count, response code, payload summary, and error details
+- Recovery, status-change, latency, and prolonged-downtime templates
+- Workspace-level templates with monitor-level overrides
+
+Screenshots are best effort. Alerts still send if Chromium cannot capture a page.
+
+For non-Docker production servers:
+
+```bat
+set PLAYWRIGHT_BROWSERS_PATH=0
+npx playwright install chromium
+```
+
+## Reports
+
+Reports are designed for people who need a readable operational summary, not a spreadsheet dump.
+
+Sentrovia currently sends HTML reports only:
+
+- Weekly, monthly, and all-time scopes
+- Workspace-wide or company-scoped reports
+- Manual preview and scheduled delivery
+- URL-first tables, readable failure details, and service snapshots
+- No CSV or PDF attachments
 
 ## Windows Production With NSSM
 
-Sentrovia runs as two NSSM services:
+Sentrovia can run as two Windows services:
 
-- Service name: `sentrovia-web`
-- Service name: `sentrovia-worker`
+| Service | Display name |
+| --- | --- |
+| `sentrovia-web` | Sentrovia Web |
+| `sentrovia-worker` | Sentrovia Worker |
 
-The Windows display names are `Sentrovia Web` and `Sentrovia Worker`.
-
-### Prerequisites
+Prerequisites:
 
 - Node.js 20.9 or newer
 - npm
 - PostgreSQL access
 - NSSM in `PATH`
 - `.env.local` in the project root
-- Internet or internal mirror access for npm packages and Playwright Chromium
+- Playwright Chromium installed
 
-### First-time setup
-
-Use the PowerShell installer:
+First-time setup:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-windows-nssm.ps1 -RecreateServices
 ```
 
-This checks prerequisites, installs dependencies, installs Playwright Chromium, applies schema and manual migrations, builds the app, creates both NSSM services, and starts them.
-
-### Updating an existing NSSM server
-
-After copying or pulling the new files:
+Update an existing server:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-windows-nssm.ps1
-```
-
-The script stops both services, updates dependencies, applies schema and manual migrations, rebuilds, and starts the services again.
-
-The older batch helpers are still available:
-
-```bat
-scripts\setup-production-windows-nssm.bat
-scripts\update-production-windows-nssm.bat
-```
-
-Logs are written to:
-
-```bat
-logs\sentrovia-web.log
-logs\sentrovia-web-error.log
-logs\sentrovia-worker.log
-logs\sentrovia-worker-error.log
 ```
 
 Useful service commands:
@@ -347,51 +290,13 @@ nssm stop sentrovia-worker
 nssm start sentrovia-worker
 ```
 
-## GitHub Release Checklist
+Logs are written to:
 
-To make Sentrovia easier to download, publish a GitHub Release for each meaningful version.
-
-1. Commit and push the final changes.
-2. Open the repository on GitHub.
-3. Go to **Releases**.
-4. Click **Draft a new release**.
-5. Create a tag such as `v0.2.0`.
-6. Use a clear title such as `Sentrovia v0.2.0`.
-7. Add release notes:
-   - key features
-   - migration files to run
-   - Docker command
-   - Windows NSSM update command
-   - Playwright Chromium note
-8. Publish the release.
-
-Suggested first release note:
-
-```text
-Sentrovia v0.2.0
-
-- Verification-aware monitoring engine
-- HTTP, keyword, JSON, TCP, ping, PostgreSQL, and heartbeat monitors
-- Email, Telegram, Discord, and webhook delivery
-- Screenshot evidence for confirmed outages
-- Public status pages
-- Scheduled reports with HTML, CSV, and PDF attachments
-- Docker Compose quick start
-- Windows NSSM installer and updater
-```
-
-## Commands
-
-```bash
-npm run dev
-npm run build
-npm run start
-npm run worker:dev
-npm run worker:start
-npm run lint
-npm run test
-npm run db:push
-npm run db:manual
+```bat
+logs\sentrovia-web.log
+logs\sentrovia-web-error.log
+logs\sentrovia-worker.log
+logs\sentrovia-worker-error.log
 ```
 
 ## Tech Stack
@@ -406,23 +311,24 @@ npm run db:manual
 - Nodemailer
 - Telegram Bot API
 - Playwright Chromium
-- PDFKit
 - Vitest
 - Docker Compose
 - NSSM
 
 ## Project Status
 
-Sentrovia is usable today as an internal monitoring and operations console. It is especially suited for Windows-heavy teams, internal IT departments, and environments where operators need verified alerts instead of noisy first-failure notifications.
+Sentrovia is usable today as an internal monitoring and operations console.
 
-Good next steps:
+The strongest use case is an internal team that wants verified alerts, screenshot evidence, report delivery, and a Windows-friendly deployment model.
 
-- signed release builds
-- demo video or GIF
-- hosted demo instance
-- role-based access controls
-- escalation policies
-- multi-region workers
+Possible next improvements:
+
+- Signed release builds
+- Demo video or GIF
+- Hosted demo instance
+- Role-based access controls
+- Escalation policies
+- Multi-region workers
 - DNS-specific monitors
 
 ## License

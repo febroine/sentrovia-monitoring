@@ -375,6 +375,7 @@ export async function buildNotificationWebhookPayload(input: {
   url: string;
   status: string;
   statusCode: number | null;
+  failureReason?: string | null;
   message: string;
   checkedAt: Date;
   rcaTitle: string;
@@ -390,6 +391,7 @@ export async function buildNotificationWebhookPayload(input: {
       url: sanitizeMonitorUrlForDisplay(input.url),
       status: input.status,
       statusCode: input.statusCode,
+      failureReason: input.failureReason ?? null,
     },
     message: input.message,
     rca: {

@@ -35,6 +35,7 @@ const TEMPLATE_TOKENS = [
   "{event_state}",
   "{status_code}",
   "{status_label}",
+  "{failure_reason}",
   "{latency_ms}",
   "{slow_threshold_ms}",
   "{checked_at_local}",
@@ -63,6 +64,20 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
         icon={BellRing}
         iconClassName="text-amber-600 dark:text-amber-300"
       >
+        <Field label="Notification language" hint="Email and Telegram notification templates use this language unless a monitor has a custom override.">
+          <Select
+            value={settings.notifications.notificationLanguage}
+            onValueChange={(value) => updateSetting("notifications.notificationLanguage", String(value))}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="en">English</SelectItem>
+              <SelectItem value="tr">Turkish</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
         <ToggleRow
           label="Site down alerts"
           description="Send a notification when a monitor ends in a failed state."
@@ -232,7 +247,7 @@ export function NotificationSettingsTab({ settings, updateSetting }: TabProps) {
             ))}
           </div>
         </div>
-        <Field label="Default email subject" hint="Available tokens: {domain}, {url}, {status_code}, {status_label}, {event_state}, {rca_summary}">
+        <Field label="Default email subject" hint="Available tokens: {domain}, {url}, {status_code}, {status_label}, {failure_reason}, {event_state}, {rca_summary}">
           <Input
             value={settings.notifications.defaultEmailSubjectTemplate}
             onChange={(event) => updateSetting("notifications.defaultEmailSubjectTemplate", event.target.value)}

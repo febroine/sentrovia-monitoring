@@ -40,6 +40,23 @@ function optionalPositiveInteger(max: number) {
     .default(null);
 }
 
+const expectedStatusCodesSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .optional()
+  .or(z.literal(""))
+  .superRefine((value, context) => {
+    const trimmed = (value ?? "").trim();
+    if (trimmed.length > 0 && !isValidExpectedStatusCodeList(trimmed)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Enter HTTP status codes between 100 and 599, separated by commas.",
+      });
+    }
+  })
+  .transform((value) => normalizeExpectedStatusCodes(value ?? ""));
+
 function isSafeHostInput(value: string) {
   const normalized = value.trim();
 
@@ -117,6 +134,7 @@ export const monitorInputSchema = z
     intervalUnit: intervalUnitSchema,
     timeout: z.coerce.number().int().min(1000).max(120000),
     slowResponseThresholdMs: optionalPositiveInteger(120000),
+    expectedStatusCodes: expectedStatusCodesSchema,
     retries: z.coerce.number().int().min(1).max(10),
     method: methodSchema,
     tags: z.array(z.string().trim().min(1).max(40)).max(20),
@@ -328,3 +346,29 @@ export const monitorActiveStateSchema = z.object({
 });
 
 export type MonitorInput = z.infer<typeof monitorInputSchema>;
+
+function normalizeExpectedStatusCodes(value: string) {
+  return parseExpectedStatusCodes(value).join(", ");
+}
+
+function isValidExpectedStatusCodeList(value: string) {
+  const tokens = tokenizeExpectedStatusCodes(value);
+  return tokens.length > 0 && tokens.every((token) => {
+    const statusCode = Number(token);
+    return /^\d+$/.test(token) && Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599;
+  });
+}
+
+function parseExpectedStatusCodes(value: string) {
+  return Array.from(
+    new Set(
+      tokenizeExpectedStatusCodes(value)
+        .map((item) => Number(item.trim()))
+        .filter((item) => Number.isInteger(item) && item >= 100 && item <= 599)
+    )
+  ).sort((left, right) => left - right);
+}
+
+function tokenizeExpectedStatusCodes(value: string) {
+  return value.split(/[,\s;]+/).map((item) => item.trim()).filter(Boolean);
+}

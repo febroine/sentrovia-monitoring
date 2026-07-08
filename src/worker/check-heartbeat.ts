@@ -40,6 +40,7 @@ function buildHeartbeatFailure(checkedAt: Date, errorMessage: string): CheckResu
     statusCode: 408,
     latencyMs: null,
     errorMessage,
+    failureReason: "timeout",
     checkedAt,
     sslExpiresAt: null,
   };
