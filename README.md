@@ -91,7 +91,7 @@ Docker Compose is the fastest way to run Sentrovia locally.
 docker compose up --build
 ```
 
-For local evaluation, Compose supplies development defaults for PostgreSQL, auth, encryption, web, and worker settings. Create a `.env` file only when you want to override those defaults.
+Local startup uses `docker-compose.override.yml` automatically. That file supplies development defaults for PostgreSQL, auth, encryption, web, and worker settings, so a clean local checkout can start with one command. Create a `.env` file only when you want to override those defaults.
 
 Open the app:
 
@@ -117,7 +117,7 @@ Use this only for local development because it deletes the local PostgreSQL data
 
 ## Environment
 
-Local Docker startup works without a `.env` file. For production or shared servers, start from `.env.example` and replace every placeholder value with a strong value.
+Local Docker startup works without a `.env` file because the committed Compose override provides development defaults. Production and shared servers must use explicit environment values.
 
 ```bash
 POSTGRES_USER=postgres
@@ -138,6 +138,14 @@ Production notes:
 - `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be long, random, non-placeholder values.
 - `APP_URL` must match the real URL operators use.
 - The web process and worker process must use the same environment values.
+- For production Compose, use the base file explicitly so local override defaults are not applied:
+
+```bash
+cp .env.example .env
+# Edit .env and replace every placeholder value.
+docker compose -f docker-compose.yml up -d --build
+```
+
 - Set `AUTH_TRUST_PROXY_HEADERS=true` only behind a trusted reverse proxy that sanitizes forwarded headers.
 - Use `PLAYWRIGHT_BROWSERS_PATH=0` when running Playwright Chromium from a Windows service.
 

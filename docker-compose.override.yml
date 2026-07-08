@@ -1,0 +1,20 @@
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+
+  web:
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
+
+  worker:
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
