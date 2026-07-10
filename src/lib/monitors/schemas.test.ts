@@ -125,6 +125,18 @@ describe("monitor input schema", () => {
     expect(parsed.slowResponseThresholdMs).toBeNull();
   });
 
+  it("allows slow response alerts to be disabled per monitor", () => {
+    const parsed = monitorInputSchema.parse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      slowResponseThresholdMs: 10000,
+      slowResponseAlertsEnabled: false,
+    });
+
+    expect(parsed.slowResponseAlertsEnabled).toBe(false);
+  });
+
   it("rejects slow response thresholds that cannot fire before hard timeout", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,

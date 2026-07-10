@@ -874,6 +874,7 @@ async function buildMonitorValues(
     intervalUnit: input.intervalUnit,
     timeout: input.timeout,
     slowResponseThresholdMs: shouldPersistSlowResponseThreshold(monitorType, input.slowResponseThresholdMs),
+    slowResponseAlertsEnabled: shouldPersistSlowResponseAlerts(monitorType, input.slowResponseAlertsEnabled),
     expectedStatusCodes: shouldPersistExpectedStatusCodes(monitorType, input.expectedStatusCodes),
     retries: input.retries,
     method: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? "GET" : input.method,
@@ -1043,6 +1044,16 @@ function shouldPersistIncidentScreenshot(
     notificationPref === "email" || notificationPref === "telegram" || notificationPref === "both";
 
   return requested && supportsScreenshot && sendsScreenshotCapableAlert;
+}
+
+function shouldPersistSlowResponseAlerts(
+  monitorType: MonitorInput["monitorType"],
+  requested: boolean
+) {
+  const supportsSlowResponseThreshold =
+    monitorType === "http" || monitorType === "keyword" || monitorType === "json";
+
+  return requested && supportsSlowResponseThreshold;
 }
 
 function shouldPersistSlowResponseThreshold(

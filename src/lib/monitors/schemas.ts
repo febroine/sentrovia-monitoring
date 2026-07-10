@@ -136,6 +136,7 @@ export const monitorInputSchema = z
     intervalUnit: intervalUnitSchema,
     timeout: z.coerce.number().int().min(1000).max(120000),
     slowResponseThresholdMs: optionalPositiveInteger(120000),
+    slowResponseAlertsEnabled: z.boolean().default(true),
     expectedStatusCodes: expectedStatusCodesSchema,
     retries: z.coerce.number().int().min(1).max(10),
     method: methodSchema,

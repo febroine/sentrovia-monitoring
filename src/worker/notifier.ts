@@ -133,7 +133,11 @@ async function shouldSendNotification(context: NotificationContext) {
   }
 
   if (context.kind === "latency") {
-    return await shouldSendByKind(settings.notifications.notifyOnLatency, settings.notifications.alertDedupMinutes, context);
+    return await shouldSendByKind(
+      settings.notifications.notifyOnLatency && context.monitor.slowResponseAlertsEnabled,
+      settings.notifications.alertDedupMinutes,
+      context
+    );
   }
 
   if (context.kind === "failure") {

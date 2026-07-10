@@ -31,6 +31,7 @@ const DEFAULT_MAPPING = [
   "intervalUnit=intervalUnit",
   "timeout=timeout",
   "slowResponseThresholdMs=slowResponseThresholdMs",
+  "slowResponseAlertsEnabled=slowResponseAlertsEnabled",
   "expectedStatusCodes=expectedStatusCodes",
   "retries=retries",
   "method=method",
@@ -280,6 +281,9 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     intervalUnit: (read("intervalUnit") || DEFAULT_MONITOR_FORM.intervalUnit) as MonitorPayload["intervalUnit"],
     timeout: numberValue("timeout", DEFAULT_MONITOR_FORM.timeout),
     slowResponseThresholdMs: nullableNumberValue("slowResponseThresholdMs"),
+    slowResponseAlertsEnabled: read("slowResponseAlertsEnabled")
+      ? booleanValue("slowResponseAlertsEnabled")
+      : DEFAULT_MONITOR_FORM.slowResponseAlertsEnabled,
     expectedStatusCodes: read("expectedStatusCodes"),
     retries: numberValue("retries", DEFAULT_MONITOR_FORM.retries),
     method: (read("method") || DEFAULT_MONITOR_FORM.method) as MonitorPayload["method"],
