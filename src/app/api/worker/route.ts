@@ -4,7 +4,7 @@ import { requireAdminSession } from "@/lib/auth/authorization";
 import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { env } from "@/lib/env";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
-import { updateWorkerState, getWorkerState } from "@/lib/monitors/service";
+import { updateWorkerState, getWorkerState, withWorkerControlLock } from "@/lib/monitors/service";
 import type { WorkerObservabilityRange } from "@/lib/monitors/types";
 import { getWorkerObservability } from "@/lib/worker/observability";
 import { isPidAlive, spawnWorkerProcess } from "@/lib/worker/process";
@@ -91,24 +91,28 @@ export async function POST(request: NextRequest) {
     const session = await requireAdminSession();
 
     const action = await readWorkerAction(request);
-    const desiredState = action === "start" ? "running" : "stopped";
-    const currentState = await getWorkerState();
-    let nextPid = currentState.pid;
+    const state = await withWorkerControlLock(async () => {
+      const desiredState = action === "start" ? "running" : "stopped";
+      const currentState = await getWorkerState();
+      let nextPid = currentState.pid;
 
-    if (action === "start" && !env.disableEmbeddedWorkerSpawn && !isPidAlive(currentState.pid)) {
-      nextPid = spawnWorkerProcess();
-    }
+      if (action === "start" && !env.disableEmbeddedWorkerSpawn && !isPidAlive(currentState.pid)) {
+        nextPid = spawnWorkerProcess();
+      }
 
-    const state = await updateWorkerState({
-      desiredState,
-      pid: nextPid ?? currentState.pid ?? null,
-      running: action === "start" ? currentState.running : false,
-      statusMessage:
-        action === "start"
-          ? nextPid
-            ? "Worker start requested from the web console."
-            : "Worker start requested. Waiting for the runner process to connect."
-          : "Worker stop requested from the web console.",
+      return updateWorkerState({
+        desiredState,
+        pid: nextPid ?? currentState.pid ?? null,
+        running: currentState.running,
+        statusMessage:
+          action === "start"
+            ? nextPid
+              ? "Worker start requested from the web console."
+              : "Worker start requested. Waiting for the runner process to connect."
+            : currentState.running
+              ? "Worker stop requested. Waiting for the current monitor check to finish."
+              : "Worker is stopped.",
+      });
     });
 
     const observability = await getWorkerObservability(session.id, state);

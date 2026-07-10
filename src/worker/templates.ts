@@ -42,7 +42,11 @@ export function renderNotificationTemplates(
   const organization = settings.profile.organization || "Sentrovia Monitoring";
   const statusCode = String(context.result.statusCode ?? "N/A");
   const statusLabel = localizeStatusLabel(language, context, statusMeta?.label);
-  const localTime = formatLocalDateTime(context.result.checkedAt);
+  const localTime = formatLocalDateTime(
+    context.result.checkedAt,
+    settings.appearance.timeZone,
+    settings.appearance.use24HourClock
+  );
   const eventState = resolveEventState(context, language);
   const downtimeStartedAt = context.monitor.lastFailureAt ? new Date(context.monitor.lastFailureAt) : context.result.checkedAt;
   const downtimeDuration = formatDuration(context.result.checkedAt.getTime() - downtimeStartedAt.getTime());
@@ -71,7 +75,11 @@ export function renderNotificationTemplates(
     "{checked_at}": context.result.checkedAt.toISOString(),
     "{checked_at_local}": localTime,
     "{downtime_started_at}": downtimeStartedAt.toISOString(),
-    "{downtime_started_at_local}": formatLocalDateTime(downtimeStartedAt),
+    "{downtime_started_at_local}": formatLocalDateTime(
+      downtimeStartedAt,
+      settings.appearance.timeZone,
+      settings.appearance.use24HourClock
+    ),
     "{downtime_duration}": downtimeDuration,
     "{downtime_minutes}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 60_000))),
     "{downtime_hours}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 3_600_000))),
@@ -565,15 +573,25 @@ function formatDuration(durationMs: number) {
   return parts.join(" ");
 }
 
-function formatLocalDateTime(date: Date) {
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
+function formatLocalDateTime(date: Date, timeZone: string, use24HourClock: boolean) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: use24HourClock ? "h23" : "h12",
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const dayPeriod = use24HourClock ? "" : ` ${values.dayPeriod ?? ""}`.trimEnd();
 
-  return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+    return `${values.day}.${values.month}.${values.year} ${values.hour}:${values.minute}:${values.second}${dayPeriod}`;
+  } catch {
+    return date.toISOString();
+  }
 }
 
 function escapeHtml(value: string) {

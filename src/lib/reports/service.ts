@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import crypto from "node:crypto";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type Mail from "nodemailer/lib/mailer";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
@@ -24,6 +25,8 @@ const ALL_TIME_CHECK_LIMIT = 50_000;
 const PERIOD_FAILURE_EVENT_LIMIT = 4_000;
 const ALL_TIME_FAILURE_EVENT_LIMIT = 20_000;
 const DEFAULT_FIRST_RUN_DELAY_MS = 60 * 60 * 1000;
+const REPORT_CLAIM_LEASE_MS = 15 * 60 * 1000;
+const DUE_REPORT_BATCH_SIZE = 5;
 const DEFAULT_REPORT_TEMPLATE: ReportTemplateVariant = "operations";
 type ReportDeliveryOptions = {
   deliveryDetailLevel: "summary" | "standard" | "full";
@@ -334,13 +337,19 @@ export async function runDueReportSchedules(now = new Date()) {
   const dueSchedules = await db
     .select()
     .from(reportSchedules)
-    .where(and(eq(reportSchedules.isActive, true), lte(reportSchedules.nextRunAt, now)))
+    .where(
+      and(
+        eq(reportSchedules.isActive, true),
+        lte(reportSchedules.nextRunAt, now),
+        reportScheduleClaimAvailable(now)
+      )
+    )
     .orderBy(asc(reportSchedules.nextRunAt))
-    .limit(20);
+    .limit(DUE_REPORT_BATCH_SIZE);
 
   for (const schedule of dueSchedules) {
     const nextRunAt = scheduleNextRunAfter(schedule.nextRunAt, schedule.cadence as ReportCadence, now);
-    const claimedSchedule = await claimDueReportSchedule(schedule, now, nextRunAt);
+    const claimedSchedule = await claimDueReportSchedule(schedule, now);
     if (!claimedSchedule) {
       continue;
     }
@@ -358,28 +367,20 @@ export async function runDueReportSchedules(now = new Date()) {
         claimedSchedule.recipientEmails
       );
 
-      await db
-        .update(reportSchedules)
-        .set({
+      await completeClaimedReportSchedule(claimedSchedule.id, claimedSchedule.claimToken, {
           lastRunAt: now,
           lastDeliveredAt: now,
           lastStatus: "delivered",
           lastErrorMessage: null,
           nextRunAt,
-          updatedAt: new Date(),
-        })
-        .where(eq(reportSchedules.id, claimedSchedule.id));
+      });
     } catch (error) {
-      await db
-        .update(reportSchedules)
-        .set({
+      await completeClaimedReportSchedule(claimedSchedule.id, claimedSchedule.claimToken, {
           lastRunAt: now,
           lastStatus: "failed",
           lastErrorMessage: toMessage(error),
           nextRunAt,
-          updatedAt: new Date(),
-        })
-        .where(eq(reportSchedules.id, claimedSchedule.id));
+      });
     }
   }
 }
@@ -1389,14 +1390,14 @@ function roundToTwoDecimals(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function scheduleNextRunAfter(currentRunAt: Date, cadence: ReportCadence, after: Date) {
+export function scheduleNextRunAfter(currentRunAt: Date, cadence: ReportCadence, after: Date) {
   const nextRunAt = new Date(currentRunAt);
 
   while (nextRunAt <= after) {
     if (cadence === "weekly") {
       nextRunAt.setDate(nextRunAt.getDate() + 7);
     } else {
-      nextRunAt.setMonth(nextRunAt.getMonth() + 1);
+      advanceOneMonthClamped(nextRunAt);
     }
   }
 
@@ -1405,26 +1406,78 @@ function scheduleNextRunAfter(currentRunAt: Date, cadence: ReportCadence, after:
 
 async function claimDueReportSchedule(
   schedule: typeof reportSchedules.$inferSelect,
-  now: Date,
-  nextRunAt: Date
+  now: Date
 ) {
+  const claimToken = crypto.randomUUID();
   const [claimed] = await db
     .update(reportSchedules)
     .set({
       lastRunAt: now,
-      nextRunAt,
+      lastStatus: "running",
+      claimToken,
+      claimExpiresAt: new Date(now.getTime() + REPORT_CLAIM_LEASE_MS),
       updatedAt: new Date(),
     })
     .where(
       and(
         eq(reportSchedules.id, schedule.id),
         eq(reportSchedules.isActive, true),
-        eq(reportSchedules.nextRunAt, schedule.nextRunAt)
+        eq(reportSchedules.nextRunAt, schedule.nextRunAt),
+        reportScheduleClaimAvailable(now)
       )
     )
     .returning();
 
   return claimed ?? null;
+}
+
+function reportScheduleClaimAvailable(now: Date) {
+  return or(
+    ne(reportSchedules.lastStatus, "running"),
+    isNull(reportSchedules.claimExpiresAt),
+    lte(reportSchedules.claimExpiresAt, now)
+  );
+}
+
+async function completeClaimedReportSchedule(
+  scheduleId: string,
+  claimToken: string | null,
+  values: {
+    lastRunAt: Date;
+    lastDeliveredAt?: Date | null;
+    lastStatus: ReportScheduleStatus;
+    lastErrorMessage: string | null;
+    nextRunAt: Date;
+  }
+) {
+  if (!claimToken) {
+    return null;
+  }
+
+  const [updated] = await db
+    .update(reportSchedules)
+    .set({
+      ...values,
+      claimToken: null,
+      claimExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.claimToken, claimToken)))
+    .returning();
+
+  return updated ?? null;
+}
+
+function advanceOneMonthClamped(value: Date) {
+  const dayOfMonth = value.getDate();
+  value.setDate(1);
+  value.setMonth(value.getMonth() + 1);
+  const lastDayOfTargetMonth = new Date(
+    value.getFullYear(),
+    value.getMonth() + 1,
+    0
+  ).getDate();
+  value.setDate(Math.min(dayOfMonth, lastDayOfTargetMonth));
 }
 
 async function updateScheduleDeliveryState(

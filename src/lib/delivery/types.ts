@@ -9,7 +9,7 @@ export type DeliveryKind =
   | "check"
   | "report"
   | "test";
-type DeliveryStatus = "pending" | "retrying" | "delivered" | "failed";
+type DeliveryStatus = "pending" | "retrying" | "processing" | "delivered" | "failed";
 
 export interface DeliveryHistoryRecord {
   id: string;

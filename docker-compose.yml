@@ -5,11 +5,13 @@ x-app-build: &app-build
 
     WORKDIR /app
 
+    ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
     RUN apt-get update && apt-get install -y --no-install-recommends iputils-ping && rm -rf /var/lib/apt/lists/*
 
     COPY package.json package-lock.json ./
     RUN npm ci
-    RUN npx playwright install --with-deps chromium
+    RUN npx playwright install --with-deps chromium && chmod -R 755 /ms-playwright
 
     COPY . .
 
@@ -50,7 +52,6 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -84,7 +85,6 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-example-postgres-password-change-me}@db:5432/${POSTGRES_DB:-uptimemonitoring}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}

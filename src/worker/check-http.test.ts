@@ -103,6 +103,45 @@ describe("http monitor checks", () => {
     expect(result.statusCode).toBe(302);
   });
 
+  it("treats non-redirect 3xx responses as healthy by default", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(304);
+      response.end();
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({ url: `http://127.0.0.1:${resolveServerPort(server)}/cached` })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.statusCode).toBe(304);
+  });
+
+  it("switches POST requests to GET when following a 303 redirect", async () => {
+    const methods: string[] = [];
+    const server = await createServer((request, response) => {
+      methods.push(request.method ?? "");
+      if (request.url === "/submit") {
+        response.writeHead(303, { Location: "/result" });
+        response.end();
+        return;
+      }
+
+      response.writeHead(200);
+      response.end("ok");
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        url: `http://127.0.0.1:${resolveServerPort(server)}/submit`,
+        method: "POST",
+      })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(methods).toEqual(["POST", "GET"]);
+  });
+
   it("classifies unexpected HTTP status codes separately from network failures", async () => {
     const server = await createServer((_, response) => {
       response.writeHead(500, { "Content-Type": "text/plain" });
@@ -140,6 +179,30 @@ describe("http monitor checks", () => {
     expect(result.statusCode).toBeNull();
     expect(result.failureReason).toBe("timeout");
     expect(result.errorMessage).toBe("Service did not respond within 20ms.");
+  });
+
+  it("enforces the hard timeout across the complete response body", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Type": "text/plain" });
+      response.write("start");
+      const interval = setInterval(() => response.write("."), 5);
+      const finish = setTimeout(() => response.end("done"), 80);
+      response.on("close", () => {
+        clearInterval(interval);
+        clearTimeout(finish);
+      });
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        url: `http://127.0.0.1:${resolveServerPort(server)}/streaming`,
+        timeout: 25,
+      })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toBe("timeout");
+    expect(result.errorMessage).toBe("Service did not respond within 25ms.");
   });
 });
 
@@ -190,6 +253,7 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     verificationFailureCount: 0,
     latencyMs: 10,
     notificationPref: "none",
+    notificationLanguage: "default",
     notifEmail: null,
     telegramBotToken: null,
     telegramChatId: null,

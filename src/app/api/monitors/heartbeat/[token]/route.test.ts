@@ -8,7 +8,7 @@ vi.mock("@/lib/monitors/service", () => ({
 
 describe("heartbeat route", () => {
   it("does not accept heartbeat state changes over GET", async () => {
-    const response = await GET(new Request("https://example.com") as never, buildContext("secret-token"));
+    const response = await GET();
     const body = await response.json() as { message: string };
 
     expect(response.status).toBe(405);

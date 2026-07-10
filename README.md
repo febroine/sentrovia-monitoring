@@ -138,6 +138,7 @@ Production notes:
 - `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be long, random, non-placeholder values.
 - `APP_URL` must match the real URL operators use.
 - The web process and worker process must use the same environment values.
+- Compose passes PostgreSQL connection parts separately, so generated passwords containing URL-reserved characters remain valid.
 - Do not use `.env.example` values directly in production; copy the file and replace every placeholder.
 - For production Compose, include the strict production override so missing secrets fail fast:
 

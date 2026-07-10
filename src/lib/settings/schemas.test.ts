@@ -127,6 +127,18 @@ describe("settings schema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it("requires at least two checks before confirming a failure", () => {
+    const parsed = settingsSchema.safeParse({
+      ...buildSettingsPayload(),
+      monitoring: {
+        ...buildSettingsPayload().monitoring,
+        retries: 1,
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
 });
 
 function buildSettingsPayload() {

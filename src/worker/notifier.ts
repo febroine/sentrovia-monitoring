@@ -77,11 +77,11 @@ export async function sendMonitorNotifications(context: NotificationContext) {
   });
   deliveryResults.push(await sendWebhookDelivery(context.monitor.userId, context.kind, webhookPayload));
 
-  return deliveryResults.some(isDeliveredDelivery);
+  return deliveryResults.some(isAcceptedDelivery);
 }
 
-function isDeliveredDelivery(result: NotificationDeliveryResult) {
-  return result?.status === "delivered";
+function isAcceptedDelivery(result: NotificationDeliveryResult) {
+  return result?.status === "delivered" || result?.status === "retrying";
 }
 
 function createScreenshotAttachmentResolver(context: NotificationContext) {
@@ -141,7 +141,7 @@ async function shouldSendNotification(context: NotificationContext) {
   }
 
   if (context.kind === "failure") {
-    return settings.notifications.notifyOnDown;
+    return await shouldSendFailureNotification(settings.notifications.notifyOnDown, context);
   }
 
   if (context.kind === "downtime-reminder") {
@@ -153,6 +153,24 @@ async function shouldSendNotification(context: NotificationContext) {
   }
 
   return false;
+}
+
+async function shouldSendFailureNotification(enabled: boolean, context: NotificationContext) {
+  if (!enabled) {
+    return false;
+  }
+
+  const incidentStartedAt = context.monitor.lastFailureAt;
+  if (!incidentStartedAt) {
+    return true;
+  }
+
+  return !(await hasRecentMonitorEvent({
+    monitorId: context.monitor.id,
+    eventType: "failure-notification",
+    since: new Date(incidentStartedAt),
+    before: context.result.checkedAt,
+  }));
 }
 
 async function shouldSendByKind(enabled: boolean, dedupMinutes: number, context: NotificationContext) {
@@ -167,10 +185,18 @@ async function shouldSendByKind(enabled: boolean, dedupMinutes: number, context:
   const since = new Date(context.result.checkedAt.getTime() - dedupMinutes * 60 * 1_000);
   return !(await hasRecentMonitorEvent({
     monitorId: context.monitor.id,
-    eventType: context.kind,
+    eventType: resolveNotificationMarkerEventType(context.kind),
     since,
     before: context.result.checkedAt,
   }));
+}
+
+function resolveNotificationMarkerEventType(kind: NotificationContext["kind"]) {
+  if (kind === "latency" || kind === "status-change") {
+    return `${kind}-notification`;
+  }
+
+  return kind;
 }
 
 async function shouldSendDowntimeReminder(settings: Awaited<ReturnType<typeof getSettings>>, context: NotificationContext) {

@@ -23,7 +23,10 @@ describe("members route", () => {
   it("lets admins request deletion of other members", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "admin-1",
+      firstName: "Admin",
+      lastName: "User",
       email: "admin@example.com",
+      department: null,
       role: "admin",
       sessionVersion: 1,
     });
@@ -45,7 +48,10 @@ describe("members route", () => {
   it("rejects invalid usernames during member updates", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "admin-1",
+      firstName: "Admin",
+      lastName: "User",
       email: "admin@example.com",
+      department: null,
       role: "admin",
       sessionVersion: 1,
     });
@@ -67,7 +73,10 @@ describe("members route", () => {
   it("normalizes member update email and username before saving", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "admin-1",
+      firstName: "Admin",
+      lastName: "User",
       email: "admin@example.com",
+      department: null,
       role: "admin",
       sessionVersion: 1,
     });

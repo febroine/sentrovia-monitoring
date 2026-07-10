@@ -4,7 +4,7 @@ import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePingMonitorTarget } from "@/lib/monitors/targets";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
-import { classifyFailureMessage } from "@/worker/failure-reasons";
+import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
 const execFileAsync = promisify(execFile);
@@ -30,18 +30,38 @@ export async function checkPingMonitor(monitor: Monitor): Promise<CheckResult> {
       sslExpiresAt: null,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Ping failed";
+    const failure = resolvePingFailure(error, monitor.timeout);
     return {
       ok: false,
       status: "down",
       statusCode: null,
       latencyMs: null,
-      errorMessage: message,
-      failureReason: classifyFailureMessage(message, "network"),
+      errorMessage: failure.message,
+      failureReason: failure.reason,
       checkedAt,
       sslExpiresAt: null,
     };
   }
+}
+
+export function resolvePingFailure(error: unknown, timeoutMs: number) {
+  const message = error instanceof Error ? error.message : "Ping failed";
+  const processError = error as NodeJS.ErrnoException & { killed?: boolean };
+  const timedOut = processError.killed === true
+    || processError.code === "ETIMEDOUT"
+    || classifyFailureMessage(message, "network") === "timeout";
+
+  if (timedOut) {
+    return {
+      message: `Ping target did not respond within ${formatTimeoutDuration(timeoutMs)}.`,
+      reason: "timeout" as const,
+    };
+  }
+
+  return {
+    message,
+    reason: classifyFailureMessage(message, "network"),
+  };
 }
 
 async function measurePingLatency(host: string, timeoutMs: number) {

@@ -2,11 +2,13 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 RUN apt-get update && apt-get install -y --no-install-recommends iputils-ping && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 RUN npm ci
-RUN npx playwright install --with-deps chromium
+RUN npx playwright install --with-deps chromium && chmod -R 755 /ms-playwright
 
 COPY . .
 

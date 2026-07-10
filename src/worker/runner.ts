@@ -5,8 +5,10 @@ import { runDueReportSchedules } from "@/lib/reports/service";
 import { runMonitoringCycle } from "@/worker/scheduler";
 
 let active = true;
+const HEARTBEAT_INTERVAL_MS = Math.min(30_000, Math.max(1_000, env.workerPollIntervalMs));
 
 async function main() {
+  void runHeartbeatLoop();
   const currentState = await getWorkerState();
   const shouldAutoStart =
     env.workerAutoStart &&
@@ -46,31 +48,30 @@ async function main() {
           pid: process.pid,
           statusMessage: "Worker is processing the current monitoring batch.",
         });
-        await runMonitoringCycle();
-        await retryWebhookQueueForAllUsers();
-        await runDueReportSchedules();
-        await updateWorkerState({
-          running: true,
-          heartbeatAt: new Date(),
-          lastCycleAt: new Date(),
-          pid: process.pid,
-          statusMessage: "Worker is healthy and waiting for the next due monitor.",
-        });
+        const completedAllPhases = await runWorkerPhases();
+        if (completedAllPhases) {
+          await updateWorkerState({
+            running: true,
+            heartbeatAt: new Date(),
+            lastCycleAt: new Date(),
+            pid: process.pid,
+            statusMessage: "Worker is healthy and waiting for the next due monitor.",
+          });
+        } else {
+          await markWorkerStopped();
+        }
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Worker cycle failed.";
         await updateWorkerState({
           running: true,
           heartbeatAt: new Date(),
-          statusMessage: error instanceof Error ? error.message : "Worker cycle failed.",
+          lastErrorAt: new Date(),
+          lastErrorMessage: message,
+          statusMessage: message,
         });
       }
     } else if (state.running) {
-      await updateWorkerState({
-        running: false,
-        stoppedAt: new Date(),
-        heartbeatAt: new Date(),
-        pid: process.pid,
-        statusMessage: "Worker is paused.",
-      });
+      await markWorkerStopped();
     } else {
       await updateWorkerState({
         running: false,
@@ -89,6 +90,46 @@ async function main() {
     heartbeatAt: new Date(),
     statusMessage: "Worker shut down gracefully.",
   });
+}
+
+async function runWorkerPhases() {
+  await runMonitoringCycle();
+  if (!(await isRunRequested())) return false;
+
+  await retryWebhookQueueForAllUsers();
+  if (!(await isRunRequested())) return false;
+
+  await runDueReportSchedules();
+  return isRunRequested();
+}
+
+async function isRunRequested() {
+  if (!active) return false;
+  const state = await getWorkerState();
+  return state.desiredState === "running";
+}
+
+async function markWorkerStopped() {
+  await updateWorkerState({
+    running: false,
+    stoppedAt: new Date(),
+    heartbeatAt: new Date(),
+    pid: process.pid,
+    statusMessage: "Worker is paused.",
+  });
+}
+
+async function runHeartbeatLoop() {
+  while (active) {
+    await sleep(HEARTBEAT_INTERVAL_MS);
+    if (!active) return;
+
+    try {
+      await updateWorkerState({ heartbeatAt: new Date(), pid: process.pid });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Worker heartbeat update failed.");
+    }
+  }
 }
 
 function sleep(ms: number) {

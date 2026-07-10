@@ -186,7 +186,7 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
-  it("does not re-confirm an already down monitor when retries is one", async () => {
+  it("does not re-confirm an already down monitor while retrying an unsent outage notification", async () => {
     mocks.dueMonitors = [
       buildMonitor({
         status: "down",
@@ -208,8 +208,31 @@ describe("monitoring scheduler verification flow", () => {
       }),
       "lease-1"
     );
-    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
+    );
+    expect(mocks.appendIncidentEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "outage_confirmed" })
+    );
+  });
+
+  it("marks a retried outage notification and avoids a same-cycle downtime reminder", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:55:00.000Z"),
+      }),
+    ];
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
+
+    await runMonitoringCycle();
+
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "failure-notification", status: "down" })
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "downtime-reminder" })
     );
   });
 
@@ -220,6 +243,7 @@ describe("monitoring scheduler verification flow", () => {
       statusCode: 200,
       latencyMs: 95,
       errorMessage: null,
+      failureReason: null,
       checkedAt: new Date("2026-05-08T07:00:00.000Z"),
       sslExpiresAt: null,
     };
@@ -251,12 +275,14 @@ describe("monitoring scheduler verification flow", () => {
   });
 
   it("keeps slow successful responses online and sends a latency warning", async () => {
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
     mocks.checkResult = {
       ok: true,
       status: "up",
       statusCode: 200,
       latencyMs: 21,
       errorMessage: null,
+      failureReason: null,
       checkedAt: new Date("2026-05-08T07:00:00.000Z"),
       sslExpiresAt: null,
     };
@@ -293,6 +319,9 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "latency" })
     );
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "latency-notification", status: "up" })
+    );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
     );
@@ -305,6 +334,7 @@ describe("monitoring scheduler verification flow", () => {
       statusCode: 200,
       latencyMs: 21,
       errorMessage: null,
+      failureReason: null,
       checkedAt: new Date("2026-05-08T07:00:00.000Z"),
       sslExpiresAt: null,
     };
@@ -331,6 +361,38 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("does not count a pending timeout latency as a previous slow success", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 21,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        verificationMode: true,
+        verificationFailureCount: 1,
+        latencyMs: 5000,
+        notificationPref: "email",
+        slowResponseThresholdMs: 20,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "latency", status: "up" })
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "latency" })
+    );
+  });
+
   it("records slow responses without notifying when monitor slow alerts are disabled", async () => {
     mocks.checkResult = {
       ok: true,
@@ -338,6 +400,7 @@ describe("monitoring scheduler verification flow", () => {
       statusCode: 200,
       latencyMs: 21,
       errorMessage: null,
+      failureReason: null,
       checkedAt: new Date("2026-05-08T07:00:00.000Z"),
       sslExpiresAt: null,
     };
@@ -370,16 +433,6 @@ describe("monitoring scheduler verification flow", () => {
         ok: false,
         status: "down",
         statusCode: null,
-        latencyMs: 5000,
-        errorMessage: "Service did not respond within 5s.",
-        failureReason: "timeout",
-        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
-        sslExpiresAt: null,
-      },
-      {
-        ok: false,
-        status: "down",
-        statusCode: null,
         latencyMs: 7500,
         errorMessage: "Service did not respond within 7.5s.",
         failureReason: "timeout",
@@ -387,7 +440,17 @@ describe("monitoring scheduler verification flow", () => {
         sslExpiresAt: null,
       },
     ];
-    mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, retries: 1 })];
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        statusCode: 200,
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+        lastFailureAt: new Date("2026-05-08T06:59:00.000Z"),
+      }),
+    ];
 
     await runMonitoringCycle();
 
@@ -418,22 +481,22 @@ describe("monitoring scheduler verification flow", () => {
         ok: false,
         status: "down",
         statusCode: 500,
-        latencyMs: 120,
-        errorMessage: "HTTP 500",
-        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
-        sslExpiresAt: null,
-      },
-      {
-        ok: false,
-        status: "down",
-        statusCode: 500,
         latencyMs: 130,
         errorMessage: "HTTP 500",
         checkedAt: new Date("2026-05-08T07:00:01.000Z"),
         sslExpiresAt: null,
       },
     ];
-    mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, retries: 1 })];
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        statusCode: 200,
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+      }),
+    ];
 
     await runMonitoringCycle();
 
@@ -457,22 +520,22 @@ describe("monitoring scheduler verification flow", () => {
         ok: false,
         status: "down",
         statusCode: 500,
-        latencyMs: 120,
-        errorMessage: "HTTP 500",
-        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
-        sslExpiresAt: null,
-      },
-      {
-        ok: false,
-        status: "down",
-        statusCode: 500,
         latencyMs: 130,
         errorMessage: "HTTP 500",
         checkedAt: new Date("2026-05-08T07:00:01.000Z"),
         sslExpiresAt: null,
       },
     ];
-    mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, retries: 1 })];
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        statusCode: 200,
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+      }),
+    ];
 
     await runMonitoringCycle();
 
@@ -499,15 +562,6 @@ describe("monitoring scheduler verification flow", () => {
         ok: false,
         status: "down",
         statusCode: 500,
-        latencyMs: 120,
-        errorMessage: "HTTP 500",
-        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
-        sslExpiresAt: null,
-      },
-      {
-        ok: false,
-        status: "down",
-        statusCode: 500,
         latencyMs: 130,
         errorMessage: "HTTP 500",
         checkedAt: new Date("2026-05-08T07:00:01.000Z"),
@@ -516,9 +570,12 @@ describe("monitoring scheduler verification flow", () => {
     ];
     mocks.dueMonitors = [
       buildMonitor({
-        status: "up",
+        status: "pending",
         statusCode: 200,
-        retries: 1,
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
         sendIncidentScreenshot: true,
       }),
     ];
@@ -580,6 +637,7 @@ describe("monitoring scheduler verification flow", () => {
       statusCode: 204,
       latencyMs: 90,
       errorMessage: null,
+      failureReason: null,
       checkedAt: new Date("2026-05-08T07:00:00.000Z"),
       sslExpiresAt: null,
     };
@@ -610,21 +668,12 @@ describe("monitoring scheduler verification flow", () => {
   it("does not send a down alert when final verification already recovered", async () => {
     mocks.checkResults = [
       {
-        ok: false,
-        status: "down",
-        statusCode: 500,
-        latencyMs: 120,
-        errorMessage: "HTTP 500",
-        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
-        sslExpiresAt: null,
-      },
-      {
         ok: true,
         status: "up",
         statusCode: 200,
         latencyMs: 80,
         errorMessage: null,
-        checkedAt: new Date("2026-05-08T07:00:01.000Z"),
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
         sslExpiresAt: null,
       },
     ];
@@ -645,7 +694,7 @@ describe("monitoring scheduler verification flow", () => {
       "monitor-1",
       expect.objectContaining({
         status: "up",
-        nextCheckAt: new Date("2026-05-08T07:05:01.000Z"),
+        nextCheckAt: new Date("2026-05-08T07:05:00.000Z"),
         lastFailureAt: null,
         verificationMode: false,
         verificationFailureCount: 0,
@@ -653,7 +702,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
       "lease-1"
     );
-    expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(2);
+    expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(1);
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
     );
@@ -676,22 +725,22 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.checkMonitor).toHaveBeenCalledWith(expect.objectContaining({ timeout: 7500 }));
   });
 
-  it("uses a capped longer timeout for final outage confirmation", async () => {
+  it("uses the capped escalation for the final configured verification attempt", async () => {
     mocks.dueMonitors = [
       buildMonitor({
         status: "pending",
         timeout: 5000,
-        retries: 2,
+        retries: 3,
         verificationMode: true,
-        verificationFailureCount: 1,
-        consecutiveFailures: 1,
+        verificationFailureCount: 2,
+        consecutiveFailures: 2,
       }),
     ];
 
     await runMonitoringCycle();
 
-    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(1, expect.objectContaining({ timeout: 7500 }));
-    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(2, expect.objectContaining({ timeout: 10000 }));
+    expect(mocks.checkMonitor).toHaveBeenCalledTimes(1);
+    expect(mocks.checkMonitor).toHaveBeenCalledWith(expect.objectContaining({ timeout: 10000 }));
   });
 
   it("does not write events or notifications when a claimed monitor was paused mid-cycle", async () => {
@@ -762,6 +811,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     verificationFailureCount: 0,
     latencyMs: 100,
     notificationPref: "none",
+    notificationLanguage: "default",
     notifEmail: null,
     telegramBotToken: null,
     telegramChatId: null,

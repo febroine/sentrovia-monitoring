@@ -74,7 +74,7 @@ export const settingsSchema = z.object({
   monitoring: z.object({
     interval: z.string().trim().min(2).max(16).transform(normalizeMonitoringInterval),
     timeout: z.coerce.number().int().min(1000).max(120000),
-    retries: z.coerce.number().int().min(1).max(10),
+    retries: z.coerce.number().int().min(2).max(10),
     batchSize: z.coerce.number().int().min(1).max(500),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]),
     responseMaxLength: z.coerce.number().int().min(0).max(100_000),

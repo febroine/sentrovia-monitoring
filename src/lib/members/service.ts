@@ -1,8 +1,11 @@
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
 import type { UserRole } from "@/lib/auth/token";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+
+const ADMIN_DELETE_ADVISORY_LOCK_KEY = 63_194_207;
+type MemberSelectExecutor = Pick<typeof db, "select">;
 
 export async function listMembers(currentUserId: string, currentUserRole: UserRole) {
   return db
@@ -66,7 +69,27 @@ function normalizeUsername(value: string) {
 }
 
 export async function deleteMembers(currentUserId: string, currentUserRole: UserRole, ids: string[]) {
-  const memberIds = await filterDeletableMemberIds(currentUserId, currentUserRole, ids);
+  const memberIds = normalizeMemberIds(ids);
+  if (memberIds.length === 0) {
+    return [];
+  }
+
+  if (currentUserRole !== "admin") {
+    return deleteMembersById(filterSelfMemberIds(currentUserId, memberIds));
+  }
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_DELETE_ADVISORY_LOCK_KEY})`);
+    await assertAtLeastOneAdminRemains(tx, memberIds);
+
+    return tx
+      .delete(users)
+      .where(inArray(users.id, memberIds))
+      .returning({ id: users.id });
+  });
+}
+
+function deleteMembersById(memberIds: string[]) {
   if (memberIds.length === 0) {
     return [];
   }
@@ -79,6 +102,10 @@ export async function deleteMembers(currentUserId: string, currentUserRole: User
 
 export function filterSelfMemberIds(currentUserId: string, ids: string[]) {
   return Array.from(new Set(ids.filter((id) => id === currentUserId)));
+}
+
+function normalizeMemberIds(ids: string[]) {
+  return Array.from(new Set(ids.filter(Boolean)));
 }
 
 async function canManageMember(memberId: string, currentUserId: string) {
@@ -95,29 +122,23 @@ async function canManageMember(memberId: string, currentUserId: string) {
   return currentUser?.role === "admin";
 }
 
-async function filterDeletableMemberIds(currentUserId: string, currentUserRole: UserRole, ids: string[]) {
-  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
-  if (currentUserRole !== "admin") {
-    return filterSelfMemberIds(currentUserId, uniqueIds);
-  }
-
-  await assertAtLeastOneAdminRemains(uniqueIds);
-  return uniqueIds;
-}
-
-async function assertAtLeastOneAdminRemains(idsToDelete: string[]) {
-  const [row] = await db
+async function assertAtLeastOneAdminRemains(executor: MemberSelectExecutor, idsToDelete: string[]) {
+  const [row] = await executor
     .select({ total: count() })
     .from(users)
     .where(eq(users.role, "admin"));
 
   const adminCount = row?.total ?? 0;
-  const deletedAdmins = await db
+  const deletedAdmins = await executor
     .select({ id: users.id })
     .from(users)
     .where(and(eq(users.role, "admin"), inArray(users.id, idsToDelete)));
 
-  if (adminCount - deletedAdmins.length < 1) {
+  assertAdminDeletionLeavesAdministrator(adminCount, deletedAdmins.length);
+}
+
+export function assertAdminDeletionLeavesAdministrator(adminCount: number, deletedAdminCount: number) {
+  if (adminCount - deletedAdminCount < 1) {
     throw new AuthError("At least one admin account must remain.", 400);
   }
 }

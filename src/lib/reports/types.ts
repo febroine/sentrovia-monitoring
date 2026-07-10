@@ -1,6 +1,6 @@
 export type ReportCadence = "weekly" | "monthly" | "all_time";
 export type ReportScope = "global" | "company";
-export type ReportScheduleStatus = "idle" | "delivered" | "failed";
+export type ReportScheduleStatus = "idle" | "running" | "delivered" | "failed";
 export type ReportTemplateVariant = "executive" | "operations" | "client";
 
 export interface ReportPreviewInput {

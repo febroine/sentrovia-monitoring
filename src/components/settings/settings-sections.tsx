@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { SettingsPayload } from "@/lib/settings/types";
+import type { SettingsSaveSection } from "@/lib/settings/section-save";
 import { TIME_ZONE_OPTIONS } from "@/lib/time";
 
 const TEMPLATE_TOKENS = [
@@ -53,7 +54,7 @@ const TEMPLATE_TOKENS = [
 interface TabProps {
   settings: SettingsPayload;
   saving: boolean;
-  saveSettings: () => Promise<void>;
+  saveSettings: (section?: SettingsSaveSection) => Promise<void>;
   updateSetting: (
     path: string,
     value: string | number | boolean | string[]
@@ -415,10 +416,10 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
             >
               <Input
                 type="number"
-                min={1}
+                min={2}
                 max={10}
                 value={settings.monitoring.retries}
-                onChange={(event) => updateSetting("monitoring.retries", Number(event.target.value) || 1)}
+                onChange={(event) => updateSetting("monitoring.retries", Number(event.target.value) || 2)}
               />
             </Field>
             <Field
@@ -1024,17 +1025,17 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
-function useSectionSave(saveSettings: () => Promise<void>) {
+function useSectionSave(saveSettings: (section?: SettingsSaveSection) => Promise<void>) {
   const [savingSection, setSavingSection] = useState<string | null>(null);
 
-  async function saveSection(sectionId: string) {
+  async function saveSection(sectionId: SettingsSaveSection) {
     if (savingSection) {
       return;
     }
 
     setSavingSection(sectionId);
     try {
-      await saveSettings();
+      await saveSettings(sectionId);
     } finally {
       setSavingSection(null);
     }
@@ -1049,10 +1050,10 @@ function SectionSaveButton({
   savingSection,
   onSave,
 }: {
-  sectionId: string;
+  sectionId: SettingsSaveSection;
   saving: boolean;
   savingSection: string | null;
-  onSave: (sectionId: string) => Promise<void>;
+  onSave: (sectionId: SettingsSaveSection) => Promise<void>;
 }) {
   const isSavingThisSection = saving && savingSection === sectionId;
 

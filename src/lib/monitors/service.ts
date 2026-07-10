@@ -30,7 +30,9 @@ import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const WORKER_STATE_ID = "primary";
+const WORKER_CONTROL_ADVISORY_LOCK_KEY = 51_772_903;
 const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
+const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
@@ -79,6 +81,13 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
   await resolveIncidentOnPause(existingMonitor, values.isActive, now);
 
   return monitor;
+}
+
+export async function withWorkerControlLock<T>(operation: () => Promise<T>) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${WORKER_CONTROL_ADVISORY_LOCK_KEY})`);
+    return operation();
+  });
 }
 
 async function assertMonitorTargetAvailable(
@@ -367,11 +376,12 @@ export async function claimDueMonitors(now: Date) {
   }
 
   const leaseToken = crypto.randomUUID();
+  const leaseDurationMs = calculateMonitorLeaseMs(selectedRows);
   return db
     .update(monitors)
     .set({
       leaseToken,
-      leaseExpiresAt: new Date(now.getTime() + MONITOR_LEASE_MS),
+      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs),
       updatedAt: new Date(),
     })
     .where(
@@ -401,6 +411,14 @@ export async function countDueMonitors(now: Date) {
     );
 
   return rows.length;
+}
+
+export function calculateMonitorLeaseMs(rows: Array<{ timeout: number }>) {
+  const maximumTimeoutMs = rows.reduce(
+    (maximum, row) => Math.max(maximum, Math.max(0, row.timeout)),
+    0
+  );
+  return Math.max(MONITOR_LEASE_MS, maximumTimeoutMs + MONITOR_LEASE_SAFETY_MS);
 }
 
 export async function isMonitorActive(monitorId: string) {

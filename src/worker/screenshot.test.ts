@@ -169,6 +169,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     verificationFailureCount: 0,
     latencyMs: 120,
     notificationPref: "email",
+    notificationLanguage: "default",
     notifEmail: "ops@example.com",
     telegramBotToken: null,
     telegramChatId: null,

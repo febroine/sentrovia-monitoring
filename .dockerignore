@@ -9,3 +9,5 @@ errors.txt
 tsconfig.tsbuildinfo
 .env.local
 .env
+/release
+/*.zip

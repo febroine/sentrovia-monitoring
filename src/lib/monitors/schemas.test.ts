@@ -137,6 +137,17 @@ describe("monitor input schema", () => {
     expect(parsed.slowResponseAlertsEnabled).toBe(false);
   });
 
+  it("requires at least two checks before confirming a failure", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      retries: 1,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects slow response thresholds that cannot fire before hard timeout", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,

@@ -313,9 +313,19 @@ export const deliveryEvents = pgTable("delivery_events", {
   errorMessage: text("error_message"),
   lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
   nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+  claimToken: text("claim_token"),
+  claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("delivery_events_webhook_claim_due_idx").on(
+    table.channel,
+    table.status,
+    table.claimExpiresAt,
+    table.nextRetryAt,
+    table.createdAt
+  ),
+]);
 
 export const workerState = pgTable("worker_state", {
   id: text("id").primaryKey(),
@@ -381,6 +391,8 @@ export const reportSchedules = pgTable("report_schedules", {
   lastDeliveredAt: timestamp("last_delivered_at", { withTimezone: true }),
   lastStatus: varchar("last_status", { length: 16 }).default("idle").notNull(),
   lastErrorMessage: text("last_error_message"),
+  claimToken: text("claim_token"),
+  claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
   deliveryDetailLevel: varchar("delivery_detail_level", { length: 16 }).default("standard").notNull(),
   attachCsv: boolean("attach_csv").default(false).notNull(),
   attachHtml: boolean("attach_html").default(true).notNull(),
@@ -392,7 +404,14 @@ export const reportSchedules = pgTable("report_schedules", {
   reportBrandName: varchar("report_brand_name", { length: 120 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("report_schedules_claim_due_idx").on(
+    table.isActive,
+    table.nextRunAt,
+    table.lastStatus,
+    table.claimExpiresAt
+  ),
+]);
 
 export const monitorDiagnostics = pgTable(
   "monitor_diagnostics",

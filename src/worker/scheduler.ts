@@ -112,18 +112,18 @@ export async function runMonitoringCycle() {
 }
 
 async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
-  const threshold = Math.max(1, monitor.retries);
+  const threshold = Math.max(2, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
   const hadConfirmedIncident = previousStatus === "down" && !monitor.verificationMode;
   const wasVerifying = monitor.verificationMode;
   const verificationAttempt = wasVerifying ? monitor.verificationFailureCount : 0;
   let diagnosticMonitor = withVerificationTimeout(monitor, verificationAttempt);
-  let result = await checkMonitor(diagnosticMonitor);
-  let rca = analyzeRootCause(result);
-  let checksPerformed = 1;
+  const result = await checkMonitor(diagnosticMonitor);
+  const rca = analyzeRootCause(result);
   let incidentConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
+  let failureNotificationSent = false;
   let checkStatus: "up" | "down" | "pending" = result.ok ? "up" : "pending";
 
   if (result.ok) {
@@ -166,21 +166,9 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     if (!recorded) {
       return null;
     }
-  } else if (wasVerifying || threshold === 1) {
-    const verificationCount = wasVerifying ? monitor.verificationFailureCount + 1 : 1;
-    let confirmedIncident = verificationCount >= threshold;
-
-    if (confirmedIncident) {
-      diagnosticMonitor = withVerificationTimeout(monitor, verificationCount);
-      const finalConfirmation = await checkMonitor(diagnosticMonitor);
-      checksPerformed += 1;
-      result = finalConfirmation;
-      rca = analyzeRootCause(finalConfirmation);
-
-      if (result.ok) {
-        confirmedIncident = false;
-      }
-    }
+  } else if (wasVerifying) {
+    const verificationCount = monitor.verificationFailureCount + 1;
+    const confirmedIncident = verificationCount >= threshold;
 
     incidentConfirmedThisCycle = confirmedIncident;
     checkStatus = confirmedIncident ? "down" : "pending";
@@ -286,7 +274,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   await updateWorkerState({
     heartbeatAt: new Date(),
   });
-  await incrementWorkerCheckedCount(checksPerformed);
+  await incrementWorkerCheckedCount(1);
   await appendMonitorCheck({
     monitorId: monitor.id,
     userId: monitor.userId,
@@ -302,13 +290,23 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     if (slowResponseMessage) {
       await appendDetailedEvent(monitor, result, "latency", slowResponseMessage, rca, "up");
       if (monitor.slowResponseAlertsEnabled && isRepeatedSlowResponse(monitor, result)) {
-        await sendMonitorNotifications({
+        const notificationSent = await sendMonitorNotifications({
           kind: "latency",
           message: slowResponseMessage,
           monitor,
           result,
           rca,
         });
+        if (notificationSent) {
+          await appendDetailedEvent(
+            monitor,
+            result,
+            "latency-notification",
+            slowResponseMessage,
+            rca,
+            "up"
+          );
+        }
       }
     }
   }
@@ -339,8 +337,8 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
       createdAt: result.checkedAt,
     });
 
-    if (incidentConfirmedThisCycle) {
-      await sendMonitorNotifications({
+    if (checkStatus === "down") {
+      failureNotificationSent = await sendMonitorNotifications({
         kind: "failure",
         message: failureEventMessage,
         monitor,
@@ -348,10 +346,20 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
         rca,
         buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
       });
+      if (failureNotificationSent) {
+        await appendDetailedEvent(
+          monitor,
+          result,
+          "failure-notification",
+          failureEventMessage,
+          rca,
+          "down"
+        );
+      }
     }
   }
 
-  if (!result.ok && checkStatus === "down" && !incidentConfirmedThisCycle) {
+  if (!result.ok && checkStatus === "down" && !incidentConfirmedThisCycle && !failureNotificationSent) {
     const reminderMessage = buildDowntimeReminderMessage(monitor, result.checkedAt);
     if (reminderMessage) {
       const reminderSent = await sendMonitorNotifications({
@@ -402,7 +410,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   ) {
     const message = `Status code changed from ${previousStatusCode} to ${result.statusCode}.`;
     await appendDetailedEvent(monitor, result, "status-change", message, rca, checkStatus);
-    await sendMonitorNotifications({
+    const notificationSent = await sendMonitorNotifications({
       kind: "status-change",
       message,
       monitor,
@@ -410,6 +418,16 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
       rca,
       buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
     });
+    if (notificationSent) {
+      await appendDetailedEvent(
+        monitor,
+        result,
+        "status-change-notification",
+        message,
+        rca,
+        checkStatus
+      );
+    }
   }
 
   return {
@@ -572,7 +590,12 @@ function buildSlowResponseMessage(monitor: Monitor, result: Awaited<ReturnType<t
 }
 
 function isRepeatedSlowResponse(monitor: Monitor, result: Awaited<ReturnType<typeof checkMonitor>>) {
-  if (!supportsSlowResponseThreshold(monitor) || typeof result.latencyMs !== "number") {
+  if (
+    !supportsSlowResponseThreshold(monitor)
+    || monitor.status !== "up"
+    || monitor.verificationMode
+    || typeof result.latencyMs !== "number"
+  ) {
     return false;
   }
 

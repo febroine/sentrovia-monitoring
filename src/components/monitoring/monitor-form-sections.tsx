@@ -456,10 +456,10 @@ export function CheckMonitorSettings({
         <Field label="Verification attempts">
           <Input
             type="number"
-            min={1}
+            min={2}
             max={10}
             value={values.retries}
-            onChange={(event) => onFieldChange("retries", Number(event.target.value) || 1)}
+            onChange={(event) => onFieldChange("retries", Number(event.target.value) || 2)}
           />
         </Field>
         <Field label="Re-notify">

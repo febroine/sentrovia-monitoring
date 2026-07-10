@@ -38,7 +38,10 @@ describe("updates route", () => {
   it("returns guided update status for admins", async () => {
     vi.mocked(requireAdminSession).mockResolvedValueOnce({
       id: "admin-1",
+      firstName: "Admin",
+      lastName: "User",
       email: "admin@example.com",
+      department: null,
       role: "admin",
       sessionVersion: 1,
     });

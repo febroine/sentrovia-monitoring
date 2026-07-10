@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateMonitorLeaseMs,
   filterDuplicateMonitorInputs,
   normalizeHeartbeatTokenInput,
   selectDueMonitorsForCycle,
@@ -9,6 +10,10 @@ import type { MonitorInput } from "@/lib/monitors/schemas";
 import { buildMonitorIdentityKey } from "@/lib/monitors/targets";
 
 describe("monitor due selection", () => {
+  it("keeps leases longer than the slowest monitor timeout", () => {
+    expect(calculateMonitorLeaseMs([{ timeout: 120_000 }])).toBe(240_000);
+  });
+
   it("prioritizes verification checks before normal due monitors within the batch", () => {
     const selected = selectDueMonitorsForCycle(
       [
@@ -171,6 +176,7 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     companyId: null,
     company: null,
     notificationPref: "none",
+    notificationLanguage: "default",
     notifEmail: null,
     telegramBotToken: null,
     telegramChatId: null,
@@ -179,6 +185,7 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     timeout: 5000,
     slowResponseThresholdMs: null,
     slowResponseAlertsEnabled: true,
+    expectedStatusCodes: "",
     retries: 3,
     method: "GET",
     tags: [],

@@ -1,6 +1,11 @@
 "use client";
 
 import { create } from "zustand";
+import {
+  buildSectionSavePayload,
+  mergeSavedSection,
+  type SettingsSaveSection,
+} from "@/lib/settings/section-save";
 import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
 
 export const SIDEBAR_ACCENT_UPDATED_EVENT = "sentrovia:sidebar-accent-updated";
@@ -8,12 +13,13 @@ export const APPEARANCE_SETTINGS_UPDATED_EVENT = "sentrovia:appearance-updated";
 
 interface SettingsState {
   settings: SettingsPayload;
+  persistedSettings: SettingsPayload;
   loading: boolean;
   saving: boolean;
   error: string | null;
   message: string | null;
   loadSettings: () => Promise<void>;
-  saveSettings: () => Promise<void>;
+  saveSettings: (section?: SettingsSaveSection) => Promise<void>;
   updateSetting: (
     path: string,
     value: string | number | boolean | string[]
@@ -27,6 +33,7 @@ async function readJsonOrNull<T>(response: Response): Promise<T | null> {
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
+  persistedSettings: DEFAULT_SETTINGS,
   loading: true,
   saving: false,
   error: null,
@@ -42,7 +49,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         throw new Error(data?.message ?? "Unable to load settings.");
       }
 
-      set({ settings: data.settings, loading: false, error: null, message: null });
+      set({
+        settings: data.settings,
+        persistedSettings: structuredClone(data.settings),
+        loading: false,
+        error: null,
+        message: null,
+      });
     } catch (error) {
       set({
         loading: false,
@@ -50,14 +63,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       });
     }
   },
-  saveSettings: async () => {
+  saveSettings: async (section = "all") => {
+    if (get().saving) {
+      return;
+    }
+
     set({ saving: true, message: null });
 
     try {
+      const state = get();
+      const payload = buildSectionSavePayload(state.persistedSettings, state.settings, section);
       const response = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(get().settings),
+        body: JSON.stringify(payload),
       });
       const data = await readJsonOrNull<{ message?: string; settings?: SettingsPayload | null }>(response);
 
@@ -65,8 +84,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         throw new Error(data?.message ?? "Unable to save settings.");
       }
 
+      const mergedSettings = mergeSavedSection(get().settings, data.settings, section, state.persistedSettings);
       set({
-        settings: data.settings,
+        settings: mergedSettings,
+        persistedSettings: structuredClone(data.settings),
         saving: false,
         error: null,
         message: "Settings saved.",

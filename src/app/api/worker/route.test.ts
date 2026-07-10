@@ -37,6 +37,7 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/lib/monitors/service", () => ({
   getWorkerState: vi.fn(),
   updateWorkerState: vi.fn(),
+  withWorkerControlLock: vi.fn((operation: () => Promise<unknown>) => operation()),
 }));
 
 vi.mock("@/lib/worker/observability", () => ({
@@ -94,10 +95,30 @@ describe("worker route authorization", () => {
     expect(getWorkerState).toHaveBeenCalledTimes(1);
     expect(getWorkerObservability).toHaveBeenCalledWith("admin-1", expect.any(Object), "24h");
   });
+
+  it("keeps a running worker active until the current check finishes after a stop request", async () => {
+    vi.mocked(getSession).mockResolvedValueOnce(adminSession);
+
+    const response = await POST(
+      new NextRequest("https://example.com/api/worker", {
+        method: "POST",
+        body: JSON.stringify({ action: "stop" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateWorkerState).toHaveBeenCalledWith({
+      desiredState: "stopped",
+      pid: null,
+      running: true,
+      statusMessage: "Worker stop requested. Waiting for the current monitor check to finish.",
+    });
+  });
 });
 
 function buildWorkerState() {
   return {
+    id: "singleton",
     desiredState: "running",
     running: true,
     checkedCount: 12,
@@ -116,5 +137,6 @@ function buildWorkerState() {
     stoppedAt: null,
     pid: null,
     statusMessage: "Worker is running.",
+    updatedAt: new Date("2026-07-08T09:00:00.000Z"),
   };
 }

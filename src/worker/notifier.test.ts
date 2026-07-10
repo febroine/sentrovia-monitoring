@@ -86,7 +86,17 @@ describe("worker notifier", () => {
     expect(mocks.sendWebhookDelivery).toHaveBeenCalled();
   });
 
+  it("treats a webhook queued for retry as an accepted notification", async () => {
+    mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("failed"));
+    mocks.sendWebhookDelivery.mockResolvedValue(buildDeliveryResult("retrying"));
+
+    const sent = await sendMonitorNotifications(buildNotificationContext("recovery"));
+
+    expect(sent).toBe(true);
+  });
+
   it("does not suppress down notifications for non-watched status codes", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
     const context = buildNotificationContext("failure");
     context.message = "Service returned HTTP 404.";
     context.result = {
@@ -105,10 +115,13 @@ describe("worker notifier", () => {
         kind: "failure",
       })
     );
-    expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.hasRecentMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "failure-notification" })
+    );
   });
 
   it("does not deduplicate a newly confirmed down notification after recovery", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
     const context = buildNotificationContext("failure");
     context.message = "Service is down again.";
     context.result = {
@@ -122,7 +135,9 @@ describe("worker notifier", () => {
     const sent = await sendMonitorNotifications(context);
 
     expect(sent).toBe(true);
-    expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.hasRecentMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "failure-notification" })
+    );
     expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "failure",
@@ -131,6 +146,7 @@ describe("worker notifier", () => {
   });
 
   it("passes screenshot attachments to email delivery", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
     const attachment = {
       filename: "sentrovia-api.jpg",
       content: Buffer.from("image"),
@@ -151,6 +167,7 @@ describe("worker notifier", () => {
   });
 
   it("passes lazy email attachments to email delivery without building them in the notifier", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
     const buildEmailAttachments = vi.fn();
     const sent = await sendMonitorNotifications({
       ...buildNotificationContext("failure"),
@@ -167,6 +184,7 @@ describe("worker notifier", () => {
   });
 
   it("passes screenshot attachments to telegram delivery", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
     const attachment = {
       filename: "sentrovia-api.jpg",
       content: Buffer.from("image"),
@@ -194,6 +212,7 @@ describe("worker notifier", () => {
   });
 
   it("passes lazy screenshot attachments to telegram without building them in the notifier", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
     const attachment = {
       filename: "sentrovia-api.jpg",
       content: Buffer.from("image"),
@@ -221,6 +240,19 @@ describe("worker notifier", () => {
     await expect(telegramInput.buildPhoto()).resolves.toBe(attachment);
   });
 
+  it("suppresses an outage notification already accepted for the current incident", async () => {
+    const sent = await sendMonitorNotifications(buildNotificationContext("failure"));
+
+    expect(sent).toBe(false);
+    expect(mocks.hasRecentMonitorEvent).toHaveBeenCalledWith({
+      monitorId: "monitor-1",
+      eventType: "failure-notification",
+      since: new Date("2026-05-13T07:55:00.000Z"),
+      before: new Date("2026-05-13T08:00:00.000Z"),
+    });
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+  });
+
   it("does not build lazy email attachments when a notification is suppressed", async () => {
     const buildEmailAttachments = vi.fn();
     const sent = await sendMonitorNotifications({
@@ -243,7 +275,7 @@ describe("worker notifier", () => {
 
     expect(sent).toBe(true);
     expect(mocks.hasRecentMonitorEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: "latency" })
+      expect.objectContaining({ eventType: "latency-notification" })
     );
     expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "latency" })

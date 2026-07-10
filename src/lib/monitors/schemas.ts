@@ -138,7 +138,7 @@ export const monitorInputSchema = z
     slowResponseThresholdMs: optionalPositiveInteger(120000),
     slowResponseAlertsEnabled: z.boolean().default(true),
     expectedStatusCodes: expectedStatusCodesSchema,
-    retries: z.coerce.number().int().min(1).max(10),
+    retries: z.coerce.number().int().min(2).max(10),
     method: methodSchema,
     tags: z.array(z.string().trim().min(1).max(40)).max(20),
     renotifyCount: z

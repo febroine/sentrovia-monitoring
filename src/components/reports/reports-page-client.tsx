@@ -1250,6 +1250,10 @@ function StatusBadge({ schedule }: { schedule: ReportScheduleRecord }) {
     return <Badge variant="outline" className="border-rose-500/25 text-rose-600 dark:text-rose-300">Failed</Badge>;
   }
 
+  if (schedule.lastStatus === "running") {
+    return <Badge variant="outline" className="border-amber-500/25 text-amber-600 dark:text-amber-300">Sending</Badge>;
+  }
+
   if (schedule.lastStatus === "delivered") {
     return <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">Delivered</Badge>;
   }
@@ -1586,6 +1590,12 @@ function buildSchedulePackageLabel(schedule: ReportScheduleRecord) {
 }
 
 function getScheduleDeliveryStatusLabel(schedule: ReportScheduleRecord) {
+  if (schedule.lastStatus === "running") {
+    return schedule.lastRunAt
+      ? `Sending since ${new Date(schedule.lastRunAt).toLocaleString()}`
+      : "Sending";
+  }
+
   if (schedule.lastStatus === "delivered") {
     return schedule.lastDeliveredAt
       ? `Delivered at ${new Date(schedule.lastDeliveredAt).toLocaleString()}`

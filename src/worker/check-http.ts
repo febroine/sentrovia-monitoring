@@ -1,7 +1,7 @@
 import http from "node:http";
 import https from "node:https";
-import tls from "node:tls";
 import type { IncomingMessage } from "node:http";
+import type { TLSSocket } from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
@@ -11,6 +11,7 @@ import type { CheckResult } from "@/worker/types";
 interface HttpResponseSnapshot {
   statusCode: number;
   bodyText: string;
+  sslExpiresAt: Date | null;
 }
 
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
@@ -20,7 +21,6 @@ export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
 
   try {
     const response = await requestWithRedirects(monitor, buildRequestUrl(monitor.url, monitor.cacheBuster), 0);
-    const sslExpiresAt = monitor.checkSslExpiry ? await readSslExpiry(monitor.url, monitor.ignoreSslErrors) : null;
     const result = evaluateHttpResponse(monitor, response.statusCode, response.bodyText);
 
     return buildCheckResult(checkedAt, {
@@ -29,7 +29,7 @@ export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
       statusCode: response.statusCode,
       errorMessage: result.errorMessage,
       failureReason: result.failureReason,
-      sslExpiresAt,
+      sslExpiresAt: response.sslExpiresAt,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed";
@@ -55,7 +55,7 @@ function evaluateHttpResponse(monitor: Monitor, statusCode: number, bodyText: st
     };
   }
 
-  if (!hasCustomExpectedStatusCodes && statusCode >= 300 && statusCode < 400) {
+  if (!hasCustomExpectedStatusCodes && isRedirectStatus(statusCode)) {
     return {
       ok: false,
       failureReason: "redirect" as const,
@@ -131,51 +131,116 @@ function evaluateJsonResponse(monitor: Monitor, bodyText: string) {
   };
 }
 
-async function requestWithRedirects(monitor: Monitor, url: string, redirectCount: number): Promise<HttpResponseSnapshot> {
+async function requestWithRedirects(
+  monitor: Monitor,
+  url: string,
+  redirectCount: number,
+  deadlineAt = Date.now() + monitor.timeout,
+  method: Monitor["method"] = monitor.method
+): Promise<HttpResponseSnapshot> {
   const parsed = new URL(url);
   await assertMonitorNetworkTarget(parsed.hostname, {
     allowPrivateTargets: env.monitorAllowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
   });
+  const remainingTimeoutMs = deadlineAt - Date.now();
+  if (remainingTimeoutMs <= 0) {
+    throw buildRequestTimeoutError(monitor.timeout);
+  }
 
   return new Promise((resolve, reject) => {
     const transport = parsed.protocol === "https:" ? https : http;
+    let activeResponse: IncomingMessage | null = null;
+    let settled = false;
+    let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const resolveOnce = (value: HttpResponseSnapshot | PromiseLike<HttpResponseSnapshot>) => {
+      if (settled) return;
+      settled = true;
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      resolve(value);
+    };
+    const rejectOnce = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      reject(error);
+    };
     const request = transport.request(
       parsed,
       {
-        method: monitor.method,
+        method,
         family: toNodeFamily(monitor.ipFamily),
-        timeout: monitor.timeout,
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
       (response) => {
+        activeResponse = response;
         const statusCode = response.statusCode ?? 0;
         const location = response.headers.location;
+        const sslExpiresAt = readResponseSslExpiry(response, monitor.checkSslExpiry);
 
         if (
-          statusCode >= 300
-          && statusCode < 400
+          isRedirectStatus(statusCode)
           && location
           && redirectCount < monitor.maxRedirects
           && !isCustomExpectedStatusCode(monitor.expectedStatusCodes, statusCode)
         ) {
           response.resume();
           const nextUrl = new URL(location, parsed).toString();
-          resolve(requestWithRedirects(monitor, nextUrl, redirectCount + 1));
+          resolveOnce(requestWithRedirects(
+            monitor,
+            nextUrl,
+            redirectCount + 1,
+            deadlineAt,
+            resolveRedirectMethod(statusCode, method)
+          ));
           return;
         }
 
         consumeResponse(response, monitor.responseMaxLength).then(
-          (bodyText) => resolve({ statusCode, bodyText }),
-          reject
+          (bodyText) => resolveOnce({
+            statusCode,
+            bodyText,
+            sslExpiresAt,
+          }),
+          rejectOnce
         );
       }
     );
 
-    request.on("timeout", () => request.destroy(new Error(`Request timed out after ${monitor.timeout}ms`)));
-    request.on("error", reject);
+    deadlineTimer = setTimeout(() => {
+      const timeoutError = buildRequestTimeoutError(monitor.timeout);
+      activeResponse?.destroy(timeoutError);
+      request.destroy(timeoutError);
+      rejectOnce(timeoutError);
+    }, remainingTimeoutMs);
+    request.on("error", rejectOnce);
     request.end();
   });
+}
+
+function isRedirectStatus(statusCode: number) {
+  return statusCode === 301
+    || statusCode === 302
+    || statusCode === 303
+    || statusCode === 307
+    || statusCode === 308;
+}
+
+function resolveRedirectMethod(statusCode: number, method: Monitor["method"]): Monitor["method"] {
+  if (statusCode === 303 && method !== "HEAD") {
+    return "GET";
+  }
+
+  if ((statusCode === 301 || statusCode === 302) && method === "POST") {
+    return "GET";
+  }
+
+  return method;
+}
+
+function buildRequestTimeoutError(timeoutMs: number) {
+  return new Error(`Request timed out after ${timeoutMs}ms`);
 }
 
 async function consumeResponse(response: IncomingMessage, responseMaxLength: number) {
@@ -212,33 +277,13 @@ function stripAssertionHash(url: string) {
   return url.split("#")[0];
 }
 
-function readSslExpiry(url: string, ignoreSslErrors: boolean): Promise<Date | null> {
-  const parsed = new URL(stripAssertionHash(url));
-  if (parsed.protocol !== "https:") {
-    return Promise.resolve(null);
+function readResponseSslExpiry(response: IncomingMessage, enabled: boolean) {
+  if (!enabled || typeof (response.socket as TLSSocket).getPeerCertificate !== "function") {
+    return null;
   }
 
-  return new Promise((resolve) => {
-    const socket = tls.connect(
-      {
-        host: parsed.hostname,
-        port: Number(parsed.port || 443),
-        servername: parsed.hostname,
-        rejectUnauthorized: !ignoreSslErrors,
-      },
-      () => {
-        const certificate = socket.getPeerCertificate();
-        socket.end();
-        resolve(parseCertificateExpiry(certificate?.valid_to));
-      }
-    );
-
-    socket.setTimeout(5_000, () => {
-      socket.destroy();
-      resolve(null);
-    });
-    socket.on("error", () => resolve(null));
-  });
+  const certificate = (response.socket as TLSSocket).getPeerCertificate();
+  return parseCertificateExpiry(certificate?.valid_to);
 }
 
 function parseCertificateExpiry(value: string | undefined) {

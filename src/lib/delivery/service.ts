@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
-import { and, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, webhookEndpoints } from "@/lib/db/schema";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
@@ -26,6 +26,9 @@ const TELEGRAM_MESSAGE_LIMIT = 4096;
 const TELEGRAM_TRUNCATION_SUFFIX = "\n\n...[truncated]";
 const TELEGRAM_PHOTO_CAPTION_LIMIT = 1024;
 const OUTBOUND_WEBHOOK_REDIRECT_MODE = "manual";
+const WEBHOOK_CLAIM_LEASE_MS = 2 * 60 * 1000;
+const WEBHOOK_QUEUE_STATUSES = ["pending", "retrying", "processing"];
+const WEBHOOK_RETRY_BATCH_SIZE = 5;
 
 export async function getDeliveryOverview(userId: string): Promise<DeliveryOverview> {
   const [endpoint, historyRows] = await Promise.all([
@@ -54,7 +57,7 @@ export async function getDeliveryOverview(userId: string): Promise<DeliveryOverv
       failed: historyRows.filter((item) => item.status === "failed").length,
       retrying: historyRows.filter((item) => item.status === "retrying").length,
       pendingWebhookRetries: historyRows.filter(
-        (item) => item.channel === "webhook" && (item.status === "pending" || item.status === "retrying")
+        (item) => item.channel === "webhook" && WEBHOOK_QUEUE_STATUSES.includes(item.status)
       ).length,
     },
   };
@@ -327,12 +330,13 @@ export async function retryWebhookQueue(userId: string) {
         and(
           eq(deliveryEvents.userId, userId),
           eq(deliveryEvents.channel, "webhook"),
-          inArray(deliveryEvents.status, ["pending", "retrying"]),
+          inArray(deliveryEvents.status, WEBHOOK_QUEUE_STATUSES),
+          or(isNull(deliveryEvents.claimExpiresAt), lte(deliveryEvents.claimExpiresAt, new Date())),
           or(isNull(deliveryEvents.nextRetryAt), lte(deliveryEvents.nextRetryAt, new Date()))
         )
       )
-      .orderBy(desc(deliveryEvents.createdAt))
-      .limit(25),
+      .orderBy(asc(deliveryEvents.createdAt))
+      .limit(WEBHOOK_RETRY_BATCH_SIZE),
   ]);
 
   if (!endpoint?.isActive) {
@@ -351,21 +355,44 @@ export async function retryWebhookQueue(userId: string) {
 }
 
 export async function retryWebhookQueueForAllUsers() {
-  const userRows = await db
-    .select({ userId: deliveryEvents.userId })
+  const now = new Date();
+  const dueEvents = await db
+    .select()
     .from(deliveryEvents)
     .where(
       and(
         eq(deliveryEvents.channel, "webhook"),
-        inArray(deliveryEvents.status, ["pending", "retrying"]),
-        or(isNull(deliveryEvents.nextRetryAt), lte(deliveryEvents.nextRetryAt, new Date()))
+        inArray(deliveryEvents.status, WEBHOOK_QUEUE_STATUSES),
+        or(isNull(deliveryEvents.claimExpiresAt), lte(deliveryEvents.claimExpiresAt, now)),
+        or(isNull(deliveryEvents.nextRetryAt), lte(deliveryEvents.nextRetryAt, now))
       )
-    );
-  const userIds = Array.from(new Set(userRows.map((row) => row.userId)));
+    )
+    .orderBy(asc(deliveryEvents.createdAt))
+    .limit(WEBHOOK_RETRY_BATCH_SIZE);
+  const endpointCache = new Map<string, Awaited<ReturnType<typeof getWebhookEndpoint>>>();
+  let processed = 0;
 
-  for (const userId of userIds) {
-    await retryWebhookQueue(userId);
+  for (const item of dueEvents) {
+    let endpoint = endpointCache.get(item.userId);
+    if (endpoint === undefined) {
+      endpoint = await getWebhookEndpoint(item.userId);
+      endpointCache.set(item.userId, endpoint);
+    }
+
+    if (!endpoint?.isActive) {
+      continue;
+    }
+
+    await attemptWebhookDelivery(
+      item.id,
+      endpoint.url,
+      decryptValue(endpoint.secretEncrypted),
+      safeJsonParse(item.payloadJson)
+    );
+    processed += 1;
   }
+
+  return { processed };
 }
 
 export async function buildNotificationWebhookPayload(input: {
@@ -440,7 +467,7 @@ async function attemptWebhookDelivery(
   secret: string | null,
   payload: Record<string, unknown>
 ) {
-  const [current] = await db.select().from(deliveryEvents).where(eq(deliveryEvents.id, eventId));
+  const current = await claimWebhookDelivery(eventId);
   if (!current) {
     return null;
   }
@@ -457,25 +484,61 @@ async function attemptWebhookDelivery(
     });
 
     if (response.ok) {
-      return markDeliveryDelivered(eventId, response.status, current.attempts + 1);
+      return markDeliveryDelivered(eventId, response.status, current.attempts + 1, current.claimToken);
     }
 
     return markDeliveryRetryable(
       eventId,
       current.attempts + 1,
       response.status,
-      await readLimitedResponseText(response)
+      await readLimitedResponseText(response),
+      current.claimToken
     );
   } catch (error) {
     if (isWebhookSafetyError(error)) {
-      return markDeliveryFailed(eventId, null, toMessage(error));
+      return markDeliveryFailed(eventId, null, toMessage(error), current.attempts + 1, current.claimToken);
     }
 
-    return markDeliveryRetryable(eventId, current.attempts + 1, null, toMessage(error));
+    return markDeliveryRetryable(
+      eventId,
+      current.attempts + 1,
+      null,
+      toMessage(error),
+      current.claimToken
+    );
   }
 }
 
-async function markDeliveryDelivered(eventId: string, responseCode: number | null, attempts = 1) {
+async function claimWebhookDelivery(eventId: string) {
+  const now = new Date();
+  const claimToken = crypto.randomUUID();
+  const [claimed] = await db
+    .update(deliveryEvents)
+    .set({
+      status: "processing",
+      claimToken,
+      claimExpiresAt: new Date(now.getTime() + WEBHOOK_CLAIM_LEASE_MS),
+    })
+    .where(
+      and(
+        eq(deliveryEvents.id, eventId),
+        eq(deliveryEvents.channel, "webhook"),
+        inArray(deliveryEvents.status, WEBHOOK_QUEUE_STATUSES),
+        or(isNull(deliveryEvents.claimExpiresAt), lte(deliveryEvents.claimExpiresAt, now)),
+        or(isNull(deliveryEvents.nextRetryAt), lte(deliveryEvents.nextRetryAt, now))
+      )
+    )
+    .returning();
+
+  return claimed ?? null;
+}
+
+async function markDeliveryDelivered(
+  eventId: string,
+  responseCode: number | null,
+  attempts = 1,
+  claimToken?: string | null
+) {
   const [updated] = await db
     .update(deliveryEvents)
     .set({
@@ -485,9 +548,11 @@ async function markDeliveryDelivered(eventId: string, responseCode: number | nul
       errorMessage: null,
       lastAttemptAt: new Date(),
       nextRetryAt: null,
+      claimToken: null,
+      claimExpiresAt: null,
       deliveredAt: new Date(),
     })
-    .where(eq(deliveryEvents.id, eventId))
+    .where(deliveryClaimWhere(eventId, claimToken))
     .returning();
 
   return updated;
@@ -497,7 +562,8 @@ async function markDeliveryRetryable(
   eventId: string,
   attempts: number,
   responseCode: number | null,
-  errorMessage: string
+  errorMessage: string,
+  claimToken?: string | null
 ) {
   const exhausted = attempts >= MAX_WEBHOOK_ATTEMPTS;
   const [updated] = await db
@@ -509,28 +575,45 @@ async function markDeliveryRetryable(
       errorMessage: errorMessage.slice(0, 1000),
       lastAttemptAt: new Date(),
       nextRetryAt: exhausted ? null : new Date(Date.now() + WEBHOOK_RETRY_DELAY_MS),
+      claimToken: null,
+      claimExpiresAt: null,
     })
-    .where(eq(deliveryEvents.id, eventId))
+    .where(deliveryClaimWhere(eventId, claimToken))
     .returning();
 
   return updated;
 }
 
-async function markDeliveryFailed(eventId: string, responseCode: number | null, errorMessage: string) {
+async function markDeliveryFailed(
+  eventId: string,
+  responseCode: number | null,
+  errorMessage: string,
+  attempts = 1,
+  claimToken?: string | null
+) {
   const [updated] = await db
     .update(deliveryEvents)
     .set({
       status: "failed",
-      attempts: 1,
+      attempts,
       responseCode,
       errorMessage: errorMessage.slice(0, 1000),
       lastAttemptAt: new Date(),
       nextRetryAt: null,
+      claimToken: null,
+      claimExpiresAt: null,
     })
-    .where(eq(deliveryEvents.id, eventId))
+    .where(deliveryClaimWhere(eventId, claimToken))
     .returning();
 
   return updated;
+}
+
+function deliveryClaimWhere(eventId: string, claimToken?: string | null) {
+  return and(
+    eq(deliveryEvents.id, eventId),
+    claimToken ? eq(deliveryEvents.claimToken, claimToken) : undefined
+  );
 }
 
 export async function readLimitedResponseText(

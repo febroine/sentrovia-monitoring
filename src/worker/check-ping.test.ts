@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePingLatency } from "@/worker/check-ping";
+import { parsePingLatency, resolvePingFailure } from "@/worker/check-ping";
 
 describe("ping output parsing", () => {
   it("parses English ping latency", () => {
@@ -16,5 +16,14 @@ describe("ping output parsing", () => {
 
   it("returns null when latency is unavailable", () => {
     expect(parsePingLatency("Ping command completed without latency details.")).toBeNull();
+  });
+
+  it("classifies a killed ping process as a timeout", () => {
+    const error = Object.assign(new Error("Command failed"), { killed: true });
+
+    expect(resolvePingFailure(error, 5000)).toEqual({
+      message: "Ping target did not respond within 5s.",
+      reason: "timeout",
+    });
   });
 });

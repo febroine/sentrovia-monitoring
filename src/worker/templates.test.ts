@@ -57,6 +57,23 @@ describe("notification templates", () => {
     expect(rendered.telegramBody).toContain("Organization: Sentrovia Monitoring");
   });
 
+  it("formats notification timestamps in the workspace time zone", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({ emailBody: "Checked: {checked_at_local}" }),
+      {
+        ...DEFAULT_SETTINGS,
+        appearance: {
+          ...DEFAULT_SETTINGS.appearance,
+          timeZone: "Europe/Istanbul",
+          use24HourClock: true,
+        },
+      },
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.textBody).toContain("Checked: 13.05.2026 11:00:00");
+  });
+
   it("renders email and telegram defaults in Turkish when selected", () => {
     const rendered = renderNotificationTemplates(
       buildContext({
