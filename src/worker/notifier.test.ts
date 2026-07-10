@@ -269,6 +269,19 @@ describe("worker notifier", () => {
     expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
     expect(mocks.sendTelegramDelivery).not.toHaveBeenCalled();
   });
+
+  it("does not send latency notifications when disabled on the monitor", async () => {
+    const sent = await sendMonitorNotifications({
+      ...buildNotificationContext("latency"),
+      message: "Service is online but slow.",
+      monitor: buildMonitor({ slowResponseAlertsEnabled: false }),
+    });
+
+    expect(sent).toBe(false);
+    expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+    expect(mocks.sendTelegramDelivery).not.toHaveBeenCalled();
+  });
 });
 
 function buildDeliveryResult(status: "delivered" | "failed" | "retrying") {
@@ -336,6 +349,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalUnit: "dk",
     timeout: 5000,
     slowResponseThresholdMs: null,
+    slowResponseAlertsEnabled: true,
     expectedStatusCodes: null,
     retries: 2,
     method: "GET",

@@ -420,22 +420,36 @@ export function CheckMonitorSettings({
       </div>
 
       {isHttpMonitor || isAssertionMonitor ? (
-        <Field label="Slow response threshold (ms)">
-          <Input
-            type="number"
-            min={1}
-            max={Math.max(1, values.timeout - 1)}
-            placeholder="Optional"
-            value={values.slowResponseThresholdMs ?? ""}
-            onChange={(event) => {
-              const rawValue = event.target.value.trim();
-              onFieldChange("slowResponseThresholdMs", rawValue.length > 0 ? Number(rawValue) || null : null);
-            }}
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Responses above this value stay online but are marked degraded. Keep it below the hard failure timeout.
-          </p>
-        </Field>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
+          <Field label="Slow response threshold (ms)">
+            <Input
+              type="number"
+              min={1}
+              max={Math.max(1, values.timeout - 1)}
+              placeholder="Optional"
+              value={values.slowResponseThresholdMs ?? ""}
+              onChange={(event) => {
+                const rawValue = event.target.value.trim();
+                onFieldChange("slowResponseThresholdMs", rawValue.length > 0 ? Number(rawValue) || null : null);
+              }}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Responses above this value stay online but are marked degraded. Keep it below the hard failure timeout.
+            </p>
+          </Field>
+          <div className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Slow response notifications</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Turn off mail and Telegram alerts for slow responses on this monitor.
+              </p>
+            </div>
+            <Switch
+              checked={values.slowResponseAlertsEnabled}
+              onCheckedChange={(checked) => onFieldChange("slowResponseAlertsEnabled", checked)}
+            />
+          </div>
+        </div>
       ) : null}
 
       <div className="grid grid-cols-2 gap-4">

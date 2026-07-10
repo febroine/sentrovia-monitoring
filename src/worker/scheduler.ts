@@ -301,7 +301,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     const slowResponseMessage = buildSlowResponseMessage(monitor, result);
     if (slowResponseMessage) {
       await appendDetailedEvent(monitor, result, "latency", slowResponseMessage, rca, "up");
-      if (isRepeatedSlowResponse(monitor, result)) {
+      if (monitor.slowResponseAlertsEnabled && isRepeatedSlowResponse(monitor, result)) {
         await sendMonitorNotifications({
           kind: "latency",
           message: slowResponseMessage,

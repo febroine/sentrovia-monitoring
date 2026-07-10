@@ -171,6 +171,7 @@ export const monitors = pgTable("monitors", {
   intervalUnit: varchar("interval_unit", { length: 8 }).default("dk").notNull(),
   timeout: integer("timeout").default(60000).notNull(),
   slowResponseThresholdMs: integer("slow_response_threshold_ms"),
+  slowResponseAlertsEnabled: boolean("slow_response_alerts_enabled").default(true).notNull(),
   expectedStatusCodes: varchar("expected_status_codes", { length: 500 }),
   retries: integer("retries").default(3).notNull(),
   method: varchar("method", { length: 10 }).default("GET").notNull(),

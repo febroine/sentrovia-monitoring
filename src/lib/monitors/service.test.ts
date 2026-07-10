@@ -178,6 +178,7 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     intervalUnit: "dk",
     timeout: 5000,
     slowResponseThresholdMs: null,
+    slowResponseAlertsEnabled: true,
     retries: 3,
     method: "GET",
     tags: [],

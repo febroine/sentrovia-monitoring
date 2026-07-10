@@ -331,6 +331,39 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("records slow responses without notifying when monitor slow alerts are disabled", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 21,
+      errorMessage: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "up",
+        latencyMs: 25,
+        notificationPref: "email",
+        slowResponseThresholdMs: 20,
+        slowResponseAlertsEnabled: false,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "latency",
+        status: "up",
+      })
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "latency" })
+    );
+  });
+
   it("sends confirmed timeout failures with timeout-specific language", async () => {
     mocks.checkResults = [
       {
@@ -738,6 +771,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     intervalUnit: "dk",
     timeout: 5000,
     slowResponseThresholdMs: null,
+    slowResponseAlertsEnabled: true,
     expectedStatusCodes: null,
     retries: 3,
     method: "GET",
