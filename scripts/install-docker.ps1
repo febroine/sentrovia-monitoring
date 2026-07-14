@@ -47,7 +47,14 @@ function Initialize-DockerEnvironment {
 
   if (Test-Path -LiteralPath $Path) {
     Assert-SentroviaEnvironment -Path $Path -Mode Docker
+    $AddedDefaults = Add-SentroviaEnvironmentDefaults -Path $Path -Defaults ([ordered]@{
+      AUTH_TRUST_PROXY_HEADERS = "false"
+      MONITOR_ALLOW_PRIVATE_TARGETS = "true"
+    })
     Write-Host "Using the existing .env file. Secrets were not changed."
+    if ($AddedDefaults.Count -gt 0) {
+      Write-Host "Added missing runtime defaults: $($AddedDefaults -join ', ')"
+    }
     return
   }
 

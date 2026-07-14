@@ -164,7 +164,16 @@ function ConvertFrom-SecurePassword {
 function Initialize-NssmEnvironment {
   if (Test-Path -LiteralPath $EnvironmentPath) {
     Assert-SentroviaEnvironment -Path $EnvironmentPath -Mode Nssm
+    $AddedDefaults = Add-SentroviaEnvironmentDefaults -Path $EnvironmentPath -Defaults ([ordered]@{
+      AUTH_TRUST_PROXY_HEADERS = "false"
+      MONITOR_ALLOW_PRIVATE_TARGETS = "true"
+      WORKER_AUTO_START = "true"
+      DISABLE_EMBEDDED_WORKER_SPAWN = "true"
+    })
     Write-Host "Using the existing .env.local file. Secrets were not changed."
+    if ($AddedDefaults.Count -gt 0) {
+      Write-Host "Added missing runtime defaults: $($AddedDefaults -join ', ')"
+    }
     return
   }
 
@@ -211,7 +220,9 @@ function Initialize-NssmEnvironment {
     "APP_ENCRYPTION_SECRET=$(New-SentroviaSecret)",
     "WORKER_CONCURRENCY=20",
     "WORKER_POLL_INTERVAL_MS=10000",
-    "MONITOR_ALLOW_PRIVATE_TARGETS=true"
+    "MONITOR_ALLOW_PRIVATE_TARGETS=true",
+    "WORKER_AUTO_START=true",
+    "DISABLE_EMBEDDED_WORKER_SPAWN=true"
   )
   Write-Host "Created .env.local with cryptographically strong application secrets."
 }
