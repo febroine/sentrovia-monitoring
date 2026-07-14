@@ -26,7 +26,12 @@ export async function assertPublicNetworkTarget(
     return;
   }
 
-  const resolved = await resolveHostname(normalizedHostname, message);
+  let resolved: string[];
+  try {
+    resolved = await resolveHostname(normalizedHostname);
+  } catch {
+    throw new AuthError(message, 400);
+  }
   if (resolved.length === 0 || resolved.some((address) => isNonPublicIpAddress(address))) {
     throw new AuthError(message, 400);
   }
@@ -34,15 +39,10 @@ export async function assertPublicNetworkTarget(
 
 export async function assertMonitorNetworkTarget(
   hostname: string,
-  options: { allowPrivateTargets: boolean; message?: string }
+  options: { allowPrivateTargets: boolean; allowUnresolved?: boolean; message?: string }
 ) {
-  if (!options.allowPrivateTargets) {
-    await assertPublicNetworkTarget(hostname, options.message);
-    return;
-  }
-
   const normalizedHostname = normalizeNetworkHostname(hostname);
-  if (!isMonitorNetworkHostnameLiteralAllowed(normalizedHostname, true)) {
+  if (!isMonitorNetworkHostnameLiteralAllowed(normalizedHostname, options.allowPrivateTargets)) {
     throw new AuthError(options.message ?? PUBLIC_NETWORK_TARGET_ERROR, 400);
   }
 
@@ -50,8 +50,17 @@ export async function assertMonitorNetworkTarget(
     return;
   }
 
-  const resolved = await resolveHostname(normalizedHostname, options.message ?? PUBLIC_NETWORK_TARGET_ERROR);
-  if (resolved.length === 0 || resolved.some((address) => isServerLocalIpAddress(address))) {
+  let resolved: string[];
+  try {
+    resolved = await resolveHostname(normalizedHostname);
+  } catch (error) {
+    if (options.allowUnresolved) {
+      return;
+    }
+    throw error;
+  }
+  const isBlockedAddress = options.allowPrivateTargets ? isServerLocalIpAddress : isNonPublicIpAddress;
+  if (resolved.length === 0 || resolved.some(isBlockedAddress)) {
     throw new AuthError(options.message ?? PUBLIC_NETWORK_TARGET_ERROR, 400);
   }
 }
@@ -106,13 +115,9 @@ function isServerLocalHostname(hostname: string) {
   );
 }
 
-async function resolveHostname(hostname: string, message: string) {
-  try {
-    const records = await lookup(hostname, { all: true, verbatim: true });
-    return Array.from(new Set(records.map((record) => stripIpv6Brackets(record.address))));
-  } catch {
-    throw new AuthError(message, 400);
-  }
+async function resolveHostname(hostname: string) {
+  const records = await lookup(hostname, { all: true, verbatim: true });
+  return Array.from(new Set(records.map((record) => stripIpv6Brackets(record.address))));
 }
 
 function isNonPublicIpv4(address: string) {

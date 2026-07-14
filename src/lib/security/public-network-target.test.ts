@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { lookup } from "node:dns/promises";
+import { describe, expect, it, vi } from "vitest";
 import {
   assertMonitorNetworkTarget,
   assertPublicNetworkTarget,
@@ -6,6 +7,8 @@ import {
   isMonitorNetworkHostnameLiteralAllowed,
   isPublicNetworkHostnameLiteral,
 } from "@/lib/security/public-network-target";
+
+vi.mock("node:dns/promises", () => ({ lookup: vi.fn() }));
 
 describe("public network target safety", () => {
   it("accepts public IP literal targets", async () => {
@@ -56,5 +59,36 @@ describe("public network target safety", () => {
     await expect(
       assertMonitorNetworkTarget("10.0.0.5", { allowPrivateTargets: true })
     ).resolves.toBeUndefined();
+  });
+
+  it("allows unresolved monitor hostnames during monitor creation", async () => {
+    vi.mocked(lookup).mockRejectedValueOnce(Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }));
+
+    await expect(
+      assertMonitorNetworkTarget("missing.example", {
+        allowPrivateTargets: true,
+        allowUnresolved: true,
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows unresolved public-only monitor hostnames during monitor creation", async () => {
+    vi.mocked(lookup).mockRejectedValueOnce(Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }));
+
+    await expect(
+      assertMonitorNetworkTarget("missing.example", {
+        allowPrivateTargets: false,
+        allowUnresolved: true,
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it("preserves DNS errors for runtime monitor checks", async () => {
+    const dnsError = Object.assign(new Error("getaddrinfo ENOTFOUND missing.example"), { code: "ENOTFOUND" });
+    vi.mocked(lookup).mockRejectedValueOnce(dnsError);
+
+    await expect(
+      assertMonitorNetworkTarget("missing.example", { allowPrivateTargets: true })
+    ).rejects.toMatchObject({ code: "ENOTFOUND" });
   });
 });
