@@ -142,18 +142,58 @@ function normalizeVersion(value: string) {
   return /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(normalized) ? normalized : null;
 }
 
-function compareVersions(left: string, right: string) {
-  const leftParts = left.split(/[.+-]/).slice(0, 3).map(Number);
-  const rightParts = right.split(/[.+-]/).slice(0, 3).map(Number);
+export function compareVersions(left: string, right: string) {
+  const leftVersion = parseComparableVersion(left);
+  const rightVersion = parseComparableVersion(right);
 
   for (let index = 0; index < 3; index += 1) {
-    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    const diff = leftVersion.core[index] - rightVersion.core[index];
     if (diff !== 0) {
       return diff;
     }
   }
 
+  return comparePrerelease(leftVersion.prerelease, rightVersion.prerelease);
+}
+
+function parseComparableVersion(value: string) {
+  const withoutBuild = value.split("+", 1)[0];
+  const prereleaseSeparator = withoutBuild.indexOf("-");
+  const coreValue = prereleaseSeparator === -1 ? withoutBuild : withoutBuild.slice(0, prereleaseSeparator);
+  const prereleaseValue = prereleaseSeparator === -1 ? null : withoutBuild.slice(prereleaseSeparator + 1);
+  const core = coreValue.split(".").slice(0, 3).map((part) => Number(part) || 0);
+  while (core.length < 3) core.push(0);
+
+  return {
+    core,
+    prerelease: prereleaseValue ? prereleaseValue.split(".") : null,
+  };
+}
+
+function comparePrerelease(left: string[] | null, right: string[] | null) {
+  if (!left && !right) return 0;
+  if (!left) return 1;
+  if (!right) return -1;
+
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const comparison = comparePrereleasePart(left[index], right[index]);
+    if (comparison !== 0) return comparison;
+  }
   return 0;
+}
+
+function comparePrereleasePart(left: string | undefined, right: string | undefined) {
+  if (left === undefined) return -1;
+  if (right === undefined) return 1;
+  if (left === right) return 0;
+
+  const leftNumber = /^\d+$/.test(left) ? Number(left) : null;
+  const rightNumber = /^\d+$/.test(right) ? Number(right) : null;
+  if (leftNumber !== null && rightNumber !== null) return leftNumber - rightNumber;
+  if (leftNumber !== null) return -1;
+  if (rightNumber !== null) return 1;
+  return left.localeCompare(right);
 }
 
 function truncateNotes(value: string) {
@@ -175,7 +215,7 @@ export function buildUpdateGuidance(targetTag: string | null) {
   const dockerCommands = [
     "git fetch --tags origin",
     `git checkout ${tag}`,
-    "docker compose up -d --build",
+    "docker compose up -d --build --wait --wait-timeout 300",
   ];
   const serviceCommands = [
     "git fetch --tags origin",

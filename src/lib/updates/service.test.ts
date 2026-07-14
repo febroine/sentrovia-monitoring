@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import packageJson from "../../../package.json";
-import { buildUpdateGuidance, getUpdateStatus } from "@/lib/updates/service";
+import { buildUpdateGuidance, compareVersions, getUpdateStatus } from "@/lib/updates/service";
 
 const originalUpdateRepo = process.env.APP_UPDATE_REPO;
 
@@ -42,6 +42,12 @@ describe("update service", () => {
     const status = await getUpdateStatus();
 
     expect(status.latestVersion).toBe("1.2.3");
+  });
+
+  it("orders prerelease versions below the matching stable release", () => {
+    expect(compareVersions("1.2.3", "1.2.3-rc.1")).toBeGreaterThan(0);
+    expect(compareVersions("1.2.3-rc.2", "1.2.3-rc.1")).toBeGreaterThan(0);
+    expect(compareVersions("1.2.3-beta.2", "1.2.3-beta.10")).toBeLessThan(0);
   });
 
   it("returns unconfigured status when repository metadata cannot be resolved", async () => {
@@ -91,7 +97,7 @@ describe("update service", () => {
     expect(guidance.dockerCommands).toEqual([
       "git fetch --tags origin",
       "git checkout v2.0.0",
-      "docker compose up -d --build",
+      "docker compose up -d --build --wait --wait-timeout 300",
     ]);
     expect(guidance.serviceCommands).toEqual([
       "git fetch --tags origin",

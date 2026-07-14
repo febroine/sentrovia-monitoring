@@ -17,6 +17,31 @@ function Require-DockerCompose {
   }
 }
 
+function Get-DockerComposeProjectName {
+  if (-not [string]::IsNullOrWhiteSpace($env:COMPOSE_PROJECT_NAME)) {
+    return $env:COMPOSE_PROJECT_NAME.Trim().ToLowerInvariant()
+  }
+
+  $DirectoryName = Split-Path -Leaf (Resolve-Path $ProjectRoot)
+  $ProjectName = ($DirectoryName.ToLowerInvariant() -replace '[^a-z0-9_-]', '').TrimStart([char[]]'_-')
+  if ([string]::IsNullOrWhiteSpace($ProjectName)) {
+    throw "Unable to derive the Docker Compose project name from $ProjectRoot."
+  }
+  return $ProjectName
+}
+
+function Test-ExistingDockerDatabaseVolume {
+  $ProjectName = Get-DockerComposeProjectName
+  $Volumes = @(& docker volume ls `
+    --filter "label=com.docker.compose.project=$ProjectName" `
+    --filter "label=com.docker.compose.volume=pgdata" `
+    --format "{{.Name}}")
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to inspect existing Docker volumes."
+  }
+  return $Volumes.Count -gt 0
+}
+
 function Initialize-DockerEnvironment {
   param([string]$Path)
 
@@ -26,6 +51,10 @@ function Initialize-DockerEnvironment {
     return
   }
 
+  if (Test-ExistingDockerDatabaseVolume) {
+    throw "The Docker PostgreSQL volume already exists, but .env is missing. Restore the original .env instead of generating a new database password."
+  }
+
   Write-SentroviaEnvironment -Path $Path -Lines @(
     "POSTGRES_USER=postgres",
     "POSTGRES_PASSWORD=$(New-SentroviaSecret -ByteLength 36)",
@@ -33,6 +62,7 @@ function Initialize-DockerEnvironment {
     "",
     "APP_URL=http://localhost:3000",
     "AUTH_SECRET=$(New-SentroviaSecret)",
+    "AUTH_TRUST_PROXY_HEADERS=false",
     "APP_ENCRYPTION_SECRET=$(New-SentroviaSecret)",
     "",
     "WORKER_CONCURRENCY=20",
@@ -57,7 +87,7 @@ try {
   }
 
   Write-Host "Building and starting PostgreSQL, web, and worker services..." -ForegroundColor Cyan
-  & docker compose up -d --build
+  & docker compose up -d --build --wait --wait-timeout 300
   if ($LASTEXITCODE -ne 0) {
     throw "docker compose up failed with exit code $LASTEXITCODE."
   }
@@ -67,7 +97,7 @@ try {
     throw "Unable to read Docker Compose service status."
   }
 
-  Write-Host "Sentrovia is starting at http://localhost:3000" -ForegroundColor Green
+  Write-Host "Sentrovia is running at http://localhost:3000" -ForegroundColor Green
 } finally {
   Set-Location $OriginalLocation
 }

@@ -35,7 +35,11 @@ if (migrations.length === 0) {
   process.exit(0);
 }
 
-const db = postgres(databaseUrl, { max: 1, prepare: false });
+const db = postgres(databaseUrl, {
+  max: 1,
+  prepare: false,
+  onnotice: () => undefined,
+});
 
 try {
   const hasMigrationTable = await prepareMigrationTable(db, options);

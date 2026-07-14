@@ -1,11 +1,16 @@
 .git
 .github
 .next
+.next.sentrovia-update-backup
 node_modules
+.node_modules.sentrovia-update-backup
+.playwright-browsers
+.sentrovia-update-success
 npm-debug.log
 build_output.log
 build_output_utf8.log
 errors.txt
+logs
 tsconfig.tsbuildinfo
 .env.local
 .env

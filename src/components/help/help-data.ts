@@ -274,7 +274,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "How should I update a Windows/NSSM or manual Node.js deployment?",
         answer:
-          "For first-time setup, run scripts\\install-windows-nssm.ps1 in an Administrator PowerShell session. For an existing NSSM server, place the new release files in the project directory and double-click UPDATE-SENTROVIA.bat. It requests Administrator permission, preserves .env.local and database records, applies pending migrations, rebuilds the app, restarts both services, and keeps errors visible. A timestamped transcript is saved under logs.",
+          "For first-time setup, run scripts\\install-windows-nssm.ps1 in an Administrator PowerShell session. For an existing NSSM server, place the new release files in the project directory and double-click UPDATE-SENTROVIA.bat. It requests Administrator permission, preserves .env.local and database records, validates a clean production build before applying pending migrations, restarts both services, and restores the previous dependencies and build if the update fails. A timestamped transcript is saved under logs.",
       },
       {
         question: "What should I do after changing environment variables in Docker mode?",

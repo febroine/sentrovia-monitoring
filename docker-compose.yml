@@ -58,8 +58,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run the Docker installer to create .env}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
       APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_UPDATE_REPO: ${APP_UPDATE_REPO:-}
       AUTH_SECRET: ${AUTH_SECRET:?Run the Docker installer to create .env}
+      AUTH_TRUST_PROXY_HEADERS: ${AUTH_TRUST_PROXY_HEADERS:-false}
       APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:?Run the Docker installer to create .env}
+      MONITOR_ALLOW_PRIVATE_TARGETS: ${MONITOR_ALLOW_PRIVATE_TARGETS:-true}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       DISABLE_EMBEDDED_WORKER_SPAWN: "true"
@@ -93,6 +96,7 @@ services:
       APP_URL: ${APP_URL:-http://localhost:3000}
       AUTH_SECRET: ${AUTH_SECRET:?Run the Docker installer to create .env}
       APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:?Run the Docker installer to create .env}
+      MONITOR_ALLOW_PRIVATE_TARGETS: ${MONITOR_ALLOW_PRIVATE_TARGETS:-true}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       WORKER_AUTO_START: "true"

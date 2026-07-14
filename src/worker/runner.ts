@@ -5,6 +5,7 @@ import { runDueReportSchedules } from "@/lib/reports/service";
 import { runMonitoringCycle } from "@/worker/scheduler";
 
 let active = true;
+const shutdownWaiters = new Set<() => void>();
 const HEARTBEAT_INTERVAL_MS = Math.min(30_000, Math.max(1_000, env.workerPollIntervalMs));
 
 async function main() {
@@ -133,22 +134,48 @@ async function runHeartbeatLoop() {
 }
 
 function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  if (!active) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      shutdownWaiters.delete(finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    shutdownWaiters.add(finish);
+  });
 }
 
 function shutdown() {
+  if (!active) {
+    return;
+  }
+
   active = false;
+  for (const wake of [...shutdownWaiters]) {
+    wake();
+  }
 }
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 void main().catch(async (error) => {
-  await updateWorkerState({
-    running: false,
-    stoppedAt: new Date(),
-    heartbeatAt: new Date(),
-    statusMessage: error instanceof Error ? error.message : "Worker crashed.",
-  });
+  shutdown();
+  const message = error instanceof Error ? error.message : "Worker crashed.";
+  console.error(message);
+  try {
+    await updateWorkerState({
+      running: false,
+      stoppedAt: new Date(),
+      heartbeatAt: new Date(),
+      statusMessage: message,
+    });
+  } catch (stateError) {
+    console.error(stateError instanceof Error ? stateError.message : "Unable to persist the worker crash state.");
+  }
   process.exitCode = 1;
 });

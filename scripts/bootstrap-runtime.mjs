@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import process from "node:process";
 import nextEnv from "@next/env";
 import postgres from "postgres";
@@ -7,6 +8,11 @@ const { loadEnvConfig } = nextEnv;
 const mode = process.argv[2];
 const MAX_DB_ATTEMPTS = 30;
 const RETRY_DELAY_MS = 2_000;
+const PROJECT_ROOT = process.cwd();
+const DATABASE_SYNC_SCRIPT = path.join(PROJECT_ROOT, "scripts", "sync-database-schema.mjs");
+const NEXT_CLI = path.join(PROJECT_ROOT, "node_modules", "next", "dist", "bin", "next");
+const TSX_CLI = path.join(PROJECT_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+const WORKER_ENTRY = path.join(PROJECT_ROOT, "src", "worker", "runner.ts");
 
 loadEnvConfig(process.cwd());
 
@@ -45,10 +51,10 @@ function resolveDatabaseUrl() {
 await waitForDatabase(DATABASE_URL);
 
 if (mode === "web") {
-  await runStep("npm", ["run", "db:sync"], "Synchronizing database schema");
-  runForeground("npm", ["run", "start"]);
+  await runStep(process.execPath, [DATABASE_SYNC_SCRIPT], "Synchronizing database schema");
+  runForeground(process.execPath, [NEXT_CLI, "start"]);
 } else {
-  runForeground("npm", ["run", "worker:start"]);
+  runForeground(process.execPath, [TSX_CLI, WORKER_ENTRY]);
 }
 
 async function waitForDatabase(connectionString) {
@@ -85,7 +91,7 @@ function runStep(command, args, label) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: "inherit",
-      shell: true,
+      shell: false,
       env: process.env,
     });
 
@@ -102,16 +108,32 @@ function runStep(command, args, label) {
 }
 
 function runForeground(command, args) {
+  let shutdownRequested = false;
   const child = spawn(command, args, {
     stdio: "inherit",
-    shell: true,
+    shell: false,
     env: process.env,
   });
 
+  const forwardSignal = (signal) => {
+    shutdownRequested = true;
+    if (child.exitCode === null && !child.killed) {
+      child.kill(signal);
+    }
+  };
+  const handleSigint = () => forwardSignal("SIGINT");
+  const handleSigterm = () => forwardSignal("SIGTERM");
+  process.once("SIGINT", handleSigint);
+  process.once("SIGTERM", handleSigterm);
+
   child.on("exit", (code) => {
-    process.exit(code ?? 1);
+    process.off("SIGINT", handleSigint);
+    process.off("SIGTERM", handleSigterm);
+    process.exit(shutdownRequested ? 0 : (code ?? 1));
   });
   child.on("error", (error) => {
+    process.off("SIGINT", handleSigint);
+    process.off("SIGTERM", handleSigterm);
     console.error(error instanceof Error ? error.message : "Unable to start runtime.");
     process.exit(1);
   });

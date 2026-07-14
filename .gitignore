@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/.node_modules.sentrovia-update-backup
 /.playwright-browsers
 /.pnp
 .pnp.*
@@ -16,6 +17,7 @@
 
 # next.js
 /.next/
+/.next.sentrovia-update-backup
 /out/
 
 # production
@@ -27,6 +29,7 @@
 # misc
 .DS_Store
 *.pem
+/.sentrovia-update-success
 
 # debug
 npm-debug.log*
