@@ -249,7 +249,7 @@ UPDATE-SENTROVIA.bat
 
 If you copy release files to the server manually, skip the Git commands and double-click `UPDATE-SENTROVIA.bat` in the project root.
 
-The updater requests Administrator permission and handles dependencies, migrations, build, and both service restarts. It preserves `.env.local` and database records. Errors stay visible and the full transcript is saved under `logs`.
+The updater requests Administrator permission and handles dependencies, migrations, build, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It preserves `.env.local` and database records. Errors stay visible and the full transcript is saved under `logs`.
 
 <details>
 <summary>Manual Node.js services without NSSM</summary>
