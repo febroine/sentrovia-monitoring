@@ -91,3 +91,32 @@ function Write-SentroviaEnvironment {
   $Encoding = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($Path, $Content, $Encoding)
 }
+
+function Add-SentroviaEnvironmentDefaults {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Defaults
+  )
+
+  $Existing = Read-SentroviaEnvironment -Path $Path
+  $MissingLines = @()
+  foreach ($Entry in $Defaults.GetEnumerator()) {
+    if (-not $Existing.ContainsKey([string]$Entry.Key)) {
+      $MissingLines += "$($Entry.Key)=$($Entry.Value)"
+    }
+  }
+
+  if ($MissingLines.Count -eq 0) {
+    return @()
+  }
+
+  $CurrentContent = [System.IO.File]::ReadAllText($Path)
+  $Prefix = if ($CurrentContent.Length -gt 0 -and -not $CurrentContent.EndsWith("`n")) {
+    [Environment]::NewLine
+  } else {
+    ""
+  }
+  $Content = $Prefix + ($MissingLines -join [Environment]::NewLine) + [Environment]::NewLine
+  [System.IO.File]::AppendAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+  return $MissingLines
+}

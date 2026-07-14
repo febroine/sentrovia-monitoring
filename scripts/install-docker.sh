@@ -35,6 +35,15 @@ assert_safe_secret() {
   fi
 }
 
+ensure_env_default() {
+  local name="$1"
+  local value="$2"
+  if ! grep -Eq "^[[:space:]]*${name}[[:space:]]*=" "$ENV_FILE"; then
+    printf '%s=%s\n' "$name" "$value" >> "$ENV_FILE"
+    echo "Added missing runtime default: $name=$value"
+  fi
+}
+
 compose_project_name() {
   if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
     printf '%s' "$COMPOSE_PROJECT_NAME" | tr '[:upper:]' '[:lower:]'
@@ -61,6 +70,8 @@ initialize_environment() {
     assert_safe_secret "APP_ENCRYPTION_SECRET"
     assert_safe_secret "POSTGRES_PASSWORD"
     [[ -n "$(read_env_value APP_URL)" ]] || { echo "APP_URL is missing from .env." >&2; exit 1; }
+    ensure_env_default "AUTH_TRUST_PROXY_HEADERS" "false"
+    ensure_env_default "MONITOR_ALLOW_PRIVATE_TARGETS" "true"
     echo "Using the existing .env file. Secrets were not changed."
     return
   fi
