@@ -31,6 +31,7 @@ import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const WORKER_STATE_ID = "primary";
 const WORKER_CONTROL_ADVISORY_LOCK_KEY = 51_772_903;
+const MONITOR_TARGET_LOCK_PREFIX = "sentrovia:monitor-targets:";
 const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
@@ -45,42 +46,57 @@ export async function listMonitors(userId: string) {
 }
 
 export async function createMonitor(userId: string, input: MonitorInput) {
-  const values = await buildMonitorValues(userId, input, null);
-  await assertMonitorTargetAvailable(userId, values.monitorType, values.url, null);
-  const [monitor] = await db
-    .insert(monitors)
-    .values(values)
-    .returning();
+  return db.transaction(async (tx) => {
+    await lockMonitorTargets(tx, userId);
+    const values = await buildMonitorValues(userId, input, null, tx);
+    await assertMonitorTargetAvailable(userId, values.monitorType, values.url, null, tx);
+    const [monitor] = await tx
+      .insert(monitors)
+      .values(values)
+      .returning();
 
-  return monitor;
+    return monitor;
+  });
 }
 
 export async function updateMonitor(userId: string, monitorId: string, input: MonitorInput) {
-  const existingMonitor = await getMonitorById(userId, monitorId);
-  if (!existingMonitor) {
+  const result = await db.transaction(async (tx) => {
+    await lockMonitorTargets(tx, userId);
+    const existingMonitor = await getMonitorById(userId, monitorId, tx);
+    if (!existingMonitor) {
+      return null;
+    }
+
+    const values = await buildMonitorValues(userId, input, existingMonitor, tx);
+    await assertMonitorTargetAvailable(userId, values.monitorType, values.url, monitorId, tx);
+    const now = new Date();
+    const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
+    const [monitor] = await tx
+      .update(monitors)
+      .set({
+        ...values,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        ...activeStateUpdate,
+        userId,
+        updatedAt: now,
+      })
+      .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
+      .returning();
+
+    if (!monitor) {
+      return null;
+    }
+
+    return { existingMonitor, monitor, now, isActive: values.isActive };
+  });
+
+  if (!result) {
     return null;
   }
 
-  const values = await buildMonitorValues(userId, input, existingMonitor);
-  await assertMonitorTargetAvailable(userId, values.monitorType, values.url, monitorId);
-  const now = new Date();
-  const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
-  const [monitor] = await db
-    .update(monitors)
-    .set({
-      ...values,
-      leaseToken: null,
-      leaseExpiresAt: null,
-      ...activeStateUpdate,
-      userId,
-      updatedAt: now,
-    })
-    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
-    .returning();
-
-  await resolveIncidentOnPause(existingMonitor, values.isActive, now);
-
-  return monitor;
+  await resolveIncidentOnPause(result.existingMonitor, result.isActive, result.now);
+  return result.monitor;
 }
 
 export async function withWorkerControlLock<T>(operation: () => Promise<T>) {
@@ -117,6 +133,12 @@ async function assertMonitorTargetAvailable(
   if (conflict) {
     throw new AuthError("A monitor with this target already exists.", 409);
   }
+}
+
+async function lockMonitorTargets(executor: Pick<typeof db, "execute">, userId: string) {
+  await executor.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`${MONITOR_TARGET_LOCK_PREFIX}${userId}`}))`
+  );
 }
 
 export async function updateMonitorActiveState(userId: string, monitorId: string, isActive: boolean) {
@@ -227,7 +249,18 @@ export async function deleteMonitors(userId: string, ids: string[]) {
     .returning({ id: monitors.id });
 }
 
-export async function createManyMonitors(userId: string, inputs: MonitorInput[], database: DatabaseExecutor = db) {
+export async function createManyMonitors(userId: string, inputs: MonitorInput[], database?: DatabaseExecutor) {
+  if (database) {
+    return persistManyMonitors(userId, inputs, database);
+  }
+
+  return db.transaction(async (tx) => {
+    await lockMonitorTargets(tx, userId);
+    return persistManyMonitors(userId, inputs, tx);
+  });
+}
+
+async function persistManyMonitors(userId: string, inputs: MonitorInput[], database: DatabaseExecutor) {
   const existing = await database
     .select({ monitorType: monitors.monitorType, url: monitors.url })
     .from(monitors)
@@ -816,9 +849,19 @@ export async function getWorkerState() {
   const [created] = await db
     .insert(workerState)
     .values({ id: WORKER_STATE_ID, desiredState: "stopped", running: false })
+    .onConflictDoNothing({ target: workerState.id })
     .returning();
 
-  return created;
+  if (created) {
+    return created;
+  }
+
+  const [existing] = await db.select().from(workerState).where(eq(workerState.id, WORKER_STATE_ID));
+  if (!existing) {
+    throw new Error("Worker state could not be initialized.");
+  }
+
+  return existing;
 }
 
 export async function updateWorkerState(values: Partial<typeof workerState.$inferInsert>) {

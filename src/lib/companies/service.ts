@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { companies, monitors } from "@/lib/db/schema";
 import type { CompanyInput } from "@/lib/companies/schemas";
@@ -58,80 +58,110 @@ export async function getCompanyById(userId: string, companyId: string, database
 }
 
 export async function updateCompany(userId: string, companyId: string, input: CompanyInput) {
-  const [company] = await db
-    .update(companies)
-    .set({
-      name: input.name,
-      description: input.description,
-      isActive: input.isActive,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(companies.userId, userId), eq(companies.id, companyId)))
-    .returning();
+  const company = await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(companies)
+      .set({
+        name: input.name,
+        description: input.description,
+        isActive: input.isActive,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(companies.userId, userId), eq(companies.id, companyId)))
+      .returning();
+
+    if (!updated) {
+      return null;
+    }
+
+    await tx
+      .update(monitors)
+      .set({
+        company: updated.name,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+
+    return updated;
+  });
 
   if (!company) {
     return null;
   }
-
-  await db
-    .update(monitors)
-    .set({
-      company: company.name,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
 
   const [withCounts] = await listCompanies(userId).then((items) => items.filter((item) => item.id === companyId));
   return withCounts ?? null;
 }
 
 export async function deleteCompany(userId: string, companyId: string) {
-  await db
-    .update(monitors)
-    .set({
-      companyId: null,
-      company: null,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+  const company = await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(eq(companies.userId, userId), eq(companies.id, companyId)));
 
-  const [company] = await db
-    .delete(companies)
-    .where(and(eq(companies.userId, userId), eq(companies.id, companyId)))
-    .returning({ id: companies.id });
+    if (!existing) {
+      return null;
+    }
+
+    await tx
+      .update(monitors)
+      .set({
+        companyId: null,
+        company: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+
+    const [deleted] = await tx
+      .delete(companies)
+      .where(and(eq(companies.userId, userId), eq(companies.id, companyId)))
+      .returning({ id: companies.id });
+
+    return deleted ?? null;
+  });
 
   return company ?? null;
 }
 
 export async function updateCompaniesActiveState(userId: string, ids: string[], isActive: boolean) {
-  if (ids.length === 0) {
+  const companyIds = Array.from(new Set(ids));
+  if (companyIds.length === 0) {
     return [];
   }
 
-  await Promise.all(
-    ids.map((companyId) =>
-      db
-        .update(companies)
-        .set({
-          isActive,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(companies.userId, userId), eq(companies.id, companyId)))
-    )
-  );
+  await db
+    .update(companies)
+    .set({
+      isActive,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds)));
 
   return listCompanies(userId);
 }
 
 export async function deleteCompanies(userId: string, ids: string[]) {
-  const deleted: string[] = [];
-
-  for (const companyId of ids) {
-    const company = await deleteCompany(userId, companyId);
-    if (company) {
-      deleted.push(company.id);
-    }
+  const companyIds = Array.from(new Set(ids));
+  if (companyIds.length === 0) {
+    return [];
   }
 
-  return deleted;
+  return db.transaction(async (tx) => {
+    await tx
+      .update(monitors)
+      .set({
+        companyId: null,
+        company: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(monitors.userId, userId), inArray(monitors.companyId, companyIds)));
+
+    const deleted = await tx
+      .delete(companies)
+      .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds)))
+      .returning({ id: companies.id });
+
+    return deleted.map((company) => company.id);
+  });
 }

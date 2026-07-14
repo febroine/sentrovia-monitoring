@@ -52,7 +52,22 @@ export function buildCanonicalMonitorTarget(input: TargetShape) {
 }
 
 export function buildMonitorIdentityKey(input: { monitorType: MonitorType; url: string }) {
-  return `${input.monitorType}:${input.url.trim().toLowerCase()}`;
+  return `${input.monitorType}:${normalizeMonitorIdentityTarget(input.monitorType, input.url)}`;
+}
+
+function normalizeMonitorIdentityTarget(monitorType: MonitorType, value: string) {
+  const target = value.trim();
+  if (monitorType === "heartbeat") {
+    return target;
+  }
+
+  try {
+    const parsed = new URL(target);
+    parsed.hostname = parsed.hostname.toLowerCase();
+    return parsed.toString();
+  } catch {
+    return target;
+  }
 }
 
 export function getMonitorTargetDisplay(input: { monitorType: string; url: string }) {
