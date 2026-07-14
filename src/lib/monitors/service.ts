@@ -1146,6 +1146,7 @@ async function assertMonitorNetworkTargetAllowed(monitorType: MonitorInput["moni
 
   await assertMonitorNetworkTarget(resolveMonitorTargetHostname(monitorType, url), {
     allowPrivateTargets: env.monitorAllowPrivateTargets,
+    allowUnresolved: true,
     message: MONITOR_PUBLIC_TARGET_ERROR,
   });
 }
