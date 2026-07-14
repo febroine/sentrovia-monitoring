@@ -32,7 +32,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run the Docker installer to create .env}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
     ports:
       - "5433:5432"
@@ -55,11 +55,11 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run the Docker installer to create .env}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
       APP_URL: ${APP_URL:-http://localhost:3000}
-      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
+      AUTH_SECRET: ${AUTH_SECRET:?Run the Docker installer to create .env}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:?Run the Docker installer to create .env}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       DISABLE_EMBEDDED_WORKER_SPAWN: "true"
@@ -88,11 +88,11 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run the Docker installer to create .env}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
       APP_URL: ${APP_URL:-http://localhost:3000}
-      AUTH_SECRET: ${AUTH_SECRET:-sentrovia-compose-auth-secret-20260708-minimum-32}
-      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:-sentrovia-compose-encryption-secret-20260708-minimum-32}
+      AUTH_SECRET: ${AUTH_SECRET:?Run the Docker installer to create .env}
+      APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:?Run the Docker installer to create .env}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-20}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-10000}
       WORKER_AUTO_START: "true"

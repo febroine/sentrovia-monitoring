@@ -85,13 +85,27 @@ It is built for teams that do not want an alert every time a single request time
 
 ## Quick Start With Docker
 
-Docker Compose is the fastest way to run Sentrovia locally.
+Docker Compose is the recommended way to run Sentrovia. The installer creates a private `.env` file with cryptographically strong, stable secrets and then starts the complete stack.
 
-```bash
-docker compose up --build
+Windows PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install-docker.ps1
 ```
 
-Local startup uses the default Compose files automatically. They provide development-only values for PostgreSQL, auth, encryption, web, and worker settings, so a clean local checkout can start with one command even if `.env.example` has placeholder values.
+Linux or macOS:
+
+```bash
+chmod +x scripts/install-docker.sh
+./scripts/install-docker.sh
+```
+
+The installer is idempotent: it creates `.env` only when the file is absent and never rotates existing passwords or encryption keys. Later starts use the normal Compose command:
+
+```bash
+docker compose up -d
+```
 
 Open the app:
 
@@ -110,14 +124,14 @@ If PostgreSQL was already started once with a different password, the existing D
 
 ```bash
 docker compose down -v
-docker compose up --build
+docker compose up -d --build
 ```
 
 Use this only for local development because it deletes the local PostgreSQL data.
 
 ## Environment
 
-Local Docker startup works without a `.env` file because the default Compose setup provides development-only values. Production and shared servers must use explicit environment values.
+Do not create `.env` manually for a normal Docker installation. `install-docker.ps1` or `install-docker.sh` creates it with strong random values. `.env.example` documents available settings; its placeholder values must never be used as real secrets.
 
 ```bash
 POSTGRES_USER=postgres
@@ -139,14 +153,18 @@ Production notes:
 - `APP_URL` must match the real URL operators use.
 - The web process and worker process must use the same environment values.
 - Compose passes PostgreSQL connection parts separately, so generated passwords containing URL-reserved characters remain valid.
-- Do not use `.env.example` values directly in production; copy the file and replace every placeholder.
+- Do not use `.env.example` values directly in production.
 - For production Compose, include the strict production override so missing secrets fail fast:
 
-```bash
-cp .env.example .env
-# Edit .env and replace every placeholder value.
+```powershell
+.\scripts\install-docker.ps1 -SkipStart
+# Set APP_URL in .env to the public HTTPS URL.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
+
+On Linux or macOS, use `./scripts/install-docker.sh --prepare-only` for the preparation step.
+
+Older installations that already use placeholder secrets are rejected instead of being silently rotated. Changing `APP_ENCRYPTION_SECRET` on a live database can make stored SMTP, webhook, and monitor credentials unreadable. Back up the database and plan that one-time credential rotation explicitly; use `docker compose down -v`, remove `.env`, and rerun the installer only when deleting local data is acceptable.
 
 - Set `AUTH_TRUST_PROXY_HEADERS=true` only behind a trusted reverse proxy that sanitizes forwarded headers.
 - Use `PLAYWRIGHT_BROWSERS_PATH=0` when running Playwright Chromium from a Windows service.
@@ -339,15 +357,29 @@ Prerequisites:
 - npm
 - PostgreSQL access
 - NSSM in `PATH`
-- `.env.local` in the project root
-- Playwright Chromium installed
+- A PostgreSQL database and credentials with schema-change permissions
+- An Administrator PowerShell session
 
-First-time setup:
+First-time setup creates `.env.local`, installs dependencies and Chromium, applies all migrations, builds the app, and creates both services. The PostgreSQL password is requested securely and is not printed or stored in shell history:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\install-windows-nssm.ps1 -RecreateServices
+.\scripts\install-windows-nssm.ps1
 ```
+
+Use parameters when PostgreSQL is not local:
+
+```powershell
+$DbPassword = Read-Host "PostgreSQL password" -AsSecureString
+.\scripts\install-windows-nssm.ps1 `
+  -AppUrl "https://monitoring.example.com" `
+  -DatabaseHost "db.example.com" `
+  -DatabaseUser "sentrovia" `
+  -DatabaseName "sentrovia" `
+  -DatabasePassword $DbPassword
+```
+
+The installer preserves an existing `.env.local`. Use `-RecreateServices` only when the NSSM service definitions themselves must be replaced.
 
 Update an existing server:
 

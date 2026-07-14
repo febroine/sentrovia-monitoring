@@ -254,7 +254,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Do I need to create every environment value manually?",
         answer:
-          "Production installs should keep a real .env file with explicit secrets. Docker Compose can prepare the PostgreSQL, web, and worker services, but secrets such as AUTH_SECRET and database credentials should be stable values that survive updates and container restarts.",
+          "For Docker, run scripts/install-docker.ps1 on Windows or scripts/install-docker.sh on Linux and macOS. The installer creates a private .env file with strong, stable secrets, then starts PostgreSQL, web, and worker services. It preserves an existing .env so encryption keys and database credentials survive updates.",
       },
       {
         question: "Can I tell if the worker is truly alive?",
@@ -274,7 +274,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "How should I update a Windows/NSSM or manual Node.js deployment?",
         answer:
-          "Stop sentrovia-worker and sentrovia-web, fetch and checkout the target GitHub Release tag, run npm ci, npm run db:push, npm run db:manual, npm run build, then start sentrovia-web and sentrovia-worker again. For NSSM installs, scripts\\update-production-windows-nssm.bat can run the service-side update steps after you check out the target release.",
+          "For first-time setup, run scripts\\install-windows-nssm.ps1 in an Administrator PowerShell session. It creates .env.local when needed, installs dependencies and Chromium, applies migrations, builds the app, and configures both services. For updates, scripts\\update-production-windows-nssm.bat keeps the existing environment and runs the service-side update steps after you check out the target release.",
       },
       {
         question: "What should I do after changing environment variables in Docker mode?",
