@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { TranslationProvider } from '@/context/translation-context';
 import AppShell from '@/components/app-shell';
+import { ToastRegion } from '@/components/ui/toast-region';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans bg-background text-foreground antialiased min-h-screen`}>
         <TranslationProvider>
           <AppShell>{children}</AppShell>
+          <ToastRegion />
         </TranslationProvider>
       </body>
     </html>

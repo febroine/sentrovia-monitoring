@@ -23,6 +23,7 @@ export type HelpCategory = {
 export const quickNotes = [
   "If monitors look stale, open Worker Insights first and check heartbeat, backlog, and recent errors.",
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
+  "If a hostname has no DNS record yet, you can still save it; the worker records a DNS failure until it resolves.",
   "If a timeout alert feels noisy, check whether it was a confirmed timeout outage or a slow-but-online latency warning.",
   "If a new release is available, use Settings > Updates for host-side commands instead of expecting the browser to update the app.",
 ];
@@ -44,6 +45,16 @@ export const helpCategories: HelpCategory[] = [
         question: "How does a new monitor move from pending to a live state?",
         answer:
           "A monitor starts as pending, waits for the worker to pick it up, then receives its first persisted check result. That result writes status, code, latency, timestamps, and next check time back into PostgreSQL.",
+      },
+      {
+        question: "Can I add a site before its DNS record exists?",
+        answer:
+          "Yes. A syntactically valid HTTP or HTTPS target can be saved even when the Sentrovia server cannot resolve it yet. The worker records the check as a DNS availability failure, applies Verification Mode, and automatically returns the monitor to up when DNS and the service become reachable.",
+      },
+      {
+        question: "Why are some network targets still blocked?",
+        answer:
+          "Private network targets are allowed when MONITOR_ALLOW_PRIVATE_TARGETS is true, but localhost, loopback, link-local, and cloud metadata targets remain blocked to prevent access to sensitive services on the Sentrovia host. Use a network-reachable hostname or IP for the service instead.",
       },
       {
         question: "What is Verification Mode?",
@@ -254,7 +265,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Do I need to create every environment value manually?",
         answer:
-          "For Docker, run scripts/install-docker.ps1 on Windows or scripts/install-docker.sh on Linux and macOS. The installer creates a private .env file with strong, stable secrets, then starts PostgreSQL, web, and worker services. It preserves an existing .env so encryption keys and database credentials survive updates.",
+          "No. Docker installers create a private .env with strong stable secrets, while the Windows/NSSM installer creates .env.local. On later updates, installers preserve database credentials and application secrets, then append only missing non-secret runtime defaults such as MONITOR_ALLOW_PRIVATE_TARGETS. Explicit values are never overwritten.",
       },
       {
         question: "Can I tell if the worker is truly alive?",
@@ -274,7 +285,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "How should I update a Windows/NSSM or manual Node.js deployment?",
         answer:
-          "For first-time setup, run scripts\\install-windows-nssm.ps1 in an Administrator PowerShell session. For an existing NSSM server, place the new release files in the project directory and double-click UPDATE-SENTROVIA.bat. It requests Administrator permission, preserves .env.local and database records, validates a clean production build before applying pending migrations, restarts both services, and restores the previous dependencies and build if the update fails. A timestamped transcript is saved under logs.",
+          "For first-time setup, run scripts\\install-windows-nssm.ps1 in an Administrator PowerShell session. For an existing NSSM server, place the new release files in the project directory and double-click UPDATE-SENTROVIA.bat. It preserves .env.local and database records, fills missing safe runtime defaults, validates a clean build, applies pending migrations under a database lock, restarts both services, and restores previous dependencies and build output when startup fails. A timestamped transcript is saved under logs.",
       },
       {
         question: "What should I do after changing environment variables in Docker mode?",
@@ -309,6 +320,11 @@ export const helpCategories: HelpCategory[] = [
         question: "Can imported or bulk-edited monitors stay partially empty?",
         answer:
           "Only if the missing fields can be safely filled by workspace defaults. Required monitor identity fields still need to exist, otherwise the row is rejected during validation.",
+      },
+      {
+        question: "What happens when I delete monitors?",
+        answer:
+          "Monitoring never deletes selected monitors immediately. A confirmation dialog takes a snapshot of the selection, lists the affected monitors, and explains that related monitoring history will be removed. The API call only runs after explicit confirmation, and a failed deletion remains visible instead of being reported as successful.",
       },
       {
         question: "Do saved filters and presets survive a browser restart?",

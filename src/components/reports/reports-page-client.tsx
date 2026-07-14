@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
-  Building2,
-  CalendarDays,
+  ChevronDown,
   Copy,
   Download,
-  Mail,
   PlayCircle,
   Search,
   Send,
@@ -19,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TemplateEditor } from "@/components/settings/template-editor";
@@ -28,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CompanyRecord } from "@/lib/companies/types";
 import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
+import { showToast, type ToastTone } from "@/lib/client-toast";
 import type {
   GeneratedReport,
   ReportCadence,
@@ -154,11 +154,16 @@ export default function ReportsPageClient() {
   const [lastDeliveryResult, setLastDeliveryResult] = useState<DeliveryResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; tone: ToastTone } | null>(null);
   const [scheduleSearch, setScheduleSearch] = useState("");
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>("all");
+  const [scheduleToDelete, setScheduleToDelete] = useState<ReportScheduleRecord | null>(null);
 
-  const summary = useMemo(() => buildSummary(schedules), [schedules]);
+  function notify(message: string, tone: ToastTone) {
+    setMessage({ text: message, tone });
+    showToast(message, tone);
+  }
+
   const filteredSchedules = useMemo(
     () => filterSchedules(schedules, scheduleSearch, scheduleFilter),
     [scheduleFilter, scheduleSearch, schedules]
@@ -199,7 +204,9 @@ export default function ReportsPageClient() {
         setMessage(null);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to load reports.");
+      const message = error instanceof Error ? error.message : "Unable to load reports.";
+      setMessage({ text: message, tone: "error" });
+      showToast(message, "error");
     } finally {
       setLoading(false);
     }
@@ -250,9 +257,9 @@ export default function ReportsPageClient() {
       }
 
       setPreview(data.report);
-      setMessage("Report preview updated.");
+      notify("Report preview updated.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to generate the report preview.");
+      notify(error instanceof Error ? error.message : "Unable to generate the report preview.", "error");
     } finally {
       setSaving(false);
     }
@@ -292,9 +299,9 @@ export default function ReportsPageClient() {
         reportTitle: data.report.title,
         recipients: parseRecipients(previewDraft.recipients),
       });
-      setMessage("Report sent successfully with an HTML attachment.");
+      notify("Report sent successfully with an HTML attachment.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to send the report.");
+      notify(error instanceof Error ? error.message : "Unable to send the report.", "error");
     } finally {
       setSaving(false);
     }
@@ -327,10 +334,10 @@ export default function ReportsPageClient() {
 
       setSchedules((current) => [data.schedule!, ...current]);
       setScheduleDraft(EMPTY_SCHEDULE_DRAFT);
-      setMessage("Report schedule created.");
+      notify("Report schedule created.", "success");
       setActiveTab("schedules");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to create the report schedule.");
+      notify(error instanceof Error ? error.message : "Unable to create the report schedule.", "error");
     } finally {
       setSaving(false);
     }
@@ -354,9 +361,9 @@ export default function ReportsPageClient() {
       setSchedules((current) =>
         current.map((item) => (item.id === schedule.id ? data.schedule! : item))
       );
-      setMessage("Report schedule updated.");
+      notify("Report schedule updated.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update the report schedule.");
+      notify(error instanceof Error ? error.message : "Unable to update the report schedule.", "error");
     } finally {
       setSaving(false);
     }
@@ -389,9 +396,9 @@ export default function ReportsPageClient() {
         reportTitle: data.report.title,
         recipients: data.schedule.recipientEmails,
       });
-      setMessage("Scheduled report sent successfully.");
+      notify("Scheduled report sent successfully.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to send the scheduled report.");
+      notify(error instanceof Error ? error.message : "Unable to send the scheduled report.", "error");
       await refreshPage({ clearMessage: false });
     } finally {
       setSaving(false);
@@ -410,9 +417,9 @@ export default function ReportsPageClient() {
       }
 
       setSchedules((current) => [data.schedule!, ...current]);
-      setMessage("Report schedule duplicated as a paused copy.");
+      notify("Report schedule duplicated as a paused copy.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to duplicate the report schedule.");
+      notify(error instanceof Error ? error.message : "Unable to duplicate the report schedule.", "error");
     } finally {
       setSaving(false);
     }
@@ -430,9 +437,9 @@ export default function ReportsPageClient() {
       }
 
       setSchedules((current) => current.filter((schedule) => schedule.id !== data.id));
-      setMessage("Report schedule deleted.");
+      notify("Report schedule deleted.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to delete the report schedule.");
+      notify(error instanceof Error ? error.message : "Unable to delete the report schedule.", "error");
     } finally {
       setSaving(false);
     }
@@ -489,55 +496,43 @@ export default function ReportsPageClient() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      <header className="overflow-hidden rounded-3xl border border-border/70 bg-card/80 shadow-sm">
-        <div className="px-5 py-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                Preview HTML reports, schedule recurring delivery, and review existing report plans without extra export formats.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">
-                HTML only
-              </Badge>
-              <Badge variant="outline" className="border-border/70 text-muted-foreground">
-                Next: {summary.nextRunLabel}
-              </Badge>
-            </div>
-          </div>
+      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="mb-1 text-2xl font-semibold tracking-tight">Reports</h1>
+          <p className="text-sm text-muted-foreground">
+            Preview HTML reports, schedule recurring delivery, and review existing report plans.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+          <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">
+            HTML only
+          </Badge>
+          <Badge variant="outline" className="border-border/70 text-muted-foreground">
+            Next: {activeSchedules[0] ? new Date(activeSchedules[0].nextRunAt).toLocaleString() : "No active schedule"}
+          </Badge>
         </div>
       </header>
 
-      {message ? <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">{message}</div> : null}
+      {message ? (
+        <div
+          role={message.tone === "error" ? "alert" : "status"}
+          className={cn(
+            "rounded-lg border px-4 py-3 text-sm",
+            message.tone === "error" && "border-destructive/30 bg-destructive/5 text-destructive",
+            message.tone === "success" && "border-emerald-500/25 bg-emerald-500/5",
+            message.tone === "info" && "border-border/70 bg-muted/20"
+          )}
+        >
+          {message.text}
+        </div>
+      ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard icon={CalendarDays} label="Active schedules" value={String(summary.activeSchedules)} description="Auto-send schedules currently enabled." tone="violet" />
-        <SummaryCard icon={Sparkles} label="Weekly" value={String(summary.weeklySchedules)} description="Weekly report automations." tone="sky" />
-        <SummaryCard icon={Building2} label="Company scoped" value={String(summary.companySchedules)} description="Schedules tied to a single company." tone="emerald" />
-        <SummaryCard icon={Mail} label="Recipients" value={String(summary.recipientCount)} description="Unique emails across schedules." tone="slate" />
+      <div className="inline-flex w-full rounded-lg border bg-muted/30 p-1 sm:w-auto">
+        <ReportModeButton active={activeTab === "preview"} title="Preview" onClick={() => setActiveTab("preview")} />
+        <ReportModeButton active={activeTab === "schedules"} title="Schedules" onClick={() => setActiveTab("schedules")} />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-        <Card className="self-start overflow-hidden border-border/70">
-          <CardContent className="space-y-3 p-3">
-            <ReportModeButton
-              active={activeTab === "preview"}
-              title="Preview Studio"
-              description="Generate a one-off report and review the output before sharing."
-              onClick={() => setActiveTab("preview")}
-            />
-            <ReportModeButton
-              active={activeTab === "schedules"}
-              title="Schedule Manager"
-              description="Create recurring report runs and manage existing delivery plans."
-              onClick={() => setActiveTab("schedules")}
-            />
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
+      <div className="space-y-4">
           {activeTab === "preview" ? (
             <>
           <Card className="overflow-hidden border-border/70">
@@ -548,15 +543,6 @@ export default function ReportsPageClient() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
-              <TemplateStrip
-                value={previewDraft.template}
-                onChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
-              />
-              <ReportDeliveryComposer
-                draft={previewDraft}
-                onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
-              />
-
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Field label="Scope">
                   <Select
@@ -628,6 +614,13 @@ export default function ReportsPageClient() {
                 </Field>
               </div>
 
+              <ReportOptionsPanel
+                template={previewDraft.template}
+                draft={previewDraft}
+                onTemplateChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
+                onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
+              />
+
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => void generatePreview()} disabled={saving || previewNeedsCompany}>
                   {saving ? "Generating..." : "Generate Preview"}
@@ -678,15 +671,6 @@ export default function ReportsPageClient() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
-              <TemplateStrip
-                value={scheduleDraft.template}
-                onChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
-              />
-              <ReportDeliveryComposer
-                draft={scheduleDraft}
-                onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
-              />
-
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Field label="Schedule name">
                   <Input value={scheduleDraft.name} onChange={(event) => setScheduleDraft((current) => ({ ...current, name: event.target.value }))} />
@@ -764,7 +748,7 @@ export default function ReportsPageClient() {
                   />
                 </Field>
 
-                <div className="rounded-2xl border bg-muted/15 p-4">
+                <div className="rounded-lg border bg-muted/15 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium">Auto-send</p>
@@ -776,6 +760,13 @@ export default function ReportsPageClient() {
                   </div>
                 </div>
               </div>
+
+              <ReportOptionsPanel
+                template={scheduleDraft.template}
+                draft={scheduleDraft}
+                onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
+                onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
+              />
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => void createSchedule()} disabled={saving || scheduleNeedsCompany || scheduleRecipients.length === 0}>
@@ -803,7 +794,7 @@ export default function ReportsPageClient() {
                 />
               ) : (
                 activeSchedules.slice(0, 6).map((schedule) => (
-                  <div key={schedule.id} className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3">
+                  <div key={schedule.id} className="rounded-lg border border-border/70 bg-background/80 px-4 py-3">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div className="min-w-0">
                         <p className="text-sm font-medium">{schedule.name}</p>
@@ -868,7 +859,7 @@ export default function ReportsPageClient() {
                     onSendNow={() => void sendScheduleNow(schedule.id)}
                     onEdit={() => loadScheduleIntoBuilder(schedule)}
                     onDuplicate={() => void duplicateSchedule(schedule)}
-                    onDelete={() => void deleteSchedule(schedule.id)}
+                    onDelete={() => setScheduleToDelete(schedule)}
                   />
                 ))
               )}
@@ -877,51 +868,43 @@ export default function ReportsPageClient() {
             </>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
 
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  description,
-  tone,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  description: string;
-  tone: "violet" | "sky" | "amber" | "emerald" | "slate";
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <CardContent className={cn("border-l-4 px-4 py-4", resolveAccentClass(tone))}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-            <p className="text-2xl font-semibold tracking-tight">{value}</p>
-            <p className="text-xs text-muted-foreground">{description}</p>
-          </div>
-          <div className={cn("rounded-2xl border p-2.5", resolveBadgeClass(tone))}>
-            <Icon className="h-4 w-4" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      <Dialog open={scheduleToDelete !== null} onOpenChange={(open) => !open && setScheduleToDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete report schedule?</DialogTitle>
+            <DialogDescription>
+              “{scheduleToDelete?.name}” will stop running and its schedule record will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleToDelete(null)} disabled={saving}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={saving || !scheduleToDelete}
+              onClick={() => {
+                if (!scheduleToDelete) return;
+                const scheduleId = scheduleToDelete.id;
+                setScheduleToDelete(null);
+                void deleteSchedule(scheduleId);
+              }}
+            >
+              Delete schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      </div>
   );
 }
 
 function ReportModeButton({
   active,
   title,
-  description,
   onClick,
 }: {
   active: boolean;
   title: string;
-  description: string;
   onClick: () => void;
 }) {
   return (
@@ -929,15 +912,44 @@ function ReportModeButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-2xl border px-4 py-4 text-left transition-colors",
+        "flex-1 rounded-md px-4 py-2 text-center text-sm font-medium transition-colors sm:flex-none",
         active
-          ? "border-primary/30 bg-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-          : "border-border/70 bg-background hover:border-border hover:bg-muted/10"
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground"
       )}
     >
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+      {title}
     </button>
+  );
+}
+
+function ReportOptionsPanel({
+  template,
+  draft,
+  onTemplateChange,
+  onChange,
+}: {
+  template: ReportTemplateVariant;
+  draft: ReportDeliveryDraft;
+  onTemplateChange: (template: ReportTemplateVariant) => void;
+  onChange: (patch: Partial<ReportDeliveryDraft>) => void;
+}) {
+  return (
+    <details className="group rounded-lg border border-border/70 bg-muted/10">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="block text-sm font-medium">Report options</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Template, detail level, included sections, and email copy
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-5 border-t border-border/70 px-4 py-4">
+        <TemplateStrip value={template} onChange={onTemplateChange} />
+        <ReportDeliveryComposer draft={draft} onChange={onChange} />
+      </div>
+    </details>
   );
 }
 
@@ -960,7 +972,7 @@ function TemplateStrip({
             type="button"
             onClick={() => onChange(template.value)}
             className={cn(
-              "rounded-2xl border px-4 py-4 text-left transition-colors",
+              "rounded-lg border px-4 py-4 text-left transition-colors",
               active
                 ? "border-primary/30 bg-primary/5"
                 : "border-border/70 bg-background hover:border-border hover:bg-muted/10"
@@ -971,7 +983,7 @@ function TemplateStrip({
                 <p className="text-sm font-semibold">{template.label}</p>
                 <p className="text-xs leading-5 text-muted-foreground">{template.detail}</p>
               </div>
-              <div className="rounded-xl border border-border/70 bg-background/80 p-2">
+              <div className="rounded-md border border-border/70 bg-background/80 p-2">
                 <Icon className="h-4 w-4 text-muted-foreground" />
               </div>
             </div>
@@ -1001,7 +1013,7 @@ function ReportDeliveryComposer({
   onChange: (patch: Partial<ReportDeliveryDraft>) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-muted/10 p-4">
+    <div>
       <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
         <div className="space-y-4">
           <Field label="Detail level">
@@ -1022,7 +1034,7 @@ function ReportDeliveryComposer({
             </Select>
           </Field>
           <div className="grid gap-2">
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">HTML only</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Scheduled and manual report deliveries include one browser-ready HTML file. CSV, XLSX, and PDF exports are disabled.
@@ -1078,7 +1090,7 @@ function CompactToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/80 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/80 px-3 py-2">
       <span className="text-xs font-medium">{label}</span>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
@@ -1099,7 +1111,7 @@ function BuilderEmptyState({
   return (
     <Card className="overflow-hidden border-dashed border-border/70 bg-muted/10">
       <CardContent className="flex flex-col items-start gap-4 px-5 py-6">
-        <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+        <div className="rounded-md border border-border/70 bg-background/80 p-3">
           <WandSparkles className="h-5 w-5 text-muted-foreground" />
         </div>
         <div className="space-y-1">
@@ -1140,7 +1152,7 @@ function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
 
 function InfoTile({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/70 bg-muted/10 px-4 py-3">
+    <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 px-4 py-3">
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
     </div>
@@ -1182,7 +1194,7 @@ function ScheduleCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="rounded-3xl border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),transparent_60%)] p-4">
+    <div className="rounded-lg border border-border/70 bg-muted/5 p-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -1209,14 +1221,14 @@ function ScheduleCard({
           </div>
 
           {schedule.lastErrorMessage ? (
-            <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {schedule.lastErrorMessage}
             </div>
           ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2 xl:max-w-[320px] xl:justify-end">
-          <div className="flex items-center gap-3 rounded-2xl border bg-background px-3 py-2">
+          <div className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2">
             <span className="text-xs text-muted-foreground">Active</span>
             <Switch checked={schedule.isActive} onCheckedChange={onToggle} />
           </div>
@@ -1263,8 +1275,8 @@ function StatusBadge({ schedule }: { schedule: ReportScheduleRecord }) {
 
 function DetailBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-muted/10 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+    <div className="rounded-lg border border-border/70 bg-muted/10 px-4 py-3">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-2 text-sm leading-6 [overflow-wrap:anywhere]">{value}</p>
     </div>
   );
@@ -1331,7 +1343,7 @@ function ReportPreviewPanel({
         </CardHeader>
         <CardContent className="grid gap-3 pt-4 md:grid-cols-2">
           {report.recommendations.map((item, index) => (
-            <div key={`${item}-${index}`} className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3">
+            <div key={`${item}-${index}`} className="rounded-lg border border-border/70 bg-background/80 px-4 py-3">
               <p className="text-sm leading-6">{item}</p>
             </div>
           ))}
@@ -1349,7 +1361,7 @@ function ReportPreviewPanel({
               <p className="text-sm text-muted-foreground">No failures during the selected period.</p>
             ) : (
               report.failingMonitors.map((monitor) => (
-                <div key={monitor.monitorId} className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                <div key={monitor.monitorId} className="rounded-lg border border-border/70 bg-background/80 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -1378,7 +1390,7 @@ function ReportPreviewPanel({
               <p className="text-sm text-muted-foreground">No latency samples for this period.</p>
             ) : (
               report.slowMonitors.map((monitor) => (
-                <div key={monitor.monitorId} className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                <div key={monitor.monitorId} className="rounded-lg border border-border/70 bg-background/80 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -1403,7 +1415,7 @@ function ReportPreviewPanel({
             <p className="text-sm text-muted-foreground">No failure events during the selected period.</p>
           ) : (
             report.recentFailures.map((event) => (
-              <div key={`${event.monitorId}-${event.createdAt}`} className="rounded-2xl border border-border/70 bg-background/80 p-4">
+              <div key={`${event.monitorId}-${event.createdAt}`} className="rounded-lg border border-border/70 bg-background/80 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-sm font-medium [overflow-wrap:anywhere]">{event.url}</p>
@@ -1416,6 +1428,7 @@ function ReportPreviewPanel({
                   </p>
                 </div>
               </div>
+
             ))
           )}
         </CardContent>
@@ -1428,7 +1441,7 @@ function ReportPreviewPanel({
         </CardHeader>
         <CardContent className="space-y-3 pt-4">
           {report.monitorBreakdown.map((monitor) => (
-            <div key={monitor.monitorId} className="rounded-2xl border border-border/70 bg-background/80 p-4">
+            <div key={monitor.monitorId} className="rounded-lg border border-border/70 bg-background/80 p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -1459,8 +1472,8 @@ function ReportPreviewPanel({
 
 function PreviewMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-muted/10 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+    <div className="rounded-lg border border-border/70 bg-muted/10 px-4 py-3">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
     </div>
@@ -1479,50 +1492,16 @@ function StateChip({
   return (
     <div
       className={cn(
-        "rounded-2xl border px-4 py-3",
+        "rounded-lg border px-4 py-3",
         tone === "emerald" && "border-emerald-500/25 bg-emerald-500/10",
         tone === "rose" && "border-rose-500/25 bg-rose-500/10",
         tone === "amber" && "border-amber-500/25 bg-amber-500/10"
       )}
     >
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-2 text-lg font-semibold">{value}</p>
     </div>
   );
-}
-
-function buildSummary(schedules: ReportScheduleRecord[]) {
-  const activeSchedules = schedules.filter((schedule) => schedule.isActive).length;
-  const pausedSchedules = schedules.length - activeSchedules;
-  const deliveredSchedules = schedules.filter((schedule) => schedule.lastStatus === "delivered").length;
-  const failedSchedules = schedules.filter((schedule) => schedule.lastStatus === "failed").length;
-  const weeklySchedules = schedules.filter((schedule) => schedule.cadence === "weekly").length;
-  const monthlySchedules = schedules.filter((schedule) => schedule.cadence === "monthly").length;
-  const allTimeSchedules = schedules.filter((schedule) => schedule.cadence === "all_time").length;
-  const companySchedules = schedules.filter((schedule) => schedule.scope === "company").length;
-  const recipientCount = new Set(schedules.flatMap((schedule) => schedule.recipientEmails)).size;
-  const nextRun = schedules.filter((schedule) => schedule.isActive).sort((left, right) => new Date(left.nextRunAt).getTime() - new Date(right.nextRunAt).getTime())[0];
-  const lastDelivered = schedules
-    .filter((schedule) => schedule.lastDeliveredAt)
-    .sort((left, right) => {
-      const leftTime = left.lastDeliveredAt ? new Date(left.lastDeliveredAt).getTime() : 0;
-      const rightTime = right.lastDeliveredAt ? new Date(right.lastDeliveredAt).getTime() : 0;
-      return rightTime - leftTime;
-    })[0];
-
-  return {
-    activeSchedules,
-    pausedSchedules,
-    deliveredSchedules,
-    failedSchedules,
-    weeklySchedules,
-    monthlySchedules,
-    allTimeSchedules,
-    companySchedules,
-    recipientCount,
-    nextRunLabel: nextRun ? new Date(nextRun.nextRunAt).toLocaleString() : "No active schedule",
-    lastDeliveredLabel: lastDelivered?.lastDeliveredAt ? new Date(lastDelivered.lastDeliveredAt).toLocaleString() : "No delivery yet",
-  };
 }
 
 function filterSchedules(schedules: ReportScheduleRecord[], query: string, filter: ScheduleFilter) {
@@ -1609,22 +1588,6 @@ function getScheduleDeliveryStatusLabel(schedule: ReportScheduleRecord) {
   }
 
   return "Not sent yet";
-}
-
-function resolveAccentClass(tone: "violet" | "sky" | "amber" | "emerald" | "slate") {
-  if (tone === "violet") return "border-l-violet-500";
-  if (tone === "sky") return "border-l-sky-500";
-  if (tone === "amber") return "border-l-amber-500";
-  if (tone === "emerald") return "border-l-emerald-500";
-  return "border-l-slate-400";
-}
-
-function resolveBadgeClass(tone: "violet" | "sky" | "amber" | "emerald" | "slate") {
-  if (tone === "violet") return "border-violet-500/25 bg-violet-500/10 text-violet-600 dark:text-violet-300";
-  if (tone === "sky") return "border-sky-500/25 bg-sky-500/10 text-sky-600 dark:text-sky-300";
-  if (tone === "amber") return "border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300";
-  if (tone === "emerald") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300";
-  return "border-border/70 bg-muted/25 text-muted-foreground";
 }
 
 function parseRecipients(value: string) {

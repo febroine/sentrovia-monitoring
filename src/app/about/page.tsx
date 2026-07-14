@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Workflow,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -50,7 +49,7 @@ const runtimeFlow = [
   },
   {
     title: "Validation normalizes each payload before persistence",
-    body: "Zod validates input, settings defaults fill safe gaps, and Drizzle persists the resulting records into PostgreSQL.",
+    body: "Zod validates structure, network safety rules reject sensitive host-local targets, and Drizzle persists the result. A valid hostname can be saved before DNS exists so the worker can monitor DNS recovery as part of availability.",
     icon: Boxes,
   },
   {
@@ -109,8 +108,8 @@ const stackSections = [
     title: "Deployment and Runtime",
     items: [
       "Docker Compose for db + web + worker orchestration",
-      "Heartbeat-backed worker visibility instead of UI simulation",
-      "First-run admin onboarding, backup and restore, and guided GitHub Release update commands",
+      "Serialized schema synchronization with an applied-migration ledger",
+      "First-run admin onboarding, stable environment secrets, rollback-aware NSSM updates, and guided GitHub Release commands",
     ],
   },
 ];
@@ -132,7 +131,7 @@ const apiGroups = [
     title: "Monitoring APIs",
     routes: ["/api/monitors", "/api/monitors/[id]", "/api/monitors/bulk", "/api/monitors/import", "/api/monitors/heartbeat/[token]"],
     description:
-      "These routes create and manage monitors, import structured input, expose heartbeat endpoints, and persist runtime-affecting monitoring settings.",
+      "These routes create and manage monitors, accept valid targets before DNS exists, expose heartbeat endpoints, and persist runtime-affecting monitoring settings.",
   },
   {
     title: "Visibility APIs",
@@ -151,6 +150,7 @@ const apiGroups = [
 const implementationNotes = [
   "Workspace defaults are active behavior, not cosmetic preferences. They feed create, import, and update fallback chains.",
   "Verification mode exists to confirm instability before outage delivery begins; slow successful responses stay online and notify as latency only after repeated slow checks.",
+  "DNS resolution is runtime availability, not a creation prerequisite. Unresolved hostnames can be stored and later recover without monitor reconfiguration.",
   "Worker heartbeat and cycle metrics live in the database so the console can distinguish a healthy UI from a stale monitoring engine.",
   "Reports are part of the product runtime now. The worker sends one readable HTML report instead of CSV, XLSX, and PDF export bundles.",
   "Settings cards can save their own operational group while still using the same validated settings API behind the scenes.",
@@ -162,7 +162,7 @@ const productSurfaces = [
   "Worker Insights dashboard with backlog, cycle, and error visibility",
   "Reports center with preview studio, schedule manager, and HTML report delivery",
   "Delivery console for testing, retrying, auditing outbound channels, and validating templates",
-  "Members, companies, settings cards, and guided updates for workspace operations",
+  "Members, companies, settings cards, confirmed destructive actions, and guided updates for workspace operations",
 ];
 
 const workerDeepDive = [
@@ -249,7 +249,7 @@ const notificationDeepDive = [
 const monitorTypeGuide = [
   {
     title: "HTTP / HTTPS",
-    body: "Runs full web requests with method, timeout, redirects, SSL behavior, response size limits, and optional status-code-based notifications.",
+    body: "Runs full web requests with method, timeout, redirects, SSL behavior, response size limits, and optional status-code rules. The target can be saved before DNS exists; unresolved DNS is then tracked as an availability failure.",
   },
   {
     title: "Keyword",
@@ -280,124 +280,89 @@ const monitorTypeGuide = [
 export default function AboutPage() {
   return (
     <div className="flex w-full flex-col gap-8 animate-in fade-in duration-300">
-      <section className="overflow-hidden rounded-3xl border bg-card">
-        <div className="bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.14),transparent_30%),radial-gradient(circle_at_top_right,rgba(139,92,246,0.12),transparent_32%)] px-6 py-8 md:px-8 lg:px-10 lg:py-10">
-          <div className="grid gap-6 xl:grid-cols-[1.14fr_0.86fr] xl:items-end">
-            <div className="space-y-4">
-              <Badge variant="outline" className="border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300">
-                About Sentrovia
-              </Badge>
-              <div className="space-y-3">
-                <h1 className="max-w-5xl text-3xl font-semibold tracking-tight md:text-4xl xl:text-[3rem] xl:leading-[1.04]">
-                  Sentrovia is a worker-driven monitoring platform built for durable state, clear operator visibility, and low-drama alerting
-                </h1>
-                <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-[15px]">
-                  The browser configures the system and reads results. The worker executes checks, confirmation
-                  logic, report schedules, and outbound delivery. PostgreSQL keeps everything aligned so dashboards,
-                  logs, delivery, and reports all reflect the same stored truth.
-                </p>
-              </div>
-            </div>
+      <header className="grid gap-6 border-b pb-8 xl:grid-cols-[1.35fr_0.65fr] xl:items-end">
+        <div>
+          <h1 className="mb-2 text-2xl font-semibold tracking-tight">Sentrovia</h1>
+          <p className="max-w-4xl text-sm leading-7 text-muted-foreground">
+            A worker-driven monitoring platform built around durable state and clear operator visibility. The web
+            console manages intent, the worker executes checks and delivery, and PostgreSQL keeps every surface aligned.
+          </p>
+        </div>
+        <dl className="grid grid-cols-3 divide-x border-y py-3 text-center">
+          <ProductFact label="Services" value="3" />
+          <ProductFact label="Monitor types" value="7" />
+          <ProductFact label="Report format" value="HTML" />
+        </dl>
+      </header>
 
-            <Card className="overflow-hidden border-border/70 bg-background/90 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Product shape in one view</CardTitle>
-                <CardDescription>
-                  Three services, one durable state layer, and distinct surfaces for operators.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-3">
-                <MetricCard label="Services" value="3" detail="db + web + worker" />
-                <MetricCard label="Monitor Types" value="7" detail="http to heartbeat" />
-                <MetricCard label="Reports" value="HTML" detail="preview + scheduled send" />
-              </CardContent>
-            </Card>
+      <section className="grid border-y lg:grid-cols-3 lg:divide-x">
+        {overviewCards.map((card) => (
+          <div key={card.title} className="py-5 lg:px-5 lg:first:pl-0 lg:last:pr-0">
+            <card.icon className="h-4 w-4 text-muted-foreground" />
+            <h2 className="mt-3 text-base font-semibold">{card.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.description}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-8 xl:grid-cols-2">
+        <div>
+          <h2 className="text-base font-semibold">Product surfaces</h2>
+          <p className="mt-1 text-sm text-muted-foreground">The operator-facing areas in the current release.</p>
+          <div className="mt-4 divide-y border-y">
+            {productSurfaces.map((item) => (
+              <p key={item} className="py-3 text-sm leading-6 text-muted-foreground">{item}</p>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-base font-semibold">Current capabilities</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Key workflows available to workspace administrators.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <MetricCard label="Worker Insights" value="Live" detail="backlog, cycles, failures, errors" />
+            <MetricCard label="Reports" value="HTML Only" detail="preview, schedule, one readable attachment" />
+            <MetricCard label="Onboarding" value="Admin First" detail="first account becomes workspace admin" />
+            <MetricCard label="Updates" value="Guarded" detail="build validation, migrations, rollback" />
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        {overviewCards.map((card) => (
-          <Card key={card.title} className="overflow-hidden">
-            <CardContent className={`${card.accent} border-l-2 px-5 py-5`}>
-              <div className="mb-4 flex size-11 items-center justify-center rounded-2xl border bg-background">
-                <card.icon className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="text-base font-semibold tracking-tight">{card.title}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.description}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-base">Current product surfaces</CardTitle>
-            <CardDescription>
-              These are the operator-facing areas that define the current product shape.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {productSurfaces.map((item) => (
-              <div key={item} className="rounded-2xl border bg-muted/[0.06] px-4 py-3 text-sm leading-6 text-muted-foreground">
-                {item}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-base">What changed recently</CardTitle>
-            <CardDescription>
-              Sentrovia now includes newer operational surfaces that reshape how teams use it day to day.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <MetricCard label="Worker Insights" value="Live" detail="backlog, cycles, failures, errors" />
-            <MetricCard label="Reports" value="HTML Only" detail="preview, schedule, one readable attachment" />
-            <MetricCard label="Onboarding" value="Admin First" detail="first account becomes workspace admin" />
-            <MetricCard label="Updates" value="Guided" detail="release notes + copyable host commands" />
-          </CardContent>
-        </Card>
-      </section>
-
       <Tabs defaultValue="runtime" className="flex-col gap-6">
-        <TabsList variant="line" className="w-fit max-w-full justify-start overflow-x-auto rounded-2xl border bg-card p-2">
-          <TabsTrigger value="runtime" className="flex-none rounded-xl px-4">
+        <TabsList variant="line" className="w-fit max-w-full justify-start overflow-x-auto rounded-lg border bg-card p-1">
+          <TabsTrigger value="runtime" className="flex-none rounded-md px-3">
             <Workflow data-icon="inline-start" />
             Runtime Flow
           </TabsTrigger>
-          <TabsTrigger value="stack" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="stack" className="flex-none rounded-md px-3">
             <Layers3 data-icon="inline-start" />
             Tech Stack
           </TabsTrigger>
-          <TabsTrigger value="api" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="api" className="flex-none rounded-md px-3">
             <Boxes data-icon="inline-start" />
             API Shape
           </TabsTrigger>
-          <TabsTrigger value="notes" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="notes" className="flex-none rounded-md px-3">
             <Radar data-icon="inline-start" />
             Design Notes
           </TabsTrigger>
-          <TabsTrigger value="worker" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="worker" className="flex-none rounded-md px-3">
             <ServerCog data-icon="inline-start" />
             Worker Deep Dive
           </TabsTrigger>
-          <TabsTrigger value="database" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="database" className="flex-none rounded-md px-3">
             <Database data-icon="inline-start" />
             Database Model
           </TabsTrigger>
-          <TabsTrigger value="reports" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="reports" className="flex-none rounded-md px-3">
             <FileText data-icon="inline-start" />
             Reports
           </TabsTrigger>
-          <TabsTrigger value="delivery" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="delivery" className="flex-none rounded-md px-3">
             <BellRing data-icon="inline-start" />
             Notifications
           </TabsTrigger>
-          <TabsTrigger value="monitors" className="flex-none rounded-xl px-4">
+          <TabsTrigger value="monitors" className="flex-none rounded-md px-3">
             <Globe data-icon="inline-start" />
             Monitor Types
           </TabsTrigger>
@@ -428,7 +393,7 @@ export default function AboutPage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {section.items.map((item) => (
-                    <div key={item} className="rounded-2xl border bg-muted/[0.06] px-4 py-3 text-sm leading-6 text-muted-foreground">
+                    <div key={item} className="rounded-lg border bg-muted/[0.06] px-4 py-3 text-sm leading-6 text-muted-foreground">
                       {item}
                     </div>
                   ))}
@@ -448,7 +413,7 @@ export default function AboutPage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {group.routes.map((route) => (
-                    <div key={route} className="rounded-2xl border bg-muted/[0.06] px-4 py-3">
+                    <div key={route} className="rounded-lg border bg-muted/[0.06] px-4 py-3">
                       <code className="text-sm">{route}</code>
                     </div>
                   ))}
@@ -492,7 +457,7 @@ export default function AboutPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {implementationNotes.map((note) => (
-                  <div key={note} className="rounded-2xl border bg-muted/[0.06] px-4 py-3 text-sm leading-6 text-muted-foreground">
+                  <div key={note} className="rounded-lg border bg-muted/[0.06] px-4 py-3 text-sm leading-6 text-muted-foreground">
                     {note}
                   </div>
                 ))}
@@ -673,10 +638,19 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border bg-muted/[0.06] px-4 py-4">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+    <div className="rounded-lg border bg-muted/[0.06] px-4 py-4">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function ProductFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="px-2">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-sm font-semibold">{value}</dd>
     </div>
   );
 }
@@ -693,14 +667,14 @@ function RuntimeStep({
   body: string;
 }) {
   return (
-    <div className="rounded-2xl border bg-muted/[0.04] px-4 py-4">
+    <div className="rounded-lg border bg-muted/[0.04] px-4 py-4">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-2xl border bg-background">
+        <div className="flex size-10 items-center justify-center rounded-md border bg-background">
           <Icon className="h-4 w-4 text-muted-foreground" />
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="text-xs font-medium text-muted-foreground">
               Step {index}
             </span>
             <p className="text-sm font-medium">{title}</p>
@@ -720,7 +694,7 @@ function DetailBlock({
   body: string;
 }) {
   return (
-    <div className="rounded-2xl border bg-muted/[0.06] px-4 py-4">
+    <div className="rounded-lg border bg-muted/[0.06] px-4 py-4">
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-2 text-sm leading-7 text-muted-foreground">{body}</p>
     </div>

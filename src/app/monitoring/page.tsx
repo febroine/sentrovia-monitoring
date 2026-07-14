@@ -21,7 +21,7 @@ import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
 import { payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { CompanyRecord } from "@/lib/companies/types";
@@ -76,6 +76,7 @@ export default function MonitoringPage() {
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
   const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
 
   const companyFilters = useMemo(
     () => ["all", ...Array.from(new Set(monitors.map((monitor) => monitor.company).filter(Boolean)))],
@@ -111,6 +112,7 @@ export default function MonitoringPage() {
     const firstSelected = monitors.find((monitor) => selectedIds.has(monitor.id));
     return firstSelected ? payloadFromMonitor(firstSelected) : defaultForm;
   }, [defaultForm, monitors, selectedIds]);
+  const deleteTargets = monitors.filter((monitor) => deleteTargetIds.includes(monitor.id));
 
   const loadSupportingData = useCallback(async () => {
     try {
@@ -218,15 +220,33 @@ export default function MonitoringPage() {
     }
   }
 
-  async function handleDeleteSelected() {
-    if (selectedIds.size === 0) {
+  function openDeleteConfirmation() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
       return;
     }
 
-    const deletedIds = await deleteMonitors(Array.from(selectedIds));
+    clearError();
+    setDeleteTargetIds(ids);
+  }
+
+  function closeDeleteConfirmation() {
+    if (!saving) {
+      setDeleteTargetIds([]);
+    }
+  }
+
+  async function confirmDeleteSelected() {
+    if (deleteTargetIds.length === 0) {
+      return;
+    }
+
+    const deletedIds = await deleteMonitors(deleteTargetIds);
     if (deletedIds.length > 0) {
       await refreshMonitoring();
-      setSelectedIds(new Set());
+      const deletedIdSet = new Set(deletedIds);
+      setSelectedIds((current) => new Set(Array.from(current).filter((id) => !deletedIdSet.has(id))));
+      setDeleteTargetIds((current) => current.filter((id) => !deletedIdSet.has(id)));
     }
   }
 
@@ -268,7 +288,7 @@ export default function MonitoringPage() {
     <div className="space-y-5 animate-in fade-in duration-200">
       <section className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Monitoring</h1>
+          <h1 className="mb-1 text-2xl font-semibold tracking-tight">Monitoring</h1>
           <p className="text-sm text-muted-foreground">
             {filtered.length} endpoints shown · {problematicCount} problematic
           </p>
@@ -371,7 +391,7 @@ export default function MonitoringPage() {
             <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
               Clear
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => void handleDeleteSelected()} disabled={saving}>
+            <Button variant="destructive" size="sm" onClick={openDeleteConfirmation} disabled={saving}>
               <Trash2 className="mr-1 size-3.5" />
               Delete selected
             </Button>
@@ -506,6 +526,38 @@ export default function MonitoringPage() {
               onSubmit={handleBulkUpdate}
             />
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTargetIds.length > 0} onOpenChange={(open) => !open && closeDeleteConfirmation()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete monitor{deleteTargets.length === 1 ? "" : "s"}?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the selected monitor{deleteTargets.length === 1 ? "" : "s"} and related monitoring history. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+            <p className="text-sm font-medium text-destructive">Are you sure you want to continue?</p>
+            <div className="space-y-2">
+              {deleteTargets.slice(0, 5).map((monitor) => (
+                <div key={monitor.id} className="rounded-lg border border-border/70 bg-background/80 px-3 py-2">
+                  <p className="text-sm font-medium text-foreground">{monitor.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{monitor.url}</p>
+                </div>
+              ))}
+              {deleteTargets.length > 5 ? (
+                <p className="text-xs text-muted-foreground">And {deleteTargets.length - 5} more monitors.</p>
+              ) : null}
+            </div>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteConfirmation} disabled={saving}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void confirmDeleteSelected()} disabled={saving || deleteTargets.length === 0}>
+              {saving ? "Deleting..." : `Delete ${deleteTargets.length === 1 ? "monitor" : `${deleteTargets.length} monitors`}`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

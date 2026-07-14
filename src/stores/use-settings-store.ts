@@ -7,6 +7,7 @@ import {
   type SettingsSaveSection,
 } from "@/lib/settings/section-save";
 import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
+import { showToast } from "@/lib/client-toast";
 
 export const SIDEBAR_ACCENT_UPDATED_EVENT = "sentrovia:sidebar-accent-updated";
 export const APPEARANCE_SETTINGS_UPDATED_EVENT = "sentrovia:appearance-updated";
@@ -92,6 +93,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         error: null,
         message: "Settings saved.",
       });
+      showToast("Settings saved.", "success");
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -110,10 +112,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         );
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save settings.";
       set({
         saving: false,
-        error: error instanceof Error ? error.message : "Unable to save settings.",
+        error: message,
       });
+      showToast(message, "error");
     }
   },
   updateSetting: (path, value) =>
