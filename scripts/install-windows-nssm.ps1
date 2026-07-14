@@ -17,6 +17,8 @@ $EnvironmentPath = Join-Path $ProjectRoot ".env.local"
 $PlaywrightBrowsersPath = Join-Path $ProjectRoot ".playwright-browsers"
 $ProductionBuildPath = Join-Path $ProjectRoot ".next"
 $ProductionBuildBackupPath = Join-Path $ProjectRoot ".next.sentrovia-update-backup"
+$ServiceStartTimeoutSeconds = 30
+$ServiceStopTimeoutSeconds = 120
 $DefaultServiceNames = @("sentrovia-web", "sentrovia-worker")
 $ServiceNames = $DefaultServiceNames
 $RetiredSourcePaths = @(
@@ -75,12 +77,24 @@ function Resolve-ExistingServiceNames {
 
 function Stop-NssmService {
   param([string]$Name)
+
   $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
   if (-not $Service -or $Service.Status -eq "Stopped") {
     return
   }
 
-  Invoke-NssmCommand -Arguments @("stop", $Name) -FailureMessage "Unable to stop the $Name service."
+  if ($Service.Status -ne "StopPending") {
+    try {
+      Stop-Service -Name $Name -ErrorAction Stop
+    } catch {
+      $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+      if (-not $Service -or $Service.Status -notin @("Stopped", "StopPending")) {
+        throw
+      }
+    }
+  }
+
+  Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Stopped" -TimeoutSeconds $ServiceStopTimeoutSeconds
 }
 
 function Remove-NssmService {
@@ -260,18 +274,24 @@ function Set-NssmOption {
   Invoke-NssmCommand -Arguments $Arguments -FailureMessage "Unable to set $Option for $Name."
 }
 
-function Wait-NssmServiceRunning {
-  param([string]$Name)
+function Wait-NssmServiceStatus {
+  param(
+    [string]$Name,
+    [ValidateSet("Stopped", "Running", "Paused")][string]$ExpectedStatus,
+    [int]$TimeoutSeconds
+  )
 
-  for ($Attempt = 1; $Attempt -le 15; $Attempt += 1) {
+  $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
     $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
-    if ($Service -and $Service.Status -eq "Running") {
+    if ($Service -and $Service.Status.ToString() -eq $ExpectedStatus) {
       return
     }
-    Start-Sleep -Seconds 2
-  }
+    Start-Sleep -Seconds 1
+  } while ((Get-Date) -lt $Deadline)
 
-  throw "$Name did not reach SERVICE_RUNNING within 30 seconds. Check the logs directory."
+  $ActualStatus = if ($Service) { $Service.Status.ToString().ToUpperInvariant() } else { "NOT_FOUND" }
+  throw "$Name did not reach SERVICE_$($ExpectedStatus.ToUpperInvariant()) within $TimeoutSeconds seconds. Current status: SERVICE_$ActualStatus."
 }
 
 function Start-NssmServiceBestEffort {
@@ -291,12 +311,26 @@ function Start-NssmService {
   if (-not $Service) {
     throw "The $Name service was not found."
   }
+
+  if ($Service.Status -eq "StopPending") {
+    Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Stopped" -TimeoutSeconds $ServiceStopTimeoutSeconds
+    $Service = Get-Service -Name $Name
+  }
+  if ($Service.Status -in @("StartPending", "ContinuePending")) {
+    Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Running" -TimeoutSeconds $ServiceStartTimeoutSeconds
+    return
+  }
+  if ($Service.Status -eq "PausePending") {
+    Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Paused" -TimeoutSeconds $ServiceStartTimeoutSeconds
+    $Service = Get-Service -Name $Name
+  }
   if ($Service.Status -eq "Running") {
     return
   }
 
   $Action = if ($Service.Status -eq "Paused") { "continue" } else { "start" }
   Invoke-NssmCommand -Arguments @($Action, $Name) -FailureMessage "Unable to $Action $Name."
+  Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Running" -TimeoutSeconds $ServiceStartTimeoutSeconds
 }
 
 function Configure-NssmService {
@@ -350,10 +384,10 @@ if (-not (Test-Path $LogDir)) {
 }
 
 Write-Step "Stopping existing services"
+$ServicesStopped = $true
 foreach ($Name in $ServiceNames) {
   Stop-NssmService -Name $Name
 }
-$ServicesStopped = $true
 
 Write-Step "Removing retired source files"
 Remove-RetiredSourceFiles
@@ -408,7 +442,6 @@ foreach ($Name in $ServiceNames) {
 
 Write-Step "Service status"
 foreach ($Name in $ServiceNames) {
-  Wait-NssmServiceRunning -Name $Name
   $Status = (Get-Service -Name $Name).Status
   Write-Host "$Name`: SERVICE_$($Status.ToString().ToUpperInvariant())"
 }
