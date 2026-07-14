@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { MonitorPayload, MonitorRecord } from "@/lib/monitors/types";
+import { showToast } from "@/lib/client-toast";
 
 interface MonitoringState {
   monitors: MonitorRecord[];
@@ -67,10 +68,13 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
+      showToast("Monitor created.", "success");
 
       return monitor;
     } catch (error) {
-      set({ saving: false, error: error instanceof Error ? error.message : "Unable to create monitor." });
+      const message = getErrorMessage(error, "Unable to create monitor.");
+      set({ saving: false, error: message });
+      showToast(message, "error");
       return null;
     }
   },
@@ -95,10 +99,13 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
+      showToast("Monitor updated.", "success");
 
       return monitor;
     } catch (error) {
-      set({ saving: false, error: error instanceof Error ? error.message : "Unable to update monitor." });
+      const message = getErrorMessage(error, "Unable to update monitor.");
+      set({ saving: false, error: message });
+      showToast(message, "error");
       return null;
     }
   },
@@ -123,13 +130,16 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
+      showToast(isActive ? "Monitor enabled." : "Monitor paused.", "success");
 
       return monitor;
     } catch (error) {
+      const message = getErrorMessage(error, "Unable to update monitor active state.");
       set({
         saving: false,
-        error: error instanceof Error ? error.message : "Unable to update monitor active state.",
+        error: message,
       });
+      showToast(message, "error");
       return null;
     }
   },
@@ -154,13 +164,16 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
+      showToast(`${data.monitors.length} monitor${data.monitors.length === 1 ? "" : "s"} updated.`, "success");
 
       return data.monitors;
     } catch (error) {
+      const message = getErrorMessage(error, "Unable to update selected monitors.");
       set({
         saving: false,
-        error: error instanceof Error ? error.message : "Unable to update selected monitors.",
+        error: message,
       });
+      showToast(message, "error");
       return [];
     }
   },
@@ -185,10 +198,13 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
+      showToast(`${data.ids.length} monitor${data.ids.length === 1 ? "" : "s"} deleted.`, "success");
 
       return data.ids;
     } catch (error) {
-      set({ saving: false, error: error instanceof Error ? error.message : "Unable to delete monitors." });
+      const message = getErrorMessage(error, "Unable to delete monitors.");
+      set({ saving: false, error: message });
+      showToast(message, "error");
       return [];
     }
   },
@@ -199,3 +215,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
     })),
   clearError: () => set({ error: null }),
 }));
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}

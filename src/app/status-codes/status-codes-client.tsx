@@ -97,14 +97,11 @@ export function StatusCodesClient() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <header className="rounded-2xl border bg-card p-6">
-        <div className="max-w-3xl space-y-3">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">HTTP reference</p>
-          <h1 className="text-3xl font-semibold tracking-tight">Status Codes</h1>
-          <p className="text-sm leading-6 text-muted-foreground">
-            A readable English catalog of common HTTP response codes. Click any code to inspect logs that recorded it.
-          </p>
-        </div>
+      <header>
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight">Status Codes</h1>
+        <p className="text-sm text-muted-foreground">
+          Review common HTTP response codes and inspect logs that recorded them.
+        </p>
       </header>
 
       <div className="grid gap-4">

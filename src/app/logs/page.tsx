@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Radar, RefreshCw, Search, Trash2, Zap } from "lucide-react";
+import { Download, RefreshCw, Search, Trash2 } from "lucide-react";
 import { LogsFiltersPanel, type LogsFilterOptions } from "@/components/logs/logs-filters-panel";
 import { LogsTable } from "@/components/logs/logs-table";
-import { PageHero } from "@/components/page-hero";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { buildCsv, EXPORT_PRESETS } from "@/lib/logs/presets";
 import type { LogFilters, LogPresetRecord, LogRecord } from "@/lib/logs/types";
+import { showToast } from "@/lib/client-toast";
 
 const DEFAULT_FILTERS: LogFilters = {
   search: "",
@@ -40,6 +41,8 @@ export default function LogsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const previousIdsRef = useRef<string[]>([]);
 
   const loadPresets = useCallback(async () => {
@@ -109,16 +112,28 @@ export default function LogsPage() {
   }, [loadLogs]);
 
   async function clearAllLogs() {
-    const response = await fetch("/api/logs", { method: "DELETE" });
-    const data = (await response.json()) as { message?: string };
+    if (clearing) return;
+    setClearing(true);
 
-    if (!response.ok) {
-      setError(data.message ?? "Unable to clear logs.");
-      return;
+    try {
+      const response = await fetch("/api/logs", { method: "DELETE" });
+      const data = (await response.json()) as { message?: string };
+
+      if (!response.ok) {
+        throw new Error(data.message ?? "Unable to clear logs.");
+      }
+
+      setSelectedIds(new Set());
+      setClearConfirmationOpen(false);
+      await loadLogs();
+      showToast("Event logs cleared.", "success");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : "Unable to clear logs.";
+      setError(message);
+      showToast(message, "error");
+    } finally {
+      setClearing(false);
     }
-
-    setSelectedIds(new Set());
-    await loadLogs();
   }
 
   async function savePreset() {
@@ -221,69 +236,49 @@ export default function LogsPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      <PageHero
-        eyebrow="Logs"
-        title="Event Stream Review"
-        description="Inspect worker output with server-side pagination, live refresh, and reusable filter presets that stay attached to your account."
-        actions={
-          <div className="flex flex-wrap gap-2 xl:justify-end">
-            <Select
-              value={exportPreset}
-              onValueChange={(value) => setExportPreset(value as (typeof EXPORT_PRESETS)[number]["id"])}
-            >
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Export preset" />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPORT_PRESETS.map((preset) => (
-                  <SelectItem key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              onClick={() => exportLogs(exportPreset)}
-              disabled={exportPreset.endsWith("selected") ? selectedIds.size === 0 : logs.length === 0}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
-            <Button variant="outline" onClick={() => void loadLogs()} disabled={loading}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </Button>
-            <Button variant="destructive" onClick={() => void clearAllLogs()} disabled={total === 0}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Clear all
-            </Button>
-          </div>
-        }
-        metrics={[
-          {
-            icon: Radar,
-            label: "Visible logs",
-            value: String(logs.length),
-            detail: "Rows in the current page",
-          },
-          {
-            icon: Zap,
-            label: "Total matched",
-            value: String(total),
-            detail: "All records after filters",
-          },
-        ]}
-      />
+      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="mb-1 text-2xl font-semibold tracking-tight">Event Logs</h1>
+          <p className="text-sm text-muted-foreground">
+            Inspect worker output with live refresh, pagination, and reusable filter presets.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+          <Select
+            value={exportPreset}
+            onValueChange={(value) => setExportPreset(value as (typeof EXPORT_PRESETS)[number]["id"])}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Export preset" />
+            </SelectTrigger>
+            <SelectContent>
+              {EXPORT_PRESETS.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            onClick={() => exportLogs(exportPreset)}
+            disabled={exportPreset.endsWith("selected") ? selectedIds.size === 0 : logs.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+          <Button variant="outline" onClick={() => void loadLogs()} disabled={loading}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+          <Button variant="destructive" onClick={() => setClearConfirmationOpen(true)} disabled={total === 0}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Clear all
+          </Button>
+        </div>
+      </header>
 
       {error ? <AlertBanner message={error} /> : null}
-
-      <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3">
-        <p className="text-sm font-medium">Operator hint</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Save filter presets for recurring investigations, then use the command palette with <span className="font-medium">Ctrl + K</span> to jump here and replay them quickly.
-        </p>
-      </div>
 
       <div className="relative">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -341,6 +336,23 @@ export default function LogsPage() {
           setPage(1);
         }}
       />
+
+      <Dialog open={clearConfirmationOpen} onOpenChange={setClearConfirmationOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clear all event logs?</DialogTitle>
+            <DialogDescription>
+              This permanently removes {total.toLocaleString()} event log records from this workspace.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClearConfirmationOpen(false)} disabled={clearing}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void clearAllLogs()} disabled={clearing}>
+              {clearing ? "Clearing..." : "Clear all logs"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
