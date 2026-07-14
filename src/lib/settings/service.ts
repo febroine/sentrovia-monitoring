@@ -502,14 +502,23 @@ function unwrapDatabaseError(error: unknown): DatabaseErrorShape {
 export async function upsertSettings(
   userId: string,
   input: SettingsInput,
-  database: DatabaseExecutor = db,
+  database?: DatabaseExecutor,
   skipReadback = false
 ) {
-  const executor = database;
   if (input.notifications.discordWebhookUrl.trim().length > 0) {
     await assertSafeWebhookUrl(input.notifications.discordWebhookUrl);
   }
 
+  if (!database) {
+    await db.transaction((tx) => persistSettings(userId, input, tx));
+    return skipReadback ? null : getSettings(userId);
+  }
+
+  await persistSettings(userId, input, database);
+  return skipReadback ? null : getSettings(userId);
+}
+
+async function persistSettings(userId: string, input: SettingsInput, executor: DatabaseExecutor) {
   const [userColumns, settingsColumns, existing] = await Promise.all([
     getTableColumns("users"),
     getTableColumns("user_settings"),
@@ -604,12 +613,6 @@ export async function upsertSettings(
   }
 
   await clearInheritedMonitorTemplates(executor, userId, existing);
-
-  if (skipReadback) {
-    return null;
-  }
-
-  return getSettings(userId);
 }
 
 async function updateUserCompat(
