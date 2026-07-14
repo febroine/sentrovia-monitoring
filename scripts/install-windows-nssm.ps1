@@ -22,13 +22,25 @@ $ServiceStopTimeoutSeconds = 120
 $DefaultServiceNames = @("sentrovia-web", "sentrovia-worker")
 $ServiceNames = $DefaultServiceNames
 $RetiredSourcePaths = @(
+  "src\app\api\app-update",
   "src\app\api\incidents",
   "src\app\api\maintenance",
   "src\app\api\auth\register",
   "src\app\api\monitors\overview",
   "src\app\incidents",
   "src\app\maintenance",
-  "src\lib\maintenance"
+  "src\app\observability",
+  "src\app\signup",
+  "src\components\command-palette.tsx",
+  "src\components\incidents",
+  "src\components\maintenance",
+  "src\components\monitoring\worker-observability-dashboard.tsx",
+  "src\components\settings\app-update-card.tsx",
+  "src\components\settings\maintenance-windows-editor.tsx",
+  "src\components\update-banner.tsx",
+  "src\lib\app-update",
+  "src\lib\maintenance",
+  "src\lib\reports\pdf.ts"
 )
 . (Join-Path $PSScriptRoot "environment-utils.ps1")
 

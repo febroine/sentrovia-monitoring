@@ -10,6 +10,12 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
+export const manualMigrations = pgTable("sentrovia_manual_migrations", {
+  filename: text("filename").primaryKey(),
+  checksum: text("checksum").notNull(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const users = pgTable(
   "users",
   {
