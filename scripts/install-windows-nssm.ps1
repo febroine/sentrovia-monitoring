@@ -14,7 +14,8 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Resolve-Path $ProjectRoot
 $LogDir = Join-Path $ProjectRoot "logs"
 $EnvironmentPath = Join-Path $ProjectRoot ".env.local"
-$ServiceNames = @("sentrovia-web", "sentrovia-worker")
+$DefaultServiceNames = @("sentrovia-web", "sentrovia-worker")
+$ServiceNames = $DefaultServiceNames
 . (Join-Path $PSScriptRoot "environment-utils.ps1")
 
 if ($RecreateServices -and $ExistingInstallation) {
@@ -38,14 +39,32 @@ function Require-Command {
 
 function Test-NssmService {
   param([string]$Name)
-  & nssm status $Name *> $null
-  return $LASTEXITCODE -eq 0
+  return $null -ne (Get-Service -Name $Name -ErrorAction SilentlyContinue)
+}
+
+function Resolve-ExistingServiceNames {
+  $KnownPairs = @(
+    @("sentrovia-web", "sentrovia-worker"),
+    @("SentroviaWeb", "SentroviaWorker")
+  )
+
+  foreach ($Pair in $KnownPairs) {
+    if ((Test-NssmService -Name $Pair[0]) -and (Test-NssmService -Name $Pair[1])) {
+      return $Pair
+    }
+  }
+
+  $DetectedNames = @(Get-Service -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match "(?i)sentrovia" } |
+    Select-Object -ExpandProperty Name)
+  $DetectedText = if ($DetectedNames.Count -gt 0) { $DetectedNames -join ", " } else { "none" }
+  throw "Sentrovia web and worker services were not found as a known pair. Detected Sentrovia services: $DetectedText."
 }
 
 function Stop-NssmService {
   param([string]$Name)
-  $Status = & nssm status $Name 2>$null
-  if ($LASTEXITCODE -ne 0 -or $Status -eq "SERVICE_STOPPED") {
+  $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+  if (-not $Service -or $Service.Status -eq "Stopped") {
     return
   }
 
@@ -147,14 +166,31 @@ function Wait-NssmServiceRunning {
   param([string]$Name)
 
   for ($Attempt = 1; $Attempt -le 15; $Attempt += 1) {
-    $Status = & nssm status $Name 2>$null
-    if ($LASTEXITCODE -eq 0 -and $Status -eq "SERVICE_RUNNING") {
+    $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if ($Service -and $Service.Status -eq "Running") {
       return
     }
     Start-Sleep -Seconds 2
   }
 
   throw "$Name did not reach SERVICE_RUNNING within 30 seconds. Check the logs directory."
+}
+
+function Start-NssmServiceBestEffort {
+  param([string]$Name)
+
+  $PreviousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    & nssm start $Name 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "Unable to restart $Name during failure recovery." -ForegroundColor Yellow
+    }
+  } catch {
+    Write-Host "Unable to restart $Name during failure recovery: $($_.Exception.Message)" -ForegroundColor Yellow
+  } finally {
+    $ErrorActionPreference = $PreviousPreference
+  }
 }
 
 function Configure-NssmService {
@@ -196,11 +232,8 @@ Require-Command "nssm" | Out-Null
 Initialize-NssmEnvironment
 
 if ($ExistingInstallation) {
-  foreach ($Name in $ServiceNames) {
-    if (-not (Test-NssmService -Name $Name)) {
-      throw "$Name was not found. Use the first-time NSSM installer before running an update."
-    }
-  }
+  $ServiceNames = @(Resolve-ExistingServiceNames)
+  Write-Host "Using NSSM services: $($ServiceNames -join ', ')"
 }
 
 if (-not (Test-Path $LogDir)) {
@@ -233,11 +266,13 @@ if ($RecreateServices) {
 }
 
 Write-Step "Configuring NSSM services"
-if (-not (Test-NssmService -Name "sentrovia-web")) {
-  Configure-NssmService "sentrovia-web" "Sentrovia Web" "Sentrovia Next.js web console" "scripts\bootstrap-runtime.mjs web" $NodePath
-}
-if (-not (Test-NssmService -Name "sentrovia-worker")) {
-  Configure-NssmService "sentrovia-worker" "Sentrovia Worker" "Sentrovia monitoring worker" "scripts\bootstrap-runtime.mjs worker" $NodePath
+if (-not $ExistingInstallation) {
+  if (-not (Test-NssmService -Name $DefaultServiceNames[0])) {
+    Configure-NssmService $DefaultServiceNames[0] "Sentrovia Web" "Sentrovia Next.js web console" "scripts\bootstrap-runtime.mjs web" $NodePath
+  }
+  if (-not (Test-NssmService -Name $DefaultServiceNames[1])) {
+    Configure-NssmService $DefaultServiceNames[1] "Sentrovia Worker" "Sentrovia monitoring worker" "scripts\bootstrap-runtime.mjs worker" $NodePath
+  }
 }
 
 foreach ($Name in $ServiceNames) {
@@ -252,8 +287,8 @@ foreach ($Name in $ServiceNames) {
 Write-Step "Service status"
 foreach ($Name in $ServiceNames) {
   Wait-NssmServiceRunning -Name $Name
-  $Status = & nssm status $Name
-  Write-Host "$Name`: $Status"
+  $Status = (Get-Service -Name $Name).Status
+  Write-Host "$Name`: SERVICE_$($Status.ToString().ToUpperInvariant())"
 }
 
 Write-Host "Sentrovia NSSM installation completed." -ForegroundColor Green
@@ -261,7 +296,7 @@ Write-Host "Sentrovia NSSM installation completed." -ForegroundColor Green
   if ($ExistingInstallation -and $ServicesStopped) {
     Write-Host "Update failed. Attempting to restart the existing services..." -ForegroundColor Yellow
     foreach ($Name in $ServiceNames) {
-      & nssm start $Name 2>&1 | Out-Host
+      Start-NssmServiceBestEffort -Name $Name
     }
   }
   throw
