@@ -93,8 +93,11 @@ describe("update service", () => {
       "git checkout v2.0.0",
       "docker compose up -d --build",
     ]);
-    expect(guidance.serviceCommands).toContain("npm ci");
-    expect(guidance.serviceCommands).toContain("nssm start sentrovia-worker");
+    expect(guidance.serviceCommands).toEqual([
+      "git fetch --tags origin",
+      "git checkout v2.0.0",
+      "UPDATE-SENTROVIA.bat",
+    ]);
   });
 });
 
