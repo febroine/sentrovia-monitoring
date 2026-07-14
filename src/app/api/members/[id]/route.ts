@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSession } from "@/lib/auth/session";
+import { createSessionToken } from "@/lib/auth/token";
+import { applySessionCookie, getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { updateMember } from "@/lib/members/service";
@@ -48,12 +49,31 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       return NextResponse.json({ message: "Member not found." }, { status: 404 });
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       member: {
         ...member,
         createdAt: member.createdAt.toISOString(),
       },
     });
+
+    if (id !== session.id) {
+      return response;
+    }
+
+    return applySessionCookie(
+      response,
+      await createSessionToken(
+        {
+          id: session.id,
+          firstName: member.firstName,
+          lastName: member.lastName,
+          email: member.email,
+          department: member.department,
+          role: session.role,
+        },
+        session.sessionVersion
+      )
+    );
   } catch (error) {
     const authError = toAuthError(error, "Unable to update the member right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

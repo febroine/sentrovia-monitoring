@@ -703,6 +703,19 @@ describe("monitoring scheduler verification flow", () => {
       "lease-1"
     );
     expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(1);
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "verification",
+        status: "up",
+        message: "Verification recovered before outage confirmation.",
+      })
+    );
+    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "verification_recovered",
+        title: "Verification recovered",
+      })
+    );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
     );

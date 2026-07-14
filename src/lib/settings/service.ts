@@ -516,11 +516,11 @@ export async function upsertSettings(
     readUserSettingsCompat(userId),
   ]);
 
-  await updateUserCompat(executor, userId, input, userColumns);
-
   if (!settingsColumns.has("user_id")) {
     throw buildMissingSettingsTableError();
   }
+
+  await updateUserCompat(executor, userId, input, userColumns);
 
   const encryptedPassword = resolveSmtpPasswordEncrypted(
     input.notifications.smtpPassword,

@@ -175,41 +175,27 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     failureEventMessage = confirmedIncident ? buildFailureEventMessage(result) : null;
 
     const recorded = await recordActiveMonitorResult(monitor, {
-      status: result.ok ? "up" : confirmedIncident ? "down" : "pending",
+      status: confirmedIncident ? "down" : "pending",
       statusCode: result.statusCode,
-      uptime: result.ok ? "100%" : confirmedIncident ? "0%" : monitor.uptime,
+      uptime: confirmedIncident ? "0%" : monitor.uptime,
       lastCheckedAt: result.checkedAt,
-      nextCheckAt: result.ok || confirmedIncident
+      nextCheckAt: confirmedIncident
         ? calculateNextCheckAt(monitor, result.checkedAt)
         : calculateVerificationCheckAt(result.checkedAt),
-      lastSuccessAt: result.ok ? result.checkedAt : monitor.lastSuccessAt,
-      lastFailureAt: result.ok
-        ? null
-        : previousStatus === "up"
-          ? result.checkedAt
-          : monitor.lastFailureAt ?? result.checkedAt,
+      lastSuccessAt: monitor.lastSuccessAt,
+      lastFailureAt: previousStatus === "up" ? result.checkedAt : monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
       lastErrorMessage: result.errorMessage,
-      consecutiveFailures: result.ok ? 0 : verificationCount,
-      verificationMode: !result.ok && !confirmedIncident,
-      verificationFailureCount: result.ok || confirmedIncident ? 0 : verificationCount,
+      consecutiveFailures: verificationCount,
+      verificationMode: !confirmedIncident,
+      verificationFailureCount: confirmedIncident ? 0 : verificationCount,
       latencyMs: result.latencyMs,
     });
     if (!recorded) {
       return null;
     }
 
-    if (result.ok) {
-      checkStatus = "up";
-      await appendDetailedEvent(
-        monitor,
-        result,
-        "verification",
-        "Final verification recovered before outage confirmation.",
-        rca,
-        "up"
-      );
-    } else if (!confirmedIncident) {
+    if (!confirmedIncident) {
       await appendDetailedEvent(
         monitor,
         result,
@@ -285,6 +271,24 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   });
 
   if (result.ok) {
+    if (wasVerifying && !hadConfirmedIncident) {
+      const message = "Verification recovered before outage confirmation.";
+      await appendDetailedEvent(monitor, result, "verification", message, rca, "up");
+      await appendTimelineEvent({
+        monitorId: monitor.id,
+        userId: monitor.userId,
+        eventType: "verification_recovered",
+        title: "Verification recovered",
+        detail: message,
+        metadata: {
+          previousFailureCount: verificationAttempt,
+          statusCode: result.statusCode,
+          latencyMs: result.latencyMs,
+        },
+        createdAt: result.checkedAt,
+      });
+    }
+
     await appendCheckEvent(monitor, result, rca);
     const slowResponseMessage = buildSlowResponseMessage(monitor, result);
     if (slowResponseMessage) {
