@@ -57,8 +57,8 @@ describe("updates route", () => {
       checkedAt: "2026-07-08T09:30:00.000Z",
       status: "ok",
       message: "Latest GitHub release checked.",
-      recommendedCommands: ["git fetch --tags origin", "git checkout v0.1.2", "docker compose up -d --build"],
-      dockerCommands: ["git fetch --tags origin", "git checkout v0.1.2", "docker compose up -d --build"],
+      recommendedCommands: ["git fetch --tags origin", "git checkout v0.1.2", "docker compose up -d --build --wait --wait-timeout 300"],
+      dockerCommands: ["git fetch --tags origin", "git checkout v0.1.2", "docker compose up -d --build --wait --wait-timeout 300"],
       serviceCommands: ["git fetch --tags origin", "git checkout v0.1.2", "UPDATE-SENTROVIA.bat"],
       backupReminder: "Create a backup first.",
       requiresManualAction: true,
@@ -69,7 +69,7 @@ describe("updates route", () => {
 
     expect(response.status).toBe(200);
     expect(body.update.updateAvailable).toBe(true);
-    expect(body.update.dockerCommands).toContain("docker compose up -d --build");
+    expect(body.update.dockerCommands).toContain("docker compose up -d --build --wait --wait-timeout 300");
     expect(body.update.requiresManualAction).toBe(true);
   });
 });

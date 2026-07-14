@@ -35,6 +35,26 @@ assert_safe_secret() {
   fi
 }
 
+compose_project_name() {
+  if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+    printf '%s' "$COMPOSE_PROJECT_NAME" | tr '[:upper:]' '[:lower:]'
+    return
+  fi
+
+  basename "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g;s/^[_-]*//'
+}
+
+database_volume_exists() {
+  local project_name
+  project_name="$(compose_project_name)"
+  [[ -n "$project_name" ]] || { echo "Unable to derive the Docker Compose project name." >&2; exit 1; }
+
+  [[ -n "$(docker volume ls \
+    --filter "label=com.docker.compose.project=$project_name" \
+    --filter "label=com.docker.compose.volume=pgdata" \
+    --format '{{.Name}}')" ]]
+}
+
 initialize_environment() {
   if [[ -f "$ENV_FILE" ]]; then
     assert_safe_secret "AUTH_SECRET"
@@ -45,6 +65,12 @@ initialize_environment() {
     return
   fi
 
+  if database_volume_exists; then
+    echo "The Docker PostgreSQL volume already exists, but .env is missing." >&2
+    echo "Restore the original .env instead of generating a new database password." >&2
+    exit 1
+  fi
+
   umask 077
   cat > "$ENV_FILE" <<EOF
 POSTGRES_USER=postgres
@@ -53,6 +79,7 @@ POSTGRES_DB=uptimemonitoring
 
 APP_URL=http://localhost:3000
 AUTH_SECRET=$(random_secret)
+AUTH_TRUST_PROXY_HEADERS=false
 APP_ENCRYPTION_SECRET=$(random_secret)
 
 WORKER_CONCURRENCY=20
@@ -72,6 +99,6 @@ if [[ "$PREPARE_ONLY" == true ]]; then
   echo "Environment preparation completed. Docker startup was skipped."
   exit 0
 fi
-docker compose up -d --build
+docker compose up -d --build --wait --wait-timeout 300
 docker compose ps
-echo "Sentrovia is starting at http://localhost:3000"
+echo "Sentrovia is running at http://localhost:3000"

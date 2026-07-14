@@ -109,6 +109,7 @@ chmod +x scripts/install-docker.sh
 ```
 
 The installer creates `.env` with strong random secrets and starts PostgreSQL, the web console, and the worker. Open [http://localhost:3000](http://localhost:3000) and follow onboarding to create the first administrator.
+If a PostgreSQL volume already exists but `.env` is missing, the installer stops instead of generating a mismatched database password. Restore the original `.env` from backup.
 
 Normal start and stop commands:
 
@@ -131,7 +132,7 @@ Prepare secrets without starting the local stack:
 On Linux or macOS, use `./scripts/install-docker.sh --prepare-only`. Set the public HTTPS `APP_URL` in `.env`, then start the strict production profile:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait --wait-timeout 300
 ```
 
 </details>
@@ -230,13 +231,13 @@ Sentrovia shows new GitHub Releases under **Settings -> Updates**. Back up Postg
 ```bash
 git fetch --tags origin
 git checkout vX.Y.Z
-docker compose up -d --build
+docker compose up -d --build --wait --wait-timeout 300
 ```
 
 For the strict production profile, use:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait --wait-timeout 300
 ```
 
 Docker preserves `.env` and the PostgreSQL volume. The web container applies pending schema and manual migrations during startup.
@@ -251,15 +252,15 @@ UPDATE-SENTROVIA.bat
 
 If you copy release files to the server manually, skip the Git commands and double-click `UPDATE-SENTROVIA.bat` in the project root.
 
-The updater requests Administrator permission and handles dependencies, migrations, build, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It removes known retired source paths left behind by manually overlaid releases, while preserving `.env.local` and database records. The previous production build is restored if a new build fails. Errors stay visible and the full transcript is saved under `logs`.
+The updater requests Administrator permission and handles dependencies, build validation, migrations, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It removes known retired project paths left behind by manually overlaid releases, while preserving `.env.local` and database records. Previous dependencies and the production build are restored if an update fails. Errors stay visible and the full transcript is saved under `logs`.
 
 <details>
 <summary>Manual Node.js services without NSSM</summary>
 
 ```bat
 npm ci
-npm run db:sync
 npm run build
+npm run db:sync
 ```
 
 </details>

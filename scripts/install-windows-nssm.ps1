@@ -15,13 +15,30 @@ $ProjectRoot = Resolve-Path $ProjectRoot
 $LogDir = Join-Path $ProjectRoot "logs"
 $EnvironmentPath = Join-Path $ProjectRoot ".env.local"
 $PlaywrightBrowsersPath = Join-Path $ProjectRoot ".playwright-browsers"
+$DependenciesPath = Join-Path $ProjectRoot "node_modules"
+$DependenciesBackupPath = Join-Path $ProjectRoot ".node_modules.sentrovia-update-backup"
 $ProductionBuildPath = Join-Path $ProjectRoot ".next"
 $ProductionBuildBackupPath = Join-Path $ProjectRoot ".next.sentrovia-update-backup"
+$SuccessfulUpdateMarkerPath = Join-Path $ProjectRoot ".sentrovia-update-success"
 $ServiceStartTimeoutSeconds = 30
-$ServiceStopTimeoutSeconds = 120
+$ServiceStopTimeoutSeconds = 300
+$ServiceStabilityWaitSeconds = 5
 $DefaultServiceNames = @("sentrovia-web", "sentrovia-worker")
 $ServiceNames = $DefaultServiceNames
-$RetiredSourcePaths = @(
+$RetiredProjectPaths = @(
+  "docker-compose.override.yml",
+  "ecosystem.config.cjs",
+  "errors.txt",
+  "project_architecture_guide.md",
+  "public\file.svg",
+  "public\globe.svg",
+  "public\next.svg",
+  "public\vercel.svg",
+  "public\window.svg",
+  "scripts\setup-production-windows-nssm.bat",
+  "scripts\setup-production-windows-pm2.bat",
+  "scripts\update-production-windows-nssm.bat",
+  "scripts\update-production-windows-pm2.bat",
   "src\app\api\app-update",
   "src\app\api\incidents",
   "src\app\api\maintenance",
@@ -61,6 +78,14 @@ function Require-Command {
     throw "$Name was not found in PATH. Install it before running this installer."
   }
   return $Command.Source
+}
+
+function Assert-NodeVersion {
+  $RawVersion = (& node -p "process.versions.node" | Out-String).Trim()
+  $ParsedVersion = $null
+  if (-not [Version]::TryParse($RawVersion, [ref]$ParsedVersion) -or $ParsedVersion -lt [Version]"20.9.0") {
+    throw "Node.js 20.9.0 or newer is required. Installed version: $RawVersion."
+  }
 }
 
 function Test-NssmService {
@@ -107,6 +132,16 @@ function Stop-NssmService {
   }
 
   Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Stopped" -TimeoutSeconds $ServiceStopTimeoutSeconds
+}
+
+function Stop-NssmServiceBestEffort {
+  param([string]$Name)
+
+  try {
+    Stop-NssmService -Name $Name
+  } catch {
+    Write-Host "Unable to stop $Name during failure recovery: $($_.Exception.Message)" -ForegroundColor Yellow
+  }
 }
 
 function Remove-NssmService {
@@ -172,6 +207,7 @@ function Initialize-NssmEnvironment {
     "DATABASE_URL=$DatabaseUrl",
     "APP_URL=$AppUrl",
     "AUTH_SECRET=$(New-SentroviaSecret)",
+    "AUTH_TRUST_PROXY_HEADERS=false",
     "APP_ENCRYPTION_SECRET=$(New-SentroviaSecret)",
     "WORKER_CONCURRENCY=20",
     "WORKER_POLL_INTERVAL_MS=10000",
@@ -231,52 +267,83 @@ function Resolve-ProjectChildPath {
   return $TargetPath
 }
 
-function Remove-RetiredSourceFiles {
-  foreach ($RelativePath in $RetiredSourcePaths) {
+function Remove-RetiredProjectFiles {
+  foreach ($RelativePath in $RetiredProjectPaths) {
     $TargetPath = Resolve-ProjectChildPath -RelativePath $RelativePath
     if (Test-Path -LiteralPath $TargetPath) {
       Remove-Item -LiteralPath $TargetPath -Recurse -Force
-      Write-Host "Removed retired source path: $RelativePath"
+      Write-Host "Removed retired project path: $RelativePath"
     }
   }
 }
 
-function Repair-InterruptedBuildBackup {
-  if (-not (Test-Path -LiteralPath $ProductionBuildBackupPath)) {
+function Repair-InterruptedDirectoryBackup {
+  param([string]$CurrentPath, [string]$BackupPath, [string]$Label)
+
+  if (-not (Test-Path -LiteralPath $BackupPath)) {
     return
   }
 
-  if (Test-Path -LiteralPath $ProductionBuildPath) {
-    Remove-Item -LiteralPath $ProductionBuildPath -Recurse -Force
+  if (Test-Path -LiteralPath $CurrentPath) {
+    Remove-Item -LiteralPath $CurrentPath -Recurse -Force
   }
-  Move-Item -LiteralPath $ProductionBuildBackupPath -Destination $ProductionBuildPath
-  Write-Host "Restored the production build from an interrupted update."
+  Move-Item -LiteralPath $BackupPath -Destination $CurrentPath
+  Write-Host "Restored $Label from an interrupted update."
 }
 
-function Backup-ProductionBuild {
-  if (-not (Test-Path -LiteralPath $ProductionBuildPath)) {
+function Backup-Directory {
+  param([string]$CurrentPath, [string]$BackupPath)
+
+  if (-not (Test-Path -LiteralPath $CurrentPath)) {
     return $false
   }
 
-  Move-Item -LiteralPath $ProductionBuildPath -Destination $ProductionBuildBackupPath
+  Move-Item -LiteralPath $CurrentPath -Destination $BackupPath
   return $true
 }
 
-function Restore-ProductionBuild {
-  if (-not (Test-Path -LiteralPath $ProductionBuildBackupPath)) {
+function Restore-DirectoryBackup {
+  param([string]$CurrentPath, [string]$BackupPath, [string]$Label)
+
+  if (-not (Test-Path -LiteralPath $BackupPath)) {
     return
   }
 
-  if (Test-Path -LiteralPath $ProductionBuildPath) {
-    Remove-Item -LiteralPath $ProductionBuildPath -Recurse -Force
+  if (Test-Path -LiteralPath $CurrentPath) {
+    Remove-Item -LiteralPath $CurrentPath -Recurse -Force
   }
-  Move-Item -LiteralPath $ProductionBuildBackupPath -Destination $ProductionBuildPath
-  Write-Host "Restored the previous production build." -ForegroundColor Yellow
+  Move-Item -LiteralPath $BackupPath -Destination $CurrentPath
+  Write-Host "Restored the previous $Label." -ForegroundColor Yellow
 }
 
-function Complete-ProductionBuild {
-  if (Test-Path -LiteralPath $ProductionBuildBackupPath) {
-    Remove-Item -LiteralPath $ProductionBuildBackupPath -Recurse -Force
+function Complete-DirectoryBackup {
+  param([string]$BackupPath)
+
+  if (Test-Path -LiteralPath $BackupPath) {
+    Remove-Item -LiteralPath $BackupPath -Recurse -Force
+  }
+}
+
+function Repair-PreviousUpdateState {
+  if (Test-Path -LiteralPath $SuccessfulUpdateMarkerPath) {
+    Complete-DirectoryBackup -BackupPath $ProductionBuildBackupPath
+    Complete-DirectoryBackup -BackupPath $DependenciesBackupPath
+    Remove-Item -LiteralPath $SuccessfulUpdateMarkerPath -Force
+    return
+  }
+
+  Repair-InterruptedDirectoryBackup -CurrentPath $DependenciesPath -BackupPath $DependenciesBackupPath -Label "dependencies"
+  Repair-InterruptedDirectoryBackup -CurrentPath $ProductionBuildPath -BackupPath $ProductionBuildBackupPath -Label "production build"
+}
+
+function Complete-UpdateBackups {
+  [IO.File]::WriteAllText($SuccessfulUpdateMarkerPath, "completed", [Text.UTF8Encoding]::new($false))
+  try {
+    Complete-DirectoryBackup -BackupPath $ProductionBuildBackupPath
+    Complete-DirectoryBackup -BackupPath $DependenciesBackupPath
+    Remove-Item -LiteralPath $SuccessfulUpdateMarkerPath -Force
+  } catch {
+    Write-Host "Update succeeded, but old backup cleanup was deferred until the next run: $($_.Exception.Message)" -ForegroundColor Yellow
   }
 }
 
@@ -345,6 +412,19 @@ function Start-NssmService {
   Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Running" -TimeoutSeconds $ServiceStartTimeoutSeconds
 }
 
+function Confirm-NssmServicesStable {
+  param([string[]]$Names)
+
+  Start-Sleep -Seconds $ServiceStabilityWaitSeconds
+  foreach ($Name in $Names) {
+    $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $Service -or $Service.Status -ne "Running") {
+      $ActualStatus = if ($Service) { $Service.Status.ToString().ToUpperInvariant() } else { "NOT_FOUND" }
+      throw "$Name did not remain running after startup. Current status: SERVICE_$ActualStatus. Review its error log under $LogDir."
+    }
+  }
+}
+
 function Configure-NssmService {
   param(
     [string]$Name,
@@ -355,9 +435,7 @@ function Configure-NssmService {
   )
 
   Invoke-NssmCommand -Arguments @("install", $Name, $NodePath) -FailureMessage "Unable to install $Name."
-  Set-NssmOption $Name "AppDirectory" @($ProjectRoot)
-  Set-NssmOption $Name "AppParameters" @($Parameters)
-  Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=$PlaywrightBrowsersPath")
+  Set-NssmServiceRuntime -Name $Name -Parameters $Parameters -NodePath $NodePath
   Set-NssmOption $Name "DisplayName" @($DisplayName)
   Set-NssmOption $Name "Description" @($Description)
   Set-NssmOption $Name "Start" @("SERVICE_AUTO_START")
@@ -368,20 +446,35 @@ function Configure-NssmService {
   Set-NssmOption $Name "AppRotateBytes" @(10485760)
 }
 
+function Set-NssmServiceRuntime {
+  param(
+    [string]$Name,
+    [string]$Parameters,
+    [string]$NodePath
+  )
+
+  Set-NssmOption $Name "Application" @($NodePath)
+  Set-NssmOption $Name "AppDirectory" @($ProjectRoot)
+  Set-NssmOption $Name "AppParameters" @($Parameters)
+  Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=$PlaywrightBrowsersPath")
+}
+
 $OriginalLocation = Get-Location
 $ServicesStopped = $false
+$DependenciesBackupCreated = $false
 $BuildBackupCreated = $false
 try {
 Set-Location $ProjectRoot
 $env:PLAYWRIGHT_BROWSERS_PATH = $PlaywrightBrowsersPath
 Initialize-PlaywrightBrowserCache
-Repair-InterruptedBuildBackup
+Repair-PreviousUpdateState
 
 Write-Host "Sentrovia Windows NSSM installer" -ForegroundColor Green
 Write-Host "Project: $ProjectRoot"
 
 Write-Step "Checking prerequisites"
 $NodePath = Require-Command "node"
+Assert-NodeVersion
 Require-Command "npm" | Out-Null
 Require-Command "nssm" | Out-Null
 Initialize-NssmEnvironment
@@ -401,31 +494,22 @@ foreach ($Name in $ServiceNames) {
   Stop-NssmService -Name $Name
 }
 
-Write-Step "Removing retired source files"
-Remove-RetiredSourceFiles
+Write-Step "Removing retired project files"
+Remove-RetiredProjectFiles
 
 Write-Step "Installing exact dependencies"
+$DependenciesBackupCreated = Backup-Directory -CurrentPath $DependenciesPath -BackupPath $DependenciesBackupPath
 Invoke-CheckedCommand -Command "npm" -Arguments @("ci") -FailureMessage "npm ci failed."
 
 Write-Step "Ensuring the required Playwright Chromium version is installed"
 Invoke-CheckedCommand -Command "npx" -Arguments @("playwright", "install", "chromium") -FailureMessage "Playwright installation failed."
 
+Write-Step "Building production app"
+$BuildBackupCreated = Backup-Directory -CurrentPath $ProductionBuildPath -BackupPath $ProductionBuildBackupPath
+Invoke-CheckedCommand -Command "npm" -Arguments @("run", "build") -FailureMessage "Production build failed."
+
 Write-Step "Synchronizing database schema and manual migrations"
 Invoke-CheckedCommand -Command "npm" -Arguments @("run", "db:sync") -FailureMessage "Database schema synchronization failed."
-
-Write-Step "Building production app"
-$BuildBackupCreated = Backup-ProductionBuild
-try {
-  Invoke-CheckedCommand -Command "npm" -Arguments @("run", "build") -FailureMessage "Production build failed."
-  Complete-ProductionBuild
-  $BuildBackupCreated = $false
-} catch {
-  if ($BuildBackupCreated) {
-    Restore-ProductionBuild
-    $BuildBackupCreated = $false
-  }
-  throw
-}
 
 if ($RecreateServices) {
   foreach ($Name in $ServiceNames) {
@@ -443,14 +527,14 @@ if (-not $ExistingInstallation) {
   }
 }
 
-foreach ($Name in $ServiceNames) {
-  Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=$PlaywrightBrowsersPath")
-}
+Set-NssmServiceRuntime -Name $ServiceNames[0] -Parameters "scripts\bootstrap-runtime.mjs web" -NodePath $NodePath
+Set-NssmServiceRuntime -Name $ServiceNames[1] -Parameters "scripts\bootstrap-runtime.mjs worker" -NodePath $NodePath
 
 Write-Step "Starting services"
 foreach ($Name in $ServiceNames) {
   Start-NssmService -Name $Name
 }
+Confirm-NssmServicesStable -Names $ServiceNames
 
 Write-Step "Service status"
 foreach ($Name in $ServiceNames) {
@@ -458,10 +542,22 @@ foreach ($Name in $ServiceNames) {
   Write-Host "$Name`: SERVICE_$($Status.ToString().ToUpperInvariant())"
 }
 
+Complete-UpdateBackups
+$BuildBackupCreated = $false
+$DependenciesBackupCreated = $false
+
 Write-Host "Sentrovia NSSM installation completed." -ForegroundColor Green
 } catch {
+  if ($ServicesStopped) {
+    foreach ($Name in $ServiceNames) {
+      Stop-NssmServiceBestEffort -Name $Name
+    }
+  }
   if ($BuildBackupCreated) {
-    Restore-ProductionBuild
+    Restore-DirectoryBackup -CurrentPath $ProductionBuildPath -BackupPath $ProductionBuildBackupPath -Label "production build"
+  }
+  if ($DependenciesBackupCreated) {
+    Restore-DirectoryBackup -CurrentPath $DependenciesPath -BackupPath $DependenciesBackupPath -Label "dependencies"
   }
   if ($ExistingInstallation -and $ServicesStopped) {
     Write-Host "Update failed. Attempting to restart the existing services..." -ForegroundColor Yellow
