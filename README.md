@@ -251,7 +251,7 @@ UPDATE-SENTROVIA.bat
 
 If you copy release files to the server manually, skip the Git commands and double-click `UPDATE-SENTROVIA.bat` in the project root.
 
-The updater requests Administrator permission and handles dependencies, migrations, build, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It preserves `.env.local` and database records. Errors stay visible and the full transcript is saved under `logs`.
+The updater requests Administrator permission and handles dependencies, migrations, build, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It removes known retired source paths left behind by manually overlaid releases, while preserving `.env.local` and database records. The previous production build is restored if a new build fails. Errors stay visible and the full transcript is saved under `logs`.
 
 <details>
 <summary>Manual Node.js services without NSSM</summary>
@@ -331,9 +331,12 @@ Screenshots are best effort. Alerts still send if Chromium cannot capture a page
 For non-Docker production servers:
 
 ```bat
-set PLAYWRIGHT_BROWSERS_PATH=0
+set "PLAYWRIGHT_BROWSERS_PATH=%CD%\.playwright-browsers"
 npx playwright install chromium
 ```
+
+Keep this directory outside `node_modules` so `npm ci` does not delete the browser on every update. Running the install
+command again is safe: Playwright reuses the matching cached Chromium build and downloads only a missing required version.
 
 ## Reports
 

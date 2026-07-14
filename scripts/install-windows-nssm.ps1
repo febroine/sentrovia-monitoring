@@ -14,8 +14,20 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Resolve-Path $ProjectRoot
 $LogDir = Join-Path $ProjectRoot "logs"
 $EnvironmentPath = Join-Path $ProjectRoot ".env.local"
+$PlaywrightBrowsersPath = Join-Path $ProjectRoot ".playwright-browsers"
+$ProductionBuildPath = Join-Path $ProjectRoot ".next"
+$ProductionBuildBackupPath = Join-Path $ProjectRoot ".next.sentrovia-update-backup"
 $DefaultServiceNames = @("sentrovia-web", "sentrovia-worker")
 $ServiceNames = $DefaultServiceNames
+$RetiredSourcePaths = @(
+  "src\app\api\incidents",
+  "src\app\api\maintenance",
+  "src\app\api\auth\register",
+  "src\app\api\monitors\overview",
+  "src\app\incidents",
+  "src\app\maintenance",
+  "src\lib\maintenance"
+)
 . (Join-Path $PSScriptRoot "environment-utils.ps1")
 
 if ($RecreateServices -and $ExistingInstallation) {
@@ -68,19 +80,13 @@ function Stop-NssmService {
     return
   }
 
-  & nssm stop $Name | Out-Host
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to stop the $Name service."
-  }
+  Invoke-NssmCommand -Arguments @("stop", $Name) -FailureMessage "Unable to stop the $Name service."
 }
 
 function Remove-NssmService {
   param([string]$Name)
   if (Test-NssmService -Name $Name) {
-    & nssm remove $Name confirm | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-      throw "Unable to remove the $Name service."
-    }
+    Invoke-NssmCommand -Arguments @("remove", $Name, "confirm") -FailureMessage "Unable to remove the $Name service."
   }
 }
 
@@ -156,10 +162,102 @@ function Invoke-CheckedCommand {
   }
 }
 
+function Invoke-NssmCommand {
+  param([string[]]$Arguments, [string]$FailureMessage)
+
+  $PreviousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    & nssm @Arguments 2>&1 | Out-Host
+    $ExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousPreference
+  }
+
+  if ($ExitCode -ne 0) {
+    throw "$FailureMessage Exit code: $ExitCode."
+  }
+}
+
+function Initialize-PlaywrightBrowserCache {
+  if (Test-Path -LiteralPath $PlaywrightBrowsersPath) {
+    return
+  }
+
+  $LegacyPath = Join-Path $ProjectRoot "node_modules\playwright-core\.local-browsers"
+  if (Test-Path -LiteralPath $LegacyPath) {
+    Move-Item -LiteralPath $LegacyPath -Destination $PlaywrightBrowsersPath
+    Write-Host "Preserved the existing Playwright browser cache."
+    return
+  }
+
+  New-Item -ItemType Directory -Path $PlaywrightBrowsersPath | Out-Null
+}
+
+function Resolve-ProjectChildPath {
+  param([string]$RelativePath)
+
+  $RootPrefix = [IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\') + '\'
+  $TargetPath = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $RelativePath))
+  if (-not $TargetPath.StartsWith($RootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to access a path outside the project directory: $RelativePath"
+  }
+  return $TargetPath
+}
+
+function Remove-RetiredSourceFiles {
+  foreach ($RelativePath in $RetiredSourcePaths) {
+    $TargetPath = Resolve-ProjectChildPath -RelativePath $RelativePath
+    if (Test-Path -LiteralPath $TargetPath) {
+      Remove-Item -LiteralPath $TargetPath -Recurse -Force
+      Write-Host "Removed retired source path: $RelativePath"
+    }
+  }
+}
+
+function Repair-InterruptedBuildBackup {
+  if (-not (Test-Path -LiteralPath $ProductionBuildBackupPath)) {
+    return
+  }
+
+  if (Test-Path -LiteralPath $ProductionBuildPath) {
+    Remove-Item -LiteralPath $ProductionBuildPath -Recurse -Force
+  }
+  Move-Item -LiteralPath $ProductionBuildBackupPath -Destination $ProductionBuildPath
+  Write-Host "Restored the production build from an interrupted update."
+}
+
+function Backup-ProductionBuild {
+  if (-not (Test-Path -LiteralPath $ProductionBuildPath)) {
+    return $false
+  }
+
+  Move-Item -LiteralPath $ProductionBuildPath -Destination $ProductionBuildBackupPath
+  return $true
+}
+
+function Restore-ProductionBuild {
+  if (-not (Test-Path -LiteralPath $ProductionBuildBackupPath)) {
+    return
+  }
+
+  if (Test-Path -LiteralPath $ProductionBuildPath) {
+    Remove-Item -LiteralPath $ProductionBuildPath -Recurse -Force
+  }
+  Move-Item -LiteralPath $ProductionBuildBackupPath -Destination $ProductionBuildPath
+  Write-Host "Restored the previous production build." -ForegroundColor Yellow
+}
+
+function Complete-ProductionBuild {
+  if (Test-Path -LiteralPath $ProductionBuildBackupPath) {
+    Remove-Item -LiteralPath $ProductionBuildBackupPath -Recurse -Force
+  }
+}
+
 function Set-NssmOption {
   param([string]$Name, [string]$Option, [object[]]$Value)
   $Arguments = @("set", $Name, $Option) + $Value
-  Invoke-CheckedCommand -Command "nssm" -Arguments $Arguments -FailureMessage "Unable to set $Option for $Name."
+  Invoke-NssmCommand -Arguments $Arguments -FailureMessage "Unable to set $Option for $Name."
 }
 
 function Wait-NssmServiceRunning {
@@ -179,18 +277,26 @@ function Wait-NssmServiceRunning {
 function Start-NssmServiceBestEffort {
   param([string]$Name)
 
-  $PreviousPreference = $ErrorActionPreference
   try {
-    $ErrorActionPreference = "Continue"
-    & nssm start $Name 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host "Unable to restart $Name during failure recovery." -ForegroundColor Yellow
-    }
+    Start-NssmService -Name $Name
   } catch {
     Write-Host "Unable to restart $Name during failure recovery: $($_.Exception.Message)" -ForegroundColor Yellow
-  } finally {
-    $ErrorActionPreference = $PreviousPreference
   }
+}
+
+function Start-NssmService {
+  param([string]$Name)
+
+  $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+  if (-not $Service) {
+    throw "The $Name service was not found."
+  }
+  if ($Service.Status -eq "Running") {
+    return
+  }
+
+  $Action = if ($Service.Status -eq "Paused") { "continue" } else { "start" }
+  Invoke-NssmCommand -Arguments @($Action, $Name) -FailureMessage "Unable to $Action $Name."
 }
 
 function Configure-NssmService {
@@ -202,10 +308,10 @@ function Configure-NssmService {
     [string]$NodePath
   )
 
-  Invoke-CheckedCommand -Command "nssm" -Arguments @("install", $Name, $NodePath) -FailureMessage "Unable to install $Name."
+  Invoke-NssmCommand -Arguments @("install", $Name, $NodePath) -FailureMessage "Unable to install $Name."
   Set-NssmOption $Name "AppDirectory" @($ProjectRoot)
   Set-NssmOption $Name "AppParameters" @($Parameters)
-  Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=0")
+  Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=$PlaywrightBrowsersPath")
   Set-NssmOption $Name "DisplayName" @($DisplayName)
   Set-NssmOption $Name "Description" @($Description)
   Set-NssmOption $Name "Start" @("SERVICE_AUTO_START")
@@ -218,9 +324,12 @@ function Configure-NssmService {
 
 $OriginalLocation = Get-Location
 $ServicesStopped = $false
+$BuildBackupCreated = $false
 try {
 Set-Location $ProjectRoot
-$env:PLAYWRIGHT_BROWSERS_PATH = "0"
+$env:PLAYWRIGHT_BROWSERS_PATH = $PlaywrightBrowsersPath
+Initialize-PlaywrightBrowserCache
+Repair-InterruptedBuildBackup
 
 Write-Host "Sentrovia Windows NSSM installer" -ForegroundColor Green
 Write-Host "Project: $ProjectRoot"
@@ -246,17 +355,31 @@ foreach ($Name in $ServiceNames) {
 }
 $ServicesStopped = $true
 
+Write-Step "Removing retired source files"
+Remove-RetiredSourceFiles
+
 Write-Step "Installing exact dependencies"
 Invoke-CheckedCommand -Command "npm" -Arguments @("ci") -FailureMessage "npm ci failed."
 
-Write-Step "Installing Playwright Chromium"
+Write-Step "Ensuring the required Playwright Chromium version is installed"
 Invoke-CheckedCommand -Command "npx" -Arguments @("playwright", "install", "chromium") -FailureMessage "Playwright installation failed."
 
 Write-Step "Synchronizing database schema and manual migrations"
 Invoke-CheckedCommand -Command "npm" -Arguments @("run", "db:sync") -FailureMessage "Database schema synchronization failed."
 
 Write-Step "Building production app"
-Invoke-CheckedCommand -Command "npm" -Arguments @("run", "build") -FailureMessage "Production build failed."
+$BuildBackupCreated = Backup-ProductionBuild
+try {
+  Invoke-CheckedCommand -Command "npm" -Arguments @("run", "build") -FailureMessage "Production build failed."
+  Complete-ProductionBuild
+  $BuildBackupCreated = $false
+} catch {
+  if ($BuildBackupCreated) {
+    Restore-ProductionBuild
+    $BuildBackupCreated = $false
+  }
+  throw
+}
 
 if ($RecreateServices) {
   foreach ($Name in $ServiceNames) {
@@ -275,12 +398,12 @@ if (-not $ExistingInstallation) {
 }
 
 foreach ($Name in $ServiceNames) {
-  Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=0")
+  Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=$PlaywrightBrowsersPath")
 }
 
 Write-Step "Starting services"
 foreach ($Name in $ServiceNames) {
-  Invoke-CheckedCommand -Command "nssm" -Arguments @("start", $Name) -FailureMessage "Unable to start $Name."
+  Start-NssmService -Name $Name
 }
 
 Write-Step "Service status"
@@ -292,6 +415,9 @@ foreach ($Name in $ServiceNames) {
 
 Write-Host "Sentrovia NSSM installation completed." -ForegroundColor Green
 } catch {
+  if ($BuildBackupCreated) {
+    Restore-ProductionBuild
+  }
   if ($ExistingInstallation -and $ServicesStopped) {
     Write-Host "Update failed. Attempting to restart the existing services..." -ForegroundColor Yellow
     foreach ($Name in $ServiceNames) {
