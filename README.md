@@ -34,14 +34,14 @@ It is built for teams that do not want an alert every time a single request time
 
 | Area | What Sentrovia Does |
 | --- | --- |
-| ✅ Verified alerts | Rechecks failures before sending down notifications |
-| 🧪 Monitor types | HTTP, keyword, JSON, TCP, PostgreSQL, ping, heartbeat |
-| 📸 Evidence | Captures Chromium screenshots for confirmed HTTP-style outages |
-| 📬 Notifications | Email, Telegram, Discord, and generic webhooks |
-| 📊 Reports | Scheduled and manual HTML reports |
-| 🌐 Status pages | Public pages for service health |
-| 👥 Members | First admin onboarding, then admin-managed members |
-| 🪟 Windows ready | NSSM service scripts for web and worker processes |
+| Verified alerts | Rechecks failures before sending down notifications |
+| Monitor types | HTTP, keyword, JSON, TCP, PostgreSQL, ping, heartbeat |
+| Evidence | Captures Chromium screenshots for confirmed HTTP-style outages |
+| Notifications | Email, Telegram, Discord, and generic webhooks |
+| Reports | Scheduled and manual HTML reports |
+| Status pages | Public pages for service health |
+| Members | First admin onboarding, then admin-managed members |
+| Windows services | Guided NSSM installation and one-click updates |
 
 ## Screenshots
 
@@ -83,9 +83,16 @@ It is built for teams that do not want an alert every time a single request time
   <img src="./docs/screenshots/about.png" alt="Sentrovia about page" />
 </p>
 
-## Quick Start With Docker
+## Choose Your Installation
 
-Docker Compose is the recommended way to run Sentrovia. The installer creates a private `.env` file with cryptographically strong, stable secrets and then starts the complete stack.
+| Deployment | Best for | First command |
+| --- | --- | --- |
+| Docker Compose | Recommended for most installations | `scripts/install-docker.ps1` or `scripts/install-docker.sh` |
+| Windows + NSSM | Windows servers running without Docker | `scripts/install-windows-nssm.ps1` |
+
+Both installers preserve existing environment files. They never rotate database passwords or encryption keys automatically.
+
+## Install With Docker
 
 Windows PowerShell:
 
@@ -101,73 +108,67 @@ chmod +x scripts/install-docker.sh
 ./scripts/install-docker.sh
 ```
 
-The installer is idempotent: it creates `.env` only when the file is absent and never rotates existing passwords or encryption keys. Later starts use the normal Compose command:
+The installer creates `.env` with strong random secrets and starts PostgreSQL, the web console, and the worker. Open [http://localhost:3000](http://localhost:3000) and follow onboarding to create the first administrator.
+
+Normal start and stop commands:
 
 ```bash
 docker compose up -d
+docker compose down
 ```
 
-Open the app:
+Do not add `-v` to `docker compose down` on a real installation. It deletes the PostgreSQL volume.
 
-[http://localhost:3000](http://localhost:3000)
+<details>
+<summary>Production Docker preparation</summary>
 
-The stack starts:
-
-- PostgreSQL
-- Next.js web console
-- Background worker
-- Playwright Chromium for screenshot evidence
-
-On first launch, Sentrovia shows onboarding and creates the first administrator. Public signup is disabled after onboarding; admins manage members from inside the app.
-
-If PostgreSQL was already started once with a different password, the existing Docker volume keeps that old password. For a clean local reset, stop the stack and remove the local database volume:
-
-```bash
-docker compose down -v
-docker compose up -d --build
-```
-
-Use this only for local development because it deletes the local PostgreSQL data.
-
-## Environment
-
-Do not create `.env` manually for a normal Docker installation. `install-docker.ps1` or `install-docker.sh` creates it with strong random values. `.env.example` documents available settings; its placeholder values must never be used as real secrets.
-
-```bash
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=example-postgres-password-change-me
-POSTGRES_DB=uptimemonitoring
-
-APP_URL=http://localhost:3000
-AUTH_SECRET=example-auth-secret-change-me-32-characters-minimum
-APP_ENCRYPTION_SECRET=example-encryption-secret-change-me-32-characters-minimum
-
-WORKER_CONCURRENCY=20
-WORKER_POLL_INTERVAL_MS=10000
-MONITOR_ALLOW_PRIVATE_TARGETS=true
-```
-
-Production notes:
-
-- `AUTH_SECRET` and `APP_ENCRYPTION_SECRET` must be long, random, non-placeholder values.
-- `APP_URL` must match the real URL operators use.
-- The web process and worker process must use the same environment values.
-- Compose passes PostgreSQL connection parts separately, so generated passwords containing URL-reserved characters remain valid.
-- Do not use `.env.example` values directly in production.
-- For production Compose, include the strict production override so missing secrets fail fast:
+Prepare secrets without starting the local stack:
 
 ```powershell
 .\scripts\install-docker.ps1 -SkipStart
-# Set APP_URL in .env to the public HTTPS URL.
+```
+
+On Linux or macOS, use `./scripts/install-docker.sh --prepare-only`. Set the public HTTPS `APP_URL` in `.env`, then start the strict production profile:
+
+```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-On Linux or macOS, use `./scripts/install-docker.sh --prepare-only` for the preparation step.
+</details>
 
-Older installations that already use placeholder secrets are rejected instead of being silently rotated. Changing `APP_ENCRYPTION_SECRET` on a live database can make stored SMTP, webhook, and monitor credentials unreadable. Back up the database and plan that one-time credential rotation explicitly; use `docker compose down -v`, remove `.env`, and rerun the installer only when deleting local data is acceptable.
+## Install On Windows With NSSM
 
-- Set `AUTH_TRUST_PROXY_HEADERS=true` only behind a trusted reverse proxy that sanitizes forwarded headers.
-- Use `PLAYWRIGHT_BROWSERS_PATH=0` when running Playwright Chromium from a Windows service.
+Requirements: Node.js 20.9+, npm, NSSM in `PATH`, and a PostgreSQL database with schema-change permissions. Run the installer from an Administrator PowerShell window:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install-windows-nssm.ps1
+```
+
+The installer creates `.env.local` when needed, applies migrations, builds the app, and creates `sentrovia-web` and `sentrovia-worker`. For an existing installation it preserves `.env.local` and database records.
+
+<details>
+<summary>Remote PostgreSQL parameters</summary>
+
+```powershell
+$DbPassword = Read-Host "PostgreSQL password" -AsSecureString
+.\scripts\install-windows-nssm.ps1 `
+  -AppUrl "https://monitoring.example.com" `
+  -DatabaseHost "db.example.com" `
+  -DatabaseUser "sentrovia" `
+  -DatabaseName "sentrovia" `
+  -DatabasePassword $DbPassword
+```
+
+</details>
+
+## Configuration Safety
+
+- `.env` and `.env.local` are private runtime files and are ignored by Git.
+- `.env.example` is documentation only; never use its placeholder secrets in production.
+- Back up PostgreSQL before production updates.
+- Never replace `APP_ENCRYPTION_SECRET` on a live database without a credential-rotation plan. Stored SMTP, webhook, and monitor credentials depend on it.
+- Set `AUTH_TRUST_PROXY_HEADERS=true` only behind a trusted proxy that sanitizes forwarded headers.
 
 ## Local Development
 
@@ -220,9 +221,9 @@ npm run db:manual:baseline
 
 ## Updating Sentrovia
 
-Sentrovia checks GitHub Releases from **Settings -> Updates**. The app never updates itself from the browser; admins run the shown commands on the host so updates stay explicit and auditable.
+Sentrovia shows new GitHub Releases under **Settings -> Updates**. Back up PostgreSQL before updating production.
 
-Local/demo Docker checkout:
+### Docker
 
 ```bash
 git fetch --tags origin
@@ -230,34 +231,37 @@ git checkout vX.Y.Z
 docker compose up -d --build
 ```
 
-Production Docker Compose:
+For the strict production profile, use:
 
 ```bash
-git fetch --tags origin
-git checkout vX.Y.Z
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-The Docker web service runs schema bootstrap and `npm run db:manual` during startup. These commands keep your `.env`
-files and PostgreSQL Docker volume in place. Manual migrations are ledger-backed, so already applied
-`drizzle/*_manual.sql` files are skipped and new files, such as `0044_notification_language_manual.sql`, are applied.
+Docker preserves `.env` and the PostgreSQL volume. The web container applies pending schema and manual migrations during startup.
 
-Windows/NSSM or manual Node.js services:
+### Windows + NSSM
 
 ```bat
-nssm stop sentrovia-worker
-nssm stop sentrovia-web
 git fetch --tags origin
 git checkout vX.Y.Z
-npm ci
-npm run db:push
-npm run db:manual
-npm run build
-nssm start sentrovia-web
-nssm start sentrovia-worker
+UPDATE-SENTROVIA.bat
 ```
 
-Create or verify a backup before updating production. For Windows/NSSM installs, `scripts\update-production-windows-nssm.bat` can still be used after checking out the target release.
+If you copy release files to the server manually, skip the Git commands and double-click `UPDATE-SENTROVIA.bat` in the project root.
+
+The updater requests Administrator permission and handles dependencies, migrations, build, and both service restarts. It preserves `.env.local` and database records. Errors stay visible and the full transcript is saved under `logs`.
+
+<details>
+<summary>Manual Node.js services without NSSM</summary>
+
+```bat
+npm ci
+npm run db:push:bootstrap
+npm run db:manual
+npm run build
+```
+
+</details>
 
 ## How Failure Verification Works
 
@@ -341,74 +345,6 @@ Sentrovia currently sends HTML reports only:
 - Manual preview and scheduled delivery
 - URL-first tables, readable failure details, and service snapshots
 - No CSV or PDF attachments
-
-## Windows Production With NSSM
-
-Sentrovia can run as two Windows services:
-
-| Service | Display name |
-| --- | --- |
-| `sentrovia-web` | Sentrovia Web |
-| `sentrovia-worker` | Sentrovia Worker |
-
-Prerequisites:
-
-- Node.js 20.9 or newer
-- npm
-- PostgreSQL access
-- NSSM in `PATH`
-- A PostgreSQL database and credentials with schema-change permissions
-- An Administrator PowerShell session
-
-First-time setup creates `.env.local`, installs dependencies and Chromium, applies all migrations, builds the app, and creates both services. The PostgreSQL password is requested securely and is not printed or stored in shell history:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\install-windows-nssm.ps1
-```
-
-Use parameters when PostgreSQL is not local:
-
-```powershell
-$DbPassword = Read-Host "PostgreSQL password" -AsSecureString
-.\scripts\install-windows-nssm.ps1 `
-  -AppUrl "https://monitoring.example.com" `
-  -DatabaseHost "db.example.com" `
-  -DatabaseUser "sentrovia" `
-  -DatabaseName "sentrovia" `
-  -DatabasePassword $DbPassword
-```
-
-The installer preserves an existing `.env.local`. Use `-RecreateServices` only when the NSSM service definitions themselves must be replaced.
-
-Update an existing server:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-git fetch --tags origin
-git checkout vX.Y.Z
-.\scripts\update-production-windows-nssm.bat
-```
-
-Useful service commands:
-
-```bat
-nssm status sentrovia-web
-nssm status sentrovia-worker
-nssm restart sentrovia-web
-nssm restart sentrovia-worker
-nssm stop sentrovia-worker
-nssm start sentrovia-worker
-```
-
-Logs are written to:
-
-```bat
-logs\sentrovia-web.log
-logs\sentrovia-web-error.log
-logs\sentrovia-worker.log
-logs\sentrovia-worker-error.log
-```
 
 ## Tech Stack
 

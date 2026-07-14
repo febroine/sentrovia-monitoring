@@ -936,7 +936,7 @@ function ProfileSelector({
         Docker Compose
       </ProfileButton>
       <ProfileButton active={value === "service"} onClick={() => onChange("service")}>
-        Git + npm service
+        Windows / NSSM
       </ProfileButton>
     </div>
   );
@@ -998,7 +998,7 @@ function RepositoryHint() {
 
 function resolveProfileDescription(profile: UpdateInstallProfile) {
   if (profile === "service") {
-    return "For Windows/NSSM or manual Node.js service installs. Stop services first, update the checkout, apply schema changes, build, then start services again.";
+    return "For an existing Windows/NSSM install. Update the checkout, then run the one-click updater as Administrator; it handles migrations, build, service restart, and logging.";
   }
 
   return "For Docker Compose installs. The web container runs schema bootstrap and manual migrations during startup.";

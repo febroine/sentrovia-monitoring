@@ -178,16 +178,9 @@ export function buildUpdateGuidance(targetTag: string | null) {
     "docker compose up -d --build",
   ];
   const serviceCommands = [
-    "nssm stop sentrovia-worker",
-    "nssm stop sentrovia-web",
     "git fetch --tags origin",
     `git checkout ${tag}`,
-    "npm ci",
-    "npm run db:push",
-    "npm run db:manual",
-    "npm run build",
-    "nssm start sentrovia-web",
-    "nssm start sentrovia-worker",
+    "UPDATE-SENTROVIA.bat",
   ];
 
   return {

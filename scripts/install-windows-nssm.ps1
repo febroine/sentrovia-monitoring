@@ -1,5 +1,6 @@
 param(
   [switch]$RecreateServices,
+  [switch]$ExistingInstallation,
   [string]$AppUrl = "http://localhost:3000",
   [string]$DatabaseHost = "localhost",
   [ValidateRange(1, 65535)][int]$DatabasePort = 5432,
@@ -15,6 +16,10 @@ $LogDir = Join-Path $ProjectRoot "logs"
 $EnvironmentPath = Join-Path $ProjectRoot ".env.local"
 $ServiceNames = @("sentrovia-web", "sentrovia-worker")
 . (Join-Path $PSScriptRoot "environment-utils.ps1")
+
+if ($RecreateServices -and $ExistingInstallation) {
+  throw "RecreateServices and ExistingInstallation cannot be used together."
+}
 
 function Write-Step {
   param([string]$Message)
@@ -75,6 +80,10 @@ function Initialize-NssmEnvironment {
     Assert-SentroviaEnvironment -Path $EnvironmentPath -Mode Nssm
     Write-Host "Using the existing .env.local file. Secrets were not changed."
     return
+  }
+
+  if ($ExistingInstallation) {
+    throw ".env.local was not found. The updater will not create or replace environment settings for an existing installation."
   }
 
   $EffectivePassword = $DatabasePassword
@@ -172,6 +181,7 @@ function Configure-NssmService {
 }
 
 $OriginalLocation = Get-Location
+$ServicesStopped = $false
 try {
 Set-Location $ProjectRoot
 $env:PLAYWRIGHT_BROWSERS_PATH = "0"
@@ -185,6 +195,14 @@ Require-Command "npm" | Out-Null
 Require-Command "nssm" | Out-Null
 Initialize-NssmEnvironment
 
+if ($ExistingInstallation) {
+  foreach ($Name in $ServiceNames) {
+    if (-not (Test-NssmService -Name $Name)) {
+      throw "$Name was not found. Use the first-time NSSM installer before running an update."
+    }
+  }
+}
+
 if (-not (Test-Path $LogDir)) {
   New-Item -ItemType Directory -Path $LogDir | Out-Null
 }
@@ -193,6 +211,7 @@ Write-Step "Stopping existing services"
 foreach ($Name in $ServiceNames) {
   Stop-NssmService -Name $Name
 }
+$ServicesStopped = $true
 
 Write-Step "Installing exact dependencies"
 Invoke-CheckedCommand -Command "npm" -Arguments @("ci") -FailureMessage "npm ci failed."
@@ -238,6 +257,14 @@ foreach ($Name in $ServiceNames) {
 }
 
 Write-Host "Sentrovia NSSM installation completed." -ForegroundColor Green
+} catch {
+  if ($ExistingInstallation -and $ServicesStopped) {
+    Write-Host "Update failed. Attempting to restart the existing services..." -ForegroundColor Yellow
+    foreach ($Name in $ServiceNames) {
+      & nssm start $Name 2>&1 | Out-Host
+    }
+  }
+  throw
 } finally {
   Set-Location $OriginalLocation
 }

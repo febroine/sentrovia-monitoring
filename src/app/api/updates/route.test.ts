@@ -59,7 +59,7 @@ describe("updates route", () => {
       message: "Latest GitHub release checked.",
       recommendedCommands: ["git fetch --tags origin", "git checkout v0.1.2", "docker compose up -d --build"],
       dockerCommands: ["git fetch --tags origin", "git checkout v0.1.2", "docker compose up -d --build"],
-      serviceCommands: ["nssm stop sentrovia-worker", "git checkout v0.1.2", "npm ci"],
+      serviceCommands: ["git fetch --tags origin", "git checkout v0.1.2", "UPDATE-SENTROVIA.bat"],
       backupReminder: "Create a backup first.",
       requiresManualAction: true,
     });
