@@ -45,8 +45,7 @@ function resolveDatabaseUrl() {
 await waitForDatabase(DATABASE_URL);
 
 if (mode === "web") {
-  await runStep("npm", ["run", "db:push:bootstrap"], "Applying database schema");
-  await runStep("npm", ["run", "db:manual"], "Applying manual database migrations");
+  await runStep("npm", ["run", "db:sync"], "Synchronizing database schema");
   runForeground("npm", ["run", "start"]);
 } else {
   runForeground("npm", ["run", "worker:start"]);

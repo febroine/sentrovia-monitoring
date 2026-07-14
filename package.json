@@ -24,6 +24,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:push:bootstrap": "drizzle-kit push --force",
+    "db:sync": "node scripts/sync-database-schema.mjs",
     "db:manual": "node scripts/apply-manual-migrations.mjs",
     "db:manual:baseline": "node scripts/apply-manual-migrations.mjs --baseline"
   },

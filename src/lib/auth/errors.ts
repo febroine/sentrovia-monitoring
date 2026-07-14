@@ -36,14 +36,14 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
 
   if (databaseError?.code === "42703") {
     return new AuthError(
-      "Database schema is out of date. Run `npm run db:push` on the server and restart the application.",
+      "Database schema is out of date. Run `npm run db:sync` on the server and restart the application.",
       503
     );
   }
 
   if (message.includes("column") && message.includes("does not exist")) {
     return new AuthError(
-      "Database schema is out of date. Run `npm run db:push` on the server and restart the web container.",
+      "Database schema is out of date. Run `npm run db:sync` on the server and restart the web container.",
       503
     );
   }
@@ -57,21 +57,21 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
 
   if (databaseError?.code === "ECONNREFUSED" || databaseError?.errno === "ECONNREFUSED") {
     return new AuthError(
-      "Database is unavailable. Start the PostgreSQL service and run `npm run db:push` once before onboarding.",
+      "Database is unavailable. Start the PostgreSQL service and run `npm run db:sync` once before onboarding.",
       503
     );
   }
 
   if (databaseError?.code === "42P01") {
     return new AuthError(
-      "Database schema is missing. Run `npm run db:push` before onboarding.",
+      "Database schema is missing. Run `npm run db:sync` before onboarding.",
       503
     );
   }
 
   if (message.includes("relation") && message.includes("does not exist")) {
     return new AuthError(
-      "Database schema is missing. Run `npm run db:push` on the server and try again.",
+      "Database schema is missing. Run `npm run db:sync` on the server and try again.",
       503
     );
   }

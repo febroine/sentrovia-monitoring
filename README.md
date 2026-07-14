@@ -177,8 +177,7 @@ Run PostgreSQL in Docker and the app on your machine:
 ```bash
 docker compose up -d db
 npm install
-npm run db:push
-npm run db:manual
+npm run db:sync
 npm run dev
 ```
 
@@ -198,19 +197,22 @@ npm run worker:dev
 npm run worker:start
 npm run lint
 npm run test
+npm run db:sync
 npm run db:push
 npm run db:manual
 ```
 
-Manual migrations live in `drizzle/*_manual.sql`. In normal use, run one command:
+Use the schema synchronizer during normal installations and updates:
 
 ```bash
-npm run db:manual
+npm run db:sync
 ```
 
-The command records applied files in `public.sentrovia_manual_migrations`, skips files with the same checksum on later
-runs, and stops if an already applied file was edited. Docker users usually do not run this manually because the web
-container runs it during startup.
+It detects whether the database is empty or already initialized and safely orders the Drizzle schema push and manual SQL
+migrations. Manual migrations live in `drizzle/*_manual.sql`; applied files are recorded in
+`public.sentrovia_manual_migrations`, skipped on later runs, and rejected if an applied file's checksum changes. Docker
+users usually do not run this manually because the web container runs it during startup. `db:push` and `db:manual` remain
+available as lower-level maintenance commands.
 
 Advanced recovery option: if you know a production database already has all current manual SQL applied and you only want
 to create the migration ledger without executing those files, run:
@@ -256,8 +258,7 @@ The updater requests Administrator permission and handles dependencies, migratio
 
 ```bat
 npm ci
-npm run db:push:bootstrap
-npm run db:manual
+npm run db:sync
 npm run build
 ```
 

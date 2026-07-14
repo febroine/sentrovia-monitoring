@@ -252,9 +252,8 @@ Invoke-CheckedCommand -Command "npm" -Arguments @("ci") -FailureMessage "npm ci 
 Write-Step "Installing Playwright Chromium"
 Invoke-CheckedCommand -Command "npx" -Arguments @("playwright", "install", "chromium") -FailureMessage "Playwright installation failed."
 
-Write-Step "Applying database schema and manual migrations"
-Invoke-CheckedCommand -Command "npm" -Arguments @("run", "db:push:bootstrap") -FailureMessage "Database schema update failed."
-Invoke-CheckedCommand -Command "npm" -Arguments @("run", "db:manual") -FailureMessage "Manual database migrations failed."
+Write-Step "Synchronizing database schema and manual migrations"
+Invoke-CheckedCommand -Command "npm" -Arguments @("run", "db:sync") -FailureMessage "Database schema synchronization failed."
 
 Write-Step "Building production app"
 Invoke-CheckedCommand -Command "npm" -Arguments @("run", "build") -FailureMessage "Production build failed."
