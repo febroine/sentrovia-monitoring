@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
@@ -9,6 +9,7 @@ import {
   monitors,
   userSettings,
   workerState,
+  type Monitor,
 } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
@@ -28,6 +29,7 @@ import { intervalToMs } from "@/lib/monitors/utils";
 import { encryptValue } from "@/lib/security/encryption";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
+import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
 
 const WORKER_STATE_ID = "primary";
 const WORKER_CONTROL_ADVISORY_LOCK_KEY = 51_772_903;
@@ -57,6 +59,47 @@ export async function createMonitor(userId: string, input: MonitorInput) {
 
     return monitor;
   });
+}
+
+export async function buildMonitorForTest(
+  userId: string,
+  input: MonitorInput,
+  monitorId?: string | null
+): Promise<Monitor> {
+  const existingMonitor = monitorId ? await getMonitorById(userId, monitorId) : null;
+  if (monitorId && !existingMonitor) {
+    throw new AuthError("Monitor not found.", 404);
+  }
+
+  const values = await buildMonitorValues(userId, input, existingMonitor);
+  const now = new Date();
+
+  return {
+    ...(existingMonitor ?? {
+      id: crypto.randomUUID(),
+      status: "pending",
+      statusCode: null,
+      uptime: "--",
+      lastCheckedAt: null,
+      nextCheckAt: null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      sslExpiresAt: null,
+      lastErrorMessage: null,
+      consecutiveFailures: 0,
+      verificationMode: false,
+      verificationFailureCount: 0,
+      latencyMs: null,
+      createdAt: now,
+      updatedAt: now,
+    }),
+    ...values,
+    leaseToken: null,
+    leaseExpiresAt: null,
+    updatedAt: now,
+  };
 }
 
 export async function updateMonitor(userId: string, monitorId: string, input: MonitorInput) {
@@ -217,29 +260,32 @@ export async function updateMonitorTags(
   action: "add" | "remove" | "replace",
   tags: string[]
 ) {
-  const current = await db
-    .select()
-    .from(monitors)
-    .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)));
-
   const normalizedTags = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
-  const updated = await Promise.all(
-    current.map(async (monitor) => {
+  return db.transaction(async (tx) => {
+    const current = await tx
+      .select()
+      .from(monitors)
+      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)));
+    const updated: Array<typeof monitors.$inferSelect> = [];
+
+    for (const monitor of current) {
       const nextTags = resolveTagPatch(monitor.tags, normalizedTags, action);
-      const [item] = await db
+      const [item] = await tx
         .update(monitors)
         .set({
           tags: nextTags,
           updatedAt: new Date(),
         })
-        .where(eq(monitors.id, monitor.id))
+        .where(and(eq(monitors.id, monitor.id), eq(monitors.userId, userId)))
         .returning();
 
-      return item;
-    })
-  );
+      if (item) {
+        updated.push(item);
+      }
+    }
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function deleteMonitors(userId: string, ids: string[]) {
@@ -628,6 +674,27 @@ export async function hasRecentMonitorEvent(input: {
   return Boolean(event);
 }
 
+export async function countMonitorEvents(input: {
+  monitorId: string;
+  eventType: string;
+  since: Date;
+  before: Date;
+}) {
+  const [row] = await db
+    .select({ total: count() })
+    .from(monitorEvents)
+    .where(
+      and(
+        eq(monitorEvents.monitorId, input.monitorId),
+        eq(monitorEvents.eventType, input.eventType),
+        gte(monitorEvents.createdAt, input.since),
+        lte(monitorEvents.createdAt, input.before)
+      )
+    );
+
+  return row?.total ?? 0;
+}
+
 export async function appendMonitorCheck(input: {
   monitorId: string;
   userId: string;
@@ -759,25 +826,20 @@ export async function getCompanySlaReport(userId: string, companyId: string) {
     .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId), eq(monitors.isActive, true)));
 
   const monitorIds = companyMonitors.map((monitor) => monitor.id);
-  const windows = [
-    { label: "24h SLA", since: new Date(Date.now() - 1000 * 60 * 60 * 24) },
-    { label: "7d SLA", since: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7) },
-  ];
-
-  const checks =
+  const [periods, recentChecks] = await Promise.all([
+    getMonitorSlaPeriods(userId, monitorIds),
     monitorIds.length === 0
-      ? []
-      : await db
+      ? Promise.resolve([])
+      : db
           .select()
           .from(monitorChecks)
           .where(and(eq(monitorChecks.userId, userId), inArray(monitorChecks.monitorId, monitorIds)))
           .orderBy(desc(monitorChecks.createdAt))
-          .limit(4000);
-
-  const periods = windows.map((window) => summarizeChecks(window.label, checks, window.since));
-  const recentChecks = checks.filter((check) => check.statusCode !== null).slice(0, 500);
-  const averageLatencyMs = averageValue(recentChecks.map((check) => check.latencyMs).filter(isNumber));
-  const statusCodes = buildStatusCodeSummary(recentChecks);
+          .limit(500),
+  ]);
+  const completedRecentChecks = recentChecks.filter((check) => check.statusCode !== null);
+  const averageLatencyMs = averageValue(completedRecentChecks.map((check) => check.latencyMs).filter(isNumber));
+  const statusCodes = buildStatusCodeSummary(completedRecentChecks);
 
   return {
     companyId: company.id,
@@ -1199,20 +1261,6 @@ function resolveHeartbeatToken(
   }
 
   return crypto.randomUUID();
-}
-
-function summarizeChecks(label: string, checks: Array<typeof monitorChecks.$inferSelect>, since: Date) {
-  const scoped = checks.filter((check) => check.createdAt >= since && check.status !== "pending");
-  const totalChecks = scoped.length;
-  const upChecks = scoped.filter((check) => check.status === "up").length;
-  const incidents = scoped.filter((check) => check.status === "down").length;
-
-  return {
-    label,
-    uptimePct: totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100,
-    incidents,
-    totalChecks,
-  };
 }
 
 function buildStatusCodeSummary(checks: Array<typeof monitorChecks.$inferSelect>) {

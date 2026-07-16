@@ -98,11 +98,21 @@ function buildRateLimitKeys(
 ) {
   const normalizedIdentifier = normalizeIdentifier(identifier);
   const clientIp = readClientIp(request);
-  const keys = [`${action}:ip:${clientIp}`];
+  const keys: string[] = [];
+
+  if (clientIp) {
+    keys.push(`${action}:ip:${clientIp}`);
+  }
 
   if (normalizedIdentifier) {
     keys.push(`${action}:id:${normalizedIdentifier}`);
-    keys.push(`${action}:ip:${clientIp}:id:${normalizedIdentifier}`);
+    if (clientIp) {
+      keys.push(`${action}:ip:${clientIp}:id:${normalizedIdentifier}`);
+    }
+  }
+
+  if (keys.length === 0) {
+    keys.push(`${action}:anonymous`);
   }
 
   return keys;
@@ -110,7 +120,7 @@ function buildRateLimitKeys(
 
 function readClientIp(request: NextRequest) {
   if (!shouldTrustProxyHeaders()) {
-    return "direct";
+    return null;
   }
 
   const forwardedFor = request.headers.get("x-forwarded-for");
@@ -118,7 +128,7 @@ function readClientIp(request: NextRequest) {
     return forwardedFor.split(",")[0]?.trim() || "unknown";
   }
 
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
+  return request.headers.get("x-real-ip")?.trim() || null;
 }
 
 function shouldTrustProxyHeaders() {

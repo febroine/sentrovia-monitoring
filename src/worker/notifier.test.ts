@@ -5,6 +5,7 @@ import type { NotificationContext } from "@/worker/types";
 
 const mocks = vi.hoisted(() => ({
   buildNotificationWebhookPayload: vi.fn(() => Promise.resolve({ ok: true })),
+  countMonitorEvents: vi.fn(),
   getSettings: vi.fn(),
   hasRecentMonitorEvent: vi.fn(),
   sendChannelWebhookDelivery: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/lib/delivery/service", () => ({
 }));
 
 vi.mock("@/lib/monitors/service", () => ({
+  countMonitorEvents: mocks.countMonitorEvents,
   hasRecentMonitorEvent: mocks.hasRecentMonitorEvent,
 }));
 
@@ -58,6 +60,7 @@ describe("worker notifier", () => {
       },
     });
     mocks.hasRecentMonitorEvent.mockResolvedValue(true);
+    mocks.countMonitorEvents.mockResolvedValue(0);
     mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
     mocks.sendTelegramDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
     mocks.sendWebhookDelivery.mockResolvedValue(null);
@@ -313,6 +316,102 @@ describe("worker notifier", () => {
     expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
     expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
     expect(mocks.sendTelegramDelivery).not.toHaveBeenCalled();
+  });
+
+  it("sends SSL expiry warnings when certificate monitoring is enabled", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
+    const context = buildNotificationContext("ssl-expiry");
+    context.monitor = buildMonitor({ checkSslExpiry: true });
+    context.message = "TLS certificate expires in 10 days on 2026-05-23.";
+    context.result = {
+      ...context.result,
+      sslExpiresAt: new Date("2026-05-23T08:00:00.000Z"),
+    };
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(true);
+    expect(mocks.hasRecentMonitorEvent).toHaveBeenCalledWith({
+      monitorId: "monitor-1",
+      eventType: "ssl-expiry-notification",
+      since: new Date("2026-05-12T08:00:00.000Z"),
+      before: new Date("2026-05-13T08:00:00.000Z"),
+    });
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "ssl-expiry" })
+    );
+  });
+
+  it("does not send SSL expiry warnings when certificate monitoring is disabled", async () => {
+    const sent = await sendMonitorNotifications(buildNotificationContext("ssl-expiry"));
+
+    expect(sent).toBe(false);
+    expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+  });
+
+  it("does not send prolonged-downtime reminders when re-notify is disabled", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
+    const context = buildNotificationContext("downtime-reminder");
+    context.result = {
+      ...context.result,
+      ok: false,
+      status: "down",
+      checkedAt: new Date("2026-05-13T11:00:00.000Z"),
+    };
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(false);
+    expect(mocks.countMonitorEvents).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+  });
+
+  it("stops prolonged-downtime reminders at the monitor re-notify limit", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
+    mocks.countMonitorEvents.mockResolvedValue(3);
+    const context = buildNotificationContext("downtime-reminder");
+    context.monitor = buildMonitor({ renotifyCount: 3 });
+    context.result = {
+      ...context.result,
+      ok: false,
+      status: "down",
+      checkedAt: new Date("2026-05-13T11:00:00.000Z"),
+    };
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(false);
+    expect(mocks.countMonitorEvents).toHaveBeenCalledWith({
+      monitorId: "monitor-1",
+      eventType: "downtime-reminder",
+      since: new Date("2026-05-13T07:55:00.000Z"),
+      before: new Date("2026-05-13T11:00:00.000Z"),
+    });
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+  });
+
+  it("sends a prolonged-downtime reminder below the monitor limit", async () => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
+    mocks.countMonitorEvents.mockResolvedValue(2);
+    const context = buildNotificationContext("downtime-reminder");
+    context.monitor = buildMonitor({ renotifyCount: 3 });
+    context.result = {
+      ...context.result,
+      ok: false,
+      status: "down",
+      checkedAt: new Date("2026-05-13T11:00:00.000Z"),
+    };
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(true);
+    expect(mocks.hasRecentMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "downtime-reminder" })
+    );
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "downtime-reminder" })
+    );
   });
 });
 

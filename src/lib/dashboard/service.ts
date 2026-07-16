@@ -1,13 +1,14 @@
 import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { monitorChecks, monitorEvents, monitors } from "@/lib/db/schema";
+import { monitorEvents, monitors } from "@/lib/db/schema";
 import { getDeliveryOverview } from "@/lib/delivery/service";
 import { getSettings } from "@/lib/settings/service";
 import { getWorkerState } from "@/lib/monitors/service";
 import { intervalToMs } from "@/lib/monitors/utils";
+import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
 
 export async function getDashboardData(userId: string) {
-  const [monitorRows, eventRows, checkRows, settings, worker, delivery] = await Promise.all([
+  const [monitorRows, eventRows, settings, worker, delivery] = await Promise.all([
     db.select().from(monitors).where(eq(monitors.userId, userId)),
     db
       .select()
@@ -15,7 +16,6 @@ export async function getDashboardData(userId: string) {
       .where(and(eq(monitorEvents.userId, userId), ne(monitorEvents.eventType, "check")))
       .orderBy(desc(monitorEvents.createdAt))
       .limit(10),
-    db.select().from(monitorChecks).where(eq(monitorChecks.userId, userId)).orderBy(desc(monitorChecks.createdAt)).limit(4000),
     getSettings(userId),
     getWorkerState(),
     getDeliveryOverview(userId),
@@ -23,8 +23,10 @@ export async function getDashboardData(userId: string) {
 
   const total = monitorRows.length;
   const activeRows = monitorRows.filter((monitor) => monitor.isActive);
-  const activeMonitorIds = new Set(activeRows.map((monitor) => monitor.id));
-  const activeCheckRows = checkRows.filter((check) => activeMonitorIds.has(check.monitorId));
+  const [sla24Hours, sla7Days] = await getMonitorSlaPeriods(
+    userId,
+    activeRows.map((monitor) => monitor.id)
+  );
   const active = activeRows.length;
   const paused = total - active;
   const online = activeRows.filter((monitor) => monitor.status === "up").length;
@@ -60,9 +62,6 @@ export async function getDashboardData(userId: string) {
     }, {})
   );
 
-  const recent24hChecks = activeCheckRows.filter((check) => check.createdAt.getTime() >= Date.now() - 1000 * 60 * 60 * 24);
-  const recent7dChecks = activeCheckRows.filter((check) => check.createdAt.getTime() >= Date.now() - 1000 * 60 * 60 * 24 * 7);
-
   return {
     summary: { total, active, paused, online, offline, pending, coverage: active > 0 ? (online / active) * 100 : 0, avgLatency },
     companyHealth,
@@ -79,8 +78,8 @@ export async function getDashboardData(userId: string) {
           .split(",")
           .map((item) => item.trim())
           .filter(Boolean).length ?? 0,
-      sla24h: computeUptimePct(recent24hChecks),
-      sla7d: computeUptimePct(recent7dChecks),
+      sla24h: sla24Hours.uptimePct,
+      sla7d: sla7Days.uptimePct,
     },
     settings,
     worker: {

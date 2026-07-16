@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { Eye, LoaderCircle, Mail, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -162,6 +165,109 @@ export function TemplateMonitorSettings({
       <Field label="Email body template">
         <Textarea rows={5} value={values.emailBody} onChange={(event) => onFieldChange("emailBody", event.target.value)} />
       </Field>
+    </div>
+  );
+}
+
+type PreviewKind = "failure" | "recovery" | "latency" | "ssl-expiry";
+
+interface TemplatePreviewResult {
+  subject: string;
+  textBody: string;
+  htmlBody: string;
+  telegramBody: string;
+}
+
+export function NotificationTemplatePreview({
+  payload,
+  monitorId,
+}: {
+  payload: MonitorPayload;
+  monitorId?: string;
+}) {
+  const [kind, setKind] = useState<PreviewKind>("failure");
+  const [preview, setPreview] = useState<TemplatePreviewResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function loadPreview() {
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/notifications/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monitorId: monitorId ?? null, kind, payload }),
+      });
+      const data = (await response.json().catch(() => null)) as {
+        preview?: TemplatePreviewResult;
+        message?: string;
+      } | null;
+      if (!response.ok || !data?.preview) {
+        throw new Error(data?.message ?? "Unable to render notification templates.");
+      }
+
+      setPreview(data.preview);
+    } catch (error) {
+      setPreview(null);
+      setMessage(error instanceof Error ? error.message : "Unable to render notification templates.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-5 space-y-4 border-t border-border pt-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Field label="Preview event">
+          <Select value={kind} onValueChange={(value) => {
+            setKind(value as PreviewKind);
+            setPreview(null);
+          }}>
+            <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="failure">Confirmed timeout</SelectItem>
+              <SelectItem value="recovery">Recovery</SelectItem>
+              <SelectItem value="latency">Slow response</SelectItem>
+              <SelectItem value="ssl-expiry">SSL expiry</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Button type="button" variant="outline" onClick={() => void loadPreview()} disabled={loading}>
+          {loading ? <LoaderCircle className="animate-spin" /> : <Eye />}
+          {loading ? "Rendering..." : "Preview templates"}
+        </Button>
+      </div>
+
+      {message ? <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{message}</p> : null}
+
+      {preview ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2 text-xs font-medium">
+              <Mail className="size-3.5" /> Email preview
+            </div>
+            <div className="border-b border-border px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">Subject</p>
+              <p className="mt-1 text-sm font-medium">{preview.subject}</p>
+            </div>
+            <iframe
+              title="Email template preview"
+              sandbox=""
+              srcDoc={preview.htmlBody}
+              className="h-72 w-full bg-white"
+            />
+          </div>
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2 text-xs font-medium">
+              <Send className="size-3.5" /> Telegram preview
+            </div>
+            <pre className="min-h-72 whitespace-pre-wrap break-words p-4 text-xs font-sans leading-5">{preview.telegramBody}</pre>
+          </div>
+        </div>
+      ) : null}
+      <p className="text-[11px] text-muted-foreground">Preview uses sample event data and does not send a notification.</p>
     </div>
   );
 }

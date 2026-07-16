@@ -1,8 +1,17 @@
-import { and, desc, eq, gte, ilike, inArray, lte, ne, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, ne, notInArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, monitorEvents, monitors } from "@/lib/db/schema";
 import type { LogLevel } from "@/lib/logs/types";
 import { toEnglishUppercase } from "@/lib/text/casing";
+
+const HIDDEN_NOTIFICATION_MARKER_EVENTS: string[] = [
+  "failure-notification",
+  "latency-notification",
+  "ssl-expiry-notification",
+  "status-change-notification",
+  "downtime-reminder",
+];
+const WORKER_NOTIFICATION_MARKER_EVENTS: string[] = [...HIDDEN_NOTIFICATION_MARKER_EVENTS];
 
 function mapEventToLevel(eventType: string, status: string | null): LogLevel {
   if (eventType === "check") return "info";
@@ -27,7 +36,11 @@ export async function listLogs(
     pageSize?: number;
   }
 ) {
-  const conditions = [eq(monitorEvents.userId, userId), ne(monitorEvents.eventType, "check")];
+  const conditions = [
+    eq(monitorEvents.userId, userId),
+    ne(monitorEvents.eventType, "check"),
+    notInArray(monitorEvents.eventType, HIDDEN_NOTIFICATION_MARKER_EVENTS),
+  ];
   const monitorConditions = [eq(monitors.userId, userId)];
 
   const fromDate = parseDateFilter(filters.from);
@@ -199,7 +212,15 @@ export async function getLogFilterOptions(userId: string) {
 }
 
 export async function clearLogs(userId: string) {
-  return db.delete(monitorEvents).where(eq(monitorEvents.userId, userId)).returning({ id: monitorEvents.id });
+  return db
+    .delete(monitorEvents)
+    .where(
+      and(
+        eq(monitorEvents.userId, userId),
+        notInArray(monitorEvents.eventType, WORKER_NOTIFICATION_MARKER_EVENTS)
+      )
+    )
+    .returning({ id: monitorEvents.id });
 }
 
 function appendLevelConditions(conditions: unknown[], level?: string) {

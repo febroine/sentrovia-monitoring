@@ -120,7 +120,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         />
         <ToggleRow
           label="Prolonged downtime reminders"
-          description="Send another alert when a monitor has stayed down past the configured reminder interval."
+          description="Allow follow-up alerts for monitors that have a non-zero Re-notify limit."
           checked={settings.notifications.prolongedDowntimeEnabled}
           onChange={(checked) => updateSetting("notifications.prolongedDowntimeEnabled", checked)}
         />
@@ -133,7 +133,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         </Field>
         <Field
           label="Prolonged downtime reminder interval (minutes)"
-          hint="Example: 180 means send a 'still down' reminder after 3 hours, then again every 3 hours while the outage continues."
+          hint="Example: 180 sends reminders at most every 3 hours until the monitor's Re-notify limit is reached."
         >
           <Input
             type="number"
@@ -490,7 +490,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ToggleCard
           label="Check SSL expiry"
-          description="New monitors inherit certificate expiry checks unless the monitor overrides it."
+          description="New monitors inherit daily warnings during the final 30 days before certificate expiry."
           checked={settings.monitoring.checkSslExpiry}
           onChange={(checked) => updateSetting("monitoring.checkSslExpiry", checked)}
         />
@@ -505,18 +505,6 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
           description="Append a cache-busting query string by default to avoid stale CDN responses."
           checked={settings.monitoring.cacheBuster}
           onChange={(checked) => updateSetting("monitoring.cacheBuster", checked)}
-        />
-        <ToggleCard
-          label="Save error pages"
-          description="Keep failed HTTP response bodies by default for RCA and template usage."
-          checked={settings.monitoring.saveErrorPages}
-          onChange={(checked) => updateSetting("monitoring.saveErrorPages", checked)}
-        />
-        <ToggleCard
-          label="Save success pages"
-          description="Store successful HTTP responses by default when the monitor does not override it."
-          checked={settings.monitoring.saveSuccessPages}
-          onChange={(checked) => updateSetting("monitoring.saveSuccessPages", checked)}
         />
       </div>
     </SectionCard>
@@ -691,54 +679,16 @@ export function PublicStatusSettingsTab({ settings, saving, saveSettings, update
   );
 }
 
-export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
-  const { saveSection, savingSection } = useSectionSave(saveSettings);
+export function DataSettingsTab({ settings, updateSetting }: TabProps) {
   const isAdmin = settings.profile.role === "admin";
 
   return (
     <SectionCard
-      title="Retention and Backups"
-      description="Operational policies for data retention, event cleanup, and automated backup windows."
+      title="Workspace Backup"
+      description="Export or restore workspace configuration manually. Database records remain under your deployment's backup policy."
       icon={FolderArchive}
       iconClassName="text-amber-600 dark:text-amber-300"
-      action={
-        <SectionSaveButton
-          sectionId="retention-and-backups"
-          saving={saving}
-          savingSection={savingSection}
-          onSave={saveSection}
-        />
-      }
     >
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Retention period (days)">
-          <Input
-            type="number"
-            value={settings.data.retentionDays}
-            onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value) || 30)}
-          />
-        </Field>
-        <Field label="Backup window">
-          <Input
-            value={settings.data.backupWindow}
-            onChange={(event) => updateSetting("data.backupWindow", event.target.value)}
-            placeholder="03:00"
-          />
-        </Field>
-        <Field label="Event retention (days)">
-          <Input
-            type="number"
-            value={settings.data.eventRetentionDays}
-            onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value) || 30)}
-          />
-        </Field>
-      </div>
-      <ToggleRow
-        label="Automatic backups"
-        description="Create scheduled backups during the configured backup window."
-        checked={settings.data.autoBackupEnabled}
-        onChange={(checked) => updateSetting("data.autoBackupEnabled", checked)}
-      />
       {isAdmin ? (
         <BackupRestorePanel
           lastBackupAt={settings.data.lastBackupAt}

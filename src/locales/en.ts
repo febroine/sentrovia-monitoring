@@ -28,6 +28,7 @@ export const en = {
     members: "Members",
     logs: "Event Logs",
     delivery: "Delivery",
+    systemHealth: "System Health",
     reports: "Reports",
     settings: "Settings"
   },

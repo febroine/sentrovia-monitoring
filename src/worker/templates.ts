@@ -198,6 +198,10 @@ function resolveEventState(context: NotificationContext, language: NotificationL
     return "SLOW";
   }
 
+  if (context.kind === "ssl-expiry") {
+    return "SSL EXPIRING";
+  }
+
   if (context.kind === "failure" && context.result.failureReason === "timeout") {
     return "TIMEOUT";
   }
@@ -212,6 +216,10 @@ function resolveTurkishEventState(context: NotificationContext) {
 
   if (context.kind === "latency") {
     return "YAVAŞ";
+  }
+
+  if (context.kind === "ssl-expiry") {
+    return "SSL SÜRESİ DOLUYOR";
   }
 
   if (context.kind === "failure" && context.result.failureReason === "timeout") {
@@ -328,6 +336,16 @@ function translateTurkishPatternMessage(message: string) {
   const statusChangeMatch = message.match(/^Status code changed from (\d+) to (\d+)\.$/);
   if (statusChangeMatch) {
     return `Durum kodu ${statusChangeMatch[1]} değerinden ${statusChangeMatch[2]} değerine değişti.`;
+  }
+
+  const certificateExpiryMatch = message.match(/^TLS certificate expires in (\d+) days? on (\d{4}-\d{2}-\d{2})\.$/);
+  if (certificateExpiryMatch) {
+    return `TLS sertifikasının süresi ${certificateExpiryMatch[2]} tarihinde, ${certificateExpiryMatch[1]} gün içinde dolacak.`;
+  }
+
+  const certificateExpiredMatch = message.match(/^TLS certificate expired on (\d{4}-\d{2}-\d{2})\.$/);
+  if (certificateExpiredMatch) {
+    return `TLS sertifikasının süresi ${certificateExpiredMatch[1]} tarihinde doldu.`;
   }
 
   return null;
