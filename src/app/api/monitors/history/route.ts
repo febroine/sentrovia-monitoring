@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import {
-  listRecentIncidentEvents,
+  listRecentOutageEvents,
   listRecentMonitorChecks,
   listRecentMonitorDiagnostics,
 } from "@/lib/monitors/service";
@@ -17,9 +17,9 @@ export async function GET() {
     }
 
     const history = await listRecentMonitorChecks(session.id, 5);
-    const [diagnostics, incidentEvents] = await Promise.all([
+    const [diagnostics, outageEvents] = await Promise.all([
       loadOptionalHistorySection(() => listRecentMonitorDiagnostics(session.id, 3)),
-      loadOptionalHistorySection(() => listRecentIncidentEvents(session.id, 8)),
+      loadOptionalHistorySection(() => listRecentOutageEvents(session.id, 8)),
     ]);
 
     return NextResponse.json({
@@ -59,12 +59,12 @@ export async function GET() {
           })),
         ])
       ),
-      incidentEvents: Object.fromEntries(
-        Object.entries(incidentEvents).map(([monitorId, rows]) => [
+      outageEvents: Object.fromEntries(
+        Object.entries(outageEvents).map(([monitorId, rows]) => [
           monitorId,
           rows.map((row) => ({
             id: row.id,
-            incidentId: row.incidentId,
+            outageId: row.outageId,
             monitorId: row.monitorId,
             eventType: row.eventType,
             title: row.title,
@@ -96,7 +96,22 @@ function parseMetadata(value: string | null) {
 async function loadOptionalHistorySection<T>(loader: () => Promise<Record<string, T[]>>) {
   try {
     return await loader();
-  } catch {
-    return {};
+  } catch (error) {
+    if (isMissingOptionalHistorySchema(error)) {
+      return {};
+    }
+
+    throw error;
   }
+}
+
+function isMissingOptionalHistorySchema(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const databaseError = error as { code?: string; cause?: unknown };
+  return databaseError.code === "42P01"
+    || databaseError.code === "42703"
+    || isMissingOptionalHistorySchema(databaseError.cause);
 }

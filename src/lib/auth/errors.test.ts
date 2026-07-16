@@ -18,4 +18,14 @@ describe("auth error mapping", () => {
     expect(error.status).toBe(409);
     expect(error.message).toBe("Public status slug is already in use.");
   });
+
+  it("maps normalized company name conflicts to the correct message", () => {
+    const error = toAuthError(
+      { code: "23505", constraint: "companies_user_normalized_name_unique" },
+      "Unable to save."
+    );
+
+    expect(error.status).toBe(409);
+    expect(error.message).toBe("A company with this name already exists.");
+  });
 });

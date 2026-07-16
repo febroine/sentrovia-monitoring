@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, lte, ne, notInArray, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNull, lte, ne, notInArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, monitorEvents, monitors } from "@/lib/db/schema";
 import type { LogLevel } from "@/lib/logs/types";
@@ -41,7 +41,7 @@ export async function listLogs(
     ne(monitorEvents.eventType, "check"),
     notInArray(monitorEvents.eventType, HIDDEN_NOTIFICATION_MARKER_EVENTS),
   ];
-  const monitorConditions = [eq(monitors.userId, userId)];
+  const monitorConditions = [eq(monitors.userId, userId), isNull(monitors.deletedAt)];
 
   const fromDate = parseDateFilter(filters.from);
   if (fromDate) {
@@ -198,11 +198,14 @@ function toBoundedInteger(value: number | undefined, fallback: number, min: numb
 
 export async function getLogFilterOptions(userId: string) {
   const [companyRows, monitorRows] = await Promise.all([
-    db.select({ id: companies.id, name: companies.name }).from(companies).where(eq(companies.userId, userId)),
+    db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .where(and(eq(companies.userId, userId), isNull(companies.deletedAt))),
     db
       .select({ id: monitors.id, name: monitors.name, companyId: monitors.companyId })
       .from(monitors)
-      .where(eq(monitors.userId, userId)),
+      .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt))),
   ]);
 
   return {

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type {
   MonitorDiagnosticRecord,
   MonitorHistoryPoint,
-  MonitorIncidentEventRecord,
+  MonitorOutageEventRecord,
   MonitorRecord,
 } from "@/lib/monitors/types";
 import { toEnglishUppercase } from "@/lib/text/casing";
@@ -15,7 +15,7 @@ export function MonitorHistoryDialog({
   monitor,
   points,
   diagnostics,
-  incidentEvents,
+  outageEvents,
   selectedPointId,
   onOpenChange,
 }: {
@@ -23,7 +23,7 @@ export function MonitorHistoryDialog({
   monitor: MonitorRecord | null;
   points: MonitorHistoryPoint[];
   diagnostics: MonitorDiagnosticRecord[];
-  incidentEvents: MonitorIncidentEventRecord[];
+  outageEvents: MonitorOutageEventRecord[];
   selectedPointId: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -150,14 +150,14 @@ export function MonitorHistoryDialog({
               </div>
             ) : null}
 
-            {incidentEvents.length > 0 ? (
+            {outageEvents.length > 0 ? (
               <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
                 <div className="flex items-center gap-2">
                   <ListChecks className="h-4 w-4 text-amber-500" />
-                  <p className="text-sm font-medium">Incident timeline</p>
+                  <p className="text-sm font-medium">Outage timeline</p>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {incidentEvents.map((event) => (
+                  {outageEvents.map((event) => (
                     <div key={event.id} className="rounded-lg border border-border/70 bg-background/70 px-3 py-2">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-medium">{event.title}</p>

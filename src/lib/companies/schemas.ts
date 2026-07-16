@@ -12,7 +12,7 @@ export const companyInputSchema = z.object({
 });
 
 export const companyBulkActionSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1),
+  ids: z.array(z.string().uuid()).min(1).max(200),
   action: z.enum(["activate", "deactivate", "delete"]),
 });
 

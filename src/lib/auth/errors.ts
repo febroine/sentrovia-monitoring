@@ -112,5 +112,9 @@ function mapUniqueConstraintError(error: DatabaseErrorShape) {
     return new AuthError("An account with this email already exists.", 409);
   }
 
+  if (constraint.includes("companies_user_normalized_name")) {
+    return new AuthError("A company with this name already exists.", 409);
+  }
+
   return new AuthError("A record with this value already exists.", 409);
 }

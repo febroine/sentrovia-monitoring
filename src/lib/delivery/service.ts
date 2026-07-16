@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
-import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, webhookEndpoints } from "@/lib/db/schema";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
@@ -11,13 +11,14 @@ import { getSettings } from "@/lib/settings/service";
 import { getSmtpSettings } from "@/lib/settings/smtp";
 import type {
   DeliveryHistoryRecord,
+  DeliveryHistoryDeletionRange,
   DeliveryKind,
   DeliveryOverview,
   DeliveryTestInput,
   WebhookSettingsInput,
 } from "@/lib/delivery/types";
 
-const HISTORY_LIMIT = 40;
+const DELIVERY_HISTORY_PAGE_SIZE = 10;
 const MAX_WEBHOOK_ATTEMPTS = 5;
 const WEBHOOK_RETRY_DELAY_MS = 5 * 60 * 1000;
 const DELIVERY_REQUEST_TIMEOUT_MS = 15_000;
@@ -28,20 +29,40 @@ const TELEGRAM_PHOTO_CAPTION_LIMIT = 1024;
 const OUTBOUND_WEBHOOK_REDIRECT_MODE = "manual";
 const WEBHOOK_CLAIM_LEASE_MS = 2 * 60 * 1000;
 const WEBHOOK_QUEUE_STATUSES = ["pending", "retrying", "processing"];
+const DELIVERY_HISTORY_DELETABLE_STATUSES = ["delivered", "failed"];
 const WEBHOOK_RETRY_BATCH_SIZE = 5;
 
-export async function getDeliveryOverview(userId: string): Promise<DeliveryOverview> {
-  const [endpoint, historyRows] = await Promise.all([
+export async function getDeliveryOverview(userId: string, requestedPage = 1): Promise<DeliveryOverview> {
+  const [endpoint, totalRows, summaryRows] = await Promise.all([
     getWebhookEndpoint(userId),
     db
-      .select()
+      .select({ total: count() })
       .from(deliveryEvents)
-      .where(eq(deliveryEvents.userId, userId))
-      .orderBy(desc(deliveryEvents.createdAt))
-      .limit(HISTORY_LIMIT),
+      .where(eq(deliveryEvents.userId, userId)),
+    db
+      .select({
+        delivered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'delivered')::integer`,
+        failed: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed')::integer`,
+        retrying: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'retrying')::integer`,
+        pendingWebhookRetries: sql<number>`count(*) filter (where ${deliveryEvents.channel} = 'webhook' and ${deliveryEvents.status} in ('pending', 'retrying', 'processing'))::integer`,
+      })
+      .from(deliveryEvents)
+      .where(eq(deliveryEvents.userId, userId)),
   ]);
 
+  const totalItems = Number(totalRows[0]?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(totalItems / DELIVERY_HISTORY_PAGE_SIZE));
+  const page = Math.min(normalizeDeliveryPage(requestedPage), totalPages);
+  const historyRows = await db
+    .select()
+    .from(deliveryEvents)
+    .where(eq(deliveryEvents.userId, userId))
+    .orderBy(desc(deliveryEvents.createdAt), desc(deliveryEvents.id))
+    .limit(DELIVERY_HISTORY_PAGE_SIZE)
+    .offset((page - 1) * DELIVERY_HISTORY_PAGE_SIZE);
+
   const history = historyRows.map(serializeDelivery);
+  const summary = summaryRows[0];
 
   return {
     webhook: endpoint
@@ -53,14 +74,41 @@ export async function getDeliveryOverview(userId: string): Promise<DeliveryOverv
       : null,
     history,
     summary: {
-      delivered: historyRows.filter((item) => item.status === "delivered").length,
-      failed: historyRows.filter((item) => item.status === "failed").length,
-      retrying: historyRows.filter((item) => item.status === "retrying").length,
-      pendingWebhookRetries: historyRows.filter(
-        (item) => item.channel === "webhook" && WEBHOOK_QUEUE_STATUSES.includes(item.status)
-      ).length,
+      delivered: Number(summary?.delivered ?? 0),
+      failed: Number(summary?.failed ?? 0),
+      retrying: Number(summary?.retrying ?? 0),
+      pendingWebhookRetries: Number(summary?.pendingWebhookRetries ?? 0),
     },
+    pagination: { page, pageSize: DELIVERY_HISTORY_PAGE_SIZE, totalItems, totalPages },
   };
+}
+
+export async function deleteDeliveryHistory(userId: string, range: DeliveryHistoryDeletionRange) {
+  if (!isValidDeletionRange(range)) {
+    throw new Error("Invalid delivery history deletion range.");
+  }
+
+  return db
+    .delete(deliveryEvents)
+    .where(
+      and(
+        eq(deliveryEvents.userId, userId),
+        gte(deliveryEvents.createdAt, range.from),
+        lt(deliveryEvents.createdAt, range.toExclusive),
+        inArray(deliveryEvents.status, DELIVERY_HISTORY_DELETABLE_STATUSES)
+      )
+    )
+    .returning({ id: deliveryEvents.id });
+}
+
+function normalizeDeliveryPage(value: number) {
+  return Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+function isValidDeletionRange(range: DeliveryHistoryDeletionRange) {
+  return !Number.isNaN(range.from.getTime())
+    && !Number.isNaN(range.toExclusive.getTime())
+    && range.from < range.toExclusive;
 }
 
 export async function upsertWebhookSettings(userId: string, input: WebhookSettingsInput) {
@@ -434,7 +482,7 @@ export async function buildNotificationWebhookPayload(input: {
   };
 }
 
-async function getWebhookEndpoint(userId: string) {
+export async function getWebhookEndpoint(userId: string) {
   const [endpoint] = await db
     .select()
     .from(webhookEndpoints)

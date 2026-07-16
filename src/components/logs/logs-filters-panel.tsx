@@ -205,7 +205,7 @@ export function LogsFiltersPanel({
               <div className="space-y-1">
                 <p className="text-sm font-medium">Time window</p>
                 <p className="text-xs text-muted-foreground">
-                  Use quick presets for incident review, then refine the exact range with the calendar fields.
+                  Use quick presets for outage review, then refine the exact range with the calendar fields.
                 </p>
               </div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">

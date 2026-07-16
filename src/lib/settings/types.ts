@@ -76,6 +76,7 @@ export interface SettingsPayload {
   };
   data: {
     retentionDays: number;
+    deliveryRetentionDays: number;
     autoBackupEnabled: boolean;
     backupWindow: string;
     eventRetentionDays: number;
@@ -198,6 +199,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   },
   data: {
     retentionDays: 90,
+    deliveryRetentionDays: 90,
     autoBackupEnabled: true,
     backupWindow: "03:00",
     eventRetentionDays: 30,

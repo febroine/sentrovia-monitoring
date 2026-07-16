@@ -9,10 +9,7 @@ export interface ReportPreviewInput {
   companyId?: string | null;
   template?: ReportTemplateVariant;
   deliveryDetailLevel?: "summary" | "standard" | "full";
-  attachCsv?: boolean;
-  attachHtml?: boolean;
-  attachPdf?: boolean;
-  includeIncidentSummary?: boolean;
+  includeOutageSummary?: boolean;
   includeMonitorBreakdown?: boolean;
   emailSubjectTemplate?: string | null;
   emailIntroTemplate?: string | null;
@@ -42,10 +39,7 @@ export interface ReportScheduleRecord {
   lastStatus: ReportScheduleStatus;
   lastErrorMessage: string | null;
   deliveryDetailLevel: "summary" | "standard" | "full";
-  attachCsv: boolean;
-  attachHtml: boolean;
-  attachPdf: boolean;
-  includeIncidentSummary: boolean;
+  includeOutageSummary: boolean;
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string | null;
   emailIntroTemplate: string | null;

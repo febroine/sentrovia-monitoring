@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlaskConical, Inbox, RefreshCw, RotateCcw, Send, Webhook } from "lucide-react";
+import { ChevronLeft, ChevronRight, FlaskConical, Inbox, RefreshCw, RotateCcw, Send, Trash2, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,9 +19,11 @@ const EMPTY_OVERVIEW: DeliveryOverview = {
   webhook: null,
   history: [],
   summary: { delivered: 0, failed: 0, retrying: 0, pendingWebhookRetries: 0 },
+  pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 1 },
 };
 
 type MessageResponse = { message?: string };
+type HistoryDeletionRange = "last_7_days" | "last_30_days" | "custom";
 
 export function DeliveryPageClient() {
   const [overview, setOverview] = useState<DeliveryOverview>(EMPTY_OVERVIEW);
@@ -35,13 +38,18 @@ export function DeliveryPageClient() {
   const [telegramChatId, setTelegramChatId] = useState("");
   const [testMessage, setTestMessage] = useState("Sentrovia delivery smoke test.");
   const [selectedRow, setSelectedRow] = useState<DeliveryHistoryRecord | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
+  const [historyDeletionRange, setHistoryDeletionRange] = useState<HistoryDeletionRange>("last_7_days");
+  const [customFrom, setCustomFrom] = useState(() => toDateInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
+  const [customTo, setCustomTo] = useState(() => toDateInputValue(new Date()));
 
   const cards = useMemo(
     () => [
       {
         label: "Delivered",
         value: String(overview.summary.delivered),
-        sub: "Successful recent deliveries",
+        sub: "All completed deliveries",
         border: "border-l-emerald-500",
       },
       {
@@ -66,11 +74,11 @@ export function DeliveryPageClient() {
     [overview.summary]
   );
 
-  const loadOverview = useCallback(async () => {
+  const loadOverview = useCallback(async (requestedPage = 1) => {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/delivery", { cache: "no-store" });
+      const response = await fetch(`/api/delivery?page=${requestedPage}`, { cache: "no-store" });
       const data = await readJsonOrNull<{ overview?: DeliveryOverview; message?: string }>(response);
       if (!response.ok) {
         throw new Error(data?.message ?? "Unable to load delivery operations.");
@@ -78,6 +86,7 @@ export function DeliveryPageClient() {
 
       const nextOverview = data?.overview ?? EMPTY_OVERVIEW;
       setOverview(nextOverview);
+      setHistoryPage(nextOverview.pagination.page);
       setWebhookUrl(nextOverview.webhook?.url ?? "");
       setWebhookActive(nextOverview.webhook?.isActive ?? true);
       setMessage(null);
@@ -90,7 +99,7 @@ export function DeliveryPageClient() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadOverview();
+      void loadOverview(1);
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -111,6 +120,7 @@ export function DeliveryPageClient() {
       }
 
       setOverview(data?.overview ?? EMPTY_OVERVIEW);
+      setHistoryPage(data?.overview?.pagination.page ?? 1);
       setWebhookSecret("");
       setMessage("Webhook endpoint saved.");
     } catch (error) {
@@ -140,7 +150,7 @@ export function DeliveryPageClient() {
         throw new Error(data?.message ?? `Unable to send ${channel} test.`);
       }
 
-      await loadOverview();
+      await loadOverview(1);
       setMessage(`${toTitleCase(channel)} test sent.`);
     } catch (error) {
       setMessage(toMessage(error, `Unable to send ${channel} test.`));
@@ -164,9 +174,42 @@ export function DeliveryPageClient() {
       }
 
       setOverview(data?.overview ?? EMPTY_OVERVIEW);
+      setHistoryPage(data?.overview?.pagination.page ?? 1);
       setMessage(`Processed ${data?.result?.processed ?? 0} webhook retry item(s).`);
     } catch (error) {
       setMessage(toMessage(error, "Unable to retry webhook queue."));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function deleteHistory() {
+    setPendingAction("delete-history");
+
+    try {
+      const response = await fetch("/api/delivery", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          range: historyDeletionRange,
+          from: historyDeletionRange === "custom" ? customFrom : undefined,
+          to: historyDeletionRange === "custom" ? customTo : undefined,
+          timezoneOffsetMinutes: historyDeletionRange === "custom" ? new Date().getTimezoneOffset() : undefined,
+        }),
+      });
+      const data = await readJsonOrNull<{ count?: number; overview?: DeliveryOverview; message?: string }>(response);
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to delete delivery history.");
+      }
+
+      const nextOverview = data?.overview ?? EMPTY_OVERVIEW;
+      setOverview(nextOverview);
+      setHistoryPage(nextOverview.pagination.page);
+      setSelectedRow(null);
+      setClearHistoryOpen(false);
+      setMessage(`Deleted ${data?.count ?? 0} completed delivery record(s).`);
+    } catch (error) {
+      setMessage(toMessage(error, "Unable to delete delivery history."));
     } finally {
       setPendingAction(null);
     }
@@ -181,7 +224,7 @@ export function DeliveryPageClient() {
             Manage webhook delivery, run email and telegram smoke tests, and review the retry queue.
           </p>
         </div>
-        <Button variant="outline" onClick={() => void loadOverview()} disabled={loading}>
+        <Button variant="outline" onClick={() => void loadOverview(historyPage)} disabled={loading}>
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>
@@ -270,8 +313,22 @@ export function DeliveryPageClient() {
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/15 pb-3">
-          <CardTitle className="text-base">Delivery History</CardTitle>
-          <CardDescription>Immutable operational log of recent email, telegram, and webhook deliveries.</CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1.5">
+              <CardTitle className="text-base">Delivery History</CardTitle>
+              <CardDescription>Email, Telegram, Discord, and webhook attempts ordered from newest to oldest.</CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setClearHistoryOpen(true)}
+              disabled={pendingAction !== null || overview.pagination.totalItems === 0}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear History
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="border-l-2 border-l-emerald-500 p-0">
           <Table>
@@ -316,8 +373,95 @@ export function DeliveryPageClient() {
               )}
             </TableBody>
           </Table>
+          <div className="flex flex-col gap-3 border-t bg-muted/10 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              {overview.pagination.totalItems === 0
+                ? "No records"
+                : `${overview.pagination.totalItems} records - 10 per page`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label="Previous delivery history page"
+                onClick={() => void loadOverview(historyPage - 1)}
+                disabled={loading || historyPage <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="min-w-20 text-center text-xs text-muted-foreground">
+                Page {overview.pagination.page} of {overview.pagination.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label="Next delivery history page"
+                onClick={() => void loadOverview(historyPage + 1)}
+                disabled={loading || historyPage >= overview.pagination.totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
+
+      <Dialog open={clearHistoryOpen} onOpenChange={(open) => pendingAction === null && setClearHistoryOpen(open)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Clear delivery history?</DialogTitle>
+            <DialogDescription>
+              Completed deliveries in the selected period will be permanently removed from the database. Pending and retrying webhook items are preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="history-deletion-range">Period</Label>
+              <Select
+                value={historyDeletionRange}
+                onValueChange={(value) => value && setHistoryDeletionRange(value as HistoryDeletionRange)}
+              >
+                <SelectTrigger id="history-deletion-range">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="last_7_days">Last 7 days</SelectItem>
+                  <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                  <SelectItem value="custom">Custom date range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {historyDeletionRange === "custom" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="history-from">From</Label>
+                  <Input id="history-from" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="history-to">To</Label>
+                  <Input id="history-to" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+                </div>
+              </div>
+            ) : null}
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-3 text-xs leading-5 text-muted-foreground">
+              This action cannot be undone. Active retry queue entries are never deleted by history cleanup.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClearHistoryOpen(false)} disabled={pendingAction !== null}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void deleteHistory()}
+              disabled={pendingAction !== null || !isDeletionRangeReady(historyDeletionRange, customFrom, customTo)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {pendingAction === "delete-history" ? "Deleting..." : "Delete Records"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(selectedRow)} onOpenChange={(open) => !open && setSelectedRow(null)}>
         <DialogContent className="sm:max-w-3xl">
@@ -420,6 +564,14 @@ async function readJsonOrNull<T>(response: Response) {
 
 function toMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function toDateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function isDeletionRangeReady(range: HistoryDeletionRange, from: string, to: string) {
+  return range !== "custom" || (from.length > 0 && to.length > 0 && from <= to);
 }
 
 function PayloadMetric({ label, value }: { label: string; value: string }) {

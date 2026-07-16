@@ -4,7 +4,7 @@ import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorBulkDeleteSchema, monitorInputSchema } from "@/lib/monitors/schemas";
-import { createMonitor, deleteMonitors, listMonitors } from "@/lib/monitors/service";
+import { createMonitor, deleteMonitors, listMonitors, SOFT_DELETE_UNDO_MS } from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { getSettings } from "@/lib/settings/service";
 
@@ -74,7 +74,11 @@ export async function DELETE(request: NextRequest) {
     }
 
     const deleted = await deleteMonitors(session.id, parsed.data.ids);
-    return NextResponse.json({ ids: deleted.map((item) => item.id) });
+    const deletedAt = deleted[0]?.deletedAt;
+    return NextResponse.json({
+      ids: deleted.map((item) => item.id),
+      undoUntil: deletedAt ? new Date(deletedAt.getTime() + SOFT_DELETE_UNDO_MS).toISOString() : null,
+    });
   } catch (error) {
     const authError = toAuthError(error, "Unable to delete monitors right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

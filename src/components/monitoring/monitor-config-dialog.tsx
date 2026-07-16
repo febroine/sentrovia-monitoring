@@ -10,6 +10,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
 import { toEnglishUppercase } from "@/lib/text/casing";
 
+type MonitorImportPreview = {
+  items: Array<{
+    index: number;
+    name: string;
+    target: string;
+    status: "added" | "skipped" | "invalid";
+    reason: string | null;
+  }>;
+  summary: { added: number; skipped: number; invalid: number };
+};
+
 export function MonitorConfigDialog({
   open,
   onOpenChange,
@@ -23,6 +34,7 @@ export function MonitorConfigDialog({
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [preview, setPreview] = useState<MonitorImportPreview | null>(null);
 
   async function handleExport() {
     try {
@@ -47,7 +59,7 @@ export function MonitorConfigDialog({
     }
   }
 
-  async function handleImport() {
+  async function handleImport(mode: "preview" | "apply") {
     setSubmitting(true);
     setMessage(null);
 
@@ -55,18 +67,28 @@ export function MonitorConfigDialog({
       const response = await fetch("/api/monitors/config/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, content }),
+        body: JSON.stringify({ format, content, mode }),
       });
-      const data = (await response.json().catch(() => null)) as { message?: string } | null;
+      const data = (await response.json().catch(() => null)) as {
+        message?: string;
+        preview?: MonitorImportPreview;
+        monitors?: unknown[];
+      } | null;
 
       if (!response.ok) {
         setMessage(data?.message ?? "Unable to import monitor configuration.");
         return;
       }
 
-      setMessage("Monitor configuration imported.");
-      setContent("");
-      onImported();
+      if (mode === "preview") {
+        setPreview(data?.preview ?? null);
+        setMessage(data?.preview ? "Import preview is ready. Review the changes before applying." : null);
+      } else {
+        setMessage(`Imported ${data?.monitors?.length ?? 0} monitor(s).`);
+        setContent("");
+        setPreview(null);
+        onImported();
+      }
     } catch {
       setMessage("Unable to import monitor configuration.");
     } finally {
@@ -91,7 +113,10 @@ export function MonitorConfigDialog({
             <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-end">
               <div className="space-y-2">
                 <Label>Format</Label>
-                <Select value={format} onValueChange={(value) => setFormat(value as "json" | "yaml")}>
+                <Select value={format} onValueChange={(value) => {
+                  setFormat(value as "json" | "yaml");
+                  setPreview(null);
+                }}>
                   <SelectTrigger className="h-10">
                     <SelectValue />
                   </SelectTrigger>
@@ -118,24 +143,64 @@ export function MonitorConfigDialog({
               <Textarea
                 rows={16}
                 value={content}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(event) => {
+                  setContent(event.target.value);
+                  setPreview(null);
+                }}
                 placeholder="Paste a Sentrovia monitor bundle in JSON or YAML format."
                 className="min-h-[22rem] max-h-[48vh] resize-none overflow-y-auto font-mono text-xs"
               />
             </div>
 
             {message ? <div className="rounded-lg border px-3 py-2 text-sm">{message}</div> : null}
+            {preview ? (
+              <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <PreviewCount label="Add" value={preview.summary.added} tone="text-emerald-600" />
+                  <PreviewCount label="Skip" value={preview.summary.skipped} tone="text-amber-600" />
+                  <PreviewCount label="Invalid" value={preview.summary.invalid} tone="text-destructive" />
+                </div>
+                <div className="max-h-52 space-y-2 overflow-y-auto">
+                  {preview.items.map((item) => (
+                    <div key={`${item.index}-${item.target}`} className="flex items-start justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{item.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{item.target}</p>
+                        {item.reason ? <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{item.reason}</p> : null}
+                      </div>
+                      <span className={item.status === "added" ? "text-xs font-medium text-emerald-600" : item.status === "invalid" ? "text-xs font-medium text-destructive" : "text-xs font-medium text-amber-600"}>
+                        {item.status === "added" ? "Add" : item.status === "invalid" ? "Invalid" : "Skip"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
         <DialogFooter className="border-t bg-background px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-          <Button onClick={() => void handleImport()} disabled={submitting || !content.trim()}>
+          <Button
+            onClick={() => void handleImport(preview ? "apply" : "preview")}
+            disabled={submitting || !content.trim() || Boolean(preview && preview.summary.added === 0)}
+          >
             <Upload data-icon="inline-start" />
-            {submitting ? "Importing..." : "Import bundle"}
+            {submitting
+              ? preview ? "Importing..." : "Analyzing..."
+              : preview ? `Import ${preview.summary.added}` : "Preview import"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PreviewCount({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="rounded-md border bg-background px-3 py-2">
+      <p className={`text-lg font-semibold ${tone}`}>{value}</p>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+    </div>
   );
 }

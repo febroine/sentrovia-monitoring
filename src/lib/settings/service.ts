@@ -124,6 +124,7 @@ const USER_SETTINGS_COLUMN_MAP = {
   publicStatusTitle: "public_status_title",
   publicStatusSummary: "public_status_summary",
   dataRetentionDays: "data_retention_days",
+  deliveryRetentionDays: "delivery_retention_days",
   autoBackupEnabled: "auto_backup_enabled",
   backupWindow: "backup_window",
   eventRetentionDays: "event_retention_days",
@@ -367,6 +368,10 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
     },
     data: {
       retentionDays: numberOrDefault(settings?.dataRetentionDays, DEFAULT_SETTINGS.data.retentionDays),
+      deliveryRetentionDays: numberOrDefault(
+        settings?.deliveryRetentionDays,
+        DEFAULT_SETTINGS.data.deliveryRetentionDays
+      ),
       autoBackupEnabled: booleanOrDefault(settings?.autoBackupEnabled, DEFAULT_SETTINGS.data.autoBackupEnabled),
       backupWindow: stringOrEmpty(settings?.backupWindow) || DEFAULT_SETTINGS.data.backupWindow,
       eventRetentionDays: numberOrDefault(settings?.eventRetentionDays, DEFAULT_SETTINGS.data.eventRetentionDays),
@@ -595,6 +600,7 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     publicStatusTitle: emptyToNull(input.publicStatus.title),
     publicStatusSummary: emptyToNull(input.publicStatus.summary),
     dataRetentionDays: input.data.retentionDays,
+    deliveryRetentionDays: input.data.deliveryRetentionDays,
     autoBackupEnabled: input.data.autoBackupEnabled,
     backupWindow: input.data.backupWindow,
     eventRetentionDays: input.data.eventRetentionDays,

@@ -1,13 +1,15 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
-import { companies, monitors } from "@/lib/db/schema";
+import { companies, monitors, reportSchedules } from "@/lib/db/schema";
 import type { CompanyInput } from "@/lib/companies/schemas";
+
+export const COMPANY_SOFT_DELETE_UNDO_MS = 60_000;
 
 export async function listCompanies(userId: string) {
   const companyRows = await db
     .select()
     .from(companies)
-    .where(eq(companies.userId, userId))
+    .where(and(eq(companies.userId, userId), isNull(companies.deletedAt)))
     .orderBy(desc(companies.createdAt));
 
   const monitorRows = await db
@@ -18,7 +20,7 @@ export async function listCompanies(userId: string) {
       isActive: monitors.isActive,
     })
     .from(monitors)
-    .where(eq(monitors.userId, userId));
+    .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
 
   return companyRows.map((company) => {
     const related = monitorRows.filter((monitor) => monitor.companyId === company.id);
@@ -31,6 +33,7 @@ export async function listCompanies(userId: string) {
 }
 
 export async function createCompany(userId: string, input: CompanyInput, database: DatabaseExecutor = db) {
+  await releaseExpiredCompanyName(userId, input.name, database);
   const [company] = await database
     .insert(companies)
     .values({
@@ -48,11 +51,48 @@ export async function createCompany(userId: string, input: CompanyInput, databas
   };
 }
 
+async function releaseExpiredCompanyName(userId: string, name: string, database: DatabaseExecutor) {
+  const cutoff = new Date(Date.now() - COMPANY_SOFT_DELETE_UNDO_MS);
+  const expired = await database
+    .select({ id: companies.id })
+    .from(companies)
+    .where(
+      and(
+        eq(companies.userId, userId),
+        lt(companies.deletedAt, cutoff),
+        sql`lower(btrim(${companies.name})) = lower(btrim(${name}))`
+      )
+    );
+  const expiredIds = expired.map((company) => company.id);
+  if (expiredIds.length === 0) {
+    return;
+  }
+
+  const now = new Date();
+  await database
+    .update(monitors)
+    .set({ companyId: null, company: null, updatedAt: now })
+    .where(and(eq(monitors.userId, userId), inArray(monitors.companyId, expiredIds)));
+  await database
+    .update(reportSchedules)
+    .set({
+      companyId: null,
+      isActive: false,
+      lastStatus: "error",
+      lastErrorMessage: "The assigned company was deleted.",
+      updatedAt: now,
+    })
+    .where(and(eq(reportSchedules.userId, userId), inArray(reportSchedules.companyId, expiredIds)));
+  await database
+    .delete(companies)
+    .where(and(eq(companies.userId, userId), inArray(companies.id, expiredIds)));
+}
+
 export async function getCompanyById(userId: string, companyId: string, database: DatabaseExecutor = db) {
   const [company] = await database
     .select()
     .from(companies)
-    .where(and(eq(companies.userId, userId), eq(companies.id, companyId)));
+    .where(and(eq(companies.userId, userId), eq(companies.id, companyId), isNull(companies.deletedAt)));
 
   return company ?? null;
 }
@@ -67,7 +107,7 @@ export async function updateCompany(userId: string, companyId: string, input: Co
         isActive: input.isActive,
         updatedAt: new Date(),
       })
-      .where(and(eq(companies.userId, userId), eq(companies.id, companyId)))
+      .where(and(eq(companies.userId, userId), eq(companies.id, companyId), isNull(companies.deletedAt)))
       .returning();
 
     if (!updated) {
@@ -94,32 +134,17 @@ export async function updateCompany(userId: string, companyId: string, input: Co
 }
 
 export async function deleteCompany(userId: string, companyId: string) {
-  const company = await db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({ id: companies.id })
-      .from(companies)
-      .where(and(eq(companies.userId, userId), eq(companies.id, companyId)));
-
-    if (!existing) {
-      return null;
-    }
-
-    await tx
-      .update(monitors)
-      .set({
-        companyId: null,
-        company: null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
-
-    const [deleted] = await tx
-      .delete(companies)
-      .where(and(eq(companies.userId, userId), eq(companies.id, companyId)))
-      .returning({ id: companies.id });
-
-    return deleted ?? null;
-  });
+  const now = new Date();
+  const [company] = await db
+    .update(companies)
+    .set({
+      deletedAt: now,
+      deletedWasActive: sql`${companies.isActive}`,
+      isActive: false,
+      updatedAt: now,
+    })
+    .where(and(eq(companies.userId, userId), eq(companies.id, companyId), isNull(companies.deletedAt)))
+    .returning({ id: companies.id, deletedAt: companies.deletedAt });
 
   return company ?? null;
 }
@@ -136,7 +161,7 @@ export async function updateCompaniesActiveState(userId: string, ids: string[], 
       isActive,
       updatedAt: new Date(),
     })
-    .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds)));
+    .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds), isNull(companies.deletedAt)));
 
   return listCompanies(userId);
 }
@@ -147,21 +172,38 @@ export async function deleteCompanies(userId: string, ids: string[]) {
     return [];
   }
 
-  return db.transaction(async (tx) => {
-    await tx
-      .update(monitors)
-      .set({
-        companyId: null,
-        company: null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(monitors.userId, userId), inArray(monitors.companyId, companyIds)));
+  const now = new Date();
+  const deleted = await db
+    .update(companies)
+    .set({
+      deletedAt: now,
+      deletedWasActive: sql`${companies.isActive}`,
+      isActive: false,
+      updatedAt: now,
+    })
+    .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds), isNull(companies.deletedAt)))
+    .returning({ id: companies.id, deletedAt: companies.deletedAt });
 
-    const deleted = await tx
-      .delete(companies)
-      .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds)))
-      .returning({ id: companies.id });
+  return deleted;
+}
 
-    return deleted.map((company) => company.id);
-  });
+export async function restoreCompanies(userId: string, ids: string[], now = new Date()) {
+  const undoCutoff = new Date(now.getTime() - COMPANY_SOFT_DELETE_UNDO_MS);
+  return db
+    .update(companies)
+    .set({
+      deletedAt: null,
+      isActive: sql`coalesce(${companies.deletedWasActive}, false)`,
+      deletedWasActive: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(companies.userId, userId),
+        inArray(companies.id, ids),
+        isNotNull(companies.deletedAt),
+        gte(companies.deletedAt, undoCutoff)
+      )
+    )
+    .returning();
 }

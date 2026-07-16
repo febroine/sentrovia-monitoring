@@ -206,10 +206,6 @@ export const en = {
       savePolicy: "Save Policy",
       export: "Data Export",
       exportDesc: "Download all your monitor data.",
-      monitorList: "Monitor List (.xlsx)",
-      monitorListDesc: "All monitor configs",
-      uptimeReport: "Uptime Report (.csv)",
-      uptimeReportDesc: "Last 90 days uptime data",
       eventHistory: "Event History (.json)",
       eventHistoryDesc: "All events and alerts",
       fullBackup: "Full Backup (.zip)",
@@ -218,7 +214,6 @@ export const en = {
       import: "Data Import",
       importDesc: "Load monitor data from external sources.",
       uploadBackup: "Upload backup file",
-      uploadLimits: ".zip, .json, or .csv · Max 50MB",
       importBtn: "Import",
       autoBackup: "Auto Backup",
       autoBackupDesc: "Backup your data regularly.",
@@ -259,14 +254,14 @@ export const en = {
       totalMonitorsSub: "1 pending",
       globalUptime: "Global Uptime",
       globalUptimeSub: "Last 30 days",
-      activeIncidents: "Active Incidents",
-      activeIncidentsSub: "Last 24 hours",
+      activeOutages: "Active Outages",
+      activeOutagesSub: "Last 24 hours",
       avgLatency: "Avg Latency",
       avgLatencySub: "P50 · Last 24h"
     },
     charts: {
       weeklyUptime: "Weekly Uptime (%)",
-      monthlyTrend: "Monthly Incident Trend",
+      monthlyTrend: "Monthly Outage Trend",
       httpCodes: "HTTP Status Code Breakdown",
       totalDowntime: "Total Downtime",
       slaTarget: "SLA Target",
@@ -276,7 +271,7 @@ export const en = {
       median: "median",
       percentile95: "95th percentile",
       percentile99: "99th percentile",
-      incidentLabel: "Incident"
+      outageLabel: "Outage"
     },
     topPerformers: "Top Performing Sites",
     table: {
@@ -290,7 +285,7 @@ export const en = {
     title: "Monitored Sites",
     desc: "Manage Uptime, SSLCert and Ping metrics.",
     addNew: "New Configuration",
-    importCsv: "Import CSV/Excel",
+    importCsv: "Import CSV",
     companyFilter: "Company Filter",
     allCompanies: "All Companies",
     table: {
@@ -383,9 +378,9 @@ export const en = {
         }
     },
     import: {
-      title: "Bulk Import from Excel",
-      desc: "Upload your Excel file and map columns.",
-      uploadLabel: "Excel File (.xlsx, .xls)",
+      title: "Bulk Import from CSV",
+      desc: "Upload your CSV file and map columns.",
+      uploadLabel: "CSV File (.csv)",
       clickToUpload: "Click to select a file",
       dragAndDrop: "or drag and drop",
       changeFile: "Click to change file",

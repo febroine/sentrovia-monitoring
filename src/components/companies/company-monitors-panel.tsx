@@ -86,7 +86,7 @@ export function CompanyMonitorsPanel({
             icon={ShieldCheck}
             label="24h SLA"
             value={`${report.periods[0]?.uptimePct.toFixed(2) ?? "100.00"}%`}
-            sub={`${report.periods[0]?.incidents ?? 0} incidents`}
+            sub={`${report.periods[0]?.outages ?? 0} confirmed outages`}
             tone="green"
           />
           <MetricCard

@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { retryWebhookQueueForAllUsers } from "@/lib/delivery/service";
+import { runRetentionCleanup } from "@/lib/data-retention/service";
 import { getWorkerState, updateWorkerState } from "@/lib/monitors/service";
 import { runDueReportSchedules } from "@/lib/reports/service";
 import { runMonitoringCycle } from "@/worker/scheduler";
@@ -94,6 +95,9 @@ async function main() {
 }
 
 async function runWorkerPhases() {
+  await runRetentionCleanup();
+  if (!(await isRunRequested())) return false;
+
   await runMonitoringCycle();
   if (!(await isRunRequested())) return false;
 

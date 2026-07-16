@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { deleteLogFilterPreset, listLogFilterPresets, upsertLogFilterPreset } from "@/lib/logs/preset-service";
+import { logPresetInputSchema } from "@/lib/logs/schemas";
 
 export const runtime = "nodejs";
-
-const presetSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  filters: z.object({
-    search: z.string(),
-    level: z.string(),
-    companyQuery: z.string(),
-    monitorQuery: z.string(),
-    from: z.string(),
-    to: z.string(),
-    statusCode: z.string(),
-  }),
-});
 
 export async function GET() {
   try {
@@ -43,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
-    const parsed = presetSchema.safeParse(body);
+    const parsed = logPresetInputSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ message: "Invalid log preset payload." }, { status: 400 });
     }

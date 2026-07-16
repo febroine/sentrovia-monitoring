@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { companyInputSchema } from "@/lib/companies/schemas";
-import { deleteCompany, updateCompany } from "@/lib/companies/service";
+import { COMPANY_SOFT_DELETE_UNDO_MS, deleteCompany, updateCompany } from "@/lib/companies/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
@@ -62,7 +62,12 @@ export async function DELETE(_request: NextRequest, context: CompanyRouteContext
       return NextResponse.json({ message: "Company not found." }, { status: 404 });
     }
 
-    return NextResponse.json({ id });
+    return NextResponse.json({
+      id,
+      undoUntil: deleted.deletedAt
+        ? new Date(deleted.deletedAt.getTime() + COMPANY_SOFT_DELETE_UNDO_MS).toISOString()
+        : null,
+    });
   } catch (error) {
     const authError = toAuthError(error, "Unable to delete company right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

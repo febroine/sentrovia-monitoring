@@ -11,9 +11,12 @@ interface CompaniesState {
   loadCompanies: () => Promise<void>;
   createCompany: (payload: CompanyPayload) => Promise<CompanyRecord | null>;
   updateCompany: (id: string, payload: CompanyPayload) => Promise<CompanyRecord | null>;
-  deleteCompany: (id: string) => Promise<boolean>;
-  bulkAction: (action: "activate" | "deactivate" | "delete", ids: string[]) => Promise<string[] | null>;
+  deleteCompany: (id: string) => Promise<CompanyActionResult | null>;
+  bulkAction: (action: "activate" | "deactivate" | "delete", ids: string[]) => Promise<CompanyActionResult | null>;
+  restoreCompanies: (ids: string[]) => Promise<boolean>;
 }
+
+type CompanyActionResult = { ids: string[]; undoUntil: string | null };
 
 async function readJsonOrNull<T>(response: Response): Promise<T | null> {
   return (await response.json().catch(() => null)) as T | null;
@@ -94,7 +97,7 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       const response = await fetch(`/api/companies/${id}`, {
         method: "DELETE",
       });
-      const data = await readJsonOrNull<{ message?: string; id?: string }>(response);
+      const data = await readJsonOrNull<{ message?: string; id?: string; undoUntil?: string | null }>(response);
       if (!response.ok || !data?.id) {
         throw new Error(data?.message ?? "Unable to delete company.");
       }
@@ -104,10 +107,10 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         saving: false,
         error: null,
       }));
-      return true;
+      return { ids: [data.id], undoUntil: data.undoUntil ?? null };
     } catch (error) {
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to delete company." });
-      return false;
+      return null;
     }
   },
   bulkAction: async (action, ids) => {
@@ -122,6 +125,7 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         message?: string;
         ids?: string[];
         companies?: CompanyRecord[];
+        undoUntil?: string | null;
       }>(response);
 
       if (!response.ok || !data) {
@@ -137,10 +141,39 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         error: null,
       }));
 
-      return action === "delete" ? (data.ids ?? []) : ids;
+      return {
+        ids: action === "delete" ? (data.ids ?? []) : ids,
+        undoUntil: action === "delete" ? (data.undoUntil ?? null) : null,
+      };
     } catch (error) {
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to process company action." });
       return null;
+    }
+  },
+  restoreCompanies: async (ids) => {
+    set({ saving: true });
+    try {
+      const response = await fetch("/api/companies/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await readJsonOrNull<{ message?: string; ids?: string[] }>(response);
+      if (!response.ok || !data?.ids || data.ids.length === 0) {
+        throw new Error(data?.message ?? "The company restore window has expired.");
+      }
+
+      const companiesResponse = await fetch("/api/companies", { cache: "no-store" });
+      const companiesData = await readJsonOrNull<{ message?: string; companies?: CompanyRecord[] }>(companiesResponse);
+      if (!companiesResponse.ok || !companiesData?.companies) {
+        throw new Error(companiesData?.message ?? "Companies were restored but could not be refreshed.");
+      }
+
+      set({ companies: companiesData.companies, saving: false, error: null });
+      return true;
+    } catch (error) {
+      set({ saving: false, error: error instanceof Error ? error.message : "Unable to restore companies." });
+      return false;
     }
   },
 }));

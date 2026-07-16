@@ -112,6 +112,7 @@ export const userSettings = pgTable(
     publicStatusTitle: varchar("public_status_title", { length: 160 }),
     publicStatusSummary: text("public_status_summary"),
     dataRetentionDays: integer("data_retention_days").default(90).notNull(),
+    deliveryRetentionDays: integer("delivery_retention_days").default(90).notNull(),
     autoBackupEnabled: boolean("auto_backup_enabled").default(true).notNull(),
     backupWindow: varchar("backup_window", { length: 32 }).default("03:00").notNull(),
     eventRetentionDays: integer("event_retention_days").default(30).notNull(),
@@ -122,21 +123,33 @@ export const userSettings = pgTable(
   (table) => [uniqueIndex("user_settings_user_id_unique").on(table.userId)]
 );
 
-export const companies = pgTable("companies", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 160 }).notNull(),
-  website: varchar("website", { length: 255 }),
-  email: varchar("email", { length: 255 }),
-  description: text("description"),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const companies = pgTable(
+  "companies",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 160 }).notNull(),
+    website: varchar("website", { length: 255 }),
+    email: varchar("email", { length: 255 }),
+    description: text("description"),
+    isActive: boolean("is_active").default(true).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedWasActive: boolean("deleted_was_active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("companies_user_normalized_name_unique").on(
+      table.userId,
+      sql`lower(btrim(${table.name}))`
+    ),
+    index("companies_user_deleted_at_idx").on(table.userId, table.deletedAt),
+  ]
+);
 
 export const monitors = pgTable("monitors", {
   id: text("id")
@@ -154,6 +167,8 @@ export const monitors = pgTable("monitors", {
   statusCode: integer("status_code"),
   uptime: varchar("uptime", { length: 32 }).default("--").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedWasActive: boolean("deleted_was_active"),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   nextCheckAt: timestamp("next_check_at", { withTimezone: true }),
   leaseToken: text("lease_token"),
@@ -207,7 +222,9 @@ export const monitors = pgTable("monitors", {
   sendIncidentScreenshot: boolean("send_incident_screenshot").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("monitors_user_deleted_at_idx").on(table.userId, table.deletedAt),
+]);
 
 export const monitorEvents = pgTable("monitor_events", {
   id: text("id")
@@ -246,7 +263,8 @@ export const monitorChecks = pgTable("monitor_checks", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const monitorIncidents = pgTable("monitor_incidents", {
+// The physical table name is retained for migration and rollback compatibility.
+export const monitorOutages = pgTable("monitor_incidents", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
@@ -262,27 +280,31 @@ export const monitorIncidents = pgTable("monitor_incidents", {
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   statusCode: integer("status_code"),
   errorMessage: text("error_message"),
-  notes: text("notes").default("").notNull(),
-  postmortem: text("postmortem").default("").notNull(),
-  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
-  acknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
-  acknowledgementNote: text("acknowledgement_note").default("").notNull(),
+  legacyNotes: text("notes").default("").notNull(),
+  legacyPostmortem: text("postmortem").default("").notNull(),
+  legacyAcknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  legacyAcknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
+  legacyAcknowledgementNote: text("acknowledgement_note").default("").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const logFilterPresets = pgTable("log_filter_presets", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 120 }).notNull(),
-  filtersJson: text("filters_json").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const logFilterPresets = pgTable(
+  "log_filter_presets",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 120 }).notNull(),
+    filtersJson: text("filters_json").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("log_filter_presets_user_name_unique").on(table.userId, table.name)]
+);
 
 export const webhookEndpoints = pgTable(
   "webhook_endpoints",
@@ -331,6 +353,7 @@ export const deliveryEvents = pgTable("delivery_events", {
     table.nextRetryAt,
     table.createdAt
   ),
+  index("delivery_events_user_created_at_idx").on(table.userId, table.createdAt),
 ]);
 
 export const workerState = pgTable("worker_state", {
@@ -351,6 +374,7 @@ export const workerState = pgTable("worker_state", {
   heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
   startedAt: timestamp("started_at", { withTimezone: true }),
   stoppedAt: timestamp("stopped_at", { withTimezone: true }),
+  lastRetentionCleanupAt: timestamp("last_retention_cleanup_at", { withTimezone: true }),
   pid: integer("pid"),
   statusMessage: text("status_message"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -400,11 +424,11 @@ export const reportSchedules = pgTable("report_schedules", {
   claimToken: text("claim_token"),
   claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
   deliveryDetailLevel: varchar("delivery_detail_level", { length: 16 }).default("standard").notNull(),
-  attachCsv: boolean("attach_csv").default(false).notNull(),
-  attachHtml: boolean("attach_html").default(true).notNull(),
-  includeIncidentSummary: boolean("include_incident_summary").default(true).notNull(),
+  legacyAttachCsv: boolean("attach_csv").default(false).notNull(),
+  legacyAttachHtml: boolean("attach_html").default(true).notNull(),
+  includeOutageSummary: boolean("include_incident_summary").default(true).notNull(),
   includeMonitorBreakdown: boolean("include_monitor_breakdown").default(true).notNull(),
-  attachPdf: boolean("attach_pdf").default(false).notNull(),
+  legacyAttachPdf: boolean("attach_pdf").default(false).notNull(),
   emailSubjectTemplate: text("email_subject_template"),
   emailIntroTemplate: text("email_intro_template"),
   reportBrandName: varchar("report_brand_name", { length: 120 }),
@@ -455,13 +479,13 @@ export const monitorDiagnostics = pgTable(
   ]
 );
 
-export const incidentEvents = pgTable(
+export const outageEvents = pgTable(
   "incident_events",
   {
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    incidentId: text("incident_id").references(() => monitorIncidents.id, { onDelete: "set null" }),
+    outageId: text("incident_id").references(() => monitorOutages.id, { onDelete: "set null" }),
     monitorId: text("monitor_id")
       .notNull()
       .references(() => monitors.id, { onDelete: "cascade" }),
@@ -476,7 +500,7 @@ export const incidentEvents = pgTable(
   },
   (table) => [
     index("incident_events_user_monitor_created_idx").on(table.userId, table.monitorId, table.createdAt),
-    index("incident_events_incident_created_idx").on(table.incidentId, table.createdAt),
+    index("incident_events_incident_created_idx").on(table.outageId, table.createdAt),
   ]
 );
 

@@ -53,8 +53,7 @@ type DraftReport = {
   companyId: string;
   recipients: string;
   deliveryDetailLevel: "summary" | "standard" | "full";
-  attachHtml: boolean;
-  includeIncidentSummary: boolean;
+  includeOutageSummary: boolean;
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string;
   emailIntroTemplate: string;
@@ -71,8 +70,7 @@ type DraftSchedule = {
   nextRunAt: string;
   isActive: boolean;
   deliveryDetailLevel: "summary" | "standard" | "full";
-  attachHtml: boolean;
-  includeIncidentSummary: boolean;
+  includeOutageSummary: boolean;
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string;
   emailIntroTemplate: string;
@@ -86,8 +84,7 @@ const EMPTY_REPORT_DRAFT: DraftReport = {
   companyId: "",
   recipients: "",
   deliveryDetailLevel: "standard",
-  attachHtml: true,
-  includeIncidentSummary: true,
+  includeOutageSummary: true,
   includeMonitorBreakdown: true,
   emailSubjectTemplate: "",
   emailIntroTemplate: "",
@@ -104,8 +101,7 @@ const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
   nextRunAt: "",
   isActive: true,
   deliveryDetailLevel: "standard",
-  attachHtml: true,
-  includeIncidentSummary: true,
+  includeOutageSummary: true,
   includeMonitorBreakdown: true,
   emailSubjectTemplate: "",
   emailIntroTemplate: "",
@@ -471,8 +467,7 @@ export default function ReportsPageClient() {
       nextRunAt: toLocalDateTime(schedule.nextRunAt),
       isActive: schedule.isActive,
       deliveryDetailLevel: schedule.deliveryDetailLevel,
-      attachHtml: schedule.attachHtml,
-      includeIncidentSummary: schedule.includeIncidentSummary,
+      includeOutageSummary: schedule.includeOutageSummary,
       includeMonitorBreakdown: schedule.includeMonitorBreakdown,
       emailSubjectTemplate: schedule.emailSubjectTemplate ?? "",
       emailIntroTemplate: schedule.emailIntroTemplate ?? "",
@@ -997,8 +992,7 @@ function TemplateStrip({
 type ReportDeliveryDraft = Pick<
   DraftReport,
   | "deliveryDetailLevel"
-  | "attachHtml"
-  | "includeIncidentSummary"
+  | "includeOutageSummary"
   | "includeMonitorBreakdown"
   | "emailSubjectTemplate"
   | "emailIntroTemplate"
@@ -1042,8 +1036,8 @@ function ReportDeliveryComposer({
             </div>
             <CompactToggle
               label="Failures"
-              checked={draft.includeIncidentSummary}
-              onChange={(includeIncidentSummary) => onChange({ includeIncidentSummary })}
+              checked={draft.includeOutageSummary}
+              onChange={(includeOutageSummary) => onChange({ includeOutageSummary })}
             />
             <CompactToggle
               label="Breakdown"
@@ -1553,10 +1547,7 @@ function getCadenceLabel(cadence: ReportCadence) {
 function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {
   return {
     deliveryDetailLevel: draft.deliveryDetailLevel,
-    attachCsv: false,
-    attachHtml: true,
-    attachPdf: false,
-    includeIncidentSummary: draft.includeIncidentSummary,
+    includeOutageSummary: draft.includeOutageSummary,
     includeMonitorBreakdown: draft.includeMonitorBreakdown,
     emailSubjectTemplate: draft.emailSubjectTemplate.trim() || null,
     emailIntroTemplate: draft.emailIntroTemplate.trim() || null,

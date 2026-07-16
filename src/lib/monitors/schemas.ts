@@ -336,11 +336,11 @@ export const monitorInputSchema = z
   });
 
 export const monitorBulkDeleteSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1),
+  ids: z.array(z.string().uuid()).min(1).max(500),
 });
 
 export const monitorBulkUpdateSchema = z.object({
-  ids: z.array(z.string().uuid()).min(1),
+  ids: z.array(z.string().uuid()).min(1).max(500),
   payload: monitorInputSchema,
 });
 

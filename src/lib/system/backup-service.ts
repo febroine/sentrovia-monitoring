@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { parse, stringify } from "yaml";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import { companyInputSchema } from "@/lib/companies/schemas";
@@ -13,8 +13,16 @@ import { getSettings, upsertSettings } from "@/lib/settings/service";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { createCompany, listCompanies } from "@/lib/companies/service";
-import { db } from "@/lib/db";
-import { companies, monitorChecks, monitorEvents, monitorIncidents, monitors, userSettings } from "@/lib/db/schema";
+import { db, type DatabaseExecutor } from "@/lib/db";
+import {
+  companies,
+  monitorChecks,
+  monitorEvents,
+  monitorOutages,
+  monitors,
+  reportSchedules,
+  userSettings,
+} from "@/lib/db/schema";
 import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 
@@ -93,11 +101,17 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
   const validated = validateWorkspaceBackupBundle(bundle);
 
   await db.transaction(async (tx) => {
+    const scheduleCompanyMappings = await tx
+      .select({ scheduleId: reportSchedules.id, companyName: companies.name })
+      .from(reportSchedules)
+      .innerJoin(companies, eq(reportSchedules.companyId, companies.id))
+      .where(eq(reportSchedules.userId, userId));
+
     await upsertSettings(userId, validated.settings, tx, true);
 
     await tx.delete(monitorChecks).where(eq(monitorChecks.userId, userId));
     await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));
-    await tx.delete(monitorIncidents).where(eq(monitorIncidents.userId, userId));
+    await tx.delete(monitorOutages).where(eq(monitorOutages.userId, userId));
     await tx.delete(monitors).where(eq(monitors.userId, userId));
     await tx.delete(companies).where(eq(companies.userId, userId));
 
@@ -106,6 +120,7 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
     );
 
     const companyIdByName = buildCompanyIdByName(restoredCompanies);
+    await remapReportScheduleCompanies(userId, scheduleCompanyMappings, companyIdByName, tx);
     const restoredMonitors = validated.monitors.map((monitor) => ({
       ...monitor,
       companyId: resolveRestoredCompanyId(monitor.company, companyIdByName),
@@ -133,6 +148,84 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   assertUniqueMonitorTargets(monitors);
 
   return { settings, companies, monitors };
+}
+
+export async function previewWorkspaceBackupRestore(userId: string, bundle: WorkspaceBackupBundle) {
+  const validated = validateWorkspaceBackupBundle(bundle);
+  const [currentCompanies, currentMonitors, scheduleCompanyMappings] = await Promise.all([
+    listCompanies(userId),
+    listMonitors(userId),
+    db
+      .select({ companyName: companies.name })
+      .from(reportSchedules)
+      .innerJoin(companies, eq(reportSchedules.companyId, companies.id))
+      .where(and(eq(reportSchedules.userId, userId), isNotNull(reportSchedules.companyId))),
+  ]);
+
+  return buildWorkspaceRestorePreview(validated, currentCompanies, currentMonitors, scheduleCompanyMappings);
+}
+
+export function buildWorkspaceRestorePreview(
+  validated: ReturnType<typeof validateWorkspaceBackupBundle>,
+  currentCompanies: Array<{ name: string }>,
+  currentMonitors: Array<{ name: string; monitorType: string; url: string }>,
+  scheduleCompanyMappings: Array<{ companyName: string }> = []
+) {
+  const incomingCompanyNames = new Set(
+    validated.companies.map((company) => normalizeCompanyName(company.name))
+  );
+  return {
+    current: {
+      companies: currentCompanies.length,
+      monitors: currentMonitors.length,
+    },
+    incoming: {
+      companies: validated.companies.length,
+      monitors: validated.monitors.length,
+    },
+    settingsWillBeReplaced: true,
+    operationalHistoryWillBeDeleted: true,
+    removedCompanies: currentCompanies
+      .filter((company) => !validated.companies.some((incoming) => normalizeCompanyName(incoming.name) === normalizeCompanyName(company.name)))
+      .map((company) => company.name),
+    removedMonitors: currentMonitors
+      .filter((monitor) => !validated.monitors.some((incoming) => (
+        buildMonitorIdentityKey({ monitorType: incoming.monitorType, url: buildCanonicalMonitorTarget(incoming) })
+        === buildMonitorIdentityKey({ monitorType: monitor.monitorType as MonitorInput["monitorType"], url: monitor.url })
+      )))
+      .map((monitor) => monitor.name),
+    reportSchedules: {
+      remapped: scheduleCompanyMappings.filter((schedule) => (
+        incomingCompanyNames.has(normalizeCompanyName(schedule.companyName))
+      )).length,
+      disabled: scheduleCompanyMappings.filter((schedule) => (
+        !incomingCompanyNames.has(normalizeCompanyName(schedule.companyName))
+      )).length,
+    },
+  };
+}
+
+async function remapReportScheduleCompanies(
+  userId: string,
+  mappings: Array<{ scheduleId: string; companyName: string }>,
+  companyIdByName: Map<string, string>,
+  database: DatabaseExecutor
+) {
+  for (const mapping of mappings) {
+    const companyId = companyIdByName.get(normalizeCompanyName(mapping.companyName));
+    await database
+      .update(reportSchedules)
+      .set(companyId
+        ? { companyId, updatedAt: new Date() }
+        : {
+            companyId: null,
+            isActive: false,
+            lastStatus: "error",
+            lastErrorMessage: "The assigned company was not included in the restored backup.",
+            updatedAt: new Date(),
+          })
+      .where(and(eq(reportSchedules.userId, userId), eq(reportSchedules.id, mapping.scheduleId)));
+  }
 }
 
 function assertWorkspaceBackupSize(raw: string) {

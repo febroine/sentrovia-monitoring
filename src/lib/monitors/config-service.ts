@@ -1,9 +1,10 @@
 import { parse, stringify } from "yaml";
 import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
-import { listMonitors } from "@/lib/monitors/service";
-import { toMonitorPayload } from "@/lib/monitors/targets";
+import type { MonitorInput } from "@/lib/monitors/schemas";
+import { getMonitorImportIdentityKey, listMonitors, listReservedMonitorTargets } from "@/lib/monitors/service";
+import { buildCanonicalMonitorTarget, buildMonitorIdentityKey, getMonitorTargetDisplay, toMonitorPayload } from "@/lib/monitors/targets";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
-import type { MonitorConfigBundle, MonitorPayload, MonitorRecord } from "@/lib/monitors/types";
+import type { MonitorConfigBundle, MonitorPayload, MonitorRecord, MonitorType } from "@/lib/monitors/types";
 
 export async function buildMonitorConfigBundle(userId: string): Promise<MonitorConfigBundle> {
   const monitors = await listMonitors(userId);
@@ -57,6 +58,46 @@ export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
   const bundle = parsed as MonitorConfigBundle & { monitors: MonitorPayload[] };
   assertMonitorConfigItemCount(bundle.monitors.length);
   return bundle;
+}
+
+export async function previewMonitorConfigImport(userId: string, inputs: MonitorInput[]) {
+  const existing = await listReservedMonitorTargets(userId);
+  return buildMonitorConfigImportPreview(inputs, existing);
+}
+
+export function buildMonitorConfigImportPreview(
+  inputs: MonitorInput[],
+  existing: Array<{ monitorType: string; url: string }>
+) {
+  const seenTargets = new Set(
+    existing.map((monitor) => buildMonitorIdentityKey({ monitorType: monitor.monitorType as MonitorType, url: monitor.url }))
+  );
+
+  const items = inputs.map((monitor, index) => {
+    const target = buildCanonicalMonitorTarget(monitor);
+    const identityKey = getMonitorImportIdentityKey(monitor);
+    const duplicate = identityKey ? seenTargets.has(identityKey) : false;
+    if (identityKey) {
+      seenTargets.add(identityKey);
+    }
+
+    return {
+      index: index + 1,
+      name: monitor.name,
+      target: getMonitorTargetDisplay({ monitorType: monitor.monitorType, url: target }),
+      status: duplicate ? "skipped" as const : "added" as const,
+      reason: duplicate ? "A monitor with this target already exists in the workspace or import bundle." : null,
+    };
+  });
+
+  return {
+    items,
+    summary: {
+      added: items.filter((item) => item.status === "added").length,
+      skipped: items.filter((item) => item.status === "skipped").length,
+      invalid: 0,
+    },
+  };
 }
 
 function assertMonitorConfigSize(raw: string) {

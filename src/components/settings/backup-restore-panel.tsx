@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Upload, Vault } from "lucide-react";
+import { AlertTriangle, Download, ScanSearch, Upload, Vault } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,8 @@ export function BackupRestorePanel({
   const [content, setContent] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [preview, setPreview] = useState<RestorePreview | null>(null);
+  const [restoreToken, setRestoreToken] = useState<string | null>(null);
 
   async function handleExport() {
     try {
@@ -46,7 +48,7 @@ export function BackupRestorePanel({
     }
   }
 
-  async function handleRestore() {
+  async function handleRestore(mode: "preview" | "restore") {
     setRestoring(true);
     setMessage(null);
 
@@ -54,15 +56,37 @@ export function BackupRestorePanel({
       const response = await fetch("/api/system/backup/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, content }),
+        body: JSON.stringify({
+          format,
+          content,
+          mode,
+          confirm: mode === "restore",
+          restoreToken: mode === "restore" ? restoreToken : undefined,
+        }),
       });
-      const data = (await response.json().catch(() => null)) as { message?: string } | null;
+      const data = (await response.json().catch(() => null)) as {
+        message?: string;
+        preview?: RestorePreview;
+        restoreToken?: string;
+      } | null;
 
-      setMessage(
-        response.ok
-          ? "Workspace backup restored. Refreshing the page is recommended."
-          : data?.message ?? "Unable to restore the backup."
-      );
+      if (!response.ok) {
+        setMessage(data?.message ?? "Unable to restore the backup.");
+        if (mode === "restore" && response.status === 400) {
+          setPreview(null);
+          setRestoreToken(null);
+        }
+      } else if (mode === "preview") {
+        const nextPreview = data?.preview && data.restoreToken ? data.preview : null;
+        setPreview(nextPreview);
+        setRestoreToken(data?.restoreToken ?? null);
+        setMessage(nextPreview ? "Restore analysis is ready. Review the impact before continuing." : "Unable to verify the restore analysis.");
+      } else {
+        setPreview(null);
+        setRestoreToken(null);
+        setContent("");
+        setMessage("Workspace backup restored. Refreshing the page is recommended.");
+      }
     } catch {
       setMessage("Unable to restore the backup.");
     } finally {
@@ -95,7 +119,11 @@ export function BackupRestorePanel({
           <div className="flex flex-col gap-4 md:flex-row md:items-end">
             <div className="w-40 space-y-2">
               <Label>Format</Label>
-              <Select value={format} onValueChange={(value) => setFormat(value as "json" | "yaml")}>
+              <Select value={format} onValueChange={(value) => {
+                setFormat(value as "json" | "yaml");
+                setPreview(null);
+                setRestoreToken(null);
+              }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -125,7 +153,11 @@ export function BackupRestorePanel({
           <Textarea
             rows={10}
             value={content}
-            onChange={(event) => setContent(event.target.value)}
+            onChange={(event) => {
+              setContent(event.target.value);
+              setPreview(null);
+              setRestoreToken(null);
+            }}
             placeholder="Paste a Sentrovia workspace backup in JSON or YAML format."
             className="font-mono text-xs"
           />
@@ -133,11 +165,57 @@ export function BackupRestorePanel({
 
         {message ? <div className="rounded-lg border px-3 py-2 text-sm">{message}</div> : null}
 
-        <Button onClick={() => void handleRestore()} disabled={restoring || !content.trim()}>
-          <Upload data-icon="inline-start" />
-          {restoring ? "Restoring..." : "Restore backup"}
+        {preview ? <RestoreImpactPreview preview={preview} /> : null}
+
+        <Button onClick={() => void handleRestore(preview ? "restore" : "preview")} disabled={restoring || !content.trim() || Boolean(preview && !restoreToken)}>
+          {preview ? <Upload data-icon="inline-start" /> : <ScanSearch data-icon="inline-start" />}
+          {restoring ? (preview ? "Restoring..." : "Analyzing...") : (preview ? "Confirm and restore" : "Analyze backup")}
         </Button>
       </CardContent>
     </Card>
   );
+}
+
+type RestorePreview = {
+  current: { companies: number; monitors: number };
+  incoming: { companies: number; monitors: number };
+  settingsWillBeReplaced: boolean;
+  operationalHistoryWillBeDeleted: boolean;
+  removedCompanies: string[];
+  removedMonitors: string[];
+  reportSchedules: { remapped: number; disabled: number };
+};
+
+function RestoreImpactPreview({ preview }: { preview: RestorePreview }) {
+  return (
+    <div className="space-y-3 rounded-lg border border-amber-300/70 bg-amber-50/50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <div>
+          <p className="text-sm font-medium">Restore impact</p>
+          <p className="text-xs text-muted-foreground">This operation replaces workspace settings and removes existing check, event, and outage history.</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <ImpactCount label="Current companies" value={preview.current.companies} />
+        <ImpactCount label="Incoming companies" value={preview.incoming.companies} />
+        <ImpactCount label="Current monitors" value={preview.current.monitors} />
+        <ImpactCount label="Incoming monitors" value={preview.incoming.monitors} />
+      </div>
+      {(preview.removedCompanies.length > 0 || preview.removedMonitors.length > 0) ? (
+        <p className="text-xs text-muted-foreground">
+          Removed by restore: {preview.removedCompanies.length} companies and {preview.removedMonitors.length} monitors.
+        </p>
+      ) : null}
+      {(preview.reportSchedules.remapped > 0 || preview.reportSchedules.disabled > 0) ? (
+        <p className="text-xs text-muted-foreground">
+          Company reports: {preview.reportSchedules.remapped} schedules will be remapped and {preview.reportSchedules.disabled} will be disabled.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ImpactCount({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-md border bg-background px-3 py-2"><p className="font-semibold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>;
 }

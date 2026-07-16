@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type Mail from "nodemailer/lib/mailer";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
@@ -21,20 +21,28 @@ import type {
 
 const REPORT_PREVIEW_LIMIT = 12;
 const RECENT_FAILURE_LIMIT = 8;
-const PERIOD_CHECK_LIMIT = 8_000;
-const ALL_TIME_CHECK_LIMIT = 50_000;
-const PERIOD_FAILURE_EVENT_LIMIT = 4_000;
-const ALL_TIME_FAILURE_EVENT_LIMIT = 20_000;
 const DEFAULT_FIRST_RUN_DELAY_MS = 60 * 60 * 1000;
 const REPORT_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const DUE_REPORT_BATCH_SIZE = 5;
 const DEFAULT_REPORT_TEMPLATE: ReportTemplateVariant = "operations";
+type ReportCheckAggregate = {
+  monitorId: string;
+  totalChecks: number;
+  upChecks: number;
+  downChecks: number;
+  pendingChecks: number;
+  latencySamples: number;
+  averageLatencyMs: number;
+  p95LatencyMs: number;
+};
+type ReportFailureAggregate = {
+  monitorId: string;
+  failures: number;
+  lastFailureAt: Date | null;
+};
 type ReportDeliveryOptions = {
   deliveryDetailLevel: "summary" | "standard" | "full";
-  attachCsv: boolean;
-  attachHtml: boolean;
-  attachPdf: boolean;
-  includeIncidentSummary: boolean;
+  includeOutageSummary: boolean;
   includeMonitorBreakdown: boolean;
   emailSubjectTemplate: string | null;
   emailIntroTemplate: string | null;
@@ -42,10 +50,7 @@ type ReportDeliveryOptions = {
 
 const DEFAULT_REPORT_DELIVERY_OPTIONS: ReportDeliveryOptions = {
   deliveryDetailLevel: "standard",
-  attachCsv: false,
-  attachHtml: true,
-  attachPdf: false,
-  includeIncidentSummary: true,
+  includeOutageSummary: true,
   includeMonitorBreakdown: true,
   emailSubjectTemplate: null,
   emailIntroTemplate: null,
@@ -210,10 +215,7 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
       lastDeliveredAt: null,
       lastErrorMessage: null,
       deliveryDetailLevel: existing.deliveryDetailLevel,
-      attachCsv: false,
-      attachHtml: true,
-      attachPdf: false,
-      includeIncidentSummary: existing.includeIncidentSummary,
+      includeOutageSummary: existing.includeOutageSummary,
       includeMonitorBreakdown: existing.includeMonitorBreakdown,
       emailSubjectTemplate: existing.emailSubjectTemplate,
       emailIntroTemplate: existing.emailIntroTemplate,
@@ -262,37 +264,26 @@ export async function generateReportPreview(
   const workspaceName = await resolveReportBrandName(userId, input.reportBrandName);
   const period = resolveReportPeriod(input.cadence, now);
   const template = input.template ?? DEFAULT_REPORT_TEMPLATE;
-  const checksByMonitor = groupChecksByMonitor(scoped.checks);
-  const failuresByMonitor = groupFailuresByMonitor(scoped.failureEvents);
-  const statusCodeSummary = buildStatusCodeSummary(scoped.checks);
+  const checksByMonitor = new Map(scoped.checkAggregates.map((item) => [item.monitorId, item]));
+  const failuresByMonitor = new Map(scoped.failureAggregates.map((item) => [item.monitorId, item]));
   const slowMonitors = buildSlowMonitorSummary(scoped.monitorRows, checksByMonitor);
   const failingMonitors = buildFailingMonitorSummary(scoped.monitorRows, failuresByMonitor);
   const monitorBreakdown = buildMonitorBreakdown(scoped.monitorRows, checksByMonitor, failuresByMonitor);
-  const totalChecks = scoped.checks.filter((check) => check.status !== "pending").length;
-  const upChecks = scoped.checks.filter((check) => check.status === "up").length;
-  const downChecks = scoped.checks.filter((check) => check.status === "down").length;
-  const pendingChecks = scoped.checks.filter((check) => check.status === "pending").length;
-  const latencySamples = scoped.checks
-    .map((check) => check.latencyMs)
-    .filter((value): value is number => typeof value === "number");
-  const averageLatencyMs = averageValue(
-    latencySamples
-  );
+  const { totalChecks, upChecks, downChecks, pendingChecks, averageLatencyMs, p95LatencyMs } = scoped.checkSummary;
   const uptimePct = totalChecks > 0 ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 100;
   const failureRatePct = totalChecks > 0 ? roundToTwoDecimals((downChecks / totalChecks) * 100) : 0;
   const impactedMonitors = failingMonitors.length;
-  const p95LatencyMs = percentileValue(latencySamples, 95);
   const healthScore = buildHealthScore({
     uptimePct,
     failureRatePct,
     p95LatencyMs,
     currentlyDown: scoped.monitorRows.filter((monitor) => monitor.status === "down").length,
   });
-  const recentFailures = buildRecentFailures(scoped.failureEvents, scoped.monitorRows);
+  const recentFailures = buildRecentFailures(scoped.recentFailureEvents, scoped.monitorRows);
   const recommendations = buildRecommendations({
     summary: {
       currentlyDown: scoped.monitorRows.filter((monitor) => monitor.status === "down").length,
-      failureEvents: scoped.failureEvents.length,
+      failureEvents: scoped.failureSummary.total,
       impactedMonitors,
       p95LatencyMs,
       failureRatePct,
@@ -327,14 +318,14 @@ export async function generateReportPreview(
       uptimePct,
       averageLatencyMs,
       p95LatencyMs,
-      failureEvents: scoped.failureEvents.length,
+      failureEvents: scoped.failureSummary.total,
       impactedMonitors,
       failureRatePct,
       healthScore,
       healthStatus: buildHealthStatus(healthScore),
     },
     recommendations,
-    statusCodes: statusCodeSummary,
+    statusCodes: scoped.statusCodes,
     slowMonitors: slowMonitors.slice(0, REPORT_PREVIEW_LIMIT),
     failingMonitors: failingMonitors.slice(0, REPORT_PREVIEW_LIMIT),
     recentFailures,
@@ -479,9 +470,6 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
 
 async function loadScopedReportData(userId: string, input: ReportPreviewInput, now: Date) {
   const period = resolveReportPeriod(input.cadence, now);
-  const checkLimit = input.cadence === "all_time" ? ALL_TIME_CHECK_LIMIT : PERIOD_CHECK_LIMIT;
-  const failureEventLimit =
-    input.cadence === "all_time" ? ALL_TIME_FAILURE_EVENT_LIMIT : PERIOD_FAILURE_EVENT_LIMIT;
   const company =
     input.scope === "company" && input.companyId
       ? await getCompanyById(userId, input.companyId)
@@ -520,63 +508,155 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
   }));
   const monitorIds = normalizedMonitorRows.map((monitor) => monitor.id);
 
-  const checkRows =
-    monitorIds.length === 0
-      ? []
-      : await db
-          .select({
-            monitorId: monitorChecks.monitorId,
-            status: monitorChecks.status,
-            statusCode: monitorChecks.statusCode,
-            latencyMs: monitorChecks.latencyMs,
-            createdAt: monitorChecks.createdAt,
-          })
-          .from(monitorChecks)
-          .where(
-            and(
-              eq(monitorChecks.userId, userId),
-              inArray(monitorChecks.monitorId, monitorIds),
-              gte(monitorChecks.createdAt, period.startedAt),
-              lte(monitorChecks.createdAt, period.endedAt)
-            )
-          )
-          .orderBy(desc(monitorChecks.createdAt))
-          .limit(checkLimit);
-  const checks = checkRows.map((check) => ({
-    ...check,
-    status: normalizeReportStatus(check.status),
-  }));
-
-  const failureEvents =
-    monitorIds.length === 0
-      ? []
-      : await db
-          .select({
-            monitorId: monitorEvents.monitorId,
-            statusCode: monitorEvents.statusCode,
-            message: monitorEvents.message,
-            rcaSummary: monitorEvents.rcaSummary,
-            createdAt: monitorEvents.createdAt,
-          })
-          .from(monitorEvents)
-          .where(
-            and(
-              eq(monitorEvents.userId, userId),
-              inArray(monitorEvents.monitorId, monitorIds),
-              eq(monitorEvents.eventType, "failure"),
-              gte(monitorEvents.createdAt, period.startedAt),
-              lte(monitorEvents.createdAt, period.endedAt)
-            )
-          )
-          .orderBy(desc(monitorEvents.createdAt))
-          .limit(failureEventLimit);
+  const reportMetrics = monitorIds.length === 0
+    ? emptyReportMetrics()
+    : await loadReportMetrics(userId, monitorIds, period);
 
   return {
     companyId: company?.id ?? null,
     companyName: company?.name ?? null,
     monitorRows: normalizedMonitorRows,
-    checks,
-    failureEvents,
+    ...reportMetrics,
+  };
+}
+
+async function loadReportMetrics(
+  userId: string,
+  monitorIds: string[],
+  period: { startedAt: Date; endedAt: Date }
+) {
+  const checkWhere = and(
+    eq(monitorChecks.userId, userId),
+    inArray(monitorChecks.monitorId, monitorIds),
+    gte(monitorChecks.createdAt, period.startedAt),
+    lte(monitorChecks.createdAt, period.endedAt)
+  );
+  const failureWhere = and(
+    eq(monitorEvents.userId, userId),
+    inArray(monitorEvents.monitorId, monitorIds),
+    eq(monitorEvents.eventType, "failure"),
+    gte(monitorEvents.createdAt, period.startedAt),
+    lte(monitorEvents.createdAt, period.endedAt)
+  );
+  const statusCodeCount = sql<number>`count(*)::integer`;
+
+  const [checkAggregateRows, checkSummaryRows, failureAggregateRows, recentFailureEvents, statusCodeRows] =
+    await Promise.all([
+      db
+        .select({
+          monitorId: monitorChecks.monitorId,
+          totalChecks: sql<number>`count(*) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
+          upChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'up')::integer`,
+          downChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'down')::integer`,
+          pendingChecks: sql<number>`count(*) filter (where ${monitorChecks.status} not in ('up', 'down'))::integer`,
+          latencySamples: sql<number>`count(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
+          averageLatencyMs: sql<number>`coalesce(round(avg(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
+          p95LatencyMs: sql<number>`coalesce(round(percentile_cont(0.95) within group (order by ${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
+        })
+        .from(monitorChecks)
+        .where(checkWhere)
+        .groupBy(monitorChecks.monitorId),
+      db
+        .select({
+          totalChecks: sql<number>`count(*) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
+          upChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'up')::integer`,
+          downChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'down')::integer`,
+          pendingChecks: sql<number>`count(*) filter (where ${monitorChecks.status} not in ('up', 'down'))::integer`,
+          averageLatencyMs: sql<number>`coalesce(round(avg(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
+          p95LatencyMs: sql<number>`coalesce(round(percentile_cont(0.95) within group (order by ${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
+        })
+        .from(monitorChecks)
+        .where(checkWhere),
+      db
+        .select({
+          monitorId: monitorEvents.monitorId,
+          failures: sql<number>`count(*)::integer`,
+          lastFailureAt: sql<Date | null>`max(${monitorEvents.createdAt})`,
+        })
+        .from(monitorEvents)
+        .where(failureWhere)
+        .groupBy(monitorEvents.monitorId),
+      db
+        .select({
+          monitorId: monitorEvents.monitorId,
+          statusCode: monitorEvents.statusCode,
+          message: monitorEvents.message,
+          rcaSummary: monitorEvents.rcaSummary,
+          createdAt: monitorEvents.createdAt,
+        })
+        .from(monitorEvents)
+        .where(failureWhere)
+        .orderBy(desc(monitorEvents.createdAt))
+        .limit(RECENT_FAILURE_LIMIT),
+      db
+        .select({ statusCode: monitorChecks.statusCode, count: statusCodeCount })
+        .from(monitorChecks)
+        .where(and(checkWhere, sql`${monitorChecks.statusCode} is not null`))
+        .groupBy(monitorChecks.statusCode)
+        .orderBy(desc(statusCodeCount))
+        .limit(6),
+    ]);
+
+  const checkAggregates = checkAggregateRows.map(toCheckAggregate);
+  const failureAggregates = failureAggregateRows.map(toFailureAggregate);
+  const summary = checkSummaryRows[0];
+
+  return {
+    checkAggregates,
+    checkSummary: summary ? toCheckSummary(summary) : emptyCheckSummary(),
+    failureAggregates,
+    failureSummary: { total: failureAggregates.reduce((total, item) => total + item.failures, 0) },
+    recentFailureEvents,
+    statusCodes: statusCodeRows.flatMap((row) =>
+      typeof row.statusCode === "number" ? [{ statusCode: row.statusCode, count: Number(row.count) }] : []
+    ),
+  };
+}
+
+function toCheckAggregate(row: Record<keyof ReportCheckAggregate, unknown>): ReportCheckAggregate {
+  return {
+    monitorId: String(row.monitorId),
+    totalChecks: Number(row.totalChecks),
+    upChecks: Number(row.upChecks),
+    downChecks: Number(row.downChecks),
+    pendingChecks: Number(row.pendingChecks),
+    latencySamples: Number(row.latencySamples),
+    averageLatencyMs: Number(row.averageLatencyMs),
+    p95LatencyMs: Number(row.p95LatencyMs),
+  };
+}
+
+function toCheckSummary(row: Omit<Record<keyof ReportCheckAggregate, unknown>, "monitorId" | "latencySamples">) {
+  return {
+    totalChecks: Number(row.totalChecks),
+    upChecks: Number(row.upChecks),
+    downChecks: Number(row.downChecks),
+    pendingChecks: Number(row.pendingChecks),
+    averageLatencyMs: Number(row.averageLatencyMs),
+    p95LatencyMs: Number(row.p95LatencyMs),
+  };
+}
+
+function toFailureAggregate(row: Record<keyof ReportFailureAggregate, unknown>): ReportFailureAggregate {
+  return {
+    monitorId: String(row.monitorId),
+    failures: Number(row.failures),
+    lastFailureAt: row.lastFailureAt instanceof Date ? row.lastFailureAt : null,
+  };
+}
+
+function emptyCheckSummary() {
+  return { totalChecks: 0, upChecks: 0, downChecks: 0, pendingChecks: 0, averageLatencyMs: 0, p95LatencyMs: 0 };
+}
+
+function emptyReportMetrics() {
+  return {
+    checkAggregates: [] as ReportCheckAggregate[],
+    checkSummary: emptyCheckSummary(),
+    failureAggregates: [] as ReportFailureAggregate[],
+    failureSummary: { total: 0 },
+    recentFailureEvents: [],
+    statusCodes: [],
   };
 }
 
@@ -613,91 +693,24 @@ function resolveCadenceLabel(cadence: ReportCadence) {
   return "All-time";
 }
 
-function groupChecksByMonitor(
-  checks: Array<{
-    monitorId: string;
-    status: string;
-    statusCode: number | null;
-    latencyMs: number | null;
-    createdAt: Date;
-  }>
-) {
-  const grouped = new Map<string, typeof checks>();
-
-  for (const check of checks) {
-    const current = grouped.get(check.monitorId) ?? [];
-    current.push(check);
-    grouped.set(check.monitorId, current);
-  }
-
-  return grouped;
-}
-
-function groupFailuresByMonitor(
-  failureEvents: Array<{
-    monitorId: string;
-    createdAt: Date;
-  }>
-) {
-  const grouped = new Map<string, typeof failureEvents>();
-
-  for (const event of failureEvents) {
-    const current = grouped.get(event.monitorId) ?? [];
-    current.push(event);
-    grouped.set(event.monitorId, current);
-  }
-
-  return grouped;
-}
-
-function buildStatusCodeSummary(
-  checks: Array<{
-    statusCode: number | null;
-  }>
-) {
-  const counts = new Map<number, number>();
-
-  for (const check of checks) {
-    if (typeof check.statusCode !== "number") {
-      continue;
-    }
-
-    counts.set(check.statusCode, (counts.get(check.statusCode) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .map(([statusCode, count]) => ({ statusCode, count }))
-    .sort((left, right) => right.count - left.count)
-    .slice(0, 6);
-}
-
 function buildSlowMonitorSummary(
   monitorRows: Array<{
     id: string;
     name: string;
     url: string;
   }>,
-  checksByMonitor: Map<
-    string,
-    Array<{
-      latencyMs: number | null;
-      status: string;
-    }>
-  >
+  checksByMonitor: Map<string, ReportCheckAggregate>
 ) {
   return monitorRows
     .map((monitor) => {
-      const checks = checksByMonitor.get(monitor.id) ?? [];
-      const latencies = checks
-        .map((check) => check.latencyMs)
-        .filter((value): value is number => typeof value === "number");
+      const aggregate = checksByMonitor.get(monitor.id);
 
       return {
         monitorId: monitor.id,
         name: monitor.name,
         url: sanitizeMonitorUrlForDisplay(monitor.url),
-        averageLatencyMs: averageValue(latencies),
-        checks: latencies.length,
+        averageLatencyMs: aggregate?.averageLatencyMs ?? 0,
+        checks: aggregate?.latencySamples ?? 0,
       };
     })
     .filter((item) => item.checks > 0)
@@ -710,23 +723,18 @@ function buildFailingMonitorSummary(
     name: string;
     url: string;
   }>,
-  failuresByMonitor: Map<
-    string,
-    Array<{
-      createdAt: Date;
-    }>
-  >
+  failuresByMonitor: Map<string, ReportFailureAggregate>
 ) {
   return monitorRows
     .map((monitor) => {
-      const failures = failuresByMonitor.get(monitor.id) ?? [];
+      const aggregate = failuresByMonitor.get(monitor.id);
 
       return {
         monitorId: monitor.id,
         name: monitor.name,
         url: sanitizeMonitorUrlForDisplay(monitor.url),
-        failures: failures.length,
-        lastFailureAt: failures[0]?.createdAt.toISOString() ?? null,
+        failures: aggregate?.failures ?? 0,
+        lastFailureAt: aggregate?.lastFailureAt?.toISOString() ?? null,
       };
     })
     .filter((item) => item.failures > 0)
@@ -746,25 +754,15 @@ function buildMonitorBreakdown(
     lastFailureAt: Date | null;
     lastErrorMessage: string | null;
   }>,
-  checksByMonitor: Map<
-    string,
-    Array<{
-      status: string;
-      latencyMs: number | null;
-    }>
-  >,
-  failuresByMonitor: Map<string, Array<{ createdAt: Date }>>
+  checksByMonitor: Map<string, ReportCheckAggregate>,
+  failuresByMonitor: Map<string, ReportFailureAggregate>
 ) {
   return monitorRows
     .map((monitor) => {
-      const checks = checksByMonitor.get(monitor.id) ?? [];
-      const settledChecks = checks.filter((check) => check.status !== "pending");
-      const upChecks = settledChecks.filter((check) => check.status === "up").length;
-      const downChecks = settledChecks.filter((check) => check.status === "down").length;
-      const pendingChecks = checks.filter((check) => check.status === "pending").length;
-      const latencies = settledChecks
-        .map((check) => check.latencyMs)
-        .filter((value): value is number => typeof value === "number");
+      const checks = checksByMonitor.get(monitor.id);
+      const failures = failuresByMonitor.get(monitor.id);
+      const totalChecks = checks?.totalChecks ?? 0;
+      const upChecks = checks?.upChecks ?? 0;
 
       return {
         monitorId: monitor.id,
@@ -782,15 +780,14 @@ function buildMonitorBreakdown(
               statusCode: monitor.statusCode,
             })
           : null,
-        uptimePct:
-          settledChecks.length > 0 ? roundToTwoDecimals((upChecks / settledChecks.length) * 100) : 100,
-        averageLatencyMs: averageValue(latencies),
-        p95LatencyMs: percentileValue(latencies, 95),
-        totalChecks: settledChecks.length,
+        uptimePct: totalChecks > 0 ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 100,
+        averageLatencyMs: checks?.averageLatencyMs ?? 0,
+        p95LatencyMs: checks?.p95LatencyMs ?? 0,
+        totalChecks,
         upChecks,
-        downChecks,
-        pendingChecks,
-        failures: (failuresByMonitor.get(monitor.id) ?? []).length,
+        downChecks: checks?.downChecks ?? 0,
+        pendingChecks: checks?.pendingChecks ?? 0,
+        failures: failures?.failures ?? 0,
       };
     })
     .sort((left, right) => {
@@ -852,7 +849,7 @@ function buildRecommendations({
   const recommendations: string[] = [];
 
   if (summary.currentlyDown > 0) {
-    recommendations.push(`${formatUrlCount(summary.currentlyDown)} currently ${summary.currentlyDown === 1 ? "is" : "are"} down. Prioritize active incidents and restore service health.`);
+    recommendations.push(`${formatUrlCount(summary.currentlyDown)} currently ${summary.currentlyDown === 1 ? "is" : "are"} down. Prioritize active outages and restore service health.`);
   }
 
   if (summary.impactedMonitors > 0) {
@@ -860,7 +857,7 @@ function buildRecommendations({
   }
 
   if (summary.p95LatencyMs >= 1_500) {
-    recommendations.push(`P95 latency is ${summary.p95LatencyMs}ms. Investigate slow endpoints and external dependencies before they become availability incidents.`);
+    recommendations.push(`P95 latency is ${summary.p95LatencyMs}ms. Investigate slow endpoints and external dependencies before they become outages.`);
   }
 
   if (summary.failureRatePct >= 5) {
@@ -1086,7 +1083,7 @@ function buildReportTextDetailLines(report: GeneratedReport, options: ReportDeli
       .map((monitor) => `- ${monitor.url}: ${monitor.failures} failures`),
   ];
 
-  if (options.includeIncidentSummary) {
+  if (options.includeOutageSummary) {
     lines.push(
       "",
       "Failure details:",
@@ -1126,7 +1123,7 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
     ),
   ];
 
-  if (options.includeIncidentSummary) {
+  if (options.includeOutageSummary) {
     sections.push(
       renderEmailTableSection(
         "Failure details",
@@ -1336,10 +1333,7 @@ function serializeSchedule(
     lastStatus: row.lastStatus as ReportScheduleStatus,
     lastErrorMessage: row.lastErrorMessage,
     deliveryDetailLevel: resolveDeliveryDetailLevel(row.deliveryDetailLevel),
-    attachCsv: false,
-    attachHtml: true,
-    attachPdf: false,
-    includeIncidentSummary: row.includeIncidentSummary,
+    includeOutageSummary: row.includeOutageSummary,
     includeMonitorBreakdown: row.includeMonitorBreakdown,
     emailSubjectTemplate: row.emailSubjectTemplate,
     emailIntroTemplate: row.emailIntroTemplate,
@@ -1352,10 +1346,7 @@ function serializeSchedule(
 function scheduleToDeliveryInput(schedule: typeof reportSchedules.$inferSelect | ReportScheduleRecord) {
   return {
     deliveryDetailLevel: resolveDeliveryDetailLevel(schedule.deliveryDetailLevel),
-    attachCsv: false,
-    attachHtml: true,
-    attachPdf: false,
-    includeIncidentSummary: schedule.includeIncidentSummary,
+    includeOutageSummary: schedule.includeOutageSummary,
     includeMonitorBreakdown: schedule.includeMonitorBreakdown,
     emailSubjectTemplate: schedule.emailSubjectTemplate,
     emailIntroTemplate: schedule.emailIntroTemplate,
@@ -1366,11 +1357,8 @@ function scheduleToDeliveryInput(schedule: typeof reportSchedules.$inferSelect |
 function normalizeReportDeliveryOptions(input: Partial<ReportPreviewInput> | Record<string, unknown>): ReportDeliveryOptions {
   return {
     deliveryDetailLevel: resolveDeliveryDetailLevel(input.deliveryDetailLevel),
-    attachCsv: false,
-    attachHtml: true,
-    attachPdf: false,
-    includeIncidentSummary:
-      booleanOption(input.includeIncidentSummary, DEFAULT_REPORT_DELIVERY_OPTIONS.includeIncidentSummary),
+    includeOutageSummary:
+      booleanOption(input.includeOutageSummary, DEFAULT_REPORT_DELIVERY_OPTIONS.includeOutageSummary),
     includeMonitorBreakdown:
       booleanOption(input.includeMonitorBreakdown, DEFAULT_REPORT_DELIVERY_OPTIONS.includeMonitorBreakdown),
     emailSubjectTemplate: emptyTemplateToNull(input.emailSubjectTemplate),
@@ -1412,25 +1400,6 @@ function resolveTemplateLabel(template: ReportTemplateVariant) {
   }
 
   return "Operations Report";
-}
-
-function averageValue(values: number[]) {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-}
-
-function percentileValue(values: number[], percentile: number) {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(sorted.length - 1, Math.ceil((percentile / 100) * sorted.length) - 1);
-
-  return sorted[index] ?? 0;
 }
 
 function roundToTwoDecimals(value: number) {

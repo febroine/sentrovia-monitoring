@@ -55,7 +55,7 @@ function buildSampleReport(): GeneratedReport {
       healthScore: 72,
       healthStatus: "Watch",
     },
-    recommendations: ["1 URL is currently down. Prioritize active incidents and restore service health."],
+    recommendations: ["1 URL is currently down. Prioritize active outages and restore service health."],
     statusCodes: [
       { statusCode: 200, count: 18 },
       { statusCode: 500, count: 2 },

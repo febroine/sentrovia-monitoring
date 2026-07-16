@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseMonitorConfigBundle, redactMonitorExportSecrets } from "@/lib/monitors/config-service";
+import {
+  buildMonitorConfigImportPreview,
+  parseMonitorConfigBundle,
+  redactMonitorExportSecrets,
+} from "@/lib/monitors/config-service";
 import { DEFAULT_MONITOR_FORM } from "@/lib/monitors/types";
 
 describe("monitor config bundle parsing", () => {
@@ -70,5 +74,28 @@ describe("monitor config export redaction", () => {
     expect(exported.notificationPref).toBe("none");
     expect(exported.telegramBotToken).toBe("");
     expect(exported.telegramChatId).toBe("");
+  });
+});
+
+describe("monitor config import preview", () => {
+  it("skips targets that already exist or repeat inside the import", () => {
+    const preview = buildMonitorConfigImportPreview([
+      { ...DEFAULT_MONITOR_FORM, name: "Existing", url: "https://existing.example.com" },
+      { ...DEFAULT_MONITOR_FORM, name: "New", url: "https://new.example.com" },
+      { ...DEFAULT_MONITOR_FORM, name: "Repeated", url: "https://new.example.com" },
+    ], [{ monitorType: "http", url: "https://existing.example.com/" }]);
+
+    expect(preview.summary).toEqual({ added: 1, skipped: 2, invalid: 0 });
+    expect(preview.items.map((item) => item.status)).toEqual(["skipped", "added", "skipped"]);
+  });
+
+  it("keeps heartbeat monitors whose tokens will be generated during import", () => {
+    const preview = buildMonitorConfigImportPreview([
+      { ...DEFAULT_MONITOR_FORM, name: "Job A", monitorType: "heartbeat", heartbeatToken: "" },
+      { ...DEFAULT_MONITOR_FORM, name: "Job B", monitorType: "heartbeat", heartbeatToken: "" },
+    ], []);
+
+    expect(preview.summary).toEqual({ added: 2, skipped: 0, invalid: 0 });
+    expect(preview.items.map((item) => item.status)).toEqual(["added", "added"]);
   });
 });

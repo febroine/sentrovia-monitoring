@@ -1,10 +1,10 @@
 import { env } from "@/lib/env";
 import { runMonitorDiagnostics } from "@/lib/diagnostics/service";
-import { openOrUpdateIncident, resolveIncident } from "@/lib/incidents/service";
+import { openOrUpdateOutage, resolveOutage } from "@/lib/outages/service";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
 import {
   appendMonitorCheck,
-  appendIncidentEvent as persistIncidentEvent,
+  appendOutageEvent as persistOutageEvent,
   appendMonitorDiagnostic,
   appendMonitorEvent,
   incrementWorkerCheckedCount,
@@ -127,13 +127,13 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   const threshold = Math.max(2, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
-  const hadConfirmedIncident = previousStatus === "down" && !monitor.verificationMode;
+  const hadConfirmedOutage = previousStatus === "down" && !monitor.verificationMode;
   const wasVerifying = monitor.verificationMode;
   const verificationAttempt = wasVerifying ? monitor.verificationFailureCount : 0;
   let diagnosticMonitor = withVerificationTimeout(monitor, verificationAttempt);
   const result = await checkMonitor(diagnosticMonitor);
   const rca = analyzeRootCause(result);
-  let incidentConfirmedThisCycle = false;
+  let outageConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
   let failureNotificationSent = false;
   let checkStatus: "up" | "down" | "pending" = result.ok ? "up" : "pending";
@@ -157,7 +157,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     if (!recorded) {
       return null;
     }
-  } else if (hadConfirmedIncident) {
+  } else if (hadConfirmedOutage) {
     checkStatus = "down";
     failureEventMessage = buildFailureEventMessage(result);
     const recorded = await recordActiveMonitorResult(monitor, {
@@ -180,18 +180,18 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     }
   } else if (wasVerifying) {
     const verificationCount = monitor.verificationFailureCount + 1;
-    const confirmedIncident = verificationCount >= threshold;
+    const confirmedOutage = verificationCount >= threshold;
 
-    incidentConfirmedThisCycle = confirmedIncident;
-    checkStatus = confirmedIncident ? "down" : "pending";
-    failureEventMessage = confirmedIncident ? buildFailureEventMessage(result) : null;
+    outageConfirmedThisCycle = confirmedOutage;
+    checkStatus = confirmedOutage ? "down" : "pending";
+    failureEventMessage = confirmedOutage ? buildFailureEventMessage(result) : null;
 
     const recorded = await recordActiveMonitorResult(monitor, {
-      status: confirmedIncident ? "down" : "pending",
+      status: confirmedOutage ? "down" : "pending",
       statusCode: result.statusCode,
-      uptime: confirmedIncident ? "0%" : monitor.uptime,
+      uptime: confirmedOutage ? "0%" : monitor.uptime,
       lastCheckedAt: result.checkedAt,
-      nextCheckAt: confirmedIncident
+      nextCheckAt: confirmedOutage
         ? calculateNextCheckAt(monitor, result.checkedAt)
         : calculateVerificationCheckAt(result.checkedAt),
       lastSuccessAt: monitor.lastSuccessAt,
@@ -199,15 +199,15 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
       sslExpiresAt: result.sslExpiresAt,
       lastErrorMessage: result.errorMessage,
       consecutiveFailures: verificationCount,
-      verificationMode: !confirmedIncident,
-      verificationFailureCount: confirmedIncident ? 0 : verificationCount,
+      verificationMode: !confirmedOutage,
+      verificationFailureCount: confirmedOutage ? 0 : verificationCount,
       latencyMs: result.latencyMs,
     });
     if (!recorded) {
       return null;
     }
 
-    if (!confirmedIncident) {
+    if (!confirmedOutage) {
       await appendDetailedEvent(
         monitor,
         result,
@@ -283,7 +283,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   });
 
   if (result.ok) {
-    if (wasVerifying && !hadConfirmedIncident) {
+    if (wasVerifying && !hadConfirmedOutage) {
       const message = "Verification recovered before outage confirmation.";
       await appendDetailedEvent(monitor, result, "verification", message, rca, "up");
       await appendTimelineEvent({
@@ -332,7 +332,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   if (!result.ok && failureEventMessage) {
     await appendDetailedEvent(monitor, result, "failure", failureEventMessage, rca, checkStatus);
     const diagnostic = await recordFailureDiagnostics(diagnosticMonitor);
-    const incident = await openOrUpdateIncident({
+    const outage = await openOrUpdateOutage({
       monitorId: monitor.id,
       userId: monitor.userId,
       checkedAt: result.checkedAt,
@@ -340,11 +340,11 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
       errorMessage: failureEventMessage,
     });
     await appendTimelineEvent({
-      incidentId: incident?.id ?? null,
+      outageId: outage?.id ?? null,
       monitorId: monitor.id,
       userId: monitor.userId,
-      eventType: incidentConfirmedThisCycle ? "outage_confirmed" : "outage_still_down",
-      title: incidentConfirmedThisCycle ? "Outage confirmed" : "Outage still active",
+      eventType: outageConfirmedThisCycle ? "outage_confirmed" : "outage_still_down",
+      title: outageConfirmedThisCycle ? "Outage confirmed" : "Outage still active",
       detail: failureEventMessage,
       metadata: {
         statusCode: result.statusCode,
@@ -377,7 +377,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     }
   }
 
-  if (!result.ok && checkStatus === "down" && !incidentConfirmedThisCycle && !failureNotificationSent) {
+  if (!result.ok && checkStatus === "down" && !outageConfirmedThisCycle && !failureNotificationSent) {
     const reminderMessage = buildDowntimeReminderMessage(monitor, result.checkedAt);
     if (reminderMessage) {
       const reminderSent = await sendMonitorNotifications({
@@ -395,17 +395,17 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
     }
   }
 
-  if (result.ok && hadConfirmedIncident) {
+  if (result.ok && hadConfirmedOutage) {
     const message = "Service recovered and is responding again.";
     await appendDetailedEvent(monitor, result, "recovery", message, rca, "up");
-    const incident = await resolveIncident({
+    const outage = await resolveOutage({
       monitorId: monitor.id,
       userId: monitor.userId,
       checkedAt: result.checkedAt,
       statusCode: result.statusCode,
     });
     await appendTimelineEvent({
-      incidentId: incident?.id ?? null,
+      outageId: outage?.id ?? null,
       monitorId: monitor.id,
       userId: monitor.userId,
       eventType: "recovery_detected",
@@ -419,8 +419,8 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
 
   if (
     checkStatus !== "pending" &&
-    !hadConfirmedIncident &&
-    !incidentConfirmedThisCycle &&
+    !hadConfirmedOutage &&
+    !outageConfirmedThisCycle &&
     !monitor.verificationMode &&
     previousStatusCode !== null &&
     result.statusCode !== null &&
@@ -511,18 +511,18 @@ async function recordFailureDiagnostics(monitor: Monitor) {
   }
 }
 
-type IncidentTimelineInput = Parameters<typeof persistIncidentEvent>[0];
+type OutageTimelineInput = Parameters<typeof persistOutageEvent>[0];
 
-async function appendTimelineEvent(input: IncidentTimelineInput) {
+async function appendTimelineEvent(input: OutageTimelineInput) {
   try {
-    await persistIncidentEvent(input);
+    await persistOutageEvent(input);
   } catch (error) {
     await appendMonitorEvent({
       monitorId: input.monitorId,
       userId: input.userId,
       eventType: "timeline-write-failed",
       status: null,
-      message: error instanceof Error ? error.message : "Incident timeline event could not be stored.",
+      message: error instanceof Error ? error.message : "Outage timeline event could not be stored.",
     });
   }
 }

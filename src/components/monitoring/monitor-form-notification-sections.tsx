@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, LoaderCircle, Mail, Send } from "lucide-react";
+import { Ban, CheckCircle2, Eye, LoaderCircle, Mail, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -169,13 +169,19 @@ export function TemplateMonitorSettings({
   );
 }
 
-type PreviewKind = "failure" | "recovery" | "latency" | "ssl-expiry";
+type PreviewScenario = "timeout" | "http-500" | "slow-response" | "recovery" | "ssl-expiry";
 
 interface TemplatePreviewResult {
   subject: string;
   textBody: string;
   htmlBody: string;
   telegramBody: string;
+}
+
+interface NotificationDecisionResult {
+  wouldNotify: boolean;
+  reason: string;
+  channels: string[];
 }
 
 export function NotificationTemplatePreview({
@@ -185,8 +191,9 @@ export function NotificationTemplatePreview({
   payload: MonitorPayload;
   monitorId?: string;
 }) {
-  const [kind, setKind] = useState<PreviewKind>("failure");
+  const [scenario, setScenario] = useState<PreviewScenario>("timeout");
   const [preview, setPreview] = useState<TemplatePreviewResult | null>(null);
+  const [decision, setDecision] = useState<NotificationDecisionResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -198,10 +205,11 @@ export function NotificationTemplatePreview({
       const response = await fetch("/api/notifications/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monitorId: monitorId ?? null, kind, payload }),
+        body: JSON.stringify({ monitorId: monitorId ?? null, scenario, payload }),
       });
       const data = (await response.json().catch(() => null)) as {
         preview?: TemplatePreviewResult;
+        decision?: NotificationDecisionResult;
         message?: string;
       } | null;
       if (!response.ok || !data?.preview) {
@@ -209,8 +217,10 @@ export function NotificationTemplatePreview({
       }
 
       setPreview(data.preview);
+      setDecision(data.decision ?? null);
     } catch (error) {
       setPreview(null);
+      setDecision(null);
       setMessage(error instanceof Error ? error.message : "Unable to render notification templates.");
     } finally {
       setLoading(false);
@@ -221,26 +231,39 @@ export function NotificationTemplatePreview({
     <div className="mt-5 space-y-4 border-t border-border pt-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <Field label="Preview event">
-          <Select value={kind} onValueChange={(value) => {
-            setKind(value as PreviewKind);
+          <Select value={scenario} onValueChange={(value) => {
+            setScenario(value as PreviewScenario);
             setPreview(null);
+            setDecision(null);
           }}>
             <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="failure">Confirmed timeout</SelectItem>
+              <SelectItem value="timeout">Confirmed timeout</SelectItem>
+              <SelectItem value="http-500">HTTP 500 failure</SelectItem>
               <SelectItem value="recovery">Recovery</SelectItem>
-              <SelectItem value="latency">Slow response</SelectItem>
+              <SelectItem value="slow-response">Slow response</SelectItem>
               <SelectItem value="ssl-expiry">SSL expiry</SelectItem>
             </SelectContent>
           </Select>
         </Field>
         <Button type="button" variant="outline" onClick={() => void loadPreview()} disabled={loading}>
           {loading ? <LoaderCircle className="animate-spin" /> : <Eye />}
-          {loading ? "Rendering..." : "Preview templates"}
+          {loading ? "Simulating..." : "Simulate notification"}
         </Button>
       </div>
 
       {message ? <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{message}</p> : null}
+
+      {decision ? (
+        <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${decision.wouldNotify ? "border-emerald-300/70 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-amber-300/70 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20"}`}>
+          {decision.wouldNotify ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" /> : <Ban className="mt-0.5 size-4 shrink-0 text-amber-600" />}
+          <div>
+            <p className="text-sm font-medium">{decision.wouldNotify ? "Notification eligible" : "Notification suppressed"}</p>
+            <p className="text-xs text-muted-foreground">{decision.reason}</p>
+            {decision.wouldNotify && decision.channels.length > 0 ? <p className="mt-1 text-xs text-muted-foreground">Channels: {decision.channels.join(", ")}</p> : null}
+          </div>
+        </div>
+      ) : null}
 
       {preview ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -267,7 +290,7 @@ export function NotificationTemplatePreview({
           </div>
         </div>
       ) : null}
-      <p className="text-[11px] text-muted-foreground">Preview uses sample event data and does not send a notification.</p>
+      <p className="text-[11px] text-muted-foreground">Simulation uses the worker decision rules and sample event data. No notification is sent.</p>
     </div>
   );
 }

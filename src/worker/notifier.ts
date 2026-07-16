@@ -15,7 +15,8 @@ type NotificationDeliveryResult = { status: string } | null | undefined;
 const SSL_EXPIRY_DEDUP_MINUTES = 24 * 60;
 
 export async function sendMonitorNotifications(context: NotificationContext) {
-  if (!(await shouldSendNotification(context))) {
+  const decision = await evaluateNotificationDecision(context);
+  if (!decision.wouldNotify) {
     return false;
   }
 
@@ -109,14 +110,22 @@ async function resolveFirstScreenshotAttachment(
   return attachments?.[0] ?? null;
 }
 
-async function shouldSendNotification(context: NotificationContext) {
-  if (context.monitor.notificationPref === "none" || context.kind === "check") {
-    return false;
+export type NotificationDecision = {
+  wouldNotify: boolean;
+  reason: string;
+};
+
+export async function evaluateNotificationDecision(context: NotificationContext): Promise<NotificationDecision> {
+  if (context.monitor.notificationPref === "none") {
+    return suppress("Notifications are disabled for this monitor.");
+  }
+  if (context.kind === "check") {
+    return suppress("Routine checks do not generate notifications.");
   }
 
   const settings = await getSettings(context.monitor.userId);
   if (!settings) {
-    return false;
+    return suppress("Workspace notification settings are unavailable.");
   }
 
   const hasWatchedCodes = settings.notifications.statusCodeAlertCodes.trim().length > 0;
@@ -126,42 +135,83 @@ async function shouldSendNotification(context: NotificationContext) {
     context.kind === "status-change" &&
     !matchesWatchedStatusCode(settings.notifications.statusCodeAlertCodes, context.result.statusCode)
   ) {
-    return false;
+    return suppress(`HTTP ${context.result.statusCode} is not included in the watched status code list.`);
   }
 
   if (context.kind === "status-change") {
-    return await shouldSendByKind(settings.notifications.notifyOnStatusChange, settings.notifications.alertDedupMinutes, context);
+    return decideByKind(
+      settings.notifications.notifyOnStatusChange,
+      settings.notifications.alertDedupMinutes,
+      context,
+      "Status-change notifications are disabled."
+    );
   }
 
   if (context.kind === "latency") {
-    return await shouldSendByKind(
+    return decideByKind(
       settings.notifications.notifyOnLatency && context.monitor.slowResponseAlertsEnabled,
       settings.notifications.alertDedupMinutes,
-      context
+      context,
+      settings.notifications.notifyOnLatency
+        ? "Slow-response notifications are disabled for this monitor."
+        : "Slow-response notifications are disabled in workspace settings."
     );
   }
 
   if (context.kind === "ssl-expiry") {
-    return await shouldSendByKind(
+    return decideByKind(
       context.monitor.checkSslExpiry,
       Math.max(settings.notifications.alertDedupMinutes, SSL_EXPIRY_DEDUP_MINUTES),
-      context
+      context,
+      "SSL expiry checks are disabled for this monitor."
     );
   }
 
   if (context.kind === "failure") {
-    return await shouldSendFailureNotification(settings.notifications.notifyOnDown, context);
+    if (!settings.notifications.notifyOnDown) {
+      return suppress("Confirmed outage notifications are disabled in workspace settings.");
+    }
+    return (await shouldSendFailureNotification(true, context))
+      ? allow("The confirmed failure is eligible for notification.")
+      : suppress("A failure notification was already recorded for this outage.");
   }
 
   if (context.kind === "downtime-reminder") {
-    return await shouldSendDowntimeReminder(settings, context);
+    return (await shouldSendDowntimeReminder(settings, context))
+      ? allow("The prolonged-downtime reminder is due.")
+      : suppress("The prolonged-downtime reminder is disabled, not due, or has reached its limit.");
   }
 
   if (context.kind === "recovery") {
-    return settings.notifications.notifyOnRecovery;
+    return settings.notifications.notifyOnRecovery
+      ? allow("Recovery notifications are enabled.")
+      : suppress("Recovery notifications are disabled in workspace settings.");
   }
 
-  return false;
+  return suppress("This event type does not generate notifications.");
+}
+
+async function decideByKind(
+  enabled: boolean,
+  dedupMinutes: number,
+  context: NotificationContext,
+  disabledReason: string
+) {
+  if (!enabled) {
+    return suppress(disabledReason);
+  }
+
+  return (await shouldSendByKind(true, dedupMinutes, context))
+    ? allow("The event is eligible for notification.")
+    : suppress(`A matching notification was recorded within the ${dedupMinutes}-minute deduplication window.`);
+}
+
+function allow(reason: string): NotificationDecision {
+  return { wouldNotify: true, reason };
+}
+
+function suppress(reason: string): NotificationDecision {
+  return { wouldNotify: false, reason };
 }
 
 async function shouldSendFailureNotification(enabled: boolean, context: NotificationContext) {
@@ -169,15 +219,15 @@ async function shouldSendFailureNotification(enabled: boolean, context: Notifica
     return false;
   }
 
-  const incidentStartedAt = context.monitor.lastFailureAt;
-  if (!incidentStartedAt) {
+  const outageStartedAt = context.monitor.lastFailureAt;
+  if (!outageStartedAt) {
     return true;
   }
 
   return !(await hasRecentMonitorEvent({
     monitorId: context.monitor.id,
     eventType: "failure-notification",
-    since: new Date(incidentStartedAt),
+    since: new Date(outageStartedAt),
     before: context.result.checkedAt,
   }));
 }

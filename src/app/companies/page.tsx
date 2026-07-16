@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { Building2, CheckSquare, Pencil, Plus, Search, SearchX, Server, Square, Trash2, Users } from "lucide-react";
+import { Building2, CheckSquare, Pencil, Plus, Search, SearchX, Server, Square, Trash2, Undo2, Users } from "lucide-react";
 import { CompanyMonitorsPanel } from "@/components/companies/company-monitors-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { DEFAULT_COMPANY_FORM, type CompanyPayload, type CompanyRecord } from "@/lib/companies/types";
 import type { MonitorRecord } from "@/lib/monitors/types";
 import { cn } from "@/lib/utils";
+import { parseSoftDeleteUndoDeadline } from "@/lib/soft-delete";
 import { useCompaniesStore } from "@/stores/use-companies-store";
 
+type PendingCompanyRestore = { ids: string[]; expiresAt: number };
+
 export default function CompaniesPage() {
-  const { companies, loading, saving, error, loadCompanies, createCompany, updateCompany, deleteCompany, bulkAction } =
+  const { companies, loading, saving, error, loadCompanies, createCompany, updateCompany, deleteCompany, bulkAction, restoreCompanies } =
     useCompaniesStore();
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<CompanyPayload>(DEFAULT_COMPANY_FORM);
@@ -36,6 +39,7 @@ export default function CompaniesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detailCompany, setDetailCompany] = useState<CompanyRecord | null>(null);
   const [monitors, setMonitors] = useState<MonitorRecord[]>([]);
+  const [pendingRestores, setPendingRestores] = useState<PendingCompanyRestore[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +61,18 @@ export default function CompaniesPage() {
       active = false;
     };
   }, [loadCompanies]);
+
+  useEffect(() => {
+    if (pendingRestores.length === 0) return;
+    const intervalId = window.setInterval(() => {
+      const now = Date.now();
+      setPendingRestores((current) => {
+        const active = current.filter((item) => item.expiresAt > now);
+        return active.length === current.length ? current : active;
+      });
+    }, 500);
+    return () => window.clearInterval(intervalId);
+  }, [pendingRestores.length]);
 
   const filtered = useMemo(
     () => companies.filter((company) => !search.trim() || company.name.toLowerCase().includes(search.trim().toLowerCase())),
@@ -96,6 +112,30 @@ export default function CompaniesPage() {
     const result = await bulkAction(action, ids);
     if (result) {
       setSelectedIds(new Set());
+      if (action === "delete" && result.ids.length > 0) {
+        setPendingRestores((current) => [
+          ...current,
+          { ids: result.ids, expiresAt: parseSoftDeleteUndoDeadline(result.undoUntil) },
+        ]);
+      }
+    }
+  }
+
+  async function handleDeleteCompany(id: string) {
+    const result = await deleteCompany(id);
+    if (result) {
+      setPendingRestores((current) => [
+        ...current,
+        { ids: result.ids, expiresAt: parseSoftDeleteUndoDeadline(result.undoUntil) },
+      ]);
+    }
+  }
+
+  async function undoCompanyDeletion() {
+    const ids = pendingRestores.flatMap((item) => item.ids);
+    if (ids.length === 0) return;
+    if (await restoreCompanies(ids)) {
+      setPendingRestores([]);
     }
   }
 
@@ -155,6 +195,18 @@ export default function CompaniesPage() {
       </header>
 
       {error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div> : null}
+
+      {pendingRestores.length > 0 ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+          <div>
+            <p className="text-sm font-medium">{pendingRestores.flatMap((item) => item.ids).length} compan{pendingRestores.flatMap((item) => item.ids).length === 1 ? "y" : "ies"} deleted</p>
+            <p className="mt-1 text-xs text-muted-foreground">Company assignments remain recoverable for 60 seconds.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void undoCompanyDeletion()} disabled={saving}>
+            <Undo2 className="mr-2 h-4 w-4" /> Restore
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         <StatCard label="Total Companies" value={String(totals.companies)} sub="Registered organizations" icon={Building2} tone="neutral" />
@@ -240,7 +292,17 @@ export default function CompaniesPage() {
                   <TableCell className="pr-5" onClick={(event) => event.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
                       <Button variant="ghost" size="icon-sm" onClick={() => openEdit(company)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon-sm" onClick={() => void deleteCompany(company.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete ${company.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDeleteCompany(company.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>

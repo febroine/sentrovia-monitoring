@@ -4,7 +4,7 @@ import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
-import { deleteMonitors, updateMonitor } from "@/lib/monitors/service";
+import { deleteMonitors, SOFT_DELETE_UNDO_MS, updateMonitor } from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { getSettings } from "@/lib/settings/service";
 
@@ -67,7 +67,11 @@ export async function DELETE(_request: NextRequest, context: MonitorRouteContext
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });
     }
 
-    return NextResponse.json({ id });
+    const deletedAt = deleted[0]?.deletedAt;
+    return NextResponse.json({
+      id,
+      undoUntil: deletedAt ? new Date(deletedAt.getTime() + SOFT_DELETE_UNDO_MS).toISOString() : null,
+    });
   } catch (error) {
     const authError = toAuthError(error, "Unable to delete monitor right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

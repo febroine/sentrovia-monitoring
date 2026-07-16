@@ -243,7 +243,7 @@ describe("worker notifier", () => {
     await expect(telegramInput.buildPhoto()).resolves.toBe(attachment);
   });
 
-  it("suppresses an outage notification already accepted for the current incident", async () => {
+  it("suppresses an outage notification already accepted for the current outage", async () => {
     const sent = await sendMonitorNotifications(buildNotificationContext("failure"));
 
     expect(sent).toBe(false);
@@ -457,6 +457,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 500,
     uptime: "0%",
     isActive: true,
+    deletedAt: null,
+    deletedWasActive: null,
     lastCheckedAt: now,
     nextCheckAt: now,
     leaseToken: null,

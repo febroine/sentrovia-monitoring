@@ -40,6 +40,17 @@ export interface DeliveryOverview {
     retrying: number;
     pendingWebhookRetries: number;
   };
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+}
+
+export interface DeliveryHistoryDeletionRange {
+  from: Date;
+  toExclusive: Date;
 }
 
 export interface WebhookSettingsInput {

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { monitorIncidents, monitors, userSettings, users } from "@/lib/db/schema";
+import { monitorOutages, monitors, userSettings, users } from "@/lib/db/schema";
 import { buildMonitorHealthSummary } from "@/lib/monitors/health";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { getSettings } from "@/lib/settings/service";
@@ -29,7 +29,7 @@ export async function getPublicStatusPage(slug: string) {
     return null;
   }
 
-  const [settings, monitorRows, openIncidents] = await Promise.all([
+  const [settings, monitorRows, openOutages] = await Promise.all([
     getSettings(settingsRow.userId),
     db
       .select({
@@ -50,16 +50,16 @@ export async function getPublicStatusPage(slug: string) {
       .orderBy(asc(monitors.company), asc(monitors.url)),
     db
       .select({
-        monitorId: monitorIncidents.monitorId,
-        startedAt: monitorIncidents.startedAt,
+        monitorId: monitorOutages.monitorId,
+        startedAt: monitorOutages.startedAt,
       })
-      .from(monitorIncidents)
-      .where(and(eq(monitorIncidents.userId, settingsRow.userId), eq(monitorIncidents.status, "open")))
-      .orderBy(desc(monitorIncidents.startedAt)),
+      .from(monitorOutages)
+      .where(and(eq(monitorOutages.userId, settingsRow.userId), eq(monitorOutages.status, "open")))
+      .orderBy(desc(monitorOutages.startedAt)),
   ]);
 
   const timeDisplaySettings = resolveTimeDisplaySettings(settings?.appearance);
-  const openIncidentMap = new Map(openIncidents.map((incident) => [incident.monitorId, incident.startedAt.toISOString()]));
+  const openOutageMap = new Map(openOutages.map((outage) => [outage.monitorId, outage.startedAt.toISOString()]));
   const services = monitorRows.map((monitor) => {
     const status = normalizePublicServiceStatus(monitor.status);
     const publicStatus = isSlowPublicService(status, monitor.latencyMs, monitor.slowResponseThresholdMs)
@@ -86,8 +86,8 @@ export async function getPublicStatusPage(slug: string) {
       lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
       healthScore: health.score,
       healthLabel: health.label,
-      hasOpenIncident: openIncidentMap.has(monitor.id),
-      incidentStartedAt: openIncidentMap.get(monitor.id) ?? null,
+      hasOpenOutage: openOutageMap.has(monitor.id),
+      outageStartedAt: openOutageMap.get(monitor.id) ?? null,
     };
   });
 
@@ -104,7 +104,7 @@ export async function getPublicStatusPage(slug: string) {
       `${settingsRow.firstName} workspace status`,
     summary:
       settingsRow.publicStatusSummary ||
-      "Live service availability, recent health state, and active incidents.",
+      "Live service availability, recent health state, and active outages.",
     generatedAt: new Date().toISOString(),
     timeZone: timeDisplaySettings.timeZone,
     use24HourClock: timeDisplaySettings.use24HourClock,

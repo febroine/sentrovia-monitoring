@@ -185,7 +185,7 @@ function ServiceStatusList({
       <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold">Service Status</p>
-          <p className="mt-1 text-xs text-muted-foreground">Live view of published monitors and incidents.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Live view of published monitors and active outages.</p>
         </div>
         <Badge variant="outline" className="w-fit border-border bg-background/60 text-muted-foreground">
           {services.length} services
@@ -271,9 +271,9 @@ function ServiceCard({
           <Badge variant="outline" className={cn("border-border bg-background/70", meta.text)}>
             {meta.label}
           </Badge>
-          {service.hasOpenIncident ? (
+          {service.hasOpenOutage ? (
             <Badge variant="outline" className="border-rose-500/35 bg-rose-500/10 text-rose-300">
-              Incident open
+              Outage active
             </Badge>
           ) : null}
         </div>

@@ -116,9 +116,9 @@ export interface MonitorDiagnosticRecord {
   createdAt: string;
 }
 
-export interface MonitorIncidentEventRecord {
+export interface MonitorOutageEventRecord {
   id: string;
-  incidentId: string | null;
+  outageId: string | null;
   monitorId: string;
   eventType: string;
   title: string;
@@ -136,7 +136,7 @@ export interface CompanySlaReport {
   periods: Array<{
     label: string;
     uptimePct: number;
-    incidents: number;
+    outages: number;
     totalChecks: number;
   }>;
   statusCodes: Array<{

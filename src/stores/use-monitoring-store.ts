@@ -14,10 +14,13 @@ interface MonitoringState {
   updateMonitor: (id: string, payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitorActiveState: (id: string, isActive: boolean) => Promise<MonitorRecord | null>;
   bulkUpdateMonitors: (ids: string[], payload: MonitorPayload) => Promise<MonitorRecord[]>;
-  deleteMonitors: (ids: string[]) => Promise<string[]>;
+  deleteMonitors: (ids: string[]) => Promise<SoftDeleteResult | null>;
+  restoreMonitors: (ids: string[]) => Promise<MonitorRecord[]>;
   importMonitors: (items: MonitorRecord[]) => void;
   clearError: () => void;
 }
+
+type SoftDeleteResult = { ids: string[]; undoUntil: string | null };
 
 async function readJsonOrNull<T>(response: Response): Promise<T | null> {
   return (await response.json().catch(() => null)) as T | null;
@@ -186,7 +189,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
       });
-      const data = await readJsonOrNull<{ message?: string; ids?: string[] }>(response);
+      const data = await readJsonOrNull<{ message?: string; ids?: string[]; undoUntil?: string | null }>(response);
 
       if (!response.ok || !data?.ids) {
         throw new Error(data?.message ?? "Unable to delete monitors.");
@@ -200,9 +203,37 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }));
       showToast(`${data.ids.length} monitor${data.ids.length === 1 ? "" : "s"} deleted.`, "success");
 
-      return data.ids;
+      return { ids: data.ids, undoUntil: data.undoUntil ?? null };
     } catch (error) {
       const message = getErrorMessage(error, "Unable to delete monitors.");
+      set({ saving: false, error: message });
+      showToast(message, "error");
+      return null;
+    }
+  },
+  restoreMonitors: async (ids) => {
+    set({ saving: true });
+    try {
+      const response = await fetch("/api/monitors/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      if (!response.ok || !data?.monitors) {
+        throw new Error(data?.message ?? "Unable to restore monitors.");
+      }
+      const restoredMonitors = data.monitors;
+
+      set((state) => ({
+        monitors: [...restoredMonitors, ...state.monitors.filter((item) => !ids.includes(item.id))],
+        saving: false,
+        error: null,
+      }));
+      showToast(`${restoredMonitors.length} monitor${restoredMonitors.length === 1 ? "" : "s"} restored.`, "success");
+      return restoredMonitors;
+    } catch (error) {
+      const message = getErrorMessage(error, "Unable to restore monitors.");
       set({ saving: false, error: message });
       showToast(message, "error");
       return [];

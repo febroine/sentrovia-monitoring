@@ -119,6 +119,7 @@ export const settingsSchema = z.object({
     .default({ enabled: false, slug: "", title: "", summary: "" }),
   data: z.object({
     retentionDays: z.coerce.number().int().min(7).max(3650),
+    deliveryRetentionDays: z.coerce.number().int().min(7).max(3650).default(90),
     autoBackupEnabled: z.boolean(),
     backupWindow: z.string().trim().min(4).max(32),
     eventRetentionDays: z.coerce.number().int().min(1).max(3650),

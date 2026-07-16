@@ -1,8 +1,8 @@
-import { and, asc, count, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
-  incidentEvents,
+  outageEvents,
   monitorChecks,
   monitorDiagnostics,
   monitorEvents,
@@ -14,7 +14,7 @@ import {
 import { AuthError } from "@/lib/auth/errors";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
 import { env } from "@/lib/env";
-import { resolveIncident } from "@/lib/incidents/service";
+import { resolveOutage } from "@/lib/outages/service";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import {
@@ -38,12 +38,13 @@ const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
+export const SOFT_DELETE_UNDO_MS = 60_000;
 
 export async function listMonitors(userId: string) {
   return db
     .select()
     .from(monitors)
-    .where(eq(monitors.userId, userId))
+    .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)))
     .orderBy(desc(monitors.createdAt));
 }
 
@@ -80,6 +81,8 @@ export async function buildMonitorForTest(
       status: "pending",
       statusCode: null,
       uptime: "--",
+      deletedAt: null,
+      deletedWasActive: null,
       lastCheckedAt: null,
       nextCheckAt: null,
       leaseToken: null,
@@ -124,7 +127,7 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
         userId,
         updatedAt: now,
       })
-      .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
+      .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
       .returning();
 
     if (!monitor) {
@@ -138,7 +141,7 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
     return null;
   }
 
-  await resolveIncidentOnPause(result.existingMonitor, result.isActive, result.now);
+  await resolveOutageOnPause(result.existingMonitor, result.isActive, result.now);
   return result.monitor;
 }
 
@@ -157,10 +160,7 @@ async function assertMonitorTargetAvailable(
   database: DatabaseExecutor = db
 ) {
   const targetKey = buildMonitorIdentityKey({ monitorType, url });
-  const existing = await database
-    .select({ id: monitors.id, monitorType: monitors.monitorType, url: monitors.url })
-    .from(monitors)
-    .where(eq(monitors.userId, userId));
+  const existing = await listReservedMonitorTargets(userId, database);
 
   const conflict = existing.some((monitor) => {
     if (monitor.id === excludedMonitorId) {
@@ -198,10 +198,14 @@ export async function updateMonitorActiveState(userId: string, monitorId: string
       ...buildActiveStateUpdate(existingMonitor.isActive, isActive, now),
       updatedAt: now,
     })
-    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
+    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
     .returning();
 
-  await resolveIncidentOnPause(existingMonitor, isActive, now);
+  if (!monitor) {
+    return null;
+  }
+
+  await resolveOutageOnPause(existingMonitor, isActive, now);
 
   return monitor;
 }
@@ -211,9 +215,9 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
     const existingMonitors = await tx
       .select()
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)));
+      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)));
     const updated: Array<typeof monitors.$inferSelect> = [];
-    const pausedIncidents: Array<Parameters<typeof resolveIncident>[0]> = [];
+    const pausedOutages: Array<Parameters<typeof resolveOutage>[0]> = [];
 
     for (const existingMonitor of existingMonitors) {
       const mergedInput = buildBulkUpdatePayload(existingMonitor, input);
@@ -229,7 +233,11 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
           userId,
           updatedAt: now,
         })
-        .where(and(eq(monitors.id, existingMonitor.id), eq(monitors.userId, userId)))
+        .where(and(
+          eq(monitors.id, existingMonitor.id),
+          eq(monitors.userId, userId),
+          isNull(monitors.deletedAt)
+        ))
         .returning();
 
       if (monitor) {
@@ -237,7 +245,7 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
       }
 
       if (existingMonitor.isActive && !values.isActive) {
-        pausedIncidents.push({
+        pausedOutages.push({
           monitorId: existingMonitor.id,
           userId: existingMonitor.userId,
           checkedAt: now,
@@ -246,10 +254,10 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
       }
     }
 
-    return { updated, pausedIncidents };
+    return { updated, pausedOutages };
   });
 
-  await Promise.all(result.pausedIncidents.map((incident) => resolveIncident(incident)));
+  await Promise.all(result.pausedOutages.map((outage) => resolveOutage(outage)));
 
   return result.updated;
 }
@@ -265,7 +273,7 @@ export async function updateMonitorTags(
     const current = await tx
       .select()
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)));
+      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)));
     const updated: Array<typeof monitors.$inferSelect> = [];
 
     for (const monitor of current) {
@@ -276,7 +284,7 @@ export async function updateMonitorTags(
           tags: nextTags,
           updatedAt: new Date(),
         })
-        .where(and(eq(monitors.id, monitor.id), eq(monitors.userId, userId)))
+        .where(and(eq(monitors.id, monitor.id), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
         .returning();
 
       if (item) {
@@ -289,10 +297,62 @@ export async function updateMonitorTags(
 }
 
 export async function deleteMonitors(userId: string, ids: string[]) {
+  const now = new Date();
+  const result = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: monitors.id, status: monitors.status, statusCode: monitors.statusCode })
+      .from(monitors)
+      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)));
+    const deleted = await tx
+      .update(monitors)
+      .set({
+        deletedAt: now,
+        deletedWasActive: sql`${monitors.isActive}`,
+        isActive: false,
+        nextCheckAt: null,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        updatedAt: now,
+      })
+      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)))
+      .returning({ id: monitors.id, deletedAt: monitors.deletedAt });
+
+    const deletedIds = new Set(deleted.map((monitor) => monitor.id));
+    return {
+      deleted,
+      outages: existing.filter((monitor) => deletedIds.has(monitor.id) && monitor.status === "down"),
+    };
+  });
+
+  await Promise.all(result.outages.map((monitor) => resolveOutage({
+    monitorId: monitor.id,
+    userId,
+    checkedAt: now,
+    statusCode: monitor.statusCode,
+  })));
+  return result.deleted;
+}
+
+export async function restoreMonitors(userId: string, ids: string[], now = new Date()) {
+  const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
   return db
-    .delete(monitors)
-    .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids)))
-    .returning({ id: monitors.id });
+    .update(monitors)
+    .set({
+      deletedAt: null,
+      isActive: sql`coalesce(${monitors.deletedWasActive}, false)`,
+      deletedWasActive: null,
+      nextCheckAt: sql`case when coalesce(${monitors.deletedWasActive}, false) then ${now} else null end`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(monitors.userId, userId),
+        inArray(monitors.id, ids),
+        isNotNull(monitors.deletedAt),
+        gte(monitors.deletedAt, undoCutoff)
+      )
+    )
+    .returning();
 }
 
 export async function createManyMonitors(userId: string, inputs: MonitorInput[], database?: DatabaseExecutor) {
@@ -307,10 +367,7 @@ export async function createManyMonitors(userId: string, inputs: MonitorInput[],
 }
 
 async function persistManyMonitors(userId: string, inputs: MonitorInput[], database: DatabaseExecutor) {
-  const existing = await database
-    .select({ monitorType: monitors.monitorType, url: monitors.url })
-    .from(monitors)
-    .where(eq(monitors.userId, userId));
+  const existing = await listReservedMonitorTargets(userId, database);
 
   const existingTargets = new Set(
     existing.map((item) =>
@@ -331,11 +388,28 @@ async function persistManyMonitors(userId: string, inputs: MonitorInput[], datab
   return database.insert(monitors).values(valuesWithInitialSchedule).returning();
 }
 
+export async function listReservedMonitorTargets(
+  userId: string,
+  database: DatabaseExecutor = db,
+  now = new Date()
+) {
+  const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
+  return database
+    .select({ id: monitors.id, monitorType: monitors.monitorType, url: monitors.url })
+    .from(monitors)
+    .where(
+      and(
+        eq(monitors.userId, userId),
+        or(isNull(monitors.deletedAt), gte(monitors.deletedAt, undoCutoff))
+      )
+    );
+}
+
 export function filterDuplicateMonitorInputs(inputs: MonitorInput[], existingTargets: Set<string>) {
   const seenTargets = new Set(existingTargets);
 
   return inputs.filter((input) => {
-    const key = buildImportMonitorIdentityKey(input);
+    const key = getMonitorImportIdentityKey(input);
     if (!key) {
       return true;
     }
@@ -349,7 +423,7 @@ export function filterDuplicateMonitorInputs(inputs: MonitorInput[], existingTar
   });
 }
 
-function buildImportMonitorIdentityKey(input: MonitorInput) {
+export function getMonitorImportIdentityKey(input: MonitorInput) {
   if (input.monitorType === "heartbeat" && input.heartbeatToken.trim().length === 0) {
     return null;
   }
@@ -405,7 +479,7 @@ function buildActiveStateUpdate(wasActive: boolean, isActive: boolean, now: Date
   };
 }
 
-async function resolveIncidentOnPause(
+async function resolveOutageOnPause(
   monitor: typeof monitors.$inferSelect,
   nextActiveState: boolean,
   resolvedAt: Date
@@ -414,7 +488,7 @@ async function resolveIncidentOnPause(
     return;
   }
 
-  await resolveIncident({
+  await resolveOutage({
     monitorId: monitor.id,
     userId: monitor.userId,
     checkedAt: resolvedAt,
@@ -429,6 +503,7 @@ export async function claimDueMonitors(now: Date) {
     .where(
       and(
         eq(monitors.isActive, true),
+        isNull(monitors.deletedAt),
         or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
         or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
       )
@@ -470,6 +545,7 @@ export async function claimDueMonitors(now: Date) {
           selectedRows.map((monitor) => monitor.id)
         ),
         eq(monitors.isActive, true),
+        isNull(monitors.deletedAt),
         or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
         or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
       )
@@ -484,6 +560,7 @@ export async function countDueMonitors(now: Date) {
     .where(
       and(
         eq(monitors.isActive, true),
+        isNull(monitors.deletedAt),
         or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
         or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
       )
@@ -504,7 +581,7 @@ export async function isMonitorActive(monitorId: string) {
   const [monitor] = await db
     .select({ isActive: monitors.isActive })
     .from(monitors)
-    .where(eq(monitors.id, monitorId))
+    .where(and(eq(monitors.id, monitorId), isNull(monitors.deletedAt)))
     .limit(1);
 
   return monitor?.isActive === true;
@@ -541,6 +618,7 @@ export async function recordMonitorResult(
       and(
         eq(monitors.id, monitorId),
         eq(monitors.isActive, true),
+        isNull(monitors.deletedAt),
         expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
       )
     )
@@ -558,7 +636,11 @@ export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
   const [existingMonitor] = await db
     .select()
     .from(monitors)
-    .where(and(eq(monitors.monitorType, "heartbeat"), eq(monitors.heartbeatToken, normalizedToken)))
+    .where(and(
+      eq(monitors.monitorType, "heartbeat"),
+      eq(monitors.heartbeatToken, normalizedToken),
+      isNull(monitors.deletedAt)
+    ))
     .limit(1);
 
   if (!existingMonitor) {
@@ -583,7 +665,11 @@ export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
       leaseExpiresAt: null,
       updatedAt: new Date(),
     })
-    .where(and(eq(monitors.id, existingMonitor.id), eq(monitors.isActive, true)))
+    .where(and(
+      eq(monitors.id, existingMonitor.id),
+      eq(monitors.isActive, true),
+      isNull(monitors.deletedAt)
+    ))
     .returning();
 
   if (!monitor) {
@@ -738,8 +824,8 @@ export async function appendMonitorDiagnostic(input: {
   });
 }
 
-export async function appendIncidentEvent(input: {
-  incidentId?: string | null;
+export async function appendOutageEvent(input: {
+  outageId?: string | null;
   monitorId: string;
   userId: string;
   eventType: string;
@@ -748,8 +834,8 @@ export async function appendIncidentEvent(input: {
   metadata?: Record<string, unknown> | null;
   createdAt?: Date;
 }) {
-  await db.insert(incidentEvents).values({
-    incidentId: input.incidentId ?? null,
+  await db.insert(outageEvents).values({
+    outageId: input.outageId ?? null,
     monitorId: input.monitorId,
     userId: input.userId,
     eventType: input.eventType,
@@ -782,12 +868,12 @@ export async function listRecentMonitorDiagnostics(userId: string, limitPerMonit
   return groupRecentRowsByMonitor(rows, limitPerMonitor);
 }
 
-export async function listRecentIncidentEvents(userId: string, limitPerMonitor = 8) {
+export async function listRecentOutageEvents(userId: string, limitPerMonitor = 8) {
   const rows = await db
     .select()
-    .from(incidentEvents)
-    .where(eq(incidentEvents.userId, userId))
-    .orderBy(desc(incidentEvents.createdAt))
+    .from(outageEvents)
+    .where(eq(outageEvents.userId, userId))
+    .orderBy(desc(outageEvents.createdAt))
     .limit(Math.max(limitPerMonitor, 1) * 500);
 
   return groupRecentRowsByMonitor(rows, limitPerMonitor);
@@ -1021,7 +1107,7 @@ async function buildMonitorValues(
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
     emailBody: input.emailBody,
-    sendIncidentScreenshot: shouldPersistIncidentScreenshot(monitorType, input.notificationPref, input.sendIncidentScreenshot),
+    sendIncidentScreenshot: shouldPersistOutageScreenshot(monitorType, input.notificationPref, input.sendIncidentScreenshot),
     isActive: input.isActive,
   };
 }
@@ -1030,7 +1116,7 @@ async function getMonitorById(userId: string, monitorId: string, database: Datab
   const [monitor] = await database
     .select()
     .from(monitors)
-    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)));
+    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)));
 
   return monitor ?? null;
 }
@@ -1157,7 +1243,7 @@ function normalizeMonitorType(value: string | null | undefined): MonitorInput["m
   return "http";
 }
 
-function shouldPersistIncidentScreenshot(
+function shouldPersistOutageScreenshot(
   monitorType: MonitorInput["monitorType"],
   notificationPref: MonitorInput["notificationPref"],
   requested: boolean

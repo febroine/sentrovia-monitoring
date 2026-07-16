@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   } as CheckResult,
   checkResults: [] as CheckResult[],
   checkMonitor: vi.fn(),
-  appendIncidentEvent: vi.fn(),
+  appendOutageEvent: vi.fn(),
   appendMonitorCheck: vi.fn(),
   appendMonitorDiagnostic: vi.fn(),
   appendMonitorEvent: vi.fn(),
@@ -35,10 +35,10 @@ const mocks = vi.hoisted(() => ({
   countDueMonitors: vi.fn(),
   incrementWorkerCheckedCount: vi.fn(),
   isMonitorActive: vi.fn(),
-  openOrUpdateIncident: vi.fn(),
+  openOrUpdateOutage: vi.fn(),
   recordMonitorResult: vi.fn(),
   recordWorkerCycleMetric: vi.fn(),
-  resolveIncident: vi.fn(),
+  resolveOutage: vi.fn(),
   sendMonitorNotifications: vi.fn(),
   buildFailureScreenshotAttachment: vi.fn(),
   updateWorkerState: vi.fn(),
@@ -52,9 +52,9 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-vi.mock("@/lib/incidents/service", () => ({
-  openOrUpdateIncident: mocks.openOrUpdateIncident,
-  resolveIncident: mocks.resolveIncident,
+vi.mock("@/lib/outages/service", () => ({
+  openOrUpdateOutage: mocks.openOrUpdateOutage,
+  resolveOutage: mocks.resolveOutage,
 }));
 
 vi.mock("@/lib/diagnostics/service", () => ({
@@ -71,7 +71,7 @@ vi.mock("@/lib/monitoring/rca", () => ({
 }));
 
 vi.mock("@/lib/monitors/service", () => ({
-  appendIncidentEvent: mocks.appendIncidentEvent,
+  appendOutageEvent: mocks.appendOutageEvent,
   appendMonitorCheck: mocks.appendMonitorCheck,
   appendMonitorDiagnostic: mocks.appendMonitorDiagnostic,
   appendMonitorEvent: mocks.appendMonitorEvent,
@@ -122,7 +122,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.claimDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors));
     mocks.checkMonitor.mockImplementation(() => Promise.resolve(mocks.checkResults.shift() ?? mocks.checkResult));
     mocks.countDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors.length));
-    mocks.appendIncidentEvent.mockResolvedValue(null);
+    mocks.appendOutageEvent.mockResolvedValue(null);
     mocks.appendMonitorDiagnostic.mockResolvedValue(null);
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
     mocks.isMonitorActive.mockResolvedValue(true);
@@ -167,7 +167,7 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
   });
 
-  it("records diagnostics and incident timeline events for failed verification attempts", async () => {
+  it("records diagnostics and outage timeline events for failed verification attempts", async () => {
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
     await runMonitoringCycle();
@@ -180,10 +180,10 @@ describe("monitoring scheduler verification flow", () => {
         diagnostic: expect.objectContaining({ failedPhase: "http" }),
       })
     );
-    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+    expect(mocks.appendOutageEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "verification_started" })
     );
-    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+    expect(mocks.appendOutageEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "diagnostic_completed" })
     );
   });
@@ -213,7 +213,7 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
     );
-    expect(mocks.appendIncidentEvent).not.toHaveBeenCalledWith(
+    expect(mocks.appendOutageEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "outage_confirmed" })
     );
   });
@@ -520,13 +520,13 @@ describe("monitoring scheduler verification flow", () => {
 
     await runMonitoringCycle();
 
-    expect(mocks.openOrUpdateIncident).toHaveBeenCalledWith(
+    expect(mocks.openOrUpdateOutage).toHaveBeenCalledWith(
       expect.objectContaining({
         statusCode: null,
         errorMessage: "Service did not respond within 7.5s.",
       })
     );
-    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+    expect(mocks.appendOutageEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "outage_confirmed",
         detail: "Service did not respond within 7.5s.",
@@ -776,7 +776,7 @@ describe("monitoring scheduler verification flow", () => {
         message: "Verification recovered before outage confirmation.",
       })
     );
-    expect(mocks.appendIncidentEvent).toHaveBeenCalledWith(
+    expect(mocks.appendOutageEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "verification_recovered",
         title: "Verification recovered",
@@ -880,6 +880,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 200,
     uptime: "100%",
     isActive: true,
+    deletedAt: null,
+    deletedWasActive: null,
     lastCheckedAt: now,
     nextCheckAt: now,
     leaseToken: "lease-1",

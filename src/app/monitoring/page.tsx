@@ -31,12 +31,13 @@ import {
   DEFAULT_MONITOR_FORM,
   type MonitorDiagnosticRecord,
   type MonitorHistoryPoint,
-  type MonitorIncidentEventRecord,
+  type MonitorOutageEventRecord,
   type MonitorPayload,
   type MonitorRecord,
 } from "@/lib/monitors/types";
 import type { SettingsPayload } from "@/lib/settings/types";
 import { showToast } from "@/lib/client-toast";
+import { parseSoftDeleteUndoDeadline } from "@/lib/soft-delete";
 import { useMonitoringStore } from "@/stores/use-monitoring-store";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const;
@@ -48,6 +49,11 @@ interface PendingBulkAction {
   detail: string;
   expiresAt: number;
   execute: () => Promise<void>;
+}
+
+interface PendingMonitorRestore {
+  ids: string[];
+  expiresAt: number;
 }
 
 export default function MonitoringPage() {
@@ -62,6 +68,7 @@ export default function MonitoringPage() {
     updateMonitorActiveState,
     bulkUpdateMonitors,
     deleteMonitors,
+    restoreMonitors,
     importMonitors,
     clearError,
   } = useMonitoringStore();
@@ -82,13 +89,14 @@ export default function MonitoringPage() {
   const [defaultForm, setDefaultForm] = useState(DEFAULT_MONITOR_FORM);
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, MonitorHistoryPoint[]>>({});
   const [diagnosticsByMonitor, setDiagnosticsByMonitor] = useState<Record<string, MonitorDiagnosticRecord[]>>({});
-  const [incidentEventsByMonitor, setIncidentEventsByMonitor] = useState<Record<string, MonitorIncidentEventRecord[]>>({});
+  const [outageEventsByMonitor, setOutageEventsByMonitor] = useState<Record<string, MonitorOutageEventRecord[]>>({});
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
   const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [pendingBulkAction, setPendingBulkAction] = useState<PendingBulkAction | null>(null);
   const [bulkActionSeconds, setBulkActionSeconds] = useState(0);
+  const [pendingRestores, setPendingRestores] = useState<PendingMonitorRestore[]>([]);
 
   const companyFilters = useMemo(
     () => ["all", ...Array.from(new Set(monitors.map((monitor) => monitor.company).filter(Boolean)))],
@@ -155,16 +163,16 @@ export default function MonitoringPage() {
       const data = await readJsonOrNull<{
         history?: Record<string, MonitorHistoryPoint[]>;
         diagnostics?: Record<string, MonitorDiagnosticRecord[]>;
-        incidentEvents?: Record<string, MonitorIncidentEventRecord[]>;
+        outageEvents?: Record<string, MonitorOutageEventRecord[]>;
       }>(response);
 
       setHistoryByMonitor(response.ok ? data?.history ?? {} : {});
       setDiagnosticsByMonitor(response.ok ? data?.diagnostics ?? {} : {});
-      setIncidentEventsByMonitor(response.ok ? data?.incidentEvents ?? {} : {});
+      setOutageEventsByMonitor(response.ok ? data?.outageEvents ?? {} : {});
     } catch {
       setHistoryByMonitor({});
       setDiagnosticsByMonitor({});
-      setIncidentEventsByMonitor({});
+      setOutageEventsByMonitor({});
     }
   }, []);
 
@@ -202,6 +210,18 @@ export default function MonitoringPage() {
       window.clearTimeout(executionId);
     };
   }, [pendingBulkAction]);
+
+  useEffect(() => {
+    if (pendingRestores.length === 0) return;
+    const intervalId = window.setInterval(() => {
+      const now = Date.now();
+      setPendingRestores((current) => {
+        const active = current.filter((item) => item.expiresAt > now);
+        return active.length === current.length ? current : active;
+      });
+    }, 500);
+    return () => window.clearInterval(intervalId);
+  }, [pendingRestores.length]);
 
   useEffect(() => {
     const search = typeof window === "undefined" ? "" : window.location.search;
@@ -291,12 +311,16 @@ export default function MonitoringPage() {
     const ids = [...deleteTargetIds];
     if (!queueBulkAction(
       `Deletion scheduled for ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
-      "Monitor configuration and related history will be permanently deleted after the countdown.",
+      "The monitors will be removed after the countdown and can be restored for another 60 seconds.",
       async () => {
-        const deletedIds = await deleteMonitors(ids);
-        if (deletedIds.length > 0) {
+        const deletion = await deleteMonitors(ids);
+        if (deletion && deletion.ids.length > 0) {
           await refreshMonitoring();
-          setSelectedIds((current) => removeIds(current, deletedIds));
+          setSelectedIds((current) => removeIds(current, deletion.ids));
+          setPendingRestores((current) => [
+            ...current,
+            { ids: deletion.ids, expiresAt: parseSoftDeleteUndoDeadline(deletion.undoUntil) },
+          ]);
         }
       }
     )) {
@@ -329,6 +353,16 @@ export default function MonitoringPage() {
 
     setPendingBulkAction(null);
     showToast("Bulk operation cancelled. No changes were made.", "success");
+  }
+
+  async function restoreRecentlyDeletedMonitors() {
+    const ids = pendingRestores.flatMap((item) => item.ids);
+    if (ids.length === 0) return;
+    const restored = await restoreMonitors(ids);
+    if (restored.length > 0) {
+      setPendingRestores([]);
+      await refreshMonitoring();
+    }
   }
 
   function toggleAll() {
@@ -412,6 +446,18 @@ export default function MonitoringPage() {
           </div>
           <Button variant="outline" size="sm" onClick={undoPendingBulkAction}>
             <Undo2 /> Undo
+          </Button>
+        </div>
+      ) : null}
+
+      {pendingRestores.length > 0 ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+          <div>
+            <p className="text-sm font-medium">{pendingRestores.flatMap((item) => item.ids).length} monitor{pendingRestores.flatMap((item) => item.ids).length === 1 ? "" : "s"} deleted</p>
+            <p className="mt-1 text-xs text-muted-foreground">Related records remain recoverable for 60 seconds.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void restoreRecentlyDeletedMonitors()} disabled={saving}>
+            <Undo2 /> Restore
           </Button>
         </div>
       ) : null}
@@ -663,7 +709,7 @@ export default function MonitoringPage() {
         monitor={timelineMonitor}
         points={timelineMonitor ? historyByMonitor[timelineMonitor.id] ?? [] : []}
         diagnostics={timelineMonitor ? diagnosticsByMonitor[timelineMonitor.id] ?? [] : []}
-        incidentEvents={timelineMonitor ? incidentEventsByMonitor[timelineMonitor.id] ?? [] : []}
+        outageEvents={timelineMonitor ? outageEventsByMonitor[timelineMonitor.id] ?? [] : []}
         selectedPointId={selectedTimelinePointId}
         onOpenChange={(open) => {
           if (!open) {

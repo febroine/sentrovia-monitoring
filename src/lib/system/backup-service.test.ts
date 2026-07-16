@@ -3,10 +3,16 @@ import { DEFAULT_MONITOR_FORM, type WorkspaceBackupBundle } from "@/lib/monitors
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import {
   buildCompanyIdByName,
+  buildWorkspaceRestorePreview,
   parseWorkspaceBackup,
   resolveRestoredCompanyId,
   validateWorkspaceBackupBundle,
 } from "@/lib/system/backup-service";
+import {
+  buildWorkspaceRestoreRevision,
+  createWorkspaceRestoreToken,
+  verifyWorkspaceRestoreToken,
+} from "@/lib/system/restore-approval";
 
 describe("workspace backup validation", () => {
   it("returns a backup validation error for malformed YAML", () => {
@@ -119,6 +125,61 @@ describe("workspace backup validation", () => {
     const companyIdByName = buildCompanyIdByName([{ id: "company-1", name: "ACME Operations" }]);
 
     expect(resolveRestoredCompanyId(" acme operations ", companyIdByName)).toBe("company-1");
+  });
+
+  it("describes records that a restore will replace without mutating them", () => {
+    const validated = validateWorkspaceBackupBundle(buildBackupBundle({
+      companies: [{ name: "Kept company", description: "", isActive: true }],
+      monitors: [{ ...DEFAULT_MONITOR_FORM, name: "Incoming", url: "https://kept.example.com" }],
+    }));
+    const preview = buildWorkspaceRestorePreview(
+      validated,
+      [{ name: "Kept company" }, { name: "Removed company" }],
+      [
+        { name: "Kept monitor", monitorType: "http", url: "https://kept.example.com/" },
+        { name: "Removed monitor", monitorType: "http", url: "https://removed.example.com/" },
+      ],
+      [{ companyName: "Kept company" }, { companyName: "Removed company" }]
+    );
+
+    expect(preview.current).toEqual({ companies: 2, monitors: 2 });
+    expect(preview.incoming).toEqual({ companies: 1, monitors: 1 });
+    expect(preview.removedCompanies).toEqual(["Removed company"]);
+    expect(preview.removedMonitors).toEqual(["Removed monitor"]);
+    expect(preview.reportSchedules).toEqual({ remapped: 1, disabled: 1 });
+  });
+
+  it("binds restore approval to the user, exact bundle, and expiration time", () => {
+    const issuedAt = new Date("2026-07-16T12:00:00.000Z");
+    const token = createWorkspaceRestoreToken("user-1", "json", "backup-content", "revision-1", issuedAt);
+
+    expect(verifyWorkspaceRestoreToken(token, "user-1", "json", "backup-content", "revision-1", issuedAt)).toBe(true);
+    expect(verifyWorkspaceRestoreToken(token, "user-2", "json", "backup-content", "revision-1", issuedAt)).toBe(false);
+    expect(verifyWorkspaceRestoreToken(token, "user-1", "yaml", "backup-content", "revision-1", issuedAt)).toBe(false);
+    expect(verifyWorkspaceRestoreToken(token, "user-1", "json", "changed-content", "revision-1", issuedAt)).toBe(false);
+    expect(verifyWorkspaceRestoreToken(token, "user-1", "json", "backup-content", "revision-2", issuedAt)).toBe(false);
+    expect(verifyWorkspaceRestoreToken(token, "user-1", "json", "backup-content", "revision-1", new Date(issuedAt.getTime() + 10 * 60_000))).toBe(false);
+  });
+
+  it("ignores worker runtime fields but detects configuration changes in restore revisions", () => {
+    const base = {
+      companies: [],
+      monitors: [{ id: "monitor-1", name: "API", status: "up", latencyMs: 100, updatedAt: new Date(1) }],
+      settings: null,
+      user: null,
+    };
+    const initial = buildWorkspaceRestoreRevision(base);
+    const runtimeChanged = buildWorkspaceRestoreRevision({
+      ...base,
+      monitors: [{ ...base.monitors[0], status: "down", latencyMs: 5000, updatedAt: new Date(2) }],
+    });
+    const configChanged = buildWorkspaceRestoreRevision({
+      ...base,
+      monitors: [{ ...base.monitors[0], name: "Renamed API" }],
+    });
+
+    expect(runtimeChanged).toBe(initial);
+    expect(configChanged).not.toBe(initial);
   });
 });
 

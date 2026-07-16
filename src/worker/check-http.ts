@@ -4,6 +4,11 @@ import type { IncomingMessage } from "node:http";
 import type { TLSSocket } from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import {
+  hasExpectedStatusCodeOverride,
+  isCustomExpectedStatusCode,
+  isExpectedHttpStatusCode,
+} from "@/lib/monitors/status-codes";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
@@ -47,7 +52,7 @@ export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
 function evaluateHttpResponse(monitor: Monitor, statusCode: number, bodyText: string) {
   const hasCustomExpectedStatusCodes = hasExpectedStatusCodeOverride(monitor.expectedStatusCodes);
 
-  if (!isExpectedStatusCode(monitor.expectedStatusCodes, statusCode)) {
+  if (!isExpectedHttpStatusCode(monitor.expectedStatusCodes, statusCode)) {
     return {
       ok: false,
       failureReason: "http_status" as const,
@@ -369,33 +374,6 @@ function buildCheckResult(
     checkedAt,
     latencyMs: Math.max(1, Date.now() - checkedAt.getTime()),
   };
-}
-
-function isExpectedStatusCode(expectedStatusCodes: string | null, statusCode: number) {
-  const expected = parseExpectedStatusCodes(expectedStatusCodes);
-  if (expected.size > 0) {
-    return expected.has(statusCode);
-  }
-
-  return statusCode >= 200 && statusCode < 400;
-}
-
-function hasExpectedStatusCodeOverride(expectedStatusCodes: string | null) {
-  return parseExpectedStatusCodes(expectedStatusCodes).size > 0;
-}
-
-function isCustomExpectedStatusCode(expectedStatusCodes: string | null, statusCode: number) {
-  const expected = parseExpectedStatusCodes(expectedStatusCodes);
-  return expected.size > 0 && expected.has(statusCode);
-}
-
-function parseExpectedStatusCodes(value: string | null) {
-  return new Set(
-    (value ?? "")
-      .split(/[,\s;]+/)
-      .map((item) => Number(item.trim()))
-      .filter((item) => Number.isInteger(item) && item >= 100 && item <= 599)
-  );
 }
 
 function formatRequestFailureMessage(message: string, timeoutMs: number) {

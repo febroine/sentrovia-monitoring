@@ -88,7 +88,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const companyItems = paginate(data.companyHealth, currentCompanyPage, 4);
   const eventItems = paginate(data.events, currentEventPage, 5);
   const showChartsSection = data.settings?.appearance.showChartsSection ?? true;
-  const showIncidentBanner = data.settings?.appearance.showIncidentBanner ?? true;
+  const showOutageBanner = data.settings?.appearance.showIncidentBanner ?? true;
   const use24HourClock = data.settings?.appearance.use24HourClock ?? true;
   const isAdmin = data.settings?.profile.role === "admin";
 
@@ -112,7 +112,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
-      {showIncidentBanner && data.summary.offline > 0 ? (
+      {showOutageBanner && data.summary.offline > 0 ? (
         <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {data.summary.offline} monitor currently offline. Verification and delivery history are available below.
         </div>

@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorEvents, monitors } from "@/lib/db/schema";
 import { getDeliveryOverview } from "@/lib/delivery/service";
@@ -9,7 +9,7 @@ import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
 
 export async function getDashboardData(userId: string) {
   const [monitorRows, eventRows, settings, worker, delivery] = await Promise.all([
-    db.select().from(monitors).where(eq(monitors.userId, userId)),
+    db.select().from(monitors).where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt))),
     db
       .select()
       .from(monitorEvents)

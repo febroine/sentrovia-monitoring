@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { companyBulkActionSchema } from "@/lib/companies/schemas";
-import { deleteCompanies, listCompanies, updateCompaniesActiveState } from "@/lib/companies/service";
+import { COMPANY_SOFT_DELETE_UNDO_MS, deleteCompanies, listCompanies, updateCompaniesActiveState } from "@/lib/companies/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
@@ -30,8 +30,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (parsed.data.action === "delete") {
-      const deletedIds = await deleteCompanies(session.id, parsed.data.ids);
-      return NextResponse.json({ ids: deletedIds });
+      const deleted = await deleteCompanies(session.id, parsed.data.ids);
+      const deletedAt = deleted[0]?.deletedAt;
+      return NextResponse.json({
+        ids: deleted.map((company) => company.id),
+        undoUntil: deletedAt ? new Date(deletedAt.getTime() + COMPANY_SOFT_DELETE_UNDO_MS).toISOString() : null,
+      });
     }
 
     const companies = await updateCompaniesActiveState(

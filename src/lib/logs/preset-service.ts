@@ -1,7 +1,17 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { logFilterPresets } from "@/lib/db/schema";
+import { logFiltersSchema } from "@/lib/logs/schemas";
 import type { LogFilters } from "@/lib/logs/types";
+
+export function parseLogPresetFilters(value: string): LogFilters | null {
+  try {
+    const parsed = logFiltersSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function listLogFilterPresets(userId: string) {
   const rows = await db
@@ -11,20 +21,13 @@ export async function listLogFilterPresets(userId: string) {
     .orderBy(desc(logFilterPresets.updatedAt))
     .limit(12);
 
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    filters: JSON.parse(row.filtersJson) as LogFilters,
-  }));
+  return rows.flatMap((row) => {
+    const filters = parseLogPresetFilters(row.filtersJson);
+    return filters ? [{ id: row.id, name: row.name, filters }] : [];
+  });
 }
 
 export async function upsertLogFilterPreset(userId: string, input: { name: string; filters: LogFilters }) {
-  const existingRows = await db
-    .select()
-    .from(logFilterPresets)
-    .where(and(eq(logFilterPresets.userId, userId), eq(logFilterPresets.name, input.name.trim())))
-    .limit(1);
-
   const values = {
     userId,
     name: input.name.trim(),
@@ -32,16 +35,17 @@ export async function upsertLogFilterPreset(userId: string, input: { name: strin
     updatedAt: new Date(),
   };
 
-  if (existingRows[0]) {
-    const [preset] = await db
-      .update(logFilterPresets)
-      .set(values)
-      .where(eq(logFilterPresets.id, existingRows[0].id))
-      .returning();
-    return preset;
-  }
-
-  const [preset] = await db.insert(logFilterPresets).values(values).returning();
+  const [preset] = await db
+    .insert(logFilterPresets)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [logFilterPresets.userId, logFilterPresets.name],
+      set: {
+        filtersJson: values.filtersJson,
+        updatedAt: values.updatedAt,
+      },
+    })
+    .returning();
   return preset;
 }
 

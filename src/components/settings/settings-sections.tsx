@@ -5,6 +5,7 @@ import {
   BellRing,
   Check,
   Clipboard,
+  Database,
   DownloadCloud,
   ExternalLink,
   FileText,
@@ -595,7 +596,7 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
         onChange={(checked) => updateSetting("appearance.showChartsSection", checked)}
       />
       <ToggleRow
-        label="Incident banner"
+        label="Outage banner"
         description="Show a dashboard banner when one or more monitors are currently offline."
         checked={settings.appearance.showIncidentBanner}
         onChange={(checked) => updateSetting("appearance.showIncidentBanner", checked)}
@@ -672,36 +673,87 @@ export function PublicStatusSettingsTab({ settings, saving, saveSettings, update
         <Input
           value={settings.publicStatus.summary}
           onChange={(event) => updateSetting("publicStatus.summary", event.target.value)}
-          placeholder="Live service availability and active incident summary."
+          placeholder="Live service availability and active outage summary."
         />
       </Field>
     </SectionCard>
   );
 }
 
-export function DataSettingsTab({ settings, updateSetting }: TabProps) {
+export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const isAdmin = settings.profile.role === "admin";
+  const { saveSection, savingSection } = useSectionSave(saveSettings);
 
   return (
-    <SectionCard
-      title="Workspace Backup"
-      description="Export or restore workspace configuration manually. Database records remain under your deployment's backup policy."
-      icon={FolderArchive}
-      iconClassName="text-amber-600 dark:text-amber-300"
-    >
-      {isAdmin ? (
-        <BackupRestorePanel
-          lastBackupAt={settings.data.lastBackupAt}
-          onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
-        />
-      ) : (
-        <Card>
-          <CardContent className="p-4 text-sm text-muted-foreground">
-            Backup export and restore are available to administrators only.
-          </CardContent>
-        </Card>
-      )}
-    </SectionCard>
+    <>
+      <SectionCard
+        title="Data Retention"
+        description="Control how long operational history remains in PostgreSQL. Cleanup runs safely in the worker."
+        icon={Database}
+        iconClassName="text-sky-600 dark:text-sky-300"
+        action={
+          <SectionSaveButton
+            sectionId="retention-and-backups"
+            saving={saving}
+            savingSection={savingSection}
+            onSave={saveSection}
+          />
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          <Field label="Monitor checks" hint="Latency and availability samples, in days.">
+            <Input
+              type="number"
+              min={7}
+              max={3650}
+              value={settings.data.retentionDays}
+              onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value))}
+            />
+          </Field>
+          <Field label="Event logs" hint="Monitor events and diagnostic history, in days.">
+            <Input
+              type="number"
+              min={1}
+              max={3650}
+              value={settings.data.eventRetentionDays}
+              onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value))}
+            />
+          </Field>
+          <Field label="Delivery history" hint="Completed notification deliveries, in days.">
+            <Input
+              type="number"
+              min={7}
+              max={3650}
+              value={settings.data.deliveryRetentionDays}
+              onChange={(event) => updateSetting("data.deliveryRetentionDays", Number(event.target.value))}
+            />
+          </Field>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Pending, processing, and retrying webhook deliveries are never removed by retention cleanup.
+        </p>
+      </SectionCard>
+
+      <SectionCard
+        title="Workspace Backup"
+        description="Export or restore workspace configuration manually. Database records remain under your deployment's backup policy."
+        icon={FolderArchive}
+        iconClassName="text-amber-600 dark:text-amber-300"
+      >
+        {isAdmin ? (
+          <BackupRestorePanel
+            lastBackupAt={settings.data.lastBackupAt}
+            onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              Backup export and restore are available to administrators only.
+            </CardContent>
+          </Card>
+        )}
+      </SectionCard>
+    </>
   );
 }
 

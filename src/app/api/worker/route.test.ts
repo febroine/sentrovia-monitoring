@@ -130,6 +130,7 @@ function buildWorkerState() {
     lastCyclePendingCount: 0,
     lastCycleAverageLatencyMs: 50,
     lastCycleBacklog: 0,
+    lastRetentionCleanupAt: null,
     lastErrorAt: null,
     lastErrorMessage: null,
     heartbeatAt: new Date(),

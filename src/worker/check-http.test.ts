@@ -240,6 +240,8 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 200,
     uptime: "100%",
     isActive: true,
+    deletedAt: null,
+    deletedWasActive: null,
     lastCheckedAt: now,
     nextCheckAt: now,
     leaseToken: null,
