@@ -26,7 +26,7 @@ export async function checkHeartbeatMonitor(monitor: Monitor): Promise<CheckResu
     ok: true,
     status: "up",
     statusCode: 200,
-    latencyMs: Math.max(1, ageMs),
+    latencyMs: null,
     errorMessage: null,
     checkedAt,
     sslExpiresAt: null,

@@ -356,12 +356,23 @@ export async function retryWebhookQueue(userId: string) {
 
 export async function retryWebhookQueueForAllUsers() {
   const now = new Date();
+  const activeEndpoints = await db
+    .select()
+    .from(webhookEndpoints)
+    .where(eq(webhookEndpoints.isActive, true));
+
+  if (activeEndpoints.length === 0) {
+    return { processed: 0 };
+  }
+
+  const endpointByUserId = new Map(activeEndpoints.map((endpoint) => [endpoint.userId, endpoint]));
   const dueEvents = await db
     .select()
     .from(deliveryEvents)
     .where(
       and(
         eq(deliveryEvents.channel, "webhook"),
+        inArray(deliveryEvents.userId, [...endpointByUserId.keys()]),
         inArray(deliveryEvents.status, WEBHOOK_QUEUE_STATUSES),
         or(isNull(deliveryEvents.claimExpiresAt), lte(deliveryEvents.claimExpiresAt, now)),
         or(isNull(deliveryEvents.nextRetryAt), lte(deliveryEvents.nextRetryAt, now))
@@ -369,17 +380,11 @@ export async function retryWebhookQueueForAllUsers() {
     )
     .orderBy(asc(deliveryEvents.createdAt))
     .limit(WEBHOOK_RETRY_BATCH_SIZE);
-  const endpointCache = new Map<string, Awaited<ReturnType<typeof getWebhookEndpoint>>>();
   let processed = 0;
 
   for (const item of dueEvents) {
-    let endpoint = endpointCache.get(item.userId);
-    if (endpoint === undefined) {
-      endpoint = await getWebhookEndpoint(item.userId);
-      endpointCache.set(item.userId, endpoint);
-    }
-
-    if (!endpoint?.isActive) {
+    const endpoint = endpointByUserId.get(item.userId);
+    if (!endpoint) {
       continue;
     }
 

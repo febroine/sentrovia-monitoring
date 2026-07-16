@@ -2,6 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
 import type { NotificationContext } from "@/worker/types";
 
+type CheckResult = {
+  ok: boolean;
+  status: "up" | "down";
+  statusCode: number | null;
+  latencyMs: number | null;
+  errorMessage: string | null;
+  failureReason?: null | "timeout" | "http_status" | "dns" | "tls" | "connection" | "assertion" | "redirect" | "network" | "database";
+  checkedAt: Date;
+  sslExpiresAt: Date | null;
+};
+
 const mocks = vi.hoisted(() => ({
   dueMonitors: [] as Monitor[],
   checkResult: {
@@ -13,17 +24,8 @@ const mocks = vi.hoisted(() => ({
     failureReason: "http_status" as null | "timeout" | "http_status" | "dns" | "tls" | "connection" | "assertion" | "redirect" | "network" | "database",
     checkedAt: new Date("2026-05-08T07:00:00.000Z"),
     sslExpiresAt: null,
-  },
-  checkResults: [] as Array<{
-    ok: boolean;
-    status: "up" | "down";
-    statusCode: number | null;
-    latencyMs: number | null;
-    errorMessage: string | null;
-    failureReason?: null | "timeout" | "http_status" | "dns" | "tls" | "connection" | "assertion" | "redirect" | "network" | "database";
-    checkedAt: Date;
-    sslExpiresAt: Date | null;
-  }>,
+  } as CheckResult,
+  checkResults: [] as CheckResult[],
   checkMonitor: vi.fn(),
   appendIncidentEvent: vi.fn(),
   appendMonitorCheck: vi.fn(),
@@ -427,6 +429,70 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("sends and records an approaching SSL certificate expiry warning", async () => {
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 80,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: new Date("2026-05-18T07:00:00.000Z"),
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "up",
+        statusCode: 200,
+        notificationPref: "email",
+        checkSslExpiry: true,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "ssl-expiry",
+        message: "TLS certificate expires in 10 days on 2026-05-18.",
+      })
+    );
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "ssl-expiry",
+        status: "up",
+        message: "TLS certificate expires in 10 days on 2026-05-18.",
+      })
+    );
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "ssl-expiry-notification", status: "up" })
+    );
+  });
+
+  it("does not warn when the SSL certificate is outside the expiry window", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 80,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: new Date("2026-07-08T07:00:00.000Z"),
+    };
+    mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, checkSslExpiry: true })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "ssl-expiry" })
+    );
+    expect(mocks.appendMonitorEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "ssl-expiry" })
+    );
+  });
+
   it("sends confirmed timeout failures with timeout-specific language", async () => {
     mocks.checkResults = [
       {
@@ -767,6 +833,9 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
     expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(
       expect.objectContaining({ claimedMonitors: 1, completedMonitors: 0 })
+    );
+    expect(mocks.updateWorkerState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ statusMessage: "Completed 0 of 1 monitor check(s)." })
     );
   });
 

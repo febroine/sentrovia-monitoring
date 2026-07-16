@@ -23,7 +23,17 @@ export function redactMonitorExportSecrets(monitor: MonitorPayload): MonitorPayl
     ...monitor,
     heartbeatToken: "",
     telegramBotToken: "",
+    telegramChatId: "",
+    notificationPref: resolveRedactedNotificationPreference(monitor.notificationPref),
   };
+}
+
+function resolveRedactedNotificationPreference(preference: MonitorPayload["notificationPref"]) {
+  if (preference === "both") {
+    return "email";
+  }
+
+  return preference === "telegram" ? "none" : preference;
 }
 
 export function serializeMonitorConfigBundle(bundle: MonitorConfigBundle, format: "json" | "yaml") {

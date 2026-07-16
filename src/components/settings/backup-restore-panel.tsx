@@ -80,7 +80,9 @@ export function BackupRestorePanel({
           <div className="space-y-1">
             <CardTitle className="text-base">Backup and Restore</CardTitle>
             <CardDescription>
-              Export the full workspace or paste a backup bundle to restore monitors, companies, and settings.
+              Export workspace configuration or paste a backup bundle to restore monitors, companies, and settings.
+              Secrets are not exported: Telegram delivery is disabled in the bundle, while PostgreSQL and SMTP
+              credentials must be re-entered before restore.
               Restore accepts up to {WORKSPACE_BACKUP_IMPORT_LIMITS.maxBytesLabel},{" "}
               {WORKSPACE_BACKUP_IMPORT_LIMITS.maxCompanies} companies, and{" "}
               {WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors} monitors.

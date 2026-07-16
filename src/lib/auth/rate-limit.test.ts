@@ -64,6 +64,20 @@ describe("auth rate limiting", () => {
 
     expect(() => assertAuthRateLimit(buildRequest("198.51.100.99"), "onboarding", null)).toThrow(AuthError);
   });
+
+  it("does not globally lock out unrelated identifiers when client IP is unavailable", () => {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      recordAuthFailure(
+        buildRequest(`203.0.113.${attempt + 1}`),
+        "login",
+        `failed-${attempt}@example.com`
+      );
+    }
+
+    expect(() =>
+      assertAuthRateLimit(buildRequest("203.0.113.99"), "login", "fresh@example.com")
+    ).not.toThrow();
+  });
 });
 
 function buildRequest(forwardedFor: string) {

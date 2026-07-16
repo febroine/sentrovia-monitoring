@@ -23,6 +23,8 @@ import { buildFailureScreenshotAttachment } from "@/worker/screenshot";
 const VERIFICATION_TIMEOUT_STEP_RATIO = 0.5;
 const MAX_VERIFICATION_TIMEOUT_MULTIPLIER = 2;
 const MAX_VERIFICATION_TIMEOUT_MS = 120_000;
+const SSL_EXPIRY_WARNING_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1_000;
 
 type MonitorCycleResult = {
   finalStatus: "up" | "down" | "pending";
@@ -102,13 +104,23 @@ export async function runMonitoringCycle() {
     lastCycleBacklog: backlogAtStart,
     lastErrorAt: cycleErrors[0] ? cycleFinishedAt : null,
     lastErrorMessage: cycleErrors[0] ?? null,
-    statusMessage:
-      dueMonitors.length > 0
-        ? `Completed ${dueMonitors.length} monitor check(s).`
-        : "Worker is healthy and waiting for the next due monitor.",
+    statusMessage: buildCycleStatusMessage(dueMonitors.length, cycleResults.length, cycleErrors.length),
   });
 
   return dueMonitors.length;
+}
+
+function buildCycleStatusMessage(claimedCount: number, completedCount: number, errorCount: number) {
+  if (claimedCount === 0) {
+    return "Worker is healthy and waiting for the next due monitor.";
+  }
+
+  if (completedCount === claimedCount && errorCount === 0) {
+    return `Completed ${completedCount} monitor check(s).`;
+  }
+
+  const errorSuffix = errorCount > 0 ? ` ${errorCount} check(s) failed unexpectedly.` : "";
+  return `Completed ${completedCount} of ${claimedCount} monitor check(s).${errorSuffix}`;
 }
 
 async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
@@ -313,6 +325,8 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
         }
       }
     }
+
+    await sendSslExpiryWarning(monitor, result, rca);
   }
 
   if (!result.ok && failureEventMessage) {
@@ -609,6 +623,49 @@ function isRepeatedSlowResponse(monitor: Monitor, result: Awaited<ReturnType<typ
 
 function supportsSlowResponseThreshold(monitor: Monitor) {
   return monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json";
+}
+
+async function sendSslExpiryWarning(
+  monitor: Monitor,
+  result: Awaited<ReturnType<typeof checkMonitor>>,
+  rca: ReturnType<typeof analyzeRootCause>
+) {
+  const message = buildSslExpiryMessage(monitor, result);
+  if (!message) {
+    return;
+  }
+
+  const notificationSent = await sendMonitorNotifications({
+    kind: "ssl-expiry",
+    message,
+    monitor,
+    result,
+    rca,
+  });
+
+  if (notificationSent) {
+    await appendDetailedEvent(monitor, result, "ssl-expiry", message, rca, "up");
+    await appendDetailedEvent(monitor, result, "ssl-expiry-notification", message, rca, "up");
+  }
+}
+
+function buildSslExpiryMessage(monitor: Monitor, result: Awaited<ReturnType<typeof checkMonitor>>) {
+  if (!monitor.checkSslExpiry || !result.sslExpiresAt) {
+    return null;
+  }
+
+  const remainingMs = result.sslExpiresAt.getTime() - result.checkedAt.getTime();
+  if (remainingMs > SSL_EXPIRY_WARNING_DAYS * DAY_MS) {
+    return null;
+  }
+
+  const expiryDate = result.sslExpiresAt.toISOString().slice(0, 10);
+  if (remainingMs <= 0) {
+    return `TLS certificate expired on ${expiryDate}.`;
+  }
+
+  const remainingDays = Math.max(1, Math.ceil(remainingMs / DAY_MS));
+  return `TLS certificate expires in ${remainingDays} day${remainingDays === 1 ? "" : "s"} on ${expiryDate}.`;
 }
 
 function buildFailureEventMessage(result: Awaited<ReturnType<typeof checkMonitor>>) {

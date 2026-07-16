@@ -14,7 +14,7 @@ import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { createCompany, listCompanies } from "@/lib/companies/service";
 import { db } from "@/lib/db";
-import { companies, monitorChecks, monitorEvents, monitorIncidents, monitors } from "@/lib/db/schema";
+import { companies, monitorChecks, monitorEvents, monitorIncidents, monitors, userSettings } from "@/lib/db/schema";
 import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 
@@ -25,11 +25,20 @@ export async function buildWorkspaceBackupBundle(userId: string): Promise<Worksp
     listMonitors(userId),
   ]);
 
+  const exportedAt = new Date().toISOString();
+  const resolvedSettings = settings ?? DEFAULT_SETTINGS;
+
   return {
     version: 1,
-    exportedAt: new Date().toISOString(),
+    exportedAt,
     source: "sentrovia",
-    settings: settings ?? DEFAULT_SETTINGS,
+    settings: {
+      ...resolvedSettings,
+      data: {
+        ...resolvedSettings.data,
+        lastBackupAt: exportedAt,
+      },
+    },
     companies: companyRows.map((company) => ({
       name: company.name,
       description: company.description ?? "",
@@ -41,6 +50,22 @@ export async function buildWorkspaceBackupBundle(userId: string): Promise<Worksp
 
 export function serializeWorkspaceBackup(bundle: WorkspaceBackupBundle, format: "json" | "yaml") {
   return format === "yaml" ? stringify(bundle) : JSON.stringify(bundle, null, 2);
+}
+
+export async function recordWorkspaceBackupExport(userId: string, exportedAt: string) {
+  const timestamp = new Date(exportedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    throw new Error("The workspace backup timestamp is invalid.");
+  }
+
+  const updatedAt = new Date();
+  await db
+    .insert(userSettings)
+    .values({ userId, lastBackupAt: timestamp, updatedAt })
+    .onConflictDoUpdate({
+      target: userSettings.userId,
+      set: { lastBackupAt: timestamp, updatedAt },
+    });
 }
 
 export function parseWorkspaceBackup(raw: string, format: "json" | "yaml") {
@@ -68,13 +93,7 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
   const validated = validateWorkspaceBackupBundle(bundle);
 
   await db.transaction(async (tx) => {
-    await upsertSettings(userId, {
-      ...validated.settings,
-      data: {
-        ...validated.settings.data,
-        lastBackupAt: new Date().toISOString(),
-      },
-    }, tx, true);
+    await upsertSettings(userId, validated.settings, tx, true);
 
     await tx.delete(monitorChecks).where(eq(monitorChecks.userId, userId));
     await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));

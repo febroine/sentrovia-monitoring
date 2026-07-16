@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { getActiveSessionUser } from "@/lib/auth/service";
 import { getDashboardData } from "@/lib/dashboard/service";
 
 export const runtime = "nodejs";
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
 
   const encoder = new TextEncoder();
   let closed = false;
+  let frameInProgress = false;
   let interval: ReturnType<typeof setInterval> | null = null;
 
   function cleanup() {
@@ -28,16 +30,28 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const sendFrame = async () => {
-        if (closed) {
+        if (closed || frameInProgress) {
           return;
         }
 
-        const payload = await getDashboardData(session.id);
-        if (closed) {
-          return;
-        }
+        frameInProgress = true;
+        try {
+          const activeSession = await getActiveSessionUser(session.id, session.sessionVersion);
+          if (!activeSession) {
+            cleanup();
+            controller.close();
+            return;
+          }
 
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+          const payload = await getDashboardData(activeSession.id);
+          if (closed) {
+            return;
+          }
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        } finally {
+          frameInProgress = false;
+        }
       };
 
       request.signal.addEventListener("abort", cleanup, { once: true });
@@ -47,6 +61,10 @@ export async function GET(request: NextRequest) {
       }
 
       await sendFrame();
+      if (closed) {
+        return;
+      }
+
       interval = setInterval(() => {
         void sendFrame().catch((error) => {
           if (closed) {

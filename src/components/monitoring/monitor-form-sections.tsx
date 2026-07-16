@@ -479,6 +479,9 @@ export function CheckMonitorSettings({
               ))}
             </SelectContent>
           </Select>
+          <p className="text-[11px] text-muted-foreground">
+            Maximum number of prolonged-downtime reminders after the confirmed outage alert.
+          </p>
         </Field>
       </div>
 
@@ -561,7 +564,7 @@ export function CheckMonitorSettings({
         <div className="space-y-2">
           <CheckRow
             label="Check SSL expiry"
-            description="Alert before the certificate expires."
+            description="Send a daily warning during the final 30 days before certificate expiry."
             checked={values.checkSslExpiry}
             onChange={(checked) => onFieldChange("checkSslExpiry", checked)}
           />
@@ -576,18 +579,6 @@ export function CheckMonitorSettings({
             description="Append a random query string to bypass caches."
             checked={values.cacheBuster}
             onChange={(checked) => onFieldChange("cacheBuster", checked)}
-          />
-          <CheckRow
-            label="Save error pages"
-            description="Keep the response body for failed checks."
-            checked={values.saveErrorPages}
-            onChange={(checked) => onFieldChange("saveErrorPages", checked)}
-          />
-          <CheckRow
-            label="Save success pages"
-            description="Store successful responses for audit/debugging."
-            checked={values.saveSuccessPages}
-            onChange={(checked) => onFieldChange("saveSuccessPages", checked)}
           />
         </div>
       ) : isHeartbeatMonitor ? (

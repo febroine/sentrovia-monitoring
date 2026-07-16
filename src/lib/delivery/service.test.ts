@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   updateReturning: vi.fn(),
   db: {
     insert: vi.fn(),
+    select: vi.fn(),
     update: vi.fn(),
   },
   getSettings: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/lib/settings/service", () => ({
 
 import {
   readLimitedResponseText,
+  retryWebhookQueueForAllUsers,
   sendChannelWebhookDelivery,
   sendEmailDelivery,
   sendTelegramDelivery,
@@ -115,6 +117,18 @@ describe("delivery service", () => {
     const response = new Response("abc");
 
     await expect(readLimitedResponseText(response, 3)).resolves.toBe("abc");
+  });
+
+  it("does not let disabled webhook endpoints occupy the global retry batch", async () => {
+    const where = vi.fn().mockResolvedValue([]);
+    mocks.db.select.mockReturnValueOnce({
+      from: vi.fn(() => ({ where })),
+    });
+
+    await expect(retryWebhookQueueForAllUsers()).resolves.toEqual({ processed: 0 });
+
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledTimes(1);
   });
 
   it("fails telegram delivery without calling Telegram when credentials are missing", async () => {

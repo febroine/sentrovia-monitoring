@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3 } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3, HeartPulse } from 'lucide-react';
 import { SentroviaMark } from '@/components/brand/sentrovia-mark';
 import LogoutButton from '@/components/logout-button';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ const navItems = [
   { href: '/companies', i18nKey: 'nav.companies', icon: Building2 },
   { href: '/logs', i18nKey: 'nav.logs', icon: ScrollText },
   { href: '/delivery', i18nKey: 'nav.delivery', icon: BellRing },
+  { href: '/system-health', i18nKey: 'nav.systemHealth', icon: HeartPulse, adminOnly: true },
   { href: '/reports', i18nKey: 'nav.reports', icon: BarChart3 },
   { href: '/status-codes', i18nKey: 'nav.statusCodes', icon: Binary },
   { href: '/members', i18nKey: 'nav.members', icon: UsersRound },
@@ -96,6 +97,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
   const [accent, setAccent] = useState<SidebarAccent>('emerald');
+  const [isAdmin, setIsAdmin] = useState(false);
   const palette = accentClasses[accent];
 
   useEffect(() => {
@@ -111,9 +113,12 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
     void fetch('/api/settings', { cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) return null;
-        const data = (await response.json()) as { settings?: { appearance?: { sidebarAccent?: SidebarAccent } } };
+        const data = (await response.json()) as { settings?: { appearance?: { sidebarAccent?: SidebarAccent }; profile?: { role?: string } } };
         if (active && data.settings?.appearance?.sidebarAccent) {
           setAccent(data.settings.appearance.sidebarAccent);
+        }
+        if (active) {
+          setIsAdmin(data.settings?.profile?.role === 'admin');
         }
         return null;
       })
@@ -155,7 +160,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
         </div>
 
         <nav className="flex flex-col gap-1.5">
-          {navItems.map(({ href, i18nKey, icon: Icon }) => {
+          {navItems.filter((item) => !item.adminOnly || isAdmin).map(({ href, i18nKey, icon: Icon }) => {
             const isActive = pathname === href;
             return (
               <Link

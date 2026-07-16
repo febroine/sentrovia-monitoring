@@ -54,7 +54,21 @@ describe("monitor config export redaction", () => {
 
     expect(exported.heartbeatToken).toBe("");
     expect(exported.telegramBotToken).toBe("");
-    expect(exported.telegramChatId).toBe("-1001234567890");
-    expect(exported.notificationPref).toBe("both");
+    expect(exported.telegramChatId).toBe("");
+    expect(exported.notificationPref).toBe("email");
+  });
+
+  it("disables telegram-only delivery when its secret is redacted", () => {
+    const exported = redactMonitorExportSecrets({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Telegram monitor",
+      notificationPref: "telegram",
+      telegramBotToken: "123456:secret-token",
+      telegramChatId: "-1001234567890",
+    });
+
+    expect(exported.notificationPref).toBe("none");
+    expect(exported.telegramBotToken).toBe("");
+    expect(exported.telegramChatId).toBe("");
   });
 });

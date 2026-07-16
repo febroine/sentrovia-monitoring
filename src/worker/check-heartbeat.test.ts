@@ -7,7 +7,7 @@ describe("heartbeat monitor checks", () => {
     vi.useRealTimers();
   });
 
-  it("reports heartbeat age in milliseconds", async () => {
+  it("does not report heartbeat age as network latency", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-10T10:05:00.000Z"));
 
@@ -18,6 +18,6 @@ describe("heartbeat monitor checks", () => {
     } as Monitor);
 
     expect(result.ok).toBe(true);
-    expect(result.latencyMs).toBe(300_000);
+    expect(result.latencyMs).toBeNull();
   });
 });

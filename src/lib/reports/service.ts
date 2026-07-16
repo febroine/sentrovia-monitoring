@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type Mail from "nodemailer/lib/mailer";
+import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
 import { companies, monitorChecks, monitorEvents, monitors, reportSchedules } from "@/lib/db/schema";
@@ -157,8 +158,27 @@ export async function updateReportSchedule(
       ...normalizeReportDeliveryOptions({ ...existing, ...input }),
       updatedAt: new Date(),
     })
-    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)))
+    .where(
+      and(
+        eq(reportSchedules.id, scheduleId),
+        eq(reportSchedules.userId, userId),
+        reportScheduleClaimAvailable(new Date())
+      )
+    )
     .returning();
+
+  if (!updated) {
+    const [current] = await db
+      .select({ id: reportSchedules.id })
+      .from(reportSchedules)
+      .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+
+    if (current) {
+      throw new AuthError("Wait for the current report delivery to finish before updating this schedule.", 409);
+    }
+
+    return null;
+  }
 
   return serializeSchedule(updated, await resolveCompanyName(userId, companyId));
 }
@@ -205,12 +225,32 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
 }
 
 export async function deleteReportSchedule(userId: string, scheduleId: string) {
+  const now = new Date();
   const [deleted] = await db
     .delete(reportSchedules)
-    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)))
+    .where(
+      and(
+        eq(reportSchedules.id, scheduleId),
+        eq(reportSchedules.userId, userId),
+        reportScheduleClaimAvailable(now)
+      )
+    )
     .returning({ id: reportSchedules.id });
 
-  return deleted ?? null;
+  if (deleted) {
+    return deleted;
+  }
+
+  const [existing] = await db
+    .select({ id: reportSchedules.id })
+    .from(reportSchedules)
+    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+
+  if (existing) {
+    throw new AuthError("Wait for the current report delivery to finish before deleting this schedule.", 409);
+  }
+
+  return null;
 }
 
 export async function generateReportPreview(
@@ -391,31 +431,26 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
     return null;
   }
 
+  const claimedSchedule = await claimReportScheduleForManualSend(userId, scheduleId, now);
+  if (!claimedSchedule) {
+    throw new AuthError("This report schedule is already being delivered.", 409);
+  }
+
+  let result: Awaited<ReturnType<typeof dispatchReportNow>>;
   try {
-    const result = await dispatchReportNow(
+    result = await dispatchReportNow(
       userId,
       {
-        scope: schedule.scope,
-        cadence: schedule.cadence,
-        template: schedule.template,
-        companyId: schedule.companyId,
-        ...scheduleToDeliveryInput(schedule),
+        scope: claimedSchedule.scope as ReportPreviewInput["scope"],
+        cadence: claimedSchedule.cadence as ReportCadence,
+        template: claimedSchedule.template as ReportTemplateVariant,
+        companyId: claimedSchedule.companyId,
+        ...scheduleToDeliveryInput(claimedSchedule),
       },
-      schedule.recipientEmails
+      claimedSchedule.recipientEmails
     );
-    const updatedSchedule = await updateScheduleDeliveryState(scheduleId, {
-      lastRunAt: now,
-      lastDeliveredAt: now,
-      lastStatus: "delivered",
-      lastErrorMessage: null,
-    });
-
-    return {
-      ...result,
-      schedule: serializeSchedule(updatedSchedule, schedule.companyName),
-    };
   } catch (error) {
-    const updatedSchedule = await updateScheduleDeliveryState(scheduleId, {
+    const updatedSchedule = await completeManualReportSchedule(userId, claimedSchedule, {
       lastRunAt: now,
       lastStatus: "failed",
       lastErrorMessage: toMessage(error),
@@ -424,10 +459,22 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
     return {
       report: null,
       delivery: null,
-      schedule: serializeSchedule(updatedSchedule, schedule.companyName),
+      schedule: serializeCompletedManualSchedule(updatedSchedule, schedule.companyName),
       message: toMessage(error),
     };
   }
+
+  const updatedSchedule = await completeManualReportSchedule(userId, claimedSchedule, {
+    lastRunAt: now,
+    lastDeliveredAt: now,
+    lastStatus: "delivered",
+    lastErrorMessage: null,
+  });
+
+  return {
+    ...result,
+    schedule: serializeCompletedManualSchedule(updatedSchedule, schedule.companyName),
+  };
 }
 
 async function loadScopedReportData(userId: string, input: ReportPreviewInput, now: Date) {
@@ -1431,6 +1478,30 @@ async function claimDueReportSchedule(
   return claimed ?? null;
 }
 
+async function claimReportScheduleForManualSend(userId: string, scheduleId: string, now: Date) {
+  const claimToken = crypto.randomUUID();
+  const [claimed] = await db
+    .update(reportSchedules)
+    .set({
+      lastRunAt: now,
+      lastStatus: "running",
+      lastErrorMessage: null,
+      claimToken,
+      claimExpiresAt: new Date(now.getTime() + REPORT_CLAIM_LEASE_MS),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(reportSchedules.id, scheduleId),
+        eq(reportSchedules.userId, userId),
+        reportScheduleClaimAvailable(now)
+      )
+    )
+    .returning();
+
+  return claimed ?? null;
+}
+
 function reportScheduleClaimAvailable(now: Date) {
   return or(
     ne(reportSchedules.lastStatus, "running"),
@@ -1480,8 +1551,9 @@ function advanceOneMonthClamped(value: Date) {
   value.setDate(Math.min(dayOfMonth, lastDayOfTargetMonth));
 }
 
-async function updateScheduleDeliveryState(
-  scheduleId: string,
+async function completeManualReportSchedule(
+  userId: string,
+  claimedSchedule: typeof reportSchedules.$inferSelect,
   values: {
     lastRunAt: Date;
     lastDeliveredAt?: Date | null;
@@ -1493,12 +1565,31 @@ async function updateScheduleDeliveryState(
     .update(reportSchedules)
     .set({
       ...values,
+      claimToken: null,
+      claimExpiresAt: null,
       updatedAt: new Date(),
     })
-    .where(eq(reportSchedules.id, scheduleId))
+    .where(
+      and(
+        eq(reportSchedules.id, claimedSchedule.id),
+        eq(reportSchedules.userId, userId),
+        eq(reportSchedules.claimToken, claimedSchedule.claimToken ?? "")
+      )
+    )
     .returning();
 
-  return updated;
+  return updated ?? null;
+}
+
+function serializeCompletedManualSchedule(
+  schedule: typeof reportSchedules.$inferSelect | null,
+  companyName: string | null
+) {
+  if (!schedule) {
+    throw new Error("The report delivery finished, but its schedule state could not be finalized.");
+  }
+
+  return serializeSchedule(schedule, companyName);
 }
 
 async function resolveReportBrandName(userId: string, override: string | null | undefined) {

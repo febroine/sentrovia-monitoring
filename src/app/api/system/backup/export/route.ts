@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth/authorization";
 import { toAuthError } from "@/lib/auth/errors";
-import { buildWorkspaceBackupBundle, serializeWorkspaceBackup } from "@/lib/system/backup-service";
+import {
+  buildWorkspaceBackupBundle,
+  recordWorkspaceBackupExport,
+  serializeWorkspaceBackup,
+} from "@/lib/system/backup-service";
 
 export const runtime = "nodejs";
 
@@ -12,6 +16,13 @@ export async function GET(request: NextRequest) {
     const format = request.nextUrl.searchParams.get("format") === "yaml" ? "yaml" : "json";
     const bundle = await buildWorkspaceBackupBundle(session.id);
     const body = serializeWorkspaceBackup(bundle, format);
+    try {
+      await recordWorkspaceBackupExport(session.id, bundle.exportedAt);
+    } catch (error) {
+      console.warn(
+        `[sentrovia] Workspace backup timestamp could not be recorded: ${error instanceof Error ? error.message : "unknown error"}`
+      );
+    }
 
     return new NextResponse(body, {
       status: 200,

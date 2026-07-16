@@ -6,12 +6,13 @@ import {
   sendTelegramDelivery,
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
-import { hasRecentMonitorEvent } from "@/lib/monitors/service";
+import { countMonitorEvents, hasRecentMonitorEvent } from "@/lib/monitors/service";
 import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
 
 type NotificationDeliveryResult = { status: string } | null | undefined;
+const SSL_EXPIRY_DEDUP_MINUTES = 24 * 60;
 
 export async function sendMonitorNotifications(context: NotificationContext) {
   if (!(await shouldSendNotification(context))) {
@@ -140,6 +141,14 @@ async function shouldSendNotification(context: NotificationContext) {
     );
   }
 
+  if (context.kind === "ssl-expiry") {
+    return await shouldSendByKind(
+      context.monitor.checkSslExpiry,
+      Math.max(settings.notifications.alertDedupMinutes, SSL_EXPIRY_DEDUP_MINUTES),
+      context
+    );
+  }
+
   if (context.kind === "failure") {
     return await shouldSendFailureNotification(settings.notifications.notifyOnDown, context);
   }
@@ -192,7 +201,7 @@ async function shouldSendByKind(enabled: boolean, dedupMinutes: number, context:
 }
 
 function resolveNotificationMarkerEventType(kind: NotificationContext["kind"]) {
-  if (kind === "latency" || kind === "status-change") {
+  if (kind === "latency" || kind === "ssl-expiry" || kind === "status-change") {
     return `${kind}-notification`;
   }
 
@@ -200,7 +209,12 @@ function resolveNotificationMarkerEventType(kind: NotificationContext["kind"]) {
 }
 
 async function shouldSendDowntimeReminder(settings: Awaited<ReturnType<typeof getSettings>>, context: NotificationContext) {
-  if (!settings?.notifications.prolongedDowntimeEnabled || !context.monitor.lastFailureAt) {
+  const reminderLimit = context.monitor.renotifyCount ?? 0;
+  if (
+    !settings?.notifications.prolongedDowntimeEnabled
+    || !context.monitor.lastFailureAt
+    || reminderLimit <= 0
+  ) {
     return false;
   }
 
@@ -211,6 +225,16 @@ async function shouldSendDowntimeReminder(settings: Awaited<ReturnType<typeof ge
   }
 
   if (context.result.checkedAt.getTime() - downtimeStartedAt.getTime() < intervalMinutes * 60 * 1_000) {
+    return false;
+  }
+
+  const sentReminderCount = await countMonitorEvents({
+    monitorId: context.monitor.id,
+    eventType: context.kind,
+    since: downtimeStartedAt,
+    before: context.result.checkedAt,
+  });
+  if (sentReminderCount >= reminderLimit) {
     return false;
   }
 

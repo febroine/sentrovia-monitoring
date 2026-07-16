@@ -10,6 +10,7 @@ import {
   Search,
   Tags,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { MonitorConfigDialog } from "@/components/monitoring/monitor-config-dialog";
 import { MonitorForm } from "@/components/monitoring/monitor-form";
@@ -35,10 +36,19 @@ import {
   type MonitorRecord,
 } from "@/lib/monitors/types";
 import type { SettingsPayload } from "@/lib/settings/types";
+import { showToast } from "@/lib/client-toast";
 import { useMonitoringStore } from "@/stores/use-monitoring-store";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const;
 const PAGE_NUMBER_WINDOW = 5;
+const BULK_ACTION_DELAY_MS = 10_000;
+
+interface PendingBulkAction {
+  title: string;
+  detail: string;
+  expiresAt: number;
+  execute: () => Promise<void>;
+}
 
 export default function MonitoringPage() {
   const {
@@ -77,6 +87,8 @@ export default function MonitoringPage() {
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
   const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
+  const [pendingBulkAction, setPendingBulkAction] = useState<PendingBulkAction | null>(null);
+  const [bulkActionSeconds, setBulkActionSeconds] = useState(0);
 
   const companyFilters = useMemo(
     () => ["all", ...Array.from(new Set(monitors.map((monitor) => monitor.company).filter(Boolean)))],
@@ -167,6 +179,31 @@ export default function MonitoringPage() {
   }, [refreshMonitoring]);
 
   useEffect(() => {
+    if (!pendingBulkAction) {
+      setBulkActionSeconds(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      setBulkActionSeconds(Math.max(0, Math.ceil((pendingBulkAction.expiresAt - Date.now()) / 1_000)));
+    };
+    updateCountdown();
+    const countdownId = window.setInterval(updateCountdown, 250);
+    const executionId = window.setTimeout(() => {
+      const action = pendingBulkAction;
+      setPendingBulkAction(null);
+      void action.execute().catch((actionError) => {
+        showToast(actionError instanceof Error ? actionError.message : "Bulk operation failed.", "error");
+      });
+    }, Math.max(0, pendingBulkAction.expiresAt - Date.now()));
+
+    return () => {
+      window.clearInterval(countdownId);
+      window.clearTimeout(executionId);
+    };
+  }, [pendingBulkAction]);
+
+  useEffect(() => {
     const search = typeof window === "undefined" ? "" : window.location.search;
     const params = new URLSearchParams(search);
 
@@ -199,12 +236,22 @@ export default function MonitoringPage() {
   }
 
   async function handleBulkUpdate(payload: MonitorPayload) {
-    const updated = await bulkUpdateMonitors(Array.from(selectedIds), payload);
-    if (updated.length > 0) {
-      await refreshMonitoring();
-      setBulkEditOpen(false);
-      setSelectedIds(new Set());
+    const ids = Array.from(selectedIds);
+    if (!queueBulkAction(
+      `Bulk edit scheduled for ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+      "Schedule, check, notification, tag, and template settings will be updated.",
+      async () => {
+        const updated = await bulkUpdateMonitors(ids, payload);
+        if (updated.length > 0) {
+          await refreshMonitoring();
+          setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
+        }
+      }
+    )) {
+      return;
     }
+
+    setBulkEditOpen(false);
   }
 
   async function handleToggleMonitorActive(monitor: MonitorRecord) {
@@ -241,13 +288,47 @@ export default function MonitoringPage() {
       return;
     }
 
-    const deletedIds = await deleteMonitors(deleteTargetIds);
-    if (deletedIds.length > 0) {
-      await refreshMonitoring();
-      const deletedIdSet = new Set(deletedIds);
-      setSelectedIds((current) => new Set(Array.from(current).filter((id) => !deletedIdSet.has(id))));
-      setDeleteTargetIds((current) => current.filter((id) => !deletedIdSet.has(id)));
+    const ids = [...deleteTargetIds];
+    if (!queueBulkAction(
+      `Deletion scheduled for ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+      "Monitor configuration and related history will be permanently deleted after the countdown.",
+      async () => {
+        const deletedIds = await deleteMonitors(ids);
+        if (deletedIds.length > 0) {
+          await refreshMonitoring();
+          setSelectedIds((current) => removeIds(current, deletedIds));
+        }
+      }
+    )) {
+      return;
     }
+
+    setDeleteTargetIds([]);
+  }
+
+  function queueBulkAction(title: string, detail: string, execute: () => Promise<void>) {
+    if (pendingBulkAction) {
+      showToast("Finish or undo the pending bulk operation first.", "error");
+      return false;
+    }
+
+    setPendingBulkAction({
+      title,
+      detail,
+      expiresAt: Date.now() + BULK_ACTION_DELAY_MS,
+      execute,
+    });
+    showToast("Bulk operation scheduled. You have 10 seconds to undo it.", "info");
+    return true;
+  }
+
+  function undoPendingBulkAction() {
+    if (!pendingBulkAction) {
+      return;
+    }
+
+    setPendingBulkAction(null);
+    showToast("Bulk operation cancelled. No changes were made.", "success");
   }
 
   function toggleAll() {
@@ -323,6 +404,18 @@ export default function MonitoringPage() {
         </div>
       ) : null}
 
+      {pendingBulkAction ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{pendingBulkAction.title}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{pendingBulkAction.detail} Running in {bulkActionSeconds}s. Keep this page open during the countdown.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={undoPendingBulkAction}>
+            <Undo2 /> Undo
+          </Button>
+        </div>
+      ) : null}
+
       {workspaceSettings?.profile.role === "admin" ? <WorkerPulseCard /> : null}
       <MonitorStats monitors={monitors} />
 
@@ -381,17 +474,17 @@ export default function MonitoringPage() {
         <div className="flex flex-col gap-3 rounded-lg border border-primary/20 border-r-2 border-r-primary/45 bg-primary/10 px-4 py-2.5 shadow-[inset_-10px_0_18px_-18px_rgba(99,102,241,0.75)] sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">{selectedIds.size} monitor selected</span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)} disabled={Boolean(pendingBulkAction)}>
               Bulk Edit
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)} disabled={Boolean(pendingBulkAction)}>
               <Tags className="mr-1 size-3.5" />
               Tags
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
+            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())} disabled={Boolean(pendingBulkAction)}>
               Clear
             </Button>
-            <Button variant="destructive" size="sm" onClick={openDeleteConfirmation} disabled={saving}>
+            <Button variant="destructive" size="sm" onClick={openDeleteConfirmation} disabled={saving || Boolean(pendingBulkAction)}>
               <Trash2 className="mr-1 size-3.5" />
               Delete selected
             </Button>
@@ -497,6 +590,7 @@ export default function MonitoringPage() {
               companies={companies}
               savedEmails={savedEmails}
               submitting={saving}
+              monitorId={editingMonitor.id}
               submitLabel="Save changes"
               onCancel={() => setEditingMonitor(null)}
               onSubmit={handleUpdate}
@@ -514,6 +608,9 @@ export default function MonitoringPage() {
               fields stay unchanged.
             </DialogDescription>
           </DialogHeader>
+          <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            Impact: {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}. Identity fields and targets remain unchanged. The operation waits 10 seconds before it is applied.
+          </div>
           {selectedIds.size > 0 ? (
             <MonitorForm
               initialValue={bulkEditTemplate}
@@ -534,7 +631,7 @@ export default function MonitoringPage() {
           <DialogHeader>
             <DialogTitle>Delete monitor{deleteTargets.length === 1 ? "" : "s"}?</DialogTitle>
             <DialogDescription>
-              This permanently removes the selected monitor{deleteTargets.length === 1 ? "" : "s"} and related monitoring history. This action cannot be undone.
+              This permanently removes the selected monitor{deleteTargets.length === 1 ? "" : "s"} and related monitoring history after a 10-second undo window.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
@@ -598,17 +695,28 @@ export default function MonitoringPage() {
         onOpenChange={setTagPatchOpen}
         selectedCount={selectedIds.size}
         onApply={async ({ action, tags }) => {
-          const response = await fetch("/api/monitors/tags", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ids: Array.from(selectedIds), action, tags }),
-          });
-          const data = await readJsonOrNull<{ message?: string }>(response);
-          if (!response.ok) {
-            throw new Error(data?.message ?? "Unable to update monitor tags.");
-          }
+          const ids = Array.from(selectedIds);
+          if (!queueBulkAction(
+            `${formatTagAction(action)} scheduled for ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+            `Tags: ${tags.join(", ")}. The operation waits 10 seconds before it is applied.`,
+            async () => {
+              const response = await fetch("/api/monitors/tags", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids, action, tags }),
+              });
+              const data = await readJsonOrNull<{ message?: string }>(response);
+              if (!response.ok) {
+                throw new Error(data?.message ?? "Unable to update monitor tags.");
+              }
 
-          await refreshMonitoring();
+              await refreshMonitoring();
+              setSelectedIds((current) => removeIds(current, ids));
+              showToast("Monitor tags updated.", "success");
+            }
+          )) {
+            throw new Error("Another bulk operation is already pending.");
+          }
         }}
       />
     </div>
@@ -625,5 +733,16 @@ function buildVisiblePages(currentPage: number, totalPages: number, windowSize: 
 
 async function readJsonOrNull<T>(response: Response) {
   return (await response.json().catch(() => null)) as T | null;
+}
+
+function removeIds(current: Set<string>, ids: string[]) {
+  const removed = new Set(ids);
+  return new Set(Array.from(current).filter((id) => !removed.has(id)));
+}
+
+function formatTagAction(action: "add" | "remove" | "replace") {
+  if (action === "add") return "Tag addition";
+  if (action === "remove") return "Tag removal";
+  return "Tag replacement";
 }
 

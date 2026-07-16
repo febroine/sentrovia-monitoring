@@ -230,6 +230,38 @@ describe("notification templates", () => {
     expect(reminder.subject).toContain("3h süredir DOWN");
     expect(reminder.telegramBody).toContain("Servis 3s 0dk süredir down.");
   });
+
+  it("localizes SSL expiry warnings in Turkish", () => {
+    const baseContext = buildContext({ checkSslExpiry: true });
+    const rendered = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "ssl-expiry",
+        message: "TLS certificate expires in 10 days on 2026-05-23.",
+        result: {
+          ...baseContext.result,
+          ok: true,
+          status: "up",
+          statusCode: 200,
+          errorMessage: null,
+          failureReason: null,
+          sslExpiresAt: new Date("2026-05-23T08:00:00.000Z"),
+        },
+      },
+      {
+        ...DEFAULT_SETTINGS,
+        notifications: {
+          ...DEFAULT_SETTINGS.notifications,
+          notificationLanguage: "tr",
+        },
+      },
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.subject).toContain("SSL SÜRESİ DOLUYOR");
+    expect(rendered.textBody).toContain("TLS sertifikasının süresi 2026-05-23 tarihinde, 10 gün içinde dolacak.");
+    expect(rendered.telegramBody).toContain("TLS sertifikasının süresi 2026-05-23 tarihinde, 10 gün içinde dolacak.");
+  });
 });
 
 function buildContext(monitorOverrides: Partial<Monitor> = {}): NotificationContext {
