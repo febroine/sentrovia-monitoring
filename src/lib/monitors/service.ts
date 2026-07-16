@@ -40,8 +40,8 @@ const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 export const SOFT_DELETE_UNDO_MS = 60_000;
 
-export async function listMonitors(userId: string) {
-  return db
+export async function listMonitors(userId: string, database: DatabaseExecutor = db) {
+  return database
     .select()
     .from(monitors)
     .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)))
@@ -909,7 +909,12 @@ export async function getCompanySlaReport(userId: string, companyId: string) {
       status: monitors.status,
     })
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId), eq(monitors.isActive, true)));
+    .where(and(
+      eq(monitors.userId, userId),
+      eq(monitors.companyId, companyId),
+      eq(monitors.isActive, true),
+      isNull(monitors.deletedAt)
+    ));
 
   const monitorIds = companyMonitors.map((monitor) => monitor.id);
   const [periods, recentChecks] = await Promise.all([
@@ -947,7 +952,12 @@ export async function getCompanyMonthlyUptimeReport(userId: string, companyId: s
   const companyMonitors = await db
     .select({ id: monitors.id })
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId), eq(monitors.isActive, true)));
+    .where(and(
+      eq(monitors.userId, userId),
+      eq(monitors.companyId, companyId),
+      eq(monitors.isActive, true),
+      isNull(monitors.deletedAt)
+    ));
   const monitorIds = companyMonitors.map((monitor) => monitor.id);
 
   if (monitorIds.length === 0) {
@@ -1287,7 +1297,7 @@ function shouldPersistExpectedStatusCodes(
   return expectedStatusCodes || null;
 }
 
-async function assertMonitorNetworkTargetAllowed(monitorType: MonitorInput["monitorType"], url: string) {
+export async function assertMonitorNetworkTargetAllowed(monitorType: MonitorInput["monitorType"], url: string) {
   if (monitorType === "heartbeat") {
     return;
   }

@@ -105,8 +105,9 @@ export function BackupRestorePanel({
             <CardTitle className="text-base">Backup and Restore</CardTitle>
             <CardDescription>
               Export workspace configuration or paste a backup bundle to restore monitors, companies, and settings.
-              Secrets are not exported: Telegram delivery is disabled in the bundle, while PostgreSQL and SMTP
-              credentials must be re-entered before restore.
+              Secrets are not exported. Existing matching PostgreSQL and SMTP credentials are preserved when
+              restoring this workspace; a fresh deployment requires those credentials to be entered again.
+              Telegram delivery is disabled in the exported bundle.
               Restore accepts up to {WORKSPACE_BACKUP_IMPORT_LIMITS.maxBytesLabel},{" "}
               {WORKSPACE_BACKUP_IMPORT_LIMITS.maxCompanies} companies, and{" "}
               {WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors} monitors.

@@ -497,8 +497,13 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
     .leftJoin(companies, eq(monitors.companyId, companies.id))
     .where(
       input.scope === "company" && company
-        ? and(eq(monitors.userId, userId), eq(monitors.companyId, company.id), eq(monitors.isActive, true))
-        : and(eq(monitors.userId, userId), eq(monitors.isActive, true))
+        ? and(
+            eq(monitors.userId, userId),
+            eq(monitors.companyId, company.id),
+            eq(monitors.isActive, true),
+            isNull(monitors.deletedAt)
+          )
+        : and(eq(monitors.userId, userId), eq(monitors.isActive, true), isNull(monitors.deletedAt))
     )
     .orderBy(asc(monitors.name));
 

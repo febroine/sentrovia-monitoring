@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_MONITOR_FORM, type WorkspaceBackupBundle } from "@/lib/monitors/types";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
+import { encryptValue } from "@/lib/security/encryption";
 import {
   buildCompanyIdByName,
   buildWorkspaceRestorePreview,
   parseWorkspaceBackup,
   resolveRestoredCompanyId,
+  restorePostgresMonitorPasswords,
   validateWorkspaceBackupBundle,
 } from "@/lib/system/backup-service";
 import {
@@ -36,7 +38,7 @@ describe("workspace backup validation", () => {
     );
   });
 
-  it("rejects PostgreSQL monitors whose password was not included in the backup", () => {
+  it("preserves a matching PostgreSQL monitor password during restore", () => {
     const bundle = buildBackupBundle({
       monitors: [
         {
@@ -52,12 +54,37 @@ describe("workspace backup validation", () => {
       ],
     });
 
-    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
+    const validated = validateWorkspaceBackupBundle(bundle);
+    const restored = restorePostgresMonitorPasswords(validated.monitors, [{
+      monitorType: "postgres",
+      url: "postgres://monitor@db.example.com:5432/app",
+      databasePasswordEncrypted: encryptValue("database-secret"),
+    }]);
+
+    expect(restored[0].databasePassword).toBe("database-secret");
+  });
+
+  it("rejects a redacted PostgreSQL password when no matching secret exists", () => {
+    const bundle = buildBackupBundle({
+      monitors: [{
+        ...DEFAULT_MONITOR_FORM,
+        name: "Missing database",
+        monitorType: "postgres",
+        databaseHost: "missing.example.com",
+        databaseName: "app",
+        databaseUsername: "monitor",
+        databasePassword: "",
+        databasePasswordConfigured: true,
+      }],
+    });
+
+    const validated = validateWorkspaceBackupBundle(bundle);
+    expect(() => restorePostgresMonitorPasswords(validated.monitors, [])).toThrow(
       "PostgreSQL monitor passwords are not included in backups"
     );
   });
 
-  it("rejects SMTP settings whose password was not included in the backup", () => {
+  it("allows SMTP settings to preserve the existing encrypted password", () => {
     const bundle = buildBackupBundle({
       settings: {
         ...buildSettingsPayload(),
@@ -69,9 +96,7 @@ describe("workspace backup validation", () => {
       },
     });
 
-    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
-      "SMTP password is not included in workspace backups"
-    );
+    expect(validateWorkspaceBackupBundle(bundle).settings.notifications.smtpPasswordConfigured).toBe(true);
   });
 
   it("rejects workspace backups with too many companies", () => {

@@ -41,8 +41,7 @@ export async function POST(request: NextRequest) {
 
     const bundle = parseWorkspaceBackup(content, format);
     if (mode === "preview") {
-      const preview = await previewWorkspaceBackupRestore(session.id, bundle);
-      const workspaceRevision = await getWorkspaceRestoreRevision(session.id);
+      const { preview, workspaceRevision } = await previewWorkspaceBackupRestore(session.id, bundle);
       return NextResponse.json({
         preview,
         restoreToken: createWorkspaceRestoreToken(session.id, format, content, workspaceRevision),
@@ -55,7 +54,9 @@ export async function POST(request: NextRequest) {
     if (!verifyWorkspaceRestoreToken(body.restoreToken, session.id, format, content, workspaceRevision)) {
       return NextResponse.json({ message: "Workspace data changed or the restore analysis expired. Analyze the backup again." }, { status: 400 });
     }
-    const restored = await restoreWorkspaceBackup(session.id, bundle);
+    const restored = await restoreWorkspaceBackup(session.id, bundle, {
+      expectedRevision: workspaceRevision,
+    });
     return NextResponse.json({ restored });
   } catch (error) {
     if (isBackupPayloadError(error)) {

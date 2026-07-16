@@ -98,4 +98,19 @@ describe("monitor config import preview", () => {
     expect(preview.summary).toEqual({ added: 2, skipped: 0, invalid: 0 });
     expect(preview.items.map((item) => item.status)).toEqual(["added", "added"]);
   });
+
+  it("marks network-policy failures as invalid without reserving their targets", () => {
+    const inputs = [
+      { ...DEFAULT_MONITOR_FORM, name: "Blocked", url: "http://127.0.0.1/private" },
+      { ...DEFAULT_MONITOR_FORM, name: "Allowed", url: "https://allowed.example.com" },
+    ];
+    const preview = buildMonitorConfigImportPreview(
+      inputs,
+      [],
+      ["Monitor target is not allowed by the current network safety policy.", null]
+    );
+
+    expect(preview.summary).toEqual({ added: 1, skipped: 0, invalid: 1 });
+    expect(preview.items.map((item) => item.status)).toEqual(["invalid", "added"]);
+  });
 });

@@ -1,14 +1,14 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { parse, stringify } from "yaml";
+import { AuthError } from "@/lib/auth/errors";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import { companyInputSchema } from "@/lib/companies/schemas";
 import { redactMonitorExportSecrets } from "@/lib/monitors/config-service";
 import { createManyMonitors, listMonitors } from "@/lib/monitors/service";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
-import { toMonitorPayload } from "@/lib/monitors/targets";
-import { buildCanonicalMonitorTarget, buildMonitorIdentityKey } from "@/lib/monitors/targets";
-import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
+import { buildCanonicalMonitorTarget, buildMonitorIdentityKey, toMonitorPayload } from "@/lib/monitors/targets";
 import type { MonitorRecord, WorkspaceBackupBundle } from "@/lib/monitors/types";
+import { decryptValue } from "@/lib/security/encryption";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { settingsSchema } from "@/lib/settings/schemas";
@@ -25,6 +25,13 @@ import {
 } from "@/lib/db/schema";
 import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
+import { getWorkspaceRestoreRevision } from "@/lib/system/restore-approval";
+
+type ExistingPostgresMonitorSecret = {
+  monitorType: string;
+  url: string;
+  databasePasswordEncrypted: string | null;
+};
 
 export async function buildWorkspaceBackupBundle(userId: string): Promise<WorkspaceBackupBundle> {
   const [settings, companyRows, monitorRows] = await Promise.all([
@@ -93,7 +100,11 @@ export function parseWorkspaceBackup(raw: string, format: "json" | "yaml") {
   return parsed as WorkspaceBackupBundle;
 }
 
-export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBackupBundle) {
+export async function restoreWorkspaceBackup(
+  userId: string,
+  bundle: WorkspaceBackupBundle,
+  options: { expectedRevision?: string } = {}
+) {
   if (!bundle.settings || !Array.isArray(bundle.companies) || !Array.isArray(bundle.monitors)) {
     throw new Error("The backup file does not match the Sentrovia workspace format.");
   }
@@ -101,6 +112,21 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
   const validated = validateWorkspaceBackupBundle(bundle);
 
   await db.transaction(async (tx) => {
+    if (options.expectedRevision) {
+      const currentRevision = await getWorkspaceRestoreRevision(userId, tx);
+      if (currentRevision !== options.expectedRevision) {
+        throw new AuthError(
+          "Workspace data changed after the restore analysis. Analyze the backup again.",
+          409
+        );
+      }
+    }
+
+    const existingMonitorSecrets = await listExistingPostgresMonitorSecrets(userId, tx);
+    const restorableMonitors = restorePostgresMonitorPasswords(
+      validated.monitors,
+      existingMonitorSecrets
+    );
     const scheduleCompanyMappings = await tx
       .select({ scheduleId: reportSchedules.id, companyName: companies.name })
       .from(reportSchedules)
@@ -121,13 +147,13 @@ export async function restoreWorkspaceBackup(userId: string, bundle: WorkspaceBa
 
     const companyIdByName = buildCompanyIdByName(restoredCompanies);
     await remapReportScheduleCompanies(userId, scheduleCompanyMappings, companyIdByName, tx);
-    const restoredMonitors = validated.monitors.map((monitor) => ({
+    const restoredMonitors = restorableMonitors.map((monitor) => ({
       ...monitor,
       companyId: resolveRestoredCompanyId(monitor.company, companyIdByName),
     }));
 
     await createManyMonitors(userId, restoredMonitors, tx);
-  });
+  }, { isolationLevel: "serializable" });
 
   return {
     companies: await listCompanies(userId),
@@ -141,8 +167,6 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   const monitors = monitorInputSchema.array().parse(bundle.monitors);
 
   assertBackupItemCounts(companies.length, monitors.length);
-  assertRestorableSettingsSecrets(settings);
-  assertRestorablePostgresMonitorPasswords(monitors);
   assertUniqueCompanyNames(companies);
   assertMonitorCompanyReferences(monitors, companies);
   assertUniqueMonitorTargets(monitors);
@@ -150,19 +174,98 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   return { settings, companies, monitors };
 }
 
+export function restorePostgresMonitorPasswords(
+  incomingMonitors: MonitorInput[],
+  existingMonitors: ExistingPostgresMonitorSecret[]
+) {
+  const passwordsByTarget = new Map<string, string>();
+
+  for (const monitor of existingMonitors) {
+    if (monitor.monitorType !== "postgres" || !monitor.databasePasswordEncrypted) {
+      continue;
+    }
+
+    const password = decryptValue(monitor.databasePasswordEncrypted);
+    if (password) {
+      passwordsByTarget.set(
+        buildMonitorIdentityKey({ monitorType: "postgres", url: monitor.url }),
+        password
+      );
+    }
+  }
+
+  return incomingMonitors.map((monitor) => {
+    if (
+      monitor.monitorType !== "postgres"
+      || monitor.databasePassword.trim().length > 0
+      || !monitor.databasePasswordConfigured
+    ) {
+      return monitor;
+    }
+
+    const target = buildCanonicalMonitorTarget(monitor);
+    const password = passwordsByTarget.get(
+      buildMonitorIdentityKey({ monitorType: "postgres", url: target })
+    );
+    if (!password) {
+      throw new Error(
+        `PostgreSQL monitor passwords are not included in backups. Re-enter the password before restoring: ${monitor.name}`
+      );
+    }
+
+    return { ...monitor, databasePassword: password };
+  });
+}
+
+async function listExistingPostgresMonitorSecrets(
+  userId: string,
+  database: DatabaseExecutor
+) {
+  return database
+    .select({
+      monitorType: monitors.monitorType,
+      url: monitors.url,
+      databasePasswordEncrypted: monitors.databasePasswordEncrypted,
+    })
+    .from(monitors)
+    .where(and(eq(monitors.userId, userId), eq(monitors.monitorType, "postgres")));
+}
+
 export async function previewWorkspaceBackupRestore(userId: string, bundle: WorkspaceBackupBundle) {
   const validated = validateWorkspaceBackupBundle(bundle);
-  const [currentCompanies, currentMonitors, scheduleCompanyMappings] = await Promise.all([
-    listCompanies(userId),
-    listMonitors(userId),
-    db
-      .select({ companyName: companies.name })
-      .from(reportSchedules)
-      .innerJoin(companies, eq(reportSchedules.companyId, companies.id))
-      .where(and(eq(reportSchedules.userId, userId), isNotNull(reportSchedules.companyId))),
-  ]);
+  return db.transaction(async (tx) => {
+    const [
+      currentCompanies,
+      currentMonitors,
+      existingMonitorSecrets,
+      scheduleCompanyMappings,
+      workspaceRevision,
+    ] = await Promise.all([
+      listCompanies(userId, tx),
+      listMonitors(userId, tx),
+      listExistingPostgresMonitorSecrets(userId, tx),
+      tx
+        .select({ companyName: companies.name })
+        .from(reportSchedules)
+        .innerJoin(companies, eq(reportSchedules.companyId, companies.id))
+        .where(and(
+          eq(reportSchedules.userId, userId),
+          isNotNull(reportSchedules.companyId)
+        )),
+      getWorkspaceRestoreRevision(userId, tx),
+    ]);
 
-  return buildWorkspaceRestorePreview(validated, currentCompanies, currentMonitors, scheduleCompanyMappings);
+    restorePostgresMonitorPasswords(validated.monitors, existingMonitorSecrets);
+    return {
+      preview: buildWorkspaceRestorePreview(
+        validated,
+        currentCompanies,
+        currentMonitors,
+        scheduleCompanyMappings
+      ),
+      workspaceRevision,
+    };
+  }, { isolationLevel: "repeatable read", accessMode: "read only" });
 }
 
 export function buildWorkspaceRestorePreview(
@@ -241,15 +344,6 @@ function assertBackupItemCounts(companyCount: number, monitorCount: number) {
 
   if (monitorCount > WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors) {
     throw new Error(`Restore at most ${WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors} monitors at a time.`);
-  }
-}
-
-function assertRestorableSettingsSecrets(settings: ReturnType<typeof settingsSchema.parse>) {
-  if (
-    settings.notifications.smtpPasswordConfigured
-    && settings.notifications.smtpPassword.trim().length === 0
-  ) {
-    throw new Error("SMTP password is not included in workspace backups. Re-enter it before restoring.");
   }
 }
 

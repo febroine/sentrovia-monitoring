@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/system/backup/restore/route";
 import { requireAdminSession } from "@/lib/auth/authorization";
+import { AuthError } from "@/lib/auth/errors";
 import {
   parseWorkspaceBackup,
   previewWorkspaceBackupRestore,
@@ -30,7 +31,10 @@ describe("workspace backup restore route", () => {
     vi.clearAllMocks();
     vi.mocked(requireAdminSession).mockResolvedValue({ id: "admin-1" } as never);
     vi.mocked(parseWorkspaceBackup).mockReturnValue({ source: "sentrovia" } as never);
-    vi.mocked(previewWorkspaceBackupRestore).mockResolvedValue({ incoming: { monitors: 1 } } as never);
+    vi.mocked(previewWorkspaceBackupRestore).mockResolvedValue({
+      preview: { incoming: { monitors: 1 } },
+      workspaceRevision: "workspace-revision",
+    } as never);
     vi.mocked(createWorkspaceRestoreToken).mockReturnValue("signed-preview-token");
     vi.mocked(getWorkspaceRestoreRevision).mockResolvedValue("workspace-revision");
     vi.mocked(restoreWorkspaceBackup).mockResolvedValue({ monitors: [], companies: [] } as never);
@@ -75,7 +79,26 @@ describe("workspace backup restore route", () => {
       "{\"source\":\"sentrovia\"}",
       "workspace-revision"
     );
-    expect(restoreWorkspaceBackup).toHaveBeenCalledOnce();
+    expect(restoreWorkspaceBackup).toHaveBeenCalledWith(
+      "admin-1",
+      { source: "sentrovia" },
+      { expectedRevision: "workspace-revision" }
+    );
+  });
+
+  it("returns a conflict when workspace data changes during restore", async () => {
+    vi.mocked(verifyWorkspaceRestoreToken).mockReturnValueOnce(true);
+    vi.mocked(restoreWorkspaceBackup).mockRejectedValueOnce(
+      new AuthError("Workspace data changed after the restore analysis.", 409)
+    );
+
+    const response = await POST(createRequest({
+      mode: "restore",
+      confirm: true,
+      restoreToken: "signed-preview-token",
+    }));
+
+    expect(response.status).toBe(409);
   });
 });
 

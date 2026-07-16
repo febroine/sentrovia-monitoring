@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { formatCalendarDateInput, shiftLocalCalendarDays } from "@/lib/delivery/history-range";
 import type { DeliveryHistoryRecord, DeliveryOverview } from "@/lib/delivery/types";
 import { toEnglishUppercase } from "@/lib/text/casing";
 
@@ -41,8 +42,8 @@ export function DeliveryPageClient() {
   const [historyPage, setHistoryPage] = useState(1);
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [historyDeletionRange, setHistoryDeletionRange] = useState<HistoryDeletionRange>("last_7_days");
-  const [customFrom, setCustomFrom] = useState(() => toDateInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
-  const [customTo, setCustomTo] = useState(() => toDateInputValue(new Date()));
+  const [customFrom, setCustomFrom] = useState(() => formatCalendarDateInput(shiftLocalCalendarDays(new Date(), -7)));
+  const [customTo, setCustomTo] = useState(() => formatCalendarDateInput(new Date()));
 
   const cards = useMemo(
     () => [
@@ -323,7 +324,7 @@ export function DeliveryPageClient() {
               size="sm"
               className="text-destructive hover:text-destructive"
               onClick={() => setClearHistoryOpen(true)}
-              disabled={pendingAction !== null || overview.pagination.totalItems === 0}
+              disabled={pendingAction !== null || overview.summary.delivered + overview.summary.failed === 0}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Clear History
@@ -564,10 +565,6 @@ async function readJsonOrNull<T>(response: Response) {
 
 function toMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
-}
-
-function toDateInputValue(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function isDeletionRangeReady(range: HistoryDeletionRange, from: string, to: string) {

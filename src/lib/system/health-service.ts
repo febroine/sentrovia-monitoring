@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, monitors } from "@/lib/db/schema";
 import { env } from "@/lib/env";
@@ -29,7 +29,7 @@ export async function getSystemHealth() {
     db
       .select()
       .from(monitors)
-      .where(eq(monitors.isActive, true)),
+      .where(and(eq(monitors.isActive, true), isNull(monitors.deletedAt))),
     db
       .select({
         failed: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed')::int`,
