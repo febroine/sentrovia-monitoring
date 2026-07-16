@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorOutages, monitors, userSettings, users } from "@/lib/db/schema";
 import { buildMonitorHealthSummary } from "@/lib/monitors/health";
@@ -46,7 +46,11 @@ export async function getPublicStatusPage(slug: string) {
         consecutiveFailures: monitors.consecutiveFailures,
       })
       .from(monitors)
-      .where(and(eq(monitors.userId, settingsRow.userId), eq(monitors.isActive, true)))
+      .where(and(
+        eq(monitors.userId, settingsRow.userId),
+        eq(monitors.isActive, true),
+        isNull(monitors.deletedAt)
+      ))
       .orderBy(asc(monitors.company), asc(monitors.url)),
     db
       .select({

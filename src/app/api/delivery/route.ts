@@ -74,9 +74,9 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const deleted = await deleteDeliveryHistory(session.id, resolveDeliveryHistoryRange(parsed.data));
+    const deletedCount = await deleteDeliveryHistory(session.id, resolveDeliveryHistoryRange(parsed.data));
     const overview = await getDeliveryOverview(session.id, 1);
-    return NextResponse.json({ count: deleted.length, overview });
+    return NextResponse.json({ count: deletedCount, overview });
   } catch (error) {
     const authError = toAuthError(error, "Unable to delete delivery history right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

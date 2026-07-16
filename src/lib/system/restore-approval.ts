@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, type DatabaseExecutor } from "@/lib/db";
 import { companies, monitors, reportSchedules, users, userSettings } from "@/lib/db/schema";
 import { getAuthSecret } from "@/lib/env";
 
@@ -73,13 +73,16 @@ export function verifyWorkspaceRestoreToken(
   return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
 }
 
-export async function getWorkspaceRestoreRevision(userId: string) {
+export async function getWorkspaceRestoreRevision(
+  userId: string,
+  database: DatabaseExecutor = db
+) {
   const [companyRows, monitorRows, reportScheduleRows, settingsRows, userRows] = await Promise.all([
-    db.select().from(companies).where(eq(companies.userId, userId)),
-    db.select().from(monitors).where(eq(monitors.userId, userId)),
-    db.select().from(reportSchedules).where(eq(reportSchedules.userId, userId)),
-    db.select().from(userSettings).where(eq(userSettings.userId, userId)),
-    db
+    database.select().from(companies).where(eq(companies.userId, userId)),
+    database.select().from(monitors).where(eq(monitors.userId, userId)),
+    database.select().from(reportSchedules).where(eq(reportSchedules.userId, userId)),
+    database.select().from(userSettings).where(eq(userSettings.userId, userId)),
+    database
       .select({
         id: users.id,
         firstName: users.firstName,

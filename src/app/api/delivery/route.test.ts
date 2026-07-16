@@ -28,7 +28,7 @@ describe("delivery route", () => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({ id: "user-1", role: "admin" });
     mocks.getDeliveryOverview.mockResolvedValue(overview);
-    mocks.deleteDeliveryHistory.mockResolvedValue([{ id: "delivery-1" }]);
+    mocks.deleteDeliveryHistory.mockResolvedValue(1);
   });
 
   it("passes the requested history page to the service", async () => {

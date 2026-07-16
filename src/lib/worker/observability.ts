@@ -107,6 +107,7 @@ export async function getWorkerObservability(
         and(
           eq(monitors.userId, userId),
           eq(monitors.isActive, true),
+          isNull(monitors.deletedAt),
           or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
           or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
         )
@@ -120,7 +121,7 @@ export async function getWorkerObservability(
         nextCheckAt: monitors.nextCheckAt,
       })
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), eq(monitors.isActive, true)))
+      .where(and(eq(monitors.userId, userId), eq(monitors.isActive, true), isNull(monitors.deletedAt)))
       .orderBy(desc(monitors.updatedAt)),
     db
       .select({

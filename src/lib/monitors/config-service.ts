@@ -1,7 +1,12 @@
 import { parse, stringify } from "yaml";
 import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
 import type { MonitorInput } from "@/lib/monitors/schemas";
-import { getMonitorImportIdentityKey, listMonitors, listReservedMonitorTargets } from "@/lib/monitors/service";
+import {
+  assertMonitorNetworkTargetAllowed,
+  getMonitorImportIdentityKey,
+  listMonitors,
+  listReservedMonitorTargets,
+} from "@/lib/monitors/service";
 import { buildCanonicalMonitorTarget, buildMonitorIdentityKey, getMonitorTargetDisplay, toMonitorPayload } from "@/lib/monitors/targets";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import type { MonitorConfigBundle, MonitorPayload, MonitorRecord, MonitorType } from "@/lib/monitors/types";
@@ -61,13 +66,17 @@ export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
 }
 
 export async function previewMonitorConfigImport(userId: string, inputs: MonitorInput[]) {
-  const existing = await listReservedMonitorTargets(userId);
-  return buildMonitorConfigImportPreview(inputs, existing);
+  const [existing, validationErrors] = await Promise.all([
+    listReservedMonitorTargets(userId),
+    Promise.all(inputs.map(validateImportNetworkTarget)),
+  ]);
+  return buildMonitorConfigImportPreview(inputs, existing, validationErrors);
 }
 
 export function buildMonitorConfigImportPreview(
   inputs: MonitorInput[],
-  existing: Array<{ monitorType: string; url: string }>
+  existing: Array<{ monitorType: string; url: string }>,
+  validationErrors: Array<string | null> = []
 ) {
   const seenTargets = new Set(
     existing.map((monitor) => buildMonitorIdentityKey({ monitorType: monitor.monitorType as MonitorType, url: monitor.url }))
@@ -75,6 +84,17 @@ export function buildMonitorConfigImportPreview(
 
   const items = inputs.map((monitor, index) => {
     const target = buildCanonicalMonitorTarget(monitor);
+    const validationError = validationErrors[index] ?? null;
+    if (validationError) {
+      return {
+        index: index + 1,
+        name: monitor.name,
+        target: getMonitorTargetDisplay({ monitorType: monitor.monitorType, url: target }),
+        status: "invalid" as const,
+        reason: validationError,
+      };
+    }
+
     const identityKey = getMonitorImportIdentityKey(monitor);
     const duplicate = identityKey ? seenTargets.has(identityKey) : false;
     if (identityKey) {
@@ -95,9 +115,23 @@ export function buildMonitorConfigImportPreview(
     summary: {
       added: items.filter((item) => item.status === "added").length,
       skipped: items.filter((item) => item.status === "skipped").length,
-      invalid: 0,
+      invalid: items.filter((item) => item.status === "invalid").length,
     },
   };
+}
+
+async function validateImportNetworkTarget(monitor: MonitorInput) {
+  try {
+    await assertMonitorNetworkTargetAllowed(
+      monitor.monitorType,
+      buildCanonicalMonitorTarget(monitor)
+    );
+    return null;
+  } catch (error) {
+    return error instanceof Error
+      ? error.message
+      : "Monitor target is not allowed by the current network safety policy.";
+  }
 }
 
 function assertMonitorConfigSize(raw: string) {

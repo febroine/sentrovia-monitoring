@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { isValidCalendarDate, resolveDeliveryHistoryRange } from "@/lib/delivery/history-range";
+import {
+  formatCalendarDateInput,
+  isValidCalendarDate,
+  resolveDeliveryHistoryRange,
+  shiftLocalCalendarDays,
+} from "@/lib/delivery/history-range";
 
 describe("delivery history deletion ranges", () => {
   const now = new Date("2026-07-16T12:00:00.000Z");
+
+  it("formats the browser's local date instead of the UTC calendar date", () => {
+    expect(formatCalendarDateInput(new Date("2026-07-01T23:30:00.000Z"), -180)).toBe("2026-07-02");
+  });
+
+  it("moves by calendar days rather than fixed 24-hour periods", () => {
+    const shifted = shiftLocalCalendarDays(new Date(2026, 6, 16, 12), -7);
+    expect(shifted.getFullYear()).toBe(2026);
+    expect(shifted.getMonth()).toBe(6);
+    expect(shifted.getDate()).toBe(9);
+    expect(shifted.getHours()).toBe(12);
+  });
 
   it("resolves rolling preset ranges", () => {
     expect(resolveDeliveryHistoryRange({ range: "last_7_days" }, now)).toEqual({

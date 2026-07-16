@@ -28,4 +28,14 @@ describe("auth error mapping", () => {
     expect(error.status).toBe(409);
     expect(error.message).toBe("A company with this name already exists.");
   });
+
+  it("maps serializable transaction conflicts to a retryable response", () => {
+    const error = toAuthError(
+      { cause: { code: "40001", message: "could not serialize access" } },
+      "Unable to save."
+    );
+
+    expect(error.status).toBe(409);
+    expect(error.message).toContain("changed during this operation");
+  });
 });

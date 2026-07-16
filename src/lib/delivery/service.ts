@@ -88,7 +88,7 @@ export async function deleteDeliveryHistory(userId: string, range: DeliveryHisto
     throw new Error("Invalid delivery history deletion range.");
   }
 
-  return db
+  const result = await db
     .delete(deliveryEvents)
     .where(
       and(
@@ -97,8 +97,9 @@ export async function deleteDeliveryHistory(userId: string, range: DeliveryHisto
         lt(deliveryEvents.createdAt, range.toExclusive),
         inArray(deliveryEvents.status, DELIVERY_HISTORY_DELETABLE_STATUSES)
       )
-    )
-    .returning({ id: deliveryEvents.id });
+    );
+
+  return result.count;
 }
 
 function normalizeDeliveryPage(value: number) {

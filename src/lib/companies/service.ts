@@ -5,14 +5,14 @@ import type { CompanyInput } from "@/lib/companies/schemas";
 
 export const COMPANY_SOFT_DELETE_UNDO_MS = 60_000;
 
-export async function listCompanies(userId: string) {
-  const companyRows = await db
+export async function listCompanies(userId: string, database: DatabaseExecutor = db) {
+  const companyRows = await database
     .select()
     .from(companies)
     .where(and(eq(companies.userId, userId), isNull(companies.deletedAt)))
     .orderBy(desc(companies.createdAt));
 
-  const monitorRows = await db
+  const monitorRows = await database
     .select({
       id: monitors.id,
       companyId: monitors.companyId,

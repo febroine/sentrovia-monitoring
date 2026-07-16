@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       ].sort((left, right) => left.index - right.index),
       summary: {
         ...validPreview.summary,
-        invalid: invalidItems.length,
+        invalid: validPreview.summary.invalid + invalidItems.length,
       },
     };
     if (mode === "preview") {

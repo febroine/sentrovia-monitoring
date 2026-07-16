@@ -7,6 +7,21 @@ export type DeliveryHistoryRangeInput = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+export function formatCalendarDateInput(
+  date: Date,
+  timezoneOffsetMinutes = date.getTimezoneOffset()
+) {
+  return new Date(date.getTime() - timezoneOffsetMinutes * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export function shiftLocalCalendarDays(date: Date, days: number) {
+  const shifted = new Date(date);
+  shifted.setDate(shifted.getDate() + days);
+  return shifted;
+}
+
 export function resolveDeliveryHistoryRange(input: DeliveryHistoryRangeInput, now = new Date()) {
   if (input.range === "last_7_days") {
     return { from: new Date(now.getTime() - 7 * DAY_MS), toExclusive: now };

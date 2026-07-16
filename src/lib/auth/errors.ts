@@ -80,6 +80,13 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
     return mapUniqueConstraintError(databaseError);
   }
 
+  if (databaseError?.code === "40001") {
+    return new AuthError(
+      "The data changed during this operation. Refresh the page and try again.",
+      409
+    );
+  }
+
   if (message.includes("connect econnrefused") || message.includes("connection refused")) {
     return new AuthError(
       "Database is unavailable. Verify the PostgreSQL host, port, and container status, then try again.",
