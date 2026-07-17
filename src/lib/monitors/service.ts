@@ -106,7 +106,7 @@ export async function buildMonitorForTest(
 }
 
 export async function updateMonitor(userId: string, monitorId: string, input: MonitorInput) {
-  const result = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     await lockMonitorTargets(tx, userId);
     const existingMonitor = await getMonitorById(userId, monitorId, tx);
     if (!existingMonitor) {
@@ -134,15 +134,9 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
       return null;
     }
 
-    return { existingMonitor, monitor, now, isActive: values.isActive };
+    await resolveOutageOnPause(existingMonitor, values.isActive, now, tx);
+    return monitor;
   });
-
-  if (!result) {
-    return null;
-  }
-
-  await resolveOutageOnPause(result.existingMonitor, result.isActive, result.now);
-  return result.monitor;
 }
 
 export async function withWorkerControlLock<T>(operation: () => Promise<T>) {
@@ -185,33 +179,34 @@ async function lockMonitorTargets(executor: Pick<typeof db, "execute">, userId: 
 }
 
 export async function updateMonitorActiveState(userId: string, monitorId: string, isActive: boolean) {
-  const existingMonitor = await getMonitorById(userId, monitorId);
-  if (!existingMonitor) {
-    return null;
-  }
+  return db.transaction(async (tx) => {
+    const existingMonitor = await getMonitorById(userId, monitorId, tx);
+    if (!existingMonitor) {
+      return null;
+    }
 
-  const now = new Date();
-  const [monitor] = await db
-    .update(monitors)
-    .set({
-      isActive,
-      ...buildActiveStateUpdate(existingMonitor.isActive, isActive, now),
-      updatedAt: now,
-    })
-    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
-    .returning();
+    const now = new Date();
+    const [monitor] = await tx
+      .update(monitors)
+      .set({
+        isActive,
+        ...buildActiveStateUpdate(existingMonitor.isActive, isActive, now),
+        updatedAt: now,
+      })
+      .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
+      .returning();
 
-  if (!monitor) {
-    return null;
-  }
+    if (!monitor) {
+      return null;
+    }
 
-  await resolveOutageOnPause(existingMonitor, isActive, now);
-
-  return monitor;
+    await resolveOutageOnPause(existingMonitor, isActive, now, tx);
+    return monitor;
+  });
 }
 
 export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {
-  const result = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const existingMonitors = await tx
       .select()
       .from(monitors)
@@ -254,12 +249,12 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
       }
     }
 
-    return { updated, pausedOutages };
+    for (const outage of pausedOutages) {
+      await resolveOutage(outage, tx);
+    }
+
+    return updated;
   });
-
-  await Promise.all(result.pausedOutages.map((outage) => resolveOutage(outage)));
-
-  return result.updated;
 }
 
 export async function updateMonitorTags(
@@ -298,7 +293,7 @@ export async function updateMonitorTags(
 
 export async function deleteMonitors(userId: string, ids: string[]) {
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const existing = await tx
       .select({ id: monitors.id, status: monitors.status, statusCode: monitors.statusCode })
       .from(monitors)
@@ -318,19 +313,18 @@ export async function deleteMonitors(userId: string, ids: string[]) {
       .returning({ id: monitors.id, deletedAt: monitors.deletedAt });
 
     const deletedIds = new Set(deleted.map((monitor) => monitor.id));
-    return {
-      deleted,
-      outages: existing.filter((monitor) => deletedIds.has(monitor.id) && monitor.status === "down"),
-    };
-  });
+    const outages = existing.filter((monitor) => deletedIds.has(monitor.id) && monitor.status === "down");
+    for (const monitor of outages) {
+      await resolveOutage({
+        monitorId: monitor.id,
+        userId,
+        checkedAt: now,
+        statusCode: monitor.statusCode,
+      }, tx);
+    }
 
-  await Promise.all(result.outages.map((monitor) => resolveOutage({
-    monitorId: monitor.id,
-    userId,
-    checkedAt: now,
-    statusCode: monitor.statusCode,
-  })));
-  return result.deleted;
+    return deleted;
+  });
 }
 
 export async function restoreMonitors(userId: string, ids: string[], now = new Date()) {
@@ -482,7 +476,8 @@ function buildActiveStateUpdate(wasActive: boolean, isActive: boolean, now: Date
 async function resolveOutageOnPause(
   monitor: typeof monitors.$inferSelect,
   nextActiveState: boolean,
-  resolvedAt: Date
+  resolvedAt: Date,
+  database: DatabaseExecutor = db
 ) {
   if (!monitor.isActive || nextActiveState) {
     return;
@@ -493,7 +488,7 @@ async function resolveOutageOnPause(
     userId: monitor.userId,
     checkedAt: resolvedAt,
     statusCode: monitor.statusCode,
-  });
+  }, database);
 }
 
 export async function claimDueMonitors(now: Date) {

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type Mail from "nodemailer/lib/mailer";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
@@ -372,6 +372,7 @@ export async function runDueReportSchedules(now = new Date()) {
       and(
         eq(reportSchedules.isActive, true),
         lte(reportSchedules.nextRunAt, now),
+        reportScheduleCompanyAvailable(),
         reportScheduleClaimAvailable(now)
       )
     )
@@ -420,6 +421,10 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
   const schedule = await getReportScheduleById(userId, scheduleId);
   if (!schedule) {
     return null;
+  }
+
+  if (schedule.scope === "company" && !schedule.companyName) {
+    throw new AuthError("The company assigned to this report schedule is unavailable.", 409);
   }
 
   const claimedSchedule = await claimReportScheduleForManualSend(userId, scheduleId, now);
@@ -1444,6 +1449,7 @@ async function claimDueReportSchedule(
         eq(reportSchedules.id, schedule.id),
         eq(reportSchedules.isActive, true),
         eq(reportSchedules.nextRunAt, schedule.nextRunAt),
+        reportScheduleCompanyAvailable(),
         reportScheduleClaimAvailable(now)
       )
     )
@@ -1468,6 +1474,7 @@ async function claimReportScheduleForManualSend(userId: string, scheduleId: stri
       and(
         eq(reportSchedules.id, scheduleId),
         eq(reportSchedules.userId, userId),
+        reportScheduleCompanyAvailable(),
         reportScheduleClaimAvailable(now)
       )
     )
@@ -1481,6 +1488,22 @@ function reportScheduleClaimAvailable(now: Date) {
     ne(reportSchedules.lastStatus, "running"),
     isNull(reportSchedules.claimExpiresAt),
     lte(reportSchedules.claimExpiresAt, now)
+  );
+}
+
+function reportScheduleCompanyAvailable() {
+  return or(
+    ne(reportSchedules.scope, "company"),
+    exists(
+      db
+        .select({ id: companies.id })
+        .from(companies)
+        .where(and(
+          eq(companies.id, reportSchedules.companyId),
+          eq(companies.userId, reportSchedules.userId),
+          isNull(companies.deletedAt)
+        ))
+    )
   );
 }
 

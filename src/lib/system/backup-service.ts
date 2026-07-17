@@ -162,6 +162,10 @@ export async function restoreWorkspaceBackup(
 }
 
 export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
+  if (bundle.version !== 1 || bundle.source !== "sentrovia") {
+    throw new Error("The backup file version or source is not supported.");
+  }
+
   const settings = settingsSchema.parse(bundle.settings);
   const companies = companyInputSchema.array().parse(bundle.companies);
   const monitors = monitorInputSchema.array().parse(bundle.monitors);

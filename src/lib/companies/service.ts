@@ -99,6 +99,7 @@ export async function getCompanyById(userId: string, companyId: string, database
 
 export async function updateCompany(userId: string, companyId: string, input: CompanyInput) {
   const company = await db.transaction(async (tx) => {
+    await releaseExpiredCompanyName(userId, input.name, tx);
     const [updated] = await tx
       .update(companies)
       .set({

@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitorOutages } from "@/lib/db/schema";
 
 type OutageStateInput = {
@@ -9,11 +9,14 @@ type OutageStateInput = {
   statusCode: number | null;
 };
 
-export async function openOrUpdateOutage(input: OutageStateInput & { errorMessage: string | null }) {
-  const existing = await getOpenOutage(input.userId, input.monitorId);
+export async function openOrUpdateOutage(
+  input: OutageStateInput & { errorMessage: string | null },
+  database: DatabaseExecutor = db
+) {
+  const existing = await getOpenOutage(input.userId, input.monitorId, database);
 
   if (existing) {
-    const [outage] = await db
+    const [outage] = await database
       .update(monitorOutages)
       .set({
         lastCheckedAt: input.checkedAt,
@@ -27,7 +30,7 @@ export async function openOrUpdateOutage(input: OutageStateInput & { errorMessag
     return outage;
   }
 
-  const [outage] = await db
+  const [outage] = await database
     .insert(monitorOutages)
     .values({
       monitorId: input.monitorId,
@@ -43,13 +46,13 @@ export async function openOrUpdateOutage(input: OutageStateInput & { errorMessag
   return outage;
 }
 
-export async function resolveOutage(input: OutageStateInput) {
-  const existing = await getOpenOutage(input.userId, input.monitorId);
+export async function resolveOutage(input: OutageStateInput, database: DatabaseExecutor = db) {
+  const existing = await getOpenOutage(input.userId, input.monitorId, database);
   if (!existing) {
     return null;
   }
 
-  const [outage] = await db
+  const [outage] = await database
     .update(monitorOutages)
     .set({
       status: "resolved",
@@ -64,8 +67,12 @@ export async function resolveOutage(input: OutageStateInput) {
   return outage;
 }
 
-async function getOpenOutage(userId: string, monitorId: string) {
-  const [outage] = await db
+async function getOpenOutage(
+  userId: string,
+  monitorId: string,
+  database: DatabaseExecutor = db
+) {
+  const [outage] = await database
     .select()
     .from(monitorOutages)
     .where(

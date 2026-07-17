@@ -29,8 +29,20 @@ describe("monitor config bundle parsing", () => {
     );
   });
 
+  it("rejects bundles from an unsupported source or version", () => {
+    expect(() => parseMonitorConfigBundle(JSON.stringify({
+      version: 2,
+      source: "other",
+      exportedAt: new Date().toISOString(),
+      monitors: [],
+    }), "json")).toThrow("version or source is not supported");
+  });
+
   it("rejects monitor config bundles with too many monitors", () => {
     const raw = JSON.stringify({
+      version: 1,
+      source: "sentrovia",
+      exportedAt: new Date().toISOString(),
       monitors: Array.from({ length: 501 }, (_, index) => ({
         ...DEFAULT_MONITOR_FORM,
         name: `Monitor ${index}`,

@@ -61,6 +61,10 @@ export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
   }
 
   const bundle = parsed as MonitorConfigBundle & { monitors: MonitorPayload[] };
+  if (bundle.version !== 1 || bundle.source !== "sentrovia") {
+    throw new Error("The monitor config bundle version or source is not supported.");
+  }
+
   assertMonitorConfigItemCount(bundle.monitors.length);
   return bundle;
 }

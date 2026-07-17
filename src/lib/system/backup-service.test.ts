@@ -99,6 +99,18 @@ describe("workspace backup validation", () => {
     expect(validateWorkspaceBackupBundle(bundle).settings.notifications.smtpPasswordConfigured).toBe(true);
   });
 
+  it("rejects workspace backups from an unsupported source or version", () => {
+    const bundle = {
+      ...buildBackupBundle(),
+      version: 2,
+      source: "other",
+    } as unknown as WorkspaceBackupBundle;
+
+    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
+      "version or source is not supported"
+    );
+  });
+
   it("rejects workspace backups with too many companies", () => {
     const bundle = buildBackupBundle({
       companies: Array.from({ length: 201 }, (_, index) => ({
