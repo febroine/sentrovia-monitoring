@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { env, getAuthSecret } from "@/lib/env";
+import { env, getAuthSecret, getAuthSessionId } from "@/lib/env";
 
 export const SESSION_COOKIE_NAME = "sentrovia.session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -46,6 +46,7 @@ export async function createSessionToken(user: SessionUser, sessionVersion = DEF
     department: user.department,
     role: user.role,
     sessionVersion,
+    sessionId: getAuthSessionId(),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
@@ -78,8 +79,9 @@ export async function verifySessionToken(token?: string | null): Promise<Version
       typeof payload.sessionVersion === "number" && Number.isInteger(payload.sessionVersion)
         ? payload.sessionVersion
         : DEFAULT_SESSION_VERSION;
+    const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : null;
 
-    if (!id || !firstName || !lastName || !email) {
+    if (!id || !firstName || !lastName || !email || sessionId !== getAuthSessionId()) {
       return null;
     }
 

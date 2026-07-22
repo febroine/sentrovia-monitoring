@@ -49,6 +49,7 @@ function Initialize-DockerEnvironment {
     Assert-SentroviaEnvironment -Path $Path -Mode Docker
     $AddedDefaults = Add-SentroviaEnvironmentDefaults -Path $Path -Defaults ([ordered]@{
       AUTH_TRUST_PROXY_HEADERS = "false"
+      AUTH_SESSION_ID = $(New-SentroviaSecret -ByteLength 24)
       MONITOR_ALLOW_PRIVATE_TARGETS = "true"
       WORKER_CONNECTIVITY_CHECK_ENABLED = "true"
       WORKER_CONNECTIVITY_TIMEOUT_MS = "5000"
@@ -72,6 +73,7 @@ function Initialize-DockerEnvironment {
     "APP_URL=http://localhost:3000",
     "AUTH_SECRET=$(New-SentroviaSecret)",
     "AUTH_TRUST_PROXY_HEADERS=false",
+    "AUTH_SESSION_ID=$(New-SentroviaSecret -ByteLength 24)",
     "APP_ENCRYPTION_SECRET=$(New-SentroviaSecret)",
     "",
     "WORKER_CONCURRENCY=20",
@@ -96,6 +98,9 @@ try {
     Write-Host "Environment preparation completed. Docker startup was skipped."
     return
   }
+
+  Set-SentroviaEnvironmentValue -Path $EnvironmentPath -Name "AUTH_SESSION_ID" -Value (New-SentroviaSecret -ByteLength 24)
+  Write-Host "Invalidated browser sessions from the previous deployment."
 
   Write-Host "Building and starting PostgreSQL, web, and worker services..." -ForegroundColor Cyan
   & docker compose up -d --build --wait --wait-timeout 300

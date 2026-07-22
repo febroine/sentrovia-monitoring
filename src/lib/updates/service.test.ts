@@ -97,7 +97,7 @@ describe("update service", () => {
     expect(guidance.dockerCommands).toEqual([
       "git fetch --tags origin",
       "git checkout v2.0.0",
-      "docker compose up -d --build --wait --wait-timeout 300",
+      "./scripts/install-docker.sh",
     ]);
     expect(guidance.serviceCommands).toEqual([
       "git fetch --tags origin",

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/token";
+import { SESSION_COOKIE_NAME, getSessionCookieOptions, verifySessionToken } from "@/lib/auth/token";
 
 const PUBLIC_ROUTES = ["/login", "/onboarding"];
 
@@ -15,7 +15,15 @@ export async function proxy(request: NextRequest) {
   if (!isPublicRoute(pathname) && !session) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", resolveSafeAuthRedirect(pathname));
-    return NextResponse.redirect(loginUrl);
+    const response = NextResponse.redirect(loginUrl);
+    if (request.cookies.has(SESSION_COOKIE_NAME)) {
+      response.cookies.set({
+        ...getSessionCookieOptions(),
+        value: "",
+        maxAge: 0,
+      });
+    }
+    return response;
   }
 
   return NextResponse.next();

@@ -44,6 +44,25 @@ ensure_env_default() {
   fi
 }
 
+set_env_value() {
+  local name="$1"
+  local value="$2"
+  local temporary_file
+  temporary_file="$(mktemp)"
+  awk -v name="$name" -v value="$value" '
+    BEGIN { updated = 0 }
+    $0 ~ "^[[:space:]]*" name "[[:space:]]*=" {
+      if (!updated) print name "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END { if (!updated) print name "=" value }
+  ' "$ENV_FILE" > "$temporary_file"
+  chmod --reference="$ENV_FILE" "$temporary_file" 2>/dev/null || chmod 600 "$temporary_file"
+  mv "$temporary_file" "$ENV_FILE"
+}
+
 compose_project_name() {
   if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
     printf '%s' "$COMPOSE_PROJECT_NAME" | tr '[:upper:]' '[:lower:]'
@@ -71,6 +90,7 @@ initialize_environment() {
     assert_safe_secret "POSTGRES_PASSWORD"
     [[ -n "$(read_env_value APP_URL)" ]] || { echo "APP_URL is missing from .env." >&2; exit 1; }
     ensure_env_default "AUTH_TRUST_PROXY_HEADERS" "false"
+    ensure_env_default "AUTH_SESSION_ID" "$(random_secret)"
     ensure_env_default "MONITOR_ALLOW_PRIVATE_TARGETS" "true"
     echo "Using the existing .env file. Secrets were not changed."
     return
@@ -91,6 +111,7 @@ POSTGRES_DB=uptimemonitoring
 APP_URL=http://localhost:3000
 AUTH_SECRET=$(random_secret)
 AUTH_TRUST_PROXY_HEADERS=false
+AUTH_SESSION_ID=$(random_secret)
 APP_ENCRYPTION_SECRET=$(random_secret)
 
 WORKER_CONCURRENCY=20
@@ -110,6 +131,8 @@ if [[ "$PREPARE_ONLY" == true ]]; then
   echo "Environment preparation completed. Docker startup was skipped."
   exit 0
 fi
+set_env_value "AUTH_SESSION_ID" "$(random_secret)"
+echo "Invalidated browser sessions from the previous deployment."
 docker compose up -d --build --wait --wait-timeout 300
 docker compose ps
 echo "Sentrovia is running at http://localhost:3000"

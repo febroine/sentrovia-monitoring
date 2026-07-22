@@ -138,6 +138,7 @@ function Initialize-NssmEnvironment {
     Assert-SentroviaEnvironment -Path $EnvironmentPath -Mode Nssm
     $AddedDefaults = Add-SentroviaEnvironmentDefaults -Path $EnvironmentPath -Defaults ([ordered]@{
       AUTH_TRUST_PROXY_HEADERS = "false"
+      AUTH_SESSION_ID = $(New-SentroviaSecret -ByteLength 24)
       MONITOR_ALLOW_PRIVATE_TARGETS = "true"
       WORKER_CONNECTIVITY_CHECK_ENABLED = "true"
       WORKER_CONNECTIVITY_TIMEOUT_MS = "5000"
@@ -191,6 +192,7 @@ function Initialize-NssmEnvironment {
     "APP_URL=$AppUrl",
     "AUTH_SECRET=$(New-SentroviaSecret)",
     "AUTH_TRUST_PROXY_HEADERS=false",
+    "AUTH_SESSION_ID=$(New-SentroviaSecret -ByteLength 24)",
     "APP_ENCRYPTION_SECRET=$(New-SentroviaSecret)",
     "WORKER_CONCURRENCY=20",
     "WORKER_POLL_INTERVAL_MS=10000",
@@ -450,6 +452,8 @@ $OriginalLocation = Get-Location
 $ServicesStopped = $false
 $DependenciesBackupCreated = $false
 $BuildBackupCreated = $false
+$EnvironmentBackupContent = $null
+$SessionIdRotated = $false
 try {
 Set-Location $ProjectRoot
 $env:PLAYWRIGHT_BROWSERS_PATH = $PlaywrightBrowsersPath
@@ -498,6 +502,13 @@ Invoke-CheckedCommand -Command "npm" -Arguments @("run", "build") -FailureMessag
 Write-Step "Synchronizing database schema and manual migrations"
 Invoke-CheckedCommand -Command "npm" -Arguments @("run", "db:sync") -FailureMessage "Database schema synchronization failed."
 
+if ($ExistingInstallation) {
+  Write-Step "Invalidating browser sessions from the previous release"
+  $EnvironmentBackupContent = [System.IO.File]::ReadAllText($EnvironmentPath)
+  Set-SentroviaEnvironmentValue -Path $EnvironmentPath -Name "AUTH_SESSION_ID" -Value (New-SentroviaSecret -ByteLength 24)
+  $SessionIdRotated = $true
+}
+
 if ($RecreateServices) {
   foreach ($Name in $ServiceNames) {
     Remove-NssmService -Name $Name
@@ -545,6 +556,14 @@ Write-Host "Sentrovia NSSM installation completed." -ForegroundColor Green
   }
   if ($DependenciesBackupCreated) {
     Restore-DirectoryBackup -CurrentPath $DependenciesPath -BackupPath $DependenciesBackupPath -Label "dependencies"
+  }
+  if ($SessionIdRotated -and $null -ne $EnvironmentBackupContent) {
+    [System.IO.File]::WriteAllText(
+      $EnvironmentPath,
+      $EnvironmentBackupContent,
+      (New-Object System.Text.UTF8Encoding($false))
+    )
+    Write-Host "Restored the previous session configuration." -ForegroundColor Yellow
   }
   if ($ExistingInstallation -and $ServicesStopped) {
     Write-Host "Update failed. Attempting to restart the existing services..." -ForegroundColor Yellow

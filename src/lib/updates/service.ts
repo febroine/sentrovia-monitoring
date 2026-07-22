@@ -215,7 +215,7 @@ export function buildUpdateGuidance(targetTag: string | null) {
   const dockerCommands = [
     "git fetch --tags origin",
     `git checkout ${tag}`,
-    "docker compose up -d --build --wait --wait-timeout 300",
+    "./scripts/install-docker.sh",
   ];
   const serviceCommands = [
     "git fetch --tags origin",

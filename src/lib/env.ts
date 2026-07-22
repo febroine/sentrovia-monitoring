@@ -13,6 +13,7 @@ const DEFAULT_WORKER_CONNECTIVITY_TARGETS = [
   "https://www.msftconnecttest.com/connecttest.txt",
 ];
 const DEFAULT_AUTH_SECRET = "change-me-before-production";
+const DEFAULT_AUTH_SESSION_ID = "default-session";
 const DEFAULT_APP_ENCRYPTION_SECRET = "change-me-before-production-encryption";
 const PLACEHOLDER_SECRET_MARKERS = ["change-me", "please-change", "replace-this", "replace-with", "local-docker", "example-"];
 
@@ -115,6 +116,10 @@ export function getDatabaseUrl() {
 
 export function getAuthSecret() {
   return ensureProductionSecret("AUTH_SECRET", readString(process.env.AUTH_SECRET, DEFAULT_AUTH_SECRET), DEFAULT_AUTH_SECRET);
+}
+
+export function getAuthSessionId() {
+  return readString(process.env.AUTH_SESSION_ID, DEFAULT_AUTH_SESSION_ID);
 }
 
 export function getAppEncryptionSecret() {

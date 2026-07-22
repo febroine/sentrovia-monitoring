@@ -120,3 +120,30 @@ function Add-SentroviaEnvironmentDefaults {
   [System.IO.File]::AppendAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
   return $MissingLines
 }
+
+function Set-SentroviaEnvironmentValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value
+  )
+
+  $Lines = @([System.IO.File]::ReadAllLines($Path))
+  $UpdatedLines = New-Object System.Collections.Generic.List[string]
+  $WasUpdated = $false
+  foreach ($Line in $Lines) {
+    if ($Line -match "^\s*$([regex]::Escape($Name))\s*=") {
+      if (-not $WasUpdated) {
+        $UpdatedLines.Add("$Name=$Value")
+        $WasUpdated = $true
+      }
+      continue
+    }
+    $UpdatedLines.Add($Line)
+  }
+
+  if (-not $WasUpdated) {
+    $UpdatedLines.Add("$Name=$Value")
+  }
+  Write-SentroviaEnvironment -Path $Path -Lines $UpdatedLines.ToArray()
+}

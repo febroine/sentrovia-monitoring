@@ -38,6 +38,15 @@ describe("runtime environment parsing", () => {
     expect(env.workerConnectivityTimeoutMs).toBe(30000);
   });
 
+  it("reads the deployment session identifier at request time", async () => {
+    const { getAuthSessionId } = await import("@/lib/env");
+    process.env.AUTH_SESSION_ID = "deployment-one";
+    expect(getAuthSessionId()).toBe("deployment-one");
+
+    process.env.AUTH_SESSION_ID = "deployment-two";
+    expect(getAuthSessionId()).toBe("deployment-two");
+  });
+
 });
 
 function restoreEnvironment() {

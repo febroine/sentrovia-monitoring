@@ -37,6 +37,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/env", () => ({
   getAuthSecret: () => "test-secret-with-enough-length",
+  getAuthSessionId: () => "test-deployment",
 }));
 
 import { createInitialAdmin, createMember, isCurrentSessionVersion } from "@/lib/auth/service";

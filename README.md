@@ -233,8 +233,10 @@ Sentrovia shows new GitHub Releases under **Settings -> Updates**. Back up Postg
 ```bash
 git fetch --tags origin
 git checkout vX.Y.Z
-docker compose up -d --build --wait --wait-timeout 300
+./scripts/install-docker.sh
 ```
+
+On Windows PowerShell, use `.\scripts\install-docker.ps1` for the last command. The installer preserves database credentials and encryption secrets, rotates only the deployment session identifier, and then rebuilds the stack. Users sign in again after the update.
 
 For the strict production profile, use:
 
@@ -254,8 +256,8 @@ UPDATE-SENTROVIA.bat
 
 If you copy release files to the server manually, skip the Git commands and double-click `UPDATE-SENTROVIA.bat` in the project root.
 
-The updater requests Administrator permission and handles dependencies, build validation, migrations, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It removes known retired project paths left behind by manually overlaid releases, while preserving `.env.local` and database records. Previous dependencies and the production build are restored if an update fails. Errors stay visible and the full transcript is saved under `logs`.
-When a release introduces new non-secret runtime settings, the updater appends only missing defaults to `.env.local`. Existing database credentials, secrets, and explicitly configured values are never replaced.
+The updater requests Administrator permission and handles dependencies, build validation, migrations, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It removes known retired project paths left behind by manually overlaid releases, while preserving `.env.local` and database records. Previous dependencies and the production build are restored if an update fails. Browser sessions from the previous deployment are invalidated, so users sign in again after a successful update. Errors stay visible and the full transcript is saved under `logs`.
+When a release introduces new non-secret runtime settings, the updater appends only missing defaults to `.env.local`. Existing database credentials, authentication and encryption secrets, and application settings are never replaced; only the deployment session identifier is rotated to invalidate old browser sessions.
 
 <details>
 <summary>Manual Node.js services without NSSM</summary>
