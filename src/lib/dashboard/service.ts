@@ -9,24 +9,12 @@ import { getMonitorSlaPeriods, type SlaPeriodSummary } from "@/lib/monitoring/sl
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 
 export async function getDashboardData(userId: string) {
-  const [monitorRows, settings] = await Promise.all([
-    db
-      .select({
-        id: monitors.id,
-        companyId: monitors.companyId,
-        company: monitors.company,
-        isActive: monitors.isActive,
-        status: monitors.status,
-        latencyMs: monitors.latencyMs,
-        sslExpiresAt: monitors.sslExpiresAt,
-        notificationPref: monitors.notificationPref,
-        intervalValue: monitors.intervalValue,
-        intervalUnit: monitors.intervalUnit,
-      })
-      .from(monitors)
-      .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt))),
-    getSettings(userId),
+  const [monitorSection, settingsSection] = await Promise.all([
+    loadDashboardSection("monitor status", getDashboardMonitors(userId), []),
+    loadDashboardSection("workspace settings", getSettings(userId), null),
   ]);
+  const monitorRows = monitorSection.data;
+  const settings = settingsSection.data;
 
   const total = monitorRows.length;
   const activeRows = monitorRows.filter((monitor) => monitor.isActive);
@@ -44,7 +32,7 @@ export async function getDashboardData(userId: string) {
   const worker = workerSection.data;
   const delivery = deliverySection.data;
   const [sla24Hours, sla7Days] = slaSection.data;
-  const warnings = [eventsSection, workerSection, deliverySection, slaSection]
+  const warnings = [monitorSection, settingsSection, eventsSection, workerSection, deliverySection, slaSection]
     .map((section) => section.warning)
     .filter((warning): warning is string => Boolean(warning));
   const active = activeRows.length;
@@ -113,6 +101,24 @@ const DEFAULT_SLA_PERIODS: [SlaPeriodSummary, SlaPeriodSummary] = [
   { label: "24h SLA", uptimePct: 100, outages: 0, totalChecks: 0 },
   { label: "7d SLA", uptimePct: 100, outages: 0, totalChecks: 0 },
 ];
+
+function getDashboardMonitors(userId: string) {
+  return db
+    .select({
+      id: monitors.id,
+      companyId: monitors.companyId,
+      company: monitors.company,
+      isActive: monitors.isActive,
+      status: monitors.status,
+      latencyMs: monitors.latencyMs,
+      sslExpiresAt: monitors.sslExpiresAt,
+      notificationPref: monitors.notificationPref,
+      intervalValue: monitors.intervalValue,
+      intervalUnit: monitors.intervalUnit,
+    })
+    .from(monitors)
+    .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
+}
 
 async function getRecentDashboardEvents(userId: string) {
   return db

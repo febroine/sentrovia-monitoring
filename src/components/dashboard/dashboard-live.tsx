@@ -114,7 +114,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
 
       {data.warnings.length > 0 ? (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-          Some dashboard panels are temporarily unavailable: {data.warnings.join(", ")}. Core monitor status remains available.
+          Some dashboard data is temporarily unavailable: {data.warnings.join(", ")}. Review the server log and database migration status.
         </div>
       ) : null}
 
