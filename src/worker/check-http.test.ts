@@ -204,6 +204,25 @@ describe("http monitor checks", () => {
     expect(result.failureReason).toBe("timeout");
     expect(result.errorMessage).toBe("Service did not respond within 25ms.");
   });
+
+  it("applies a bounded safety limit when response length is configured as unlimited", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Type": "text/plain" });
+      response.end(`${"a".repeat(100_000)}needle-after-limit`);
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        monitorType: "keyword",
+        url: `http://127.0.0.1:${resolveServerPort(server)}/large-body`,
+        keywordQuery: "needle-after-limit",
+        responseMaxLength: 0,
+      })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toBe("assertion");
+  });
 });
 
 function createServer(handler: http.RequestListener) {
@@ -289,7 +308,7 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
-    sendIncidentScreenshot: false,
+    sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,

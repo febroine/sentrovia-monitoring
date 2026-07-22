@@ -396,8 +396,15 @@ export async function retryWebhookQueue(userId: string) {
 
   for (const item of dueEvents) {
     const payload = safeJsonParse(item.payloadJson);
-    await attemptWebhookDelivery(item.id, endpoint.url, decryptValue(endpoint.secretEncrypted), payload);
-    processed += 1;
+    const result = await attemptWebhookDelivery(
+      item.id,
+      endpoint.url,
+      decryptValue(endpoint.secretEncrypted),
+      payload
+    );
+    if (result) {
+      processed += 1;
+    }
   }
 
   return { processed };
@@ -437,13 +444,15 @@ export async function retryWebhookQueueForAllUsers() {
       continue;
     }
 
-    await attemptWebhookDelivery(
+    const result = await attemptWebhookDelivery(
       item.id,
       endpoint.url,
       decryptValue(endpoint.secretEncrypted),
       safeJsonParse(item.payloadJson)
     );
-    processed += 1;
+    if (result) {
+      processed += 1;
+    }
   }
 
   return { processed };

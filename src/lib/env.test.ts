@@ -28,6 +28,16 @@ describe("runtime environment parsing", () => {
     expect(env.workerPollIntervalMs).toBe(600000);
   });
 
+  it("normalizes connectivity targets and timeout settings", async () => {
+    process.env.WORKER_CONNECTIVITY_TARGETS = "https://one.example,invalid,https://one.example,http://two.example";
+    process.env.WORKER_CONNECTIVITY_TIMEOUT_MS = "999999";
+
+    const { env } = await import("@/lib/env");
+
+    expect(env.workerConnectivityTargets).toEqual(["https://one.example", "http://two.example"]);
+    expect(env.workerConnectivityTimeoutMs).toBe(30000);
+  });
+
 });
 
 function restoreEnvironment() {

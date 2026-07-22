@@ -1,9 +1,7 @@
+import "@/worker/load-env";
 import { env } from "@/lib/env";
-import { retryWebhookQueueForAllUsers } from "@/lib/delivery/service";
-import { runRetentionCleanup } from "@/lib/data-retention/service";
 import { getWorkerState, updateWorkerState } from "@/lib/monitors/service";
-import { runDueReportSchedules } from "@/lib/reports/service";
-import { runMonitoringCycle } from "@/worker/scheduler";
+import { runWorkerPhases } from "@/worker/phases";
 
 let active = true;
 const shutdownWaiters = new Set<() => void>();
@@ -50,14 +48,21 @@ async function main() {
           pid: process.pid,
           statusMessage: "Worker is processing the current monitoring batch.",
         });
-        const completedAllPhases = await runWorkerPhases();
-        if (completedAllPhases) {
+        const phaseResult = await runWorkerPhases(isRunRequested);
+        if (phaseResult.status === "completed") {
           await updateWorkerState({
             running: true,
             heartbeatAt: new Date(),
             lastCycleAt: new Date(),
             pid: process.pid,
             statusMessage: "Worker is healthy and waiting for the next due monitor.",
+          });
+        } else if (phaseResult.status === "connectivity-paused") {
+          await updateWorkerState({
+            running: true,
+            heartbeatAt: new Date(),
+            pid: process.pid,
+            statusMessage: phaseResult.message,
           });
         } else {
           await markWorkerStopped();
@@ -92,20 +97,6 @@ async function main() {
     heartbeatAt: new Date(),
     statusMessage: "Worker shut down gracefully.",
   });
-}
-
-async function runWorkerPhases() {
-  await runRetentionCleanup();
-  if (!(await isRunRequested())) return false;
-
-  await runMonitoringCycle();
-  if (!(await isRunRequested())) return false;
-
-  await retryWebhookQueueForAllUsers();
-  if (!(await isRunRequested())) return false;
-
-  await runDueReportSchedules();
-  return isRunRequested();
 }
 
 async function isRunRequested() {

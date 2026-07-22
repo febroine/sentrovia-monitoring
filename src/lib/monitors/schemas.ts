@@ -91,7 +91,7 @@ function normalizeEmailRecipients(value: string) {
   );
 }
 
-export const monitorInputSchema = z
+const monitorInputObjectSchema = z
   .object({
     name: z.string().trim().min(2).max(120),
     monitorType: monitorTypeSchema.default("http"),
@@ -155,7 +155,7 @@ export const monitorInputSchema = z
     telegramTemplate: optionalString(4000),
     emailSubject: optionalString(500),
     emailBody: optionalString(4000),
-    sendIncidentScreenshot: z.boolean().default(true),
+    sendOutageScreenshot: z.boolean().default(true),
     isActive: z.boolean().default(true),
   })
   .superRefine((value, context) => {
@@ -335,6 +335,8 @@ export const monitorInputSchema = z
     }
   });
 
+export const monitorInputSchema = z.preprocess(normalizeLegacyMonitorInput, monitorInputObjectSchema);
+
 export const monitorBulkDeleteSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
 });
@@ -349,6 +351,20 @@ export const monitorActiveStateSchema = z.object({
 });
 
 export type MonitorInput = z.infer<typeof monitorInputSchema>;
+
+function normalizeLegacyMonitorInput(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const input = value as Record<string, unknown>;
+  if (input.sendOutageScreenshot !== undefined || typeof input.sendIncidentScreenshot !== "boolean") {
+    return value;
+  }
+
+  const { sendIncidentScreenshot, ...currentInput } = input;
+  return { ...currentInput, sendOutageScreenshot: sendIncidentScreenshot };
+}
 
 function normalizeExpectedStatusCodes(value: string) {
   return parseExpectedStatusCodes(value).join(", ");

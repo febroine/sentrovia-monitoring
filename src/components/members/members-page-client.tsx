@@ -279,7 +279,7 @@ export default function MembersPageClient() {
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Members</h1>
           <p className="text-sm text-muted-foreground">
             {isAdmin
-              ? "Manage workspace access, add operators, and remove accounts from one admin view."
+              ? "Manage workspace access, add members, and remove accounts."
               : "Review and maintain your own account details."}
           </p>
         </div>
@@ -570,7 +570,7 @@ function MetricCard({
       <CardContent className="border-l-2 border-l-slate-400 px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
             <p className="text-xl font-semibold tracking-tight">{value}</p>
           </div>
           <div className="rounded-xl bg-muted/70 p-2.5">

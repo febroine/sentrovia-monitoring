@@ -78,13 +78,13 @@ export function ChangePasswordCard() {
               full character mix.
             </CardDescription>
           </div>
-          <div className="hidden rounded-2xl border bg-background px-3 py-2 text-xs text-muted-foreground sm:block">
+          <div className="hidden rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground sm:block">
             Signed session stays active
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-6">
-        <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.05] px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.05] px-4 py-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-2 font-medium text-foreground">
             <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Password policy
@@ -209,7 +209,7 @@ function Banner({
       ? "border-destructive/25 bg-destructive/10 text-destructive"
       : "border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-400";
 
-  return <div className={cn("rounded-2xl border px-4 py-3 text-sm", className)}>{children}</div>;
+  return <div className={cn("rounded-lg border px-4 py-3 text-sm", className)}>{children}</div>;
 }
 
 function toggleField(

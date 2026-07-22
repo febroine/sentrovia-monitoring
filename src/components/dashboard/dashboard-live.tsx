@@ -88,7 +88,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const companyItems = paginate(data.companyHealth, currentCompanyPage, 4);
   const eventItems = paginate(data.events, currentEventPage, 5);
   const showChartsSection = data.settings?.appearance.showChartsSection ?? true;
-  const showOutageBanner = data.settings?.appearance.showIncidentBanner ?? true;
+  const showOutageBanner = data.settings?.appearance.showOutageBanner ?? true;
   const use24HourClock = data.settings?.appearance.use24HourClock ?? true;
   const isAdmin = data.settings?.profile.role === "admin";
 
@@ -98,11 +98,11 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <Badge variant="outline" className="border-sky-500/30 text-sky-600 dark:text-sky-400">
-            Live Stream
+            Live
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Real-time monitor summary, delivery health, and worker telemetry.
+          Current monitor status, notification delivery, and worker health.
         </p>
       </header>
 
@@ -125,7 +125,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
           <Card key={card.label} className="overflow-hidden">
             <CardContent className={`border-l-2 p-4 ${card.border}`}>
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{card.label}</p>
+                <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
                 <div className="rounded-lg bg-muted p-2">
                   <card.icon className={`h-4 w-4 ${card.tone}`} />
                 </div>
@@ -152,12 +152,12 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Delivery Operations</CardTitle>
+              <CardTitle className="text-base">Notification delivery</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-4">
               <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
               <MetricCard label="Retry Queue" value={String(data.delivery.pendingWebhookRetries)} sub="Webhook items waiting for retry" tone="amber" />
-              <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Requires operator review" tone="rose" />
+              <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Review failed attempts" tone="rose" />
               <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
             </CardContent>
           </Card>
@@ -182,7 +182,7 @@ function PanelCompanyHealth({
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-sm">Company Health</CardTitle>
+          <CardTitle className="text-sm">Company health</CardTitle>
           <PanelPager page={page} totalPages={totalPages} onPageChange={onPageChange} />
         </div>
       </CardHeader>
@@ -191,7 +191,7 @@ function PanelCompanyHealth({
           <p className="text-sm text-muted-foreground">No monitor groups yet.</p>
         ) : (
           companies.map((company) => (
-            <div key={company.name} className="space-y-2 rounded-xl border border-border/70 bg-muted/10 px-3 py-3">
+            <div key={company.id} className="space-y-2 rounded-xl border border-border/70 bg-muted/10 px-3 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="rounded-md bg-muted p-1.5">
@@ -250,7 +250,7 @@ function PanelRecentEvents({
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-sm">Recent Events</CardTitle>
+          <CardTitle className="text-sm">Recent events</CardTitle>
           <PanelPager page={page} totalPages={totalPages} onPageChange={onPageChange} />
         </div>
       </CardHeader>
@@ -346,7 +346,7 @@ function MetricCard({
 
   return (
     <div className={`rounded-xl border border-l-2 bg-muted/15 px-4 py-3 ${border}`}>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className={`mt-2 text-xl font-semibold tracking-tight ${valueTone}`}>{value}</p>
       <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
     </div>

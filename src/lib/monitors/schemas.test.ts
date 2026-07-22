@@ -137,6 +137,21 @@ describe("monitor input schema", () => {
     expect(parsed.slowResponseAlertsEnabled).toBe(false);
   });
 
+  it("maps the retired screenshot field in older backup and import payloads", () => {
+    const legacyMonitor = Object.fromEntries(
+      Object.entries(DEFAULT_MONITOR_FORM).filter(([key]) => key !== "sendOutageScreenshot")
+    );
+    const parsed = monitorInputSchema.parse({
+      ...legacyMonitor,
+      name: "Public API",
+      url: "https://api.example.com",
+      sendIncidentScreenshot: false,
+    });
+
+    expect(parsed.sendOutageScreenshot).toBe(false);
+    expect(parsed).not.toHaveProperty("sendIncidentScreenshot");
+  });
+
   it("requires at least two checks before confirming a failure", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,

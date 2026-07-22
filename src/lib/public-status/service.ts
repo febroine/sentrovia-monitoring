@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { monitorOutages, monitors, userSettings, users } from "@/lib/db/schema";
-import { buildMonitorHealthSummary } from "@/lib/monitors/health";
+import { companies, monitorOutages, monitors, userSettings, users } from "@/lib/db/schema";
+import { buildMonitorHealthSummary, isMonitorCheckStale } from "@/lib/monitors/health";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { getSettings } from "@/lib/settings/service";
 import { resolveTimeDisplaySettings } from "@/lib/time";
@@ -17,17 +17,36 @@ export async function getPublicStatusPage(slug: string) {
       userId: userSettings.userId,
       publicStatusTitle: userSettings.publicStatusTitle,
       publicStatusSummary: userSettings.publicStatusSummary,
+      publicStatusCompanyId: userSettings.publicStatusCompanyId,
+      companyName: companies.name,
+      companyDeletedAt: companies.deletedAt,
       firstName: users.firstName,
       organization: users.organization,
     })
     .from(userSettings)
     .innerJoin(users, eq(users.id, userSettings.userId))
+    .leftJoin(companies, and(
+      eq(companies.id, userSettings.publicStatusCompanyId),
+      eq(companies.userId, userSettings.userId)
+    ))
     .where(and(eq(userSettings.publicStatusEnabled, true), eq(userSettings.publicStatusSlug, trimmedSlug)))
     .limit(1);
 
   if (!settingsRow) {
     return null;
   }
+
+  if (!isPublicStatusCompanyAvailable(
+    settingsRow.publicStatusCompanyId,
+    settingsRow.companyName,
+    settingsRow.companyDeletedAt
+  )) {
+    return null;
+  }
+
+  const monitorScope = settingsRow.publicStatusCompanyId
+    ? eq(monitors.companyId, settingsRow.publicStatusCompanyId)
+    : undefined;
 
   const [settings, monitorRows, openOutages] = await Promise.all([
     getSettings(settingsRow.userId),
@@ -38,6 +57,10 @@ export async function getPublicStatusPage(slug: string) {
         company: monitors.company,
         status: monitors.status,
         lastCheckedAt: monitors.lastCheckedAt,
+        nextCheckAt: monitors.nextCheckAt,
+        intervalValue: monitors.intervalValue,
+        intervalUnit: monitors.intervalUnit,
+        timeout: monitors.timeout,
         uptime: monitors.uptime,
         latencyMs: monitors.latencyMs,
         slowResponseThresholdMs: monitors.slowResponseThresholdMs,
@@ -49,7 +72,8 @@ export async function getPublicStatusPage(slug: string) {
       .where(and(
         eq(monitors.userId, settingsRow.userId),
         eq(monitors.isActive, true),
-        isNull(monitors.deletedAt)
+        isNull(monitors.deletedAt),
+        monitorScope
       ))
       .orderBy(asc(monitors.company), asc(monitors.url)),
     db
@@ -64,9 +88,18 @@ export async function getPublicStatusPage(slug: string) {
 
   const timeDisplaySettings = resolveTimeDisplaySettings(settings?.appearance);
   const openOutageMap = new Map(openOutages.map((outage) => [outage.monitorId, outage.startedAt.toISOString()]));
+  const generatedAt = new Date();
   const services = monitorRows.map((monitor) => {
     const status = normalizePublicServiceStatus(monitor.status);
-    const publicStatus = isSlowPublicService(status, monitor.latencyMs, monitor.slowResponseThresholdMs)
+    const stale = isMonitorCheckStale({
+      lastCheckedAt: monitor.lastCheckedAt,
+      nextCheckAt: monitor.nextCheckAt,
+      intervalValue: monitor.intervalValue,
+      intervalUnit: monitor.intervalUnit,
+      timeout: monitor.timeout,
+      now: generatedAt,
+    });
+    const publicStatus = isSlowPublicService(status, monitor.latencyMs, monitor.slowResponseThresholdMs) || (status === "up" && stale)
       ? "pending"
       : status;
     const health = buildMonitorHealthSummary({
@@ -77,12 +110,18 @@ export async function getPublicStatusPage(slug: string) {
       uptime: monitor.uptime,
       isActive: monitor.isActive,
       lastCheckedAt: monitor.lastCheckedAt,
+      nextCheckAt: monitor.nextCheckAt,
+      intervalValue: monitor.intervalValue,
+      intervalUnit: monitor.intervalUnit,
+      timeout: monitor.timeout,
+      now: generatedAt,
     });
+    const hasOpenOutage = publicStatus === "down" && openOutageMap.has(monitor.id);
 
     return {
       id: monitor.id,
       url: sanitizePublicMonitorUrl(monitor.url),
-      company: monitor.company ?? "Workspace",
+      company: settingsRow.companyName ?? monitor.company ?? "Workspace",
       status: publicStatus,
       uptime: monitor.uptime,
       latencyMs: monitor.latencyMs,
@@ -90,10 +129,10 @@ export async function getPublicStatusPage(slug: string) {
       lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
       healthScore: health.score,
       healthLabel: health.label,
-      hasOpenOutage: openOutageMap.has(monitor.id),
-      outageStartedAt: openOutageMap.get(monitor.id) ?? null,
+      hasOpenOutage,
+      outageStartedAt: hasOpenOutage ? openOutageMap.get(monitor.id) ?? null : null,
     };
-  });
+  }).sort(comparePublicStatusServices);
 
   const total = services.length;
   const operational = services.filter((service) => service.status === "up").length;
@@ -104,12 +143,17 @@ export async function getPublicStatusPage(slug: string) {
     slug: trimmedSlug,
     title:
       settingsRow.publicStatusTitle ||
+      (settingsRow.companyName ? `${settingsRow.companyName} service status` : null) ||
       settingsRow.organization ||
       `${settingsRow.firstName} workspace status`,
     summary:
       settingsRow.publicStatusSummary ||
       "Live service availability, recent health state, and active outages.",
-    generatedAt: new Date().toISOString(),
+    scope: {
+      companyId: settingsRow.publicStatusCompanyId ?? null,
+      companyName: settingsRow.companyName ?? null,
+    },
+    generatedAt: generatedAt.toISOString(),
     timeZone: timeDisplaySettings.timeZone,
     use24HourClock: timeDisplaySettings.use24HourClock,
     totals: {
@@ -136,4 +180,23 @@ export function normalizePublicServiceStatus(status: string) {
 
 export function sanitizePublicMonitorUrl(value: string) {
   return sanitizeMonitorUrlForDisplay(value);
+}
+
+export function isPublicStatusCompanyAvailable(
+  companyId: string | null,
+  companyName: string | null,
+  deletedAt: Date | null
+) {
+  return !companyId || Boolean(companyName && !deletedAt);
+}
+
+export function comparePublicStatusServices(
+  left: { status: string; url: string },
+  right: { status: string; url: string }
+) {
+  const priority = { down: 0, pending: 1, up: 2 } as const;
+  const statusDifference = priority[normalizePublicServiceStatus(left.status)]
+    - priority[normalizePublicServiceStatus(right.status)];
+
+  return statusDifference || left.url.localeCompare(right.url);
 }

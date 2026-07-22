@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Play, Square } from "lucide-react";
+import { Activity, Play, Square, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,7 @@ export function WorkerPulseCard() {
   const [now, setNow] = useState(() => Date.now());
   const heartbeatAge = worker?.heartbeatAt ? Math.max(0, Math.floor((now - new Date(worker.heartbeatAt).getTime()) / 1000)) : null;
   const stale = worker?.desiredState === "running" && (heartbeatAge === null || heartbeatAge > 180);
+  const connectivityOffline = worker?.desiredState === "running" && worker.connectivityStatus === "offline";
   const shouldOfferStop = Boolean(worker?.desiredState === "running" && (worker.running || worker.processAlive));
 
   useEffect(() => {
@@ -35,14 +36,16 @@ export function WorkerPulseCard() {
               <Badge
                 variant="outline"
                 className={
-                  worker?.running
+                  connectivityOffline
+                    ? "border-destructive/30 text-destructive"
+                    : worker?.running
                     ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                     : stale
                       ? "border-amber-500/30 text-amber-600 dark:text-amber-400"
                       : "border-border text-muted-foreground"
                 }
               >
-                {worker?.running ? "Running" : worker?.processAlive ? "Standby" : "Offline"}
+                {connectivityOffline ? "Monitoring paused" : worker?.running ? "Running" : worker?.processAlive ? "Standby" : "Offline"}
               </Badge>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -61,7 +64,7 @@ export function WorkerPulseCard() {
             className={
               shouldOfferStop
                 ? "bg-destructive text-white hover:bg-destructive/90"
-                : "bg-violet-600 text-white hover:bg-violet-500"
+                : ""
             }
             onClick={() => void toggleWorker()}
             disabled={commandLoading || !worker}
@@ -75,6 +78,12 @@ export function WorkerPulseCard() {
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             <Activity className="h-3.5 w-3.5" />
             The worker has not reported a healthy heartbeat recently.
+          </div>
+        ) : null}
+        {connectivityOffline ? (
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            <WifiOff className="h-3.5 w-3.5" />
+            {worker.connectivityMessage ?? "Internet connectivity is unavailable. Monitor checks and outbound tasks are paused."}
           </div>
         ) : null}
       </CardContent>

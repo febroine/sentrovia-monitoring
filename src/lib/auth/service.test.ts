@@ -97,8 +97,39 @@ describe("auth service", () => {
         role: "member",
       })
     );
+    expect(mocks.insertValues).toHaveBeenCalledWith({ userId: "user-1" });
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
     expect(result.user.department).toBe("SRE");
     expect(result.user.role).toBe("member");
+  });
+
+  it("rejects a legacy email that differs only by letter case", async () => {
+    mocks.select.mockReturnValueOnce({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve([{
+            id: "existing-user",
+            email: "Aykut@Example.com",
+            username: null,
+          }])),
+        })),
+      })),
+    });
+
+    await expect(createMember({
+      firstName: "Aykut",
+      lastName: "Bayram",
+      username: null,
+      email: "aykut@example.com",
+      department: "SRE",
+      password: "StrongPass!123",
+      confirmPassword: "StrongPass!123",
+    })).rejects.toMatchObject({
+      message: "An account with this email already exists.",
+      status: 409,
+    });
+
+    expect(mocks.insert).not.toHaveBeenCalled();
   });
 
   it("rejects stale session versions after a credential change", () => {

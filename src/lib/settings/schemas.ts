@@ -12,6 +12,19 @@ const optionalEmailString = (maxLength: number) =>
     (value) => value.length === 0 || z.string().email().safeParse(value).success,
     "Enter a valid email address."
   );
+const profileUsername = z
+  .string()
+  .trim()
+  .max(80, "Username is too long.")
+  .transform((value) => value.toLowerCase())
+  .refine(
+    (value) => value.length === 0 || value.length >= 3,
+    "Username must be at least 3 characters long."
+  )
+  .refine(
+    (value) => value.length === 0 || /^[a-z0-9._-]+$/.test(value),
+    "Username can only include letters, numbers, dots, underscores, and dashes."
+  );
 
 const publicStatusSlug = z
   .string()
@@ -23,13 +36,13 @@ const MONITORING_INTERVAL_PATTERN = /^(\d+)\s*(s|sn|sec|m|min|dk|h|hr|sa)$/;
 const MIN_MONITORING_INTERVAL_VALUE = 1;
 const MAX_MONITORING_INTERVAL_VALUE = 1440;
 
-export const settingsSchema = z.object({
+const settingsObjectSchema = z.object({
   profile: z.object({
     firstName: z.string().trim().min(2).max(80),
     lastName: z.string().trim().min(2).max(80),
-    email: z.string().trim().email(),
+    email: z.string().trim().email().transform((value) => value.toLowerCase()),
     department: optionalString(120),
-    username: optionalString(80),
+    username: profileUsername,
     organization: optionalString(160),
     jobTitle: optionalString(120),
     phone: optionalString(40),
@@ -90,7 +103,7 @@ export const settingsSchema = z.object({
     compactDensity: z.boolean(),
     sidebarAccent: z.enum(["amber", "emerald", "sky", "rose", "violet", "slate"]),
     dashboardLandingPage: z.enum(["dashboard", "monitoring", "companies", "logs", "settings"]),
-    showIncidentBanner: z.boolean(),
+    showOutageBanner: z.boolean(),
     showChartsSection: z.boolean(),
     highContrastSurfaces: z.boolean(),
     timeZone: z.string().trim().min(1).max(100).refine(isValidTimeZone, "Select a supported time zone."),
@@ -102,6 +115,7 @@ export const settingsSchema = z.object({
       slug: publicStatusSlug,
       title: optionalString(160),
       summary: optionalString(500),
+      companyId: z.union([z.literal(""), z.string().uuid()]).default(""),
     })
     .superRefine((value, context) => {
       if (!value.enabled) {
@@ -116,7 +130,7 @@ export const settingsSchema = z.object({
         });
       }
     })
-    .default({ enabled: false, slug: "", title: "", summary: "" }),
+    .default({ enabled: false, slug: "", title: "", summary: "", companyId: "" }),
   data: z.object({
     retentionDays: z.coerce.number().int().min(7).max(3650),
     deliveryRetentionDays: z.coerce.number().int().min(7).max(3650).default(90),
@@ -127,7 +141,32 @@ export const settingsSchema = z.object({
   }),
 });
 
+export const settingsSchema = z.preprocess(normalizeLegacySettingsInput, settingsObjectSchema);
+
 export type SettingsInput = z.infer<typeof settingsSchema>;
+
+function normalizeLegacySettingsInput(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const input = value as Record<string, unknown>;
+  const appearance = input.appearance;
+  if (!appearance || typeof appearance !== "object" || Array.isArray(appearance)) {
+    return value;
+  }
+
+  const appearanceInput = appearance as Record<string, unknown>;
+  if (appearanceInput.showOutageBanner !== undefined || typeof appearanceInput.showIncidentBanner !== "boolean") {
+    return value;
+  }
+
+  const { showIncidentBanner, ...currentAppearance } = appearanceInput;
+  return {
+    ...input,
+    appearance: { ...currentAppearance, showOutageBanner: showIncidentBanner },
+  };
+}
 
 function normalizePublicStatusSlug(value: string) {
   return value

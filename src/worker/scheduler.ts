@@ -12,17 +12,17 @@ import {
   claimDueMonitors,
   isMonitorActive,
   recordMonitorResult,
+  releaseMonitorLease,
   updateWorkerState,
 } from "@/lib/monitors/service";
+import { calculateVerificationTimeout } from "@/lib/monitors/verification";
 import type { Monitor } from "@/lib/db/schema";
 import { recordWorkerCycleMetric } from "@/lib/worker/observability";
 import { calculateNextCheckAt, calculateVerificationCheckAt, checkMonitor } from "@/worker/checker";
+import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { sendMonitorNotifications } from "@/worker/notifier";
 import { buildFailureScreenshotAttachment } from "@/worker/screenshot";
 
-const VERIFICATION_TIMEOUT_STEP_RATIO = 0.5;
-const MAX_VERIFICATION_TIMEOUT_MULTIPLIER = 2;
-const MAX_VERIFICATION_TIMEOUT_MS = 120_000;
 const SSL_EXPIRY_WARNING_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -124,6 +124,27 @@ function buildCycleStatusMessage(claimedCount: number, completedCount: number, e
 }
 
 async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
+  let processingError: unknown;
+
+  try {
+    return await processClaimedMonitor(monitor);
+  } catch (error) {
+    processingError = error;
+    throw error;
+  } finally {
+    try {
+      await releaseMonitorLease(monitor.id, monitor.leaseToken);
+    } catch (releaseError) {
+      if (!processingError) {
+        throw releaseError;
+      }
+
+      console.error(`Unable to release the monitor lease for ${monitor.id}.`, releaseError);
+    }
+  }
+}
+
+async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
   const threshold = Math.max(2, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
@@ -131,7 +152,25 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   const wasVerifying = monitor.verificationMode;
   const verificationAttempt = wasVerifying ? monitor.verificationFailureCount : 0;
   let diagnosticMonitor = withVerificationTimeout(monitor, verificationAttempt);
-  const result = await checkMonitor(diagnosticMonitor);
+  let result = await checkMonitor(diagnosticMonitor);
+  let executedProbeCount = 1;
+  let recoveredDuringFinalConfirmation = false;
+
+  if (!result.ok && !(await ensureWorkerConnectivity()).available) {
+    return null;
+  }
+
+  if (shouldRunFinalConfirmationProbe(result.ok, hadConfirmedOutage, wasVerifying, verificationAttempt, threshold)) {
+    diagnosticMonitor = withVerificationTimeout(monitor, threshold);
+    result = await checkMonitor(diagnosticMonitor);
+    executedProbeCount += 1;
+    recoveredDuringFinalConfirmation = result.ok;
+
+    if (!result.ok && !(await ensureWorkerConnectivity()).available) {
+      return null;
+    }
+  }
+
   const rca = analyzeRootCause(result);
   let outageConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
@@ -272,7 +311,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   await updateWorkerState({
     heartbeatAt: new Date(),
   });
-  await incrementWorkerCheckedCount(1);
+  await incrementWorkerCheckedCount(executedProbeCount);
   await appendMonitorCheck({
     monitorId: monitor.id,
     userId: monitor.userId,
@@ -284,7 +323,9 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
 
   if (result.ok) {
     if (wasVerifying && !hadConfirmedOutage) {
-      const message = "Verification recovered before outage confirmation.";
+      const message = recoveredDuringFinalConfirmation
+        ? "Final confirmation recovered before outage confirmation."
+        : "Verification recovered before outage confirmation.";
       await appendDetailedEvent(monitor, result, "verification", message, rca, "up");
       await appendTimelineEvent({
         monitorId: monitor.id,
@@ -294,6 +335,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
         detail: message,
         metadata: {
           previousFailureCount: verificationAttempt,
+          recoveredDuringFinalConfirmation,
           statusCode: result.statusCode,
           latencyMs: result.latencyMs,
         },
@@ -454,6 +496,19 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   };
 }
 
+function shouldRunFinalConfirmationProbe(
+  resultOk: boolean,
+  hadConfirmedOutage: boolean,
+  wasVerifying: boolean,
+  verificationAttempt: number,
+  threshold: number
+) {
+  return !resultOk
+    && !hadConfirmedOutage
+    && wasVerifying
+    && verificationAttempt + 1 >= threshold;
+}
+
 async function buildAlertEmailAttachments(monitor: Monitor, checkedAt: Date) {
   let skippedReason: string | null = null;
   const screenshot = await buildFailureScreenshotAttachment(monitor, checkedAt, (reason) => {
@@ -545,19 +600,6 @@ async function recordActiveMonitorResult(monitor: Monitor, update: MonitorResult
   }
 
   return isMonitorActive(monitor.id);
-}
-
-export function calculateVerificationTimeout(baseTimeoutMs: number, verificationAttempt: number) {
-  if (verificationAttempt <= 0) {
-    return baseTimeoutMs;
-  }
-
-  const multiplier = Math.min(
-    MAX_VERIFICATION_TIMEOUT_MULTIPLIER,
-    1 + verificationAttempt * VERIFICATION_TIMEOUT_STEP_RATIO
-  );
-
-  return Math.min(MAX_VERIFICATION_TIMEOUT_MS, Math.round(baseTimeoutMs * multiplier));
 }
 
 function withVerificationTimeout(monitor: Monitor, verificationAttempt: number) {

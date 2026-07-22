@@ -138,6 +138,9 @@ function buildWorkerState() {
     stoppedAt: null,
     pid: null,
     statusMessage: "Worker is running.",
+    connectivityStatus: "online",
+    connectivityCheckedAt: new Date("2026-07-08T08:59:58.000Z"),
+    connectivityMessage: "Internet connectivity confirmed.",
     updatedAt: new Date("2026-07-08T09:00:00.000Z"),
   };
 }

@@ -35,61 +35,40 @@ type SidebarAccent = 'amber' | 'emerald' | 'sky' | 'rose' | 'violet' | 'slate';
 const accentClasses: Record<
   SidebarAccent,
   {
-    shell: string;
-    brandGlow: string;
     activeIcon: string;
     activeBar: string;
     hoverBar: string;
-    badgeDot: string;
   }
 > = {
   amber: {
-    shell: 'bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.04),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_18%)]',
-    brandGlow: 'bg-[linear-gradient(135deg,rgba(245,158,11,0.12),transparent_55%)] text-amber-600 dark:text-amber-300',
-    activeIcon: 'border-amber-500/30 bg-amber-500/12 text-amber-600 shadow-[0_0_0_1px_rgba(245,158,11,0.08)_inset] dark:text-amber-300',
+    activeIcon: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300',
     activeBar: 'bg-amber-500/95',
     hoverBar: 'group-hover:bg-amber-500/25',
-    badgeDot: 'bg-emerald-400/90',
   },
   emerald: {
-    shell: 'bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.11),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.04),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_18%)]',
-    brandGlow: 'bg-[linear-gradient(135deg,rgba(16,185,129,0.12),transparent_55%)] text-emerald-600 dark:text-emerald-300',
-    activeIcon: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-600 shadow-[0_0_0_1px_rgba(16,185,129,0.08)_inset] dark:text-emerald-300',
+    activeIcon: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
     activeBar: 'bg-emerald-500/95',
     hoverBar: 'group-hover:bg-emerald-500/25',
-    badgeDot: 'bg-emerald-400/90',
   },
   sky: {
-    shell: 'bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.11),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.04),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_18%)]',
-    brandGlow: 'bg-[linear-gradient(135deg,rgba(14,165,233,0.12),transparent_55%)] text-sky-600 dark:text-sky-300',
-    activeIcon: 'border-sky-500/30 bg-sky-500/12 text-sky-600 shadow-[0_0_0_1px_rgba(14,165,233,0.08)_inset] dark:text-sky-300',
+    activeIcon: 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300',
     activeBar: 'bg-sky-500/95',
     hoverBar: 'group-hover:bg-sky-500/25',
-    badgeDot: 'bg-sky-400/90',
   },
   rose: {
-    shell: 'bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.11),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.04),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_18%)]',
-    brandGlow: 'bg-[linear-gradient(135deg,rgba(244,63,94,0.12),transparent_55%)] text-rose-600 dark:text-rose-300',
-    activeIcon: 'border-rose-500/30 bg-rose-500/12 text-rose-600 shadow-[0_0_0_1px_rgba(244,63,94,0.08)_inset] dark:text-rose-300',
+    activeIcon: 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300',
     activeBar: 'bg-rose-500/95',
     hoverBar: 'group-hover:bg-rose-500/25',
-    badgeDot: 'bg-rose-400/90',
   },
   violet: {
-    shell: 'bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.11),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.04),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_18%)]',
-    brandGlow: 'bg-[linear-gradient(135deg,rgba(139,92,246,0.12),transparent_55%)] text-violet-600 dark:text-violet-300',
-    activeIcon: 'border-violet-500/30 bg-violet-500/12 text-violet-600 shadow-[0_0_0_1px_rgba(139,92,246,0.08)_inset] dark:text-violet-300',
+    activeIcon: 'border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300',
     activeBar: 'bg-violet-500/95',
     hoverBar: 'group-hover:bg-violet-500/25',
-    badgeDot: 'bg-violet-400/90',
   },
   slate: {
-    shell: 'bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.12),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.04),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_18%)]',
-    brandGlow: 'bg-[linear-gradient(135deg,rgba(148,163,184,0.12),transparent_55%)] text-slate-500 dark:text-slate-300',
-    activeIcon: 'border-slate-400/30 bg-slate-400/12 text-slate-300 shadow-[0_0_0_1px_rgba(148,163,184,0.08)_inset]',
+    activeIcon: 'border-slate-400/30 bg-slate-400/10 text-slate-500 dark:text-slate-300',
     activeBar: 'bg-slate-300',
     hoverBar: 'group-hover:bg-slate-400/25',
-    badgeDot: 'bg-slate-300/90',
   },
 };
 
@@ -135,8 +114,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
   return (
     <div
       className={cn(
-        'h-dvh overflow-y-auto border-r p-5 pt-8',
-        palette.shell,
+        'h-dvh overflow-y-auto border-r bg-card/30 p-4 pt-6',
         className
       )}
       {...props}
@@ -146,12 +124,11 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
           <div className="flex items-center gap-3">
             <div
               className={cn(
-                'relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border shadow-[0_10px_24px_rgba(0,0,0,0.18)]',
+                'flex size-10 shrink-0 items-center justify-center rounded-md border',
                 palette.activeIcon
               )}
             >
-              <div className={cn('pointer-events-none absolute inset-0 opacity-80', palette.brandGlow)} />
-              <SentroviaMark className="relative z-10 text-[1rem] font-bold" />
+              <SentroviaMark className="text-[1rem] font-bold" />
             </div>
             <div className="min-w-0">
               <h1 className="truncate text-[1.1rem] font-semibold tracking-tight text-foreground">Sentrovia</h1>
@@ -167,15 +144,15 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
                 key={href}
                 href={href}
                 className={cn(
-                  'group flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm font-medium transition-all',
+                  'group flex items-center gap-3 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
                   isActive
-                    ? 'border-border/70 bg-card/95 text-foreground shadow-[0_14px_28px_rgba(0,0,0,0.14)]'
-                    : 'border-transparent text-muted-foreground hover:border-border/60 hover:bg-card/65 hover:text-foreground'
+                    ? 'border-border bg-card text-foreground'
+                    : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                 )}
               >
                 <div
                   className={cn(
-                    'flex size-8 items-center justify-center rounded-xl border transition-colors',
+                    'flex size-8 items-center justify-center rounded-md border transition-colors',
                     isActive
                       ? palette.activeIcon
                       : 'border-border/70 bg-background/90 text-muted-foreground group-hover:text-foreground'
@@ -197,7 +174,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
 
         <div className="mt-8 border-t border-border/70 pt-5">
           <div className="mb-3 px-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground/80">Resources</p>
+            <p className="text-xs font-medium text-muted-foreground">Resources</p>
           </div>
           <nav className="flex flex-col gap-1.5">
             {secondaryItems.map(({ href, label, icon: Icon }) => {
@@ -207,15 +184,15 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
                   key={href}
                   href={href}
                   className={cn(
-                    'group flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm font-medium transition-all',
+                    'group flex items-center gap-3 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
                     isActive
-                      ? 'border-border/70 bg-card/95 text-foreground shadow-[0_14px_28px_rgba(0,0,0,0.14)]'
-                      : 'border-transparent text-muted-foreground hover:border-border/60 hover:bg-card/65 hover:text-foreground'
+                      ? 'border-border bg-card text-foreground'
+                      : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                   )}
                 >
                   <div
                     className={cn(
-                      'flex size-8 items-center justify-center rounded-xl border transition-colors',
+                      'flex size-8 items-center justify-center rounded-md border transition-colors',
                       isActive
                         ? palette.activeIcon
                         : 'border-border/70 bg-background/90 text-muted-foreground group-hover:text-foreground'
@@ -237,7 +214,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
         </div>
 
         <div className="mt-auto pt-6">
-          <LogoutButton className="h-12 w-full justify-start rounded-2xl border border-border/80 bg-card/90 px-4 text-sm font-medium shadow-[0_16px_28px_rgba(0,0,0,0.16)] backdrop-blur" />
+          <LogoutButton className="h-10 w-full justify-start rounded-md border border-border bg-card px-3 text-sm font-medium" />
         </div>
       </div>
     </div>

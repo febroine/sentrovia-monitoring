@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ElementType, type ReactNode } from "react";
-import { Activity, Clock3, Cpu, HardDrive, LoaderCircle, Play, RefreshCw, RotateCcw, Square } from "lucide-react";
+import { useCallback, useEffect, useState, type ElementType } from "react";
+import { Activity, Clock3, HardDrive, LoaderCircle, Play, RefreshCw, Square, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +23,6 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
   const [systemData, setSystemData] = useState<SystemData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [checksResetBase, setChecksResetBase] = useState(0);
 
   const refreshAll = useCallback(async (showSpinner: boolean) => {
     if (showSpinner) {
@@ -53,19 +52,10 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
     return () => window.clearInterval(intervalId);
   }, [refreshAll]);
 
-  useEffect(() => {
-    if (!worker) {
-      return;
-    }
-
-    if (worker.checkedCount < checksResetBase) {
-      setChecksResetBase(0);
-    }
-  }, [checksResetBase, worker]);
-
   const workerActive = worker?.running ?? false;
   const desiredRunning = worker?.desiredState === "running";
   const processAlive = worker?.processAlive ?? false;
+  const connectivityOffline = desiredRunning && worker?.connectivityStatus === "offline";
   const shouldOfferStop = desiredRunning && (workerActive || processAlive);
   const uptimeSeconds = worker?.startedAt
     ? Math.floor((Date.now() - new Date(worker.startedAt).getTime()) / 1000)
@@ -76,10 +66,9 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
   const heartbeatStale = Boolean(
     desiredRunning && (heartbeatAgeMs === null || heartbeatAgeMs > HEARTBEAT_STALE_MS)
   );
-  const visibleChecks = worker ? Math.max(0, worker.checkedCount - checksResetBase) : null;
 
   return (
-    <Card className="border-border bg-gradient-to-br from-card via-card to-muted/20">
+    <Card className="border-border">
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="space-y-1">
@@ -88,14 +77,16 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
               <Badge
                 variant="outline"
                 className={cn(
-                  workerActive
+                  connectivityOffline
+                    ? "border-destructive/30 text-destructive"
+                    : workerActive
                     ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                     : desiredRunning
                       ? "border-amber-500/30 text-amber-600 dark:text-amber-400"
                       : "border-border text-muted-foreground"
                 )}
               >
-                {workerActive ? "Running" : desiredRunning ? "Starting" : "Idle"}
+                {connectivityOffline ? "Monitoring paused" : workerActive ? "Running" : desiredRunning ? "Starting" : "Idle"}
               </Badge>
             </div>
             <CardDescription>
@@ -126,6 +117,12 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
             message="Worker process is offline. Use Start Worker to launch a fresh runner process."
           />
         ) : null}
+        {connectivityOffline ? (
+          <InlineAlert
+            tone="danger"
+            message={worker?.connectivityMessage ?? "Internet connectivity is unavailable. Monitor checks and outbound tasks are paused."}
+          />
+        ) : null}
 
         <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
           <div className="space-y-4">
@@ -146,7 +143,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
               />
             </div>
 
-            <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/10 p-4">
+            <div className="space-y-4 rounded-lg border border-border/70 bg-muted/10 p-4">
               <StatusBar
                 label="CPU"
                 value={systemData?.cpu.usage ?? 0}
@@ -188,7 +185,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border/70 bg-muted/10 p-4">
+          <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-medium">Worker</p>
@@ -210,23 +207,9 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <MetricPanel
-                icon={Cpu}
-                label="Checks"
-                value={visibleChecks === null ? "--" : visibleChecks.toLocaleString()}
-                action={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={() => setChecksResetBase(worker?.checkedCount ?? 0)}
-                    disabled={!worker}
-                    aria-label="Reset checks counter on this screen"
-                    title="Reset checks counter on this screen"
-                  >
-                    <RotateCcw className="size-3" />
-                  </Button>
-                }
+                icon={connectivityOffline ? WifiOff : Wifi}
+                label="Internet"
+                value={formatConnectivityStatus(worker?.connectivityStatus)}
               />
               <MetricPanel icon={HardDrive} label="Uptime" value={workerActive ? formatDuration(uptimeSeconds) : "--"} />
               <MetricPanel
@@ -270,8 +253,8 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+    <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-medium">{value}</p>
     </div>
   );
@@ -281,21 +264,18 @@ function MetricPanel({
   icon: Icon,
   label,
   value,
-  action,
 }: {
   icon: ElementType;
   label: string;
   value: string;
-  action?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-background px-3 py-2.5">
+    <div className="rounded-lg border border-border/70 bg-background px-3 py-2.5">
       <div className="flex items-center justify-between gap-2 text-muted-foreground">
         <div className="flex items-center gap-2">
           <Icon className="size-3.5" />
-          <span className="text-[11px] uppercase tracking-wide">{label}</span>
+          <span className="text-xs font-medium">{label}</span>
         </div>
-        {action}
       </div>
       <p className="mt-1 text-sm font-medium">{value}</p>
     </div>
@@ -397,4 +377,11 @@ function truncateValue(value: string, maxLength: number) {
   }
 
   return `${value.slice(0, maxLength)}...`;
+}
+
+function formatConnectivityStatus(status: "unknown" | "online" | "offline" | "disabled" | undefined) {
+  if (status === "online") return "Online";
+  if (status === "offline") return "Monitoring paused";
+  if (status === "disabled") return "Not checked";
+  return "Waiting";
 }

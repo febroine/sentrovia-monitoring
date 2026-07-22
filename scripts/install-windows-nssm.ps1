@@ -25,6 +25,7 @@ $ServiceStopTimeoutSeconds = 300
 $ServiceStabilityWaitSeconds = 5
 $DefaultServiceNames = @("sentrovia-web", "sentrovia-worker")
 $ServiceNames = $DefaultServiceNames
+# Keep these upgrade cleanup targets until installations predating their removal are no longer supported.
 $RetiredProjectPaths = @(
   "docker-compose.override.yml",
   "ecosystem.config.cjs",
@@ -167,6 +168,8 @@ function Initialize-NssmEnvironment {
     $AddedDefaults = Add-SentroviaEnvironmentDefaults -Path $EnvironmentPath -Defaults ([ordered]@{
       AUTH_TRUST_PROXY_HEADERS = "false"
       MONITOR_ALLOW_PRIVATE_TARGETS = "true"
+      WORKER_CONNECTIVITY_CHECK_ENABLED = "true"
+      WORKER_CONNECTIVITY_TIMEOUT_MS = "5000"
       WORKER_AUTO_START = "true"
       DISABLE_EMBEDDED_WORKER_SPAWN = "true"
     })
@@ -220,6 +223,8 @@ function Initialize-NssmEnvironment {
     "APP_ENCRYPTION_SECRET=$(New-SentroviaSecret)",
     "WORKER_CONCURRENCY=20",
     "WORKER_POLL_INTERVAL_MS=10000",
+    "WORKER_CONNECTIVITY_CHECK_ENABLED=true",
+    "WORKER_CONNECTIVITY_TIMEOUT_MS=5000",
     "MONITOR_ALLOW_PRIVATE_TARGETS=true",
     "WORKER_AUTO_START=true",
     "DISABLE_EMBEDDED_WORKER_SPAWN=true"

@@ -70,7 +70,11 @@ export async function listReportSchedules(userId: string): Promise<ReportSchedul
       : await db
           .select({ id: companies.id, name: companies.name })
           .from(companies)
-          .where(inArray(companies.id, companyIds));
+          .where(and(
+            eq(companies.userId, userId),
+            inArray(companies.id, companyIds),
+            isNull(companies.deletedAt)
+          ));
   const companyNameMap = new Map<string, string>();
 
   for (const row of companyRows) {
@@ -198,6 +202,9 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
     return null;
   }
 
+  const companyName = await resolveCompanyName(userId, existing.companyId);
+  assertReportScheduleCompanyAvailable(existing.scope, companyName);
+
   const [created] = await db
     .insert(reportSchedules)
     .values({
@@ -223,7 +230,7 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
     })
     .returning();
 
-  return serializeSchedule(created, await resolveCompanyName(userId, created.companyId));
+  return serializeSchedule(created, companyName);
 }
 
 export async function deleteReportSchedule(userId: string, scheduleId: string) {
@@ -423,9 +430,7 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
     return null;
   }
 
-  if (schedule.scope === "company" && !schedule.companyName) {
-    throw new AuthError("The company assigned to this report schedule is unavailable.", 409);
-  }
+  assertReportScheduleCompanyAvailable(schedule.scope, schedule.companyName);
 
   const claimedSchedule = await claimReportScheduleForManualSend(userId, scheduleId, now);
   if (!claimedSchedule) {
@@ -471,6 +476,12 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
     ...result,
     schedule: serializeCompletedManualSchedule(updatedSchedule, schedule.companyName),
   };
+}
+
+export function assertReportScheduleCompanyAvailable(scope: string, companyName: string | null) {
+  if (scope === "company" && !companyName) {
+    throw new AuthError("The company assigned to this report schedule is unavailable.", 409);
+  }
 }
 
 async function loadScopedReportData(userId: string, input: ReportPreviewInput, now: Date) {

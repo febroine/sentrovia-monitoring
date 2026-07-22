@@ -188,6 +188,8 @@ Start the worker in a second terminal:
 npm run worker:dev
 ```
 
+Both direct worker commands load `.env.local` and `.env` with the same precedence as the web application, so runtime settings do not need to be exported manually in the shell.
+
 Useful commands:
 
 ```bash
@@ -288,13 +290,20 @@ flowchart LR
 
 That means down alerts are tied to confirmed state transitions, not one unlucky timeout.
 
+### Internet outage guard
+
+Before claiming monitor work, the worker checks several independent public canaries. If every canary is unreachable, Sentrovia pauses monitor checks, webhook retries, and scheduled report delivery without changing monitor states or sending outage notifications. Work resumes automatically after any canary responds.
+
+The defaults are designed to avoid treating one blocked provider as a server-wide outage. Restricted networks can set `WORKER_CONNECTIVITY_TARGETS` to a comma-separated list of at least two reliable HTTP or HTTPS endpoints available from the worker host. The guard can be tuned with `WORKER_CONNECTIVITY_TIMEOUT_MS`; disabling it with `WORKER_CONNECTIVITY_CHECK_ENABLED=false` removes this false-positive protection.
+
 ## Timeout and Slow Response Rules
 
 Sentrovia separates availability failures from degraded latency:
 
 - `2xx` and `3xx` responses are healthy by default.
 - `4xx`, `5xx`, DNS, TLS, connection, assertion, and timeout errors are failures.
-- A timeout enters verification first; Sentrovia sends an outage notification only after the configured retry threshold confirms it.
+- A timeout enters verification first; after the consecutive-failure threshold is reached, one final immediate probe must also fail before Sentrovia sends an outage notification.
+- Any failed probe is discarded before state or notification processing when the worker detects that its own internet connection is unavailable.
 - A response that finishes after the slow-response threshold stays `up`, appears degraded on status pages, and sends a latency notification only after repeated slow checks.
 - HTTP monitors can define custom expected status codes, such as `200, 204, 401`, when a non-standard response is still healthy.
 
@@ -350,7 +359,7 @@ Sentrovia currently sends HTML reports only:
 - Workspace-wide or company-scoped reports
 - Manual preview and scheduled delivery
 - URL-first tables, readable failure details, and service snapshots
-- No CSV or PDF attachments
+- One browser-ready HTML attachment per delivery
 
 ## Tech Stack
 

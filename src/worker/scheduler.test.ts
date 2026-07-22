@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { calculateVerificationTimeout } from "@/lib/monitors/verification";
 import type { NotificationContext } from "@/worker/types";
 
 type CheckResult = {
@@ -37,12 +38,14 @@ const mocks = vi.hoisted(() => ({
   isMonitorActive: vi.fn(),
   openOrUpdateOutage: vi.fn(),
   recordMonitorResult: vi.fn(),
+  releaseMonitorLease: vi.fn(),
   recordWorkerCycleMetric: vi.fn(),
   resolveOutage: vi.fn(),
   sendMonitorNotifications: vi.fn(),
   buildFailureScreenshotAttachment: vi.fn(),
   updateWorkerState: vi.fn(),
   runMonitorDiagnostics: vi.fn(),
+  ensureWorkerConnectivity: vi.fn(),
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -80,6 +83,7 @@ vi.mock("@/lib/monitors/service", () => ({
   incrementWorkerCheckedCount: mocks.incrementWorkerCheckedCount,
   isMonitorActive: mocks.isMonitorActive,
   recordMonitorResult: mocks.recordMonitorResult,
+  releaseMonitorLease: mocks.releaseMonitorLease,
   updateWorkerState: mocks.updateWorkerState,
 }));
 
@@ -98,11 +102,15 @@ vi.mock("@/worker/notifier", () => ({
   sendMonitorNotifications: mocks.sendMonitorNotifications,
 }));
 
+vi.mock("@/worker/connectivity", () => ({
+  ensureWorkerConnectivity: mocks.ensureWorkerConnectivity,
+}));
+
 vi.mock("@/worker/screenshot", () => ({
   buildFailureScreenshotAttachment: mocks.buildFailureScreenshotAttachment,
 }));
 
-import { calculateVerificationTimeout, runMonitoringCycle } from "@/worker/scheduler";
+import { runMonitoringCycle } from "@/worker/scheduler";
 
 describe("monitoring scheduler verification flow", () => {
   beforeEach(() => {
@@ -120,13 +128,20 @@ describe("monitoring scheduler verification flow", () => {
     mocks.checkResults = [];
     mocks.dueMonitors = [];
     mocks.claimDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors));
-    mocks.checkMonitor.mockImplementation(() => Promise.resolve(mocks.checkResults.shift() ?? mocks.checkResult));
+    mocks.checkMonitor.mockImplementation(() => {
+      const nextResult = mocks.checkResults.shift();
+      if (nextResult) {
+        mocks.checkResult = nextResult;
+      }
+      return Promise.resolve(mocks.checkResult);
+    });
     mocks.countDueMonitors.mockImplementation(() => Promise.resolve(mocks.dueMonitors.length));
     mocks.appendOutageEvent.mockResolvedValue(null);
     mocks.appendMonitorDiagnostic.mockResolvedValue(null);
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
     mocks.isMonitorActive.mockResolvedValue(true);
     mocks.recordMonitorResult.mockResolvedValue({ id: "monitor-1" } as Monitor);
+    mocks.releaseMonitorLease.mockResolvedValue(true);
     mocks.recordWorkerCycleMetric.mockResolvedValue(null);
     mocks.buildFailureScreenshotAttachment.mockResolvedValue(null);
     mocks.runMonitorDiagnostics.mockResolvedValue({
@@ -147,6 +162,14 @@ describe("monitoring scheduler verification flow", () => {
     });
     mocks.updateWorkerState.mockResolvedValue(null);
     mocks.sendMonitorNotifications.mockResolvedValue(false);
+    mocks.ensureWorkerConnectivity.mockResolvedValue({
+      available: true,
+      status: "online",
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      successfulTargets: 3,
+      totalTargets: 3,
+      message: "Internet connectivity confirmed.",
+    });
   });
 
   it("schedules failed first verification attempts one minute later", async () => {
@@ -642,7 +665,7 @@ describe("monitoring scheduler verification flow", () => {
         verificationMode: true,
         verificationFailureCount: 1,
         consecutiveFailures: 1,
-        sendIncidentScreenshot: true,
+        sendOutageScreenshot: true,
       }),
     ];
 
@@ -669,7 +692,7 @@ describe("monitoring scheduler verification flow", () => {
       buildMonitor({
         status: "down",
         notificationPref: "email",
-        sendIncidentScreenshot: true,
+        sendOutageScreenshot: true,
         consecutiveFailures: 4,
         lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
       }),
@@ -712,7 +735,7 @@ describe("monitoring scheduler verification flow", () => {
         status: "up",
         statusCode: 200,
         notificationPref: "email",
-        sendIncidentScreenshot: true,
+        sendOutageScreenshot: true,
       }),
     ];
 
@@ -787,6 +810,192 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("rechecks the final failed verification and suppresses a stale outage when the service recovers", async () => {
+    mocks.checkResults = [
+      {
+        ok: false,
+        status: "down",
+        statusCode: null,
+        latencyMs: 7500,
+        errorMessage: "Connection failed before the service returned a response.",
+        failureReason: "connection",
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+        sslExpiresAt: null,
+      },
+      {
+        ok: true,
+        status: "up",
+        statusCode: 200,
+        latencyMs: 90,
+        errorMessage: null,
+        failureReason: null,
+        checkedAt: new Date("2026-05-08T07:00:02.000Z"),
+        sslExpiresAt: null,
+      },
+    ];
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+        lastFailureAt: new Date("2026-05-08T06:59:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
+    expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(2);
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "up",
+        statusCode: 200,
+        lastFailureAt: null,
+        verificationMode: false,
+        verificationFailureCount: 0,
+        consecutiveFailures: 0,
+      }),
+      "lease-1"
+    );
+    expect(mocks.appendOutageEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "verification_recovered",
+        detail: "Final confirmation recovered before outage confirmation.",
+        metadata: expect.objectContaining({ recoveredDuringFinalConfirmation: true }),
+      })
+    );
+    expect(mocks.openOrUpdateOutage).not.toHaveBeenCalled();
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "failure" })
+    );
+    expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
+  });
+
+  it("confirms an outage only after the final probe fails and reports the latest failure", async () => {
+    mocks.checkResults = [
+      {
+        ok: false,
+        status: "down",
+        statusCode: null,
+        latencyMs: 120,
+        errorMessage: "Connection failed before the service returned a response.",
+        failureReason: "connection",
+        checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+        sslExpiresAt: null,
+      },
+      {
+        ok: false,
+        status: "down",
+        statusCode: null,
+        latencyMs: 10_000,
+        errorMessage: "Service did not respond within 10s.",
+        failureReason: "timeout",
+        checkedAt: new Date("2026-05-08T07:00:10.000Z"),
+        sslExpiresAt: null,
+      },
+    ];
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+        lastFailureAt: new Date("2026-05-08T06:59:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "down",
+        lastCheckedAt: new Date("2026-05-08T07:00:10.000Z"),
+        lastErrorMessage: "Service did not respond within 10s.",
+        verificationMode: false,
+      }),
+      "lease-1"
+    );
+    expect(mocks.openOrUpdateOutage).toHaveBeenCalledWith(
+      expect.objectContaining({ errorMessage: "Service did not respond within 10s." })
+    );
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "failure",
+        message: "Service did not respond within 10s.",
+        result: expect.objectContaining({ failureReason: "timeout" }),
+      })
+    );
+  });
+
+  it("releases the monitor without changing state or notifying when internet connectivity is unavailable", async () => {
+    mocks.ensureWorkerConnectivity.mockResolvedValue({
+      available: false,
+      status: "offline",
+      checkedAt: new Date("2026-05-08T07:00:01.000Z"),
+      successfulTargets: 0,
+      totalTargets: 3,
+      message: "Internet connectivity unavailable.",
+    });
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+        lastFailureAt: new Date("2026-05-08T06:59:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.checkMonitor).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
+    expect(mocks.recordMonitorResult).not.toHaveBeenCalled();
+    expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
+    expect(mocks.openOrUpdateOutage).not.toHaveBeenCalled();
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+  });
+
+  it("holds the monitor lease until persistence and notification side effects finish", async () => {
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        retries: 2,
+        verificationMode: true,
+        verificationFailureCount: 1,
+        consecutiveFailures: 1,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    const releaseOrder = mocks.releaseMonitorLease.mock.invocationCallOrder[0];
+    const resultOrder = mocks.recordMonitorResult.mock.invocationCallOrder[0];
+    const notificationOrder = mocks.sendMonitorNotifications.mock.invocationCallOrder[0];
+    expect(releaseOrder).toBeGreaterThan(resultOrder);
+    expect(releaseOrder).toBeGreaterThan(notificationOrder);
+  });
+
+  it("releases the monitor lease when a check throws unexpectedly", async () => {
+    mocks.checkMonitor.mockRejectedValueOnce(new Error("Checker crashed."));
+    mocks.dueMonitors = [buildMonitor()];
+
+    await runMonitoringCycle();
+
+    expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
+    expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ claimedMonitors: 1, completedMonitors: 0, errorMessage: "Checker crashed." })
+    );
+  });
+
   it("uses longer timeouts for verification rechecks", async () => {
     mocks.dueMonitors = [
       buildMonitor({
@@ -818,8 +1027,9 @@ describe("monitoring scheduler verification flow", () => {
 
     await runMonitoringCycle();
 
-    expect(mocks.checkMonitor).toHaveBeenCalledTimes(1);
-    expect(mocks.checkMonitor).toHaveBeenCalledWith(expect.objectContaining({ timeout: 10000 }));
+    expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
+    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(1, expect.objectContaining({ timeout: 10000 }));
+    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(2, expect.objectContaining({ timeout: 10000 }));
   });
 
   it("does not write events or notifications when a claimed monitor was paused mid-cycle", async () => {
@@ -929,7 +1139,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
-    sendIncidentScreenshot: false,
+    sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,

@@ -1,13 +1,21 @@
 import http from "node:http";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
 import { runMonitorDiagnostics } from "@/lib/diagnostics/service";
 
-vi.mock("@/lib/security/public-network-target", () => ({
+const mocks = vi.hoisted(() => ({
   assertMonitorNetworkTarget: vi.fn(),
 }));
 
+vi.mock("@/lib/security/public-network-target", () => ({
+  assertMonitorNetworkTarget: mocks.assertMonitorNetworkTarget,
+}));
+
 let activeServer: http.Server | null = null;
+
+beforeEach(() => {
+  mocks.assertMonitorNetworkTarget.mockReset().mockResolvedValue(undefined);
+});
 
 afterEach(async () => {
   if (!activeServer) {
@@ -58,7 +66,42 @@ describe("runMonitorDiagnostics", () => {
     expect(diagnostic.httpStatus).toBe("ok");
     expect(diagnostic.httpStatusCode).toBe(200);
   });
+
+  it("treats a custom expected HTTP status as healthy", async () => {
+    const { server, url } = await startStatusServer(401);
+    activeServer = server;
+
+    const diagnostic = await runMonitorDiagnostics(buildMonitor({ url, expectedStatusCodes: "401" }));
+
+    expect(diagnostic.httpStatus).toBe("ok");
+    expect(diagnostic.httpStatusCode).toBe(401);
+    expect(diagnostic.failureCategory).toBeNull();
+  });
+
+  it("checks the network safety policy again for redirect targets", async () => {
+    const { server, url } = await startRedirectServer();
+    activeServer = server;
+    mocks.assertMonitorNetworkTarget
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("redirect target blocked"));
+
+    const diagnostic = await runMonitorDiagnostics(buildMonitor({ url, maxRedirects: 1 }));
+
+    expect(mocks.assertMonitorNetworkTarget).toHaveBeenCalledTimes(3);
+    expect(diagnostic.httpStatus).toBe("failed");
+    expect(diagnostic.errorMessage).toBe("redirect target blocked");
+  });
 });
+
+function startStatusServer(statusCode: number) {
+  const server = http.createServer((_request, response) => {
+    response.statusCode = statusCode;
+    response.end("status");
+  });
+
+  return listen(server, "/health");
+}
 
 function startMethodAwareServer() {
   const server = http.createServer((request, response) => {
@@ -93,6 +136,10 @@ function startRedirectServer() {
     response.end("ok");
   });
 
+  return listen(server, "/redirect");
+}
+
+function listen(server: http.Server, path: string) {
   return new Promise<{ server: http.Server; url: string }>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -102,7 +149,7 @@ function startRedirectServer() {
         return;
       }
 
-      resolve({ server, url: `http://127.0.0.1:${address.port}/redirect` });
+      resolve({ server, url: `http://127.0.0.1:${address.port}${path}` });
     });
   });
 }
@@ -171,7 +218,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
-    sendIncidentScreenshot: false,
+    sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,

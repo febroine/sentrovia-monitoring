@@ -233,7 +233,7 @@ function HistoryStat({
     >
       <div className="flex items-center gap-2 pl-3">
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
       </div>
       <p className="pl-3 pt-2 text-sm font-semibold text-foreground">{value}</p>
       <p className="pl-3 pt-1 text-xs text-muted-foreground">{helper}</p>

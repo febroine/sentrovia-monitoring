@@ -98,7 +98,7 @@ export function BackupRestorePanel({
     <Card>
       <CardHeader className="border-b bg-muted/20 px-6 py-5">
         <div className="flex items-start gap-4">
-          <div className="rounded-2xl border border-border/70 bg-background/80 p-2.5 shadow-sm">
+          <div className="rounded-lg border border-border/70 bg-background/80 p-2.5 shadow-sm">
             <Vault className="h-4 w-4 text-amber-600 dark:text-amber-300" />
           </div>
           <div className="space-y-1">

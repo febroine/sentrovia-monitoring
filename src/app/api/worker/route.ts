@@ -52,6 +52,9 @@ function serializeWorkerState(
     stoppedAt: state.stoppedAt?.toISOString() ?? null,
     pid: state.pid,
     statusMessage: state.statusMessage,
+    connectivityStatus: state.connectivityStatus,
+    connectivityCheckedAt: state.connectivityCheckedAt?.toISOString() ?? null,
+    connectivityMessage: state.connectivityMessage,
     observability,
   };
 }

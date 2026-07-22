@@ -22,17 +22,17 @@ const reportPreviewShape = {
   reportBrandName: optionalBrandNameSchema,
 };
 
-export const reportPreviewSchema = withLegacyOutageSummary(z.object(reportPreviewShape));
+export const reportPreviewSchema = z.object(reportPreviewShape);
 
-export const reportScheduleSchema = withLegacyOutageSummary(z.object({
+export const reportScheduleSchema = z.object({
   ...reportPreviewShape,
   name: z.string().trim().min(3).max(160),
   recipientEmails: recipientEmailsSchema,
   isActive: z.boolean().default(true),
   nextRunAt: z.string().datetime().nullable().optional(),
-}));
+});
 
-export const reportSchedulePatchSchema = withLegacyOutageSummary(z.object({
+export const reportSchedulePatchSchema = z.object({
   id: z.string().trim().min(1).optional(),
   scope: reportScopeSchema.optional(),
   cadence: reportCadenceSchema.optional(),
@@ -48,24 +48,9 @@ export const reportSchedulePatchSchema = withLegacyOutageSummary(z.object({
   recipientEmails: recipientEmailsSchema.optional(),
   isActive: z.boolean().optional(),
   nextRunAt: z.string().datetime().nullable().optional(),
-}));
+});
 
-export const reportDispatchSchema = withLegacyOutageSummary(z.object({
+export const reportDispatchSchema = z.object({
   ...reportPreviewShape,
   recipientEmails: recipientEmailsSchema,
-}));
-
-function withLegacyOutageSummary<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
-  return z.preprocess((value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return value;
-    }
-
-    const input = value as Record<string, unknown>;
-    if (input.includeOutageSummary !== undefined || typeof input.includeIncidentSummary !== "boolean") {
-      return value;
-    }
-
-    return { ...input, includeOutageSummary: input.includeIncidentSummary };
-  }, schema);
-}
+});

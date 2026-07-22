@@ -20,6 +20,7 @@ export interface WorkspaceBackupBundle {
   version: 1;
   exportedAt: string;
   source: "sentrovia";
+  publicStatusCompanyName?: string | null;
   settings: SettingsPayload;
   companies: Array<{
     name: string;
@@ -85,7 +86,7 @@ export interface MonitorRecord {
   telegramTemplate: string | null;
   emailSubject: string | null;
   emailBody: string | null;
-  sendIncidentScreenshot: boolean;
+  sendOutageScreenshot: boolean;
 }
 
 export interface MonitorHistoryPoint {
@@ -280,7 +281,7 @@ export interface MonitorPayload {
   telegramTemplate: string;
   emailSubject: string;
   emailBody: string;
-  sendIncidentScreenshot: boolean;
+  sendOutageScreenshot: boolean;
   isActive: boolean;
 }
 
@@ -304,6 +305,9 @@ export interface WorkerStatus {
   stoppedAt: string | null;
   pid: number | null;
   statusMessage: string | null;
+  connectivityStatus: "unknown" | "online" | "offline" | "disabled";
+  connectivityCheckedAt: string | null;
+  connectivityMessage: string | null;
   observability?: WorkerObservability;
 }
 
@@ -355,6 +359,6 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   telegramTemplate: "",
   emailSubject: "",
   emailBody: "",
-  sendIncidentScreenshot: true,
+  sendOutageScreenshot: true,
   isActive: true,
 };

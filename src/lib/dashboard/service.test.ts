@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateAverageIntervalMinutes, computeUptimePct } from "@/lib/dashboard/service";
+import { buildCompanyHealth, calculateAverageIntervalMinutes, computeUptimePct } from "@/lib/dashboard/service";
 
 describe("dashboard service", () => {
   it("calculates average monitor interval in minutes across mixed units", () => {
@@ -29,5 +29,18 @@ describe("dashboard service", () => {
 
   it("treats windows with only pending checks as fully available until settled", () => {
     expect(computeUptimePct([{ status: "pending" }])).toBe(100);
+  });
+
+  it("keeps a company named Unassigned separate from monitors without a company", () => {
+    const groups = buildCompanyHealth([
+      { companyId: "company-1", company: "Unassigned", isActive: true, status: "up" },
+      { companyId: null, company: null, isActive: true, status: "down" },
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Unassigned", up: 1, down: 0 }),
+      expect.objectContaining({ name: "Unassigned", up: 0, down: 1 }),
+    ]));
   });
 });

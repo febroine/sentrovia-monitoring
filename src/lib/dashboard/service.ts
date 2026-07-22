@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, notInArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorEvents, monitors } from "@/lib/db/schema";
 import { getDeliveryOverview } from "@/lib/delivery/service";
@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/settings/service";
 import { getWorkerState } from "@/lib/monitors/service";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
+import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 
 export async function getDashboardData(userId: string) {
   const [monitorRows, eventRows, settings, worker, delivery] = await Promise.all([
@@ -13,7 +14,11 @@ export async function getDashboardData(userId: string) {
     db
       .select()
       .from(monitorEvents)
-      .where(and(eq(monitorEvents.userId, userId), ne(monitorEvents.eventType, "check")))
+      .where(and(
+        eq(monitorEvents.userId, userId),
+        ne(monitorEvents.eventType, "check"),
+        notInArray(monitorEvents.eventType, [...NOTIFICATION_MARKER_EVENT_TYPES])
+      ))
       .orderBy(desc(monitorEvents.createdAt))
       .limit(10),
     getSettings(userId),
@@ -44,23 +49,7 @@ export async function getDashboardData(userId: string) {
   const configuredNotifications = activeRows.filter((monitor) => monitor.notificationPref !== "none").length;
   const silentMonitors = active - configuredNotifications;
 
-  const companyHealth = Object.values(
-    monitorRows.reduce<Record<string, { name: string; total: number; active: number; paused: number; up: number; down: number; pending: number }>>((acc, monitor) => {
-      const key = monitor.company ?? "Unassigned";
-      acc[key] ??= { name: key, total: 0, active: 0, paused: 0, up: 0, down: 0, pending: 0 };
-      acc[key].total += 1;
-      if (!monitor.isActive) {
-        acc[key].paused += 1;
-        return acc;
-      }
-
-      acc[key].active += 1;
-      if (monitor.status === "up") acc[key].up += 1;
-      if (monitor.status === "down") acc[key].down += 1;
-      if (monitor.status === "pending") acc[key].pending += 1;
-      return acc;
-    }, {})
-  );
+  const companyHealth = buildCompanyHealth(monitorRows);
 
   return {
     summary: { total, active, paused, online, offline, pending, coverage: active > 0 ? (online / active) * 100 : 0, avgLatency },
@@ -85,13 +74,56 @@ export async function getDashboardData(userId: string) {
     worker: {
       running: worker.running,
       desiredState: worker.desiredState,
-      checkedCount: worker.checkedCount,
       statusMessage: worker.statusMessage,
+      connectivityStatus: worker.connectivityStatus,
+      connectivityCheckedAt: worker.connectivityCheckedAt?.toISOString() ?? null,
+      connectivityMessage: worker.connectivityMessage,
     },
   };
 }
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
+
+type CompanyHealthMonitor = {
+  companyId: string | null;
+  company: string | null;
+  isActive: boolean;
+  status: string;
+};
+
+export function buildCompanyHealth(rows: CompanyHealthMonitor[]) {
+  return Object.values(
+    rows.reduce<Record<string, { id: string; name: string; total: number; active: number; paused: number; up: number; down: number; pending: number }>>(
+      (groups, monitor) => {
+        const key = monitor.companyId ?? "__unassigned__";
+        groups[key] ??= {
+          id: key,
+          name: monitor.company ?? "Unassigned",
+          total: 0,
+          active: 0,
+          paused: 0,
+          up: 0,
+          down: 0,
+          pending: 0,
+        };
+        const group = groups[key];
+        group.total += 1;
+
+        if (!monitor.isActive) {
+          group.paused += 1;
+        } else {
+          group.active += 1;
+          if (monitor.status === "up") group.up += 1;
+          if (monitor.status === "down") group.down += 1;
+          if (monitor.status === "pending") group.pending += 1;
+        }
+
+        return groups;
+      },
+      {}
+    )
+  );
+}
 
 export function calculateAverageIntervalMinutes(
   rows: Array<{ intervalValue: number; intervalUnit: string }>

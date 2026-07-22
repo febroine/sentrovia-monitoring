@@ -5,7 +5,7 @@ export function SentroviaMark({ className }: { className?: string }) {
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex items-center justify-center font-semibold leading-none tracking-[-0.06em]",
+        "inline-flex items-center justify-center font-semibold leading-none tracking-normal",
         className
       )}
     >

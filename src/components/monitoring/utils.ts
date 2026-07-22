@@ -25,7 +25,7 @@ export function payloadFromMonitor(monitor: MonitorRecord): MonitorPayload {
     telegramTemplate: monitor.telegramTemplate ?? DEFAULT_MONITOR_FORM.telegramTemplate,
     emailSubject: monitor.emailSubject ?? DEFAULT_MONITOR_FORM.emailSubject,
     emailBody: monitor.emailBody ?? DEFAULT_MONITOR_FORM.emailBody,
-    sendIncidentScreenshot: monitor.sendIncidentScreenshot,
+    sendOutageScreenshot: monitor.sendOutageScreenshot,
     slowResponseThresholdMs: monitor.slowResponseThresholdMs,
   };
 }

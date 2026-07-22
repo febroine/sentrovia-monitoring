@@ -26,6 +26,7 @@ import {
   parsePostgresMonitorTarget,
 } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
+import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
 import { encryptValue } from "@/lib/security/encryption";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
@@ -332,6 +333,7 @@ export async function restoreMonitors(userId: string, ids: string[], now = new D
   return db
     .update(monitors)
     .set({
+      ...buildRestoredMonitorState(),
       deletedAt: null,
       isActive: sql`coalesce(${monitors.deletedWasActive}, false)`,
       deletedWasActive: null,
@@ -347,6 +349,24 @@ export async function restoreMonitors(userId: string, ids: string[], now = new D
       )
     )
     .returning();
+}
+
+export function buildRestoredMonitorState() {
+  return {
+    status: "pending",
+    statusCode: null,
+    uptime: "--",
+    lastCheckedAt: null,
+    lastFailureAt: null,
+    sslExpiresAt: null,
+    lastErrorMessage: null,
+    consecutiveFailures: 0,
+    verificationMode: false,
+    verificationFailureCount: 0,
+    latencyMs: null,
+    leaseToken: null,
+    leaseExpiresAt: null,
+  };
 }
 
 export async function createManyMonitors(userId: string, inputs: MonitorInput[], database?: DatabaseExecutor) {
@@ -564,12 +584,18 @@ export async function countDueMonitors(now: Date) {
   return rows.length;
 }
 
-export function calculateMonitorLeaseMs(rows: Array<{ timeout: number }>) {
-  const maximumTimeoutMs = rows.reduce(
-    (maximum, row) => Math.max(maximum, Math.max(0, row.timeout)),
+export function calculateMonitorLeaseMs(rows: Array<{ timeout: number; verificationMode?: boolean }>) {
+  const maximumCheckBudgetMs = rows.reduce(
+    (maximum, row) => {
+      const timeoutMs = Math.max(0, row.timeout);
+      const checkBudgetMs = row.verificationMode
+        ? calculateVerificationLeaseBudgetMs(timeoutMs)
+        : timeoutMs;
+      return Math.max(maximum, checkBudgetMs);
+    },
     0
   );
-  return Math.max(MONITOR_LEASE_MS, maximumTimeoutMs + MONITOR_LEASE_SAFETY_MS);
+  return Math.max(MONITOR_LEASE_MS, maximumCheckBudgetMs + MONITOR_LEASE_SAFETY_MS);
 }
 
 export async function isMonitorActive(monitorId: string) {
@@ -605,8 +631,9 @@ export async function recordMonitorResult(
     .update(monitors)
     .set({
       ...update,
-      leaseToken: null,
-      leaseExpiresAt: null,
+      ...(expectedLeaseToken
+        ? { leaseExpiresAt: new Date(Date.now() + MONITOR_LEASE_MS) }
+        : {}),
       updatedAt: new Date(),
     })
     .where(
@@ -622,76 +649,107 @@ export async function recordMonitorResult(
   return monitor;
 }
 
+export async function releaseMonitorLease(monitorId: string, expectedLeaseToken: string | null) {
+  if (!expectedLeaseToken) {
+    return false;
+  }
+
+  const [monitor] = await db
+    .update(monitors)
+    .set({
+      leaseToken: null,
+      leaseExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(monitors.id, monitorId), eq(monitors.leaseToken, expectedLeaseToken)))
+    .returning({ id: monitors.id });
+
+  return Boolean(monitor);
+}
+
 export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
   const normalizedToken = normalizeHeartbeatTokenInput(token);
   if (!normalizedToken) {
     return null;
   }
 
-  const [existingMonitor] = await db
-    .select()
-    .from(monitors)
-    .where(and(
-      eq(monitors.monitorType, "heartbeat"),
-      eq(monitors.heartbeatToken, normalizedToken),
-      isNull(monitors.deletedAt)
-    ))
-    .limit(1);
+  return db.transaction(async (tx) => {
+    const [existingMonitor] = await tx
+      .select()
+      .from(monitors)
+      .where(and(
+        eq(monitors.monitorType, "heartbeat"),
+        eq(monitors.heartbeatToken, normalizedToken),
+        isNull(monitors.deletedAt)
+      ))
+      .limit(1);
 
-  if (!existingMonitor) {
-    return null;
-  }
+    if (!existingMonitor) {
+      return null;
+    }
 
-  if (!existingMonitor.isActive) {
+    if (!existingMonitor.isActive) {
+      return {
+        accepted: false,
+        paused: true,
+        monitor: existingMonitor,
+        receivedAt,
+      };
+    }
+
+    const [monitor] = await tx
+      .update(monitors)
+      .set({
+        heartbeatLastReceivedAt: receivedAt,
+        nextCheckAt: receivedAt,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(monitors.id, existingMonitor.id),
+        eq(monitors.isActive, true),
+        isNull(monitors.deletedAt),
+        or(
+          isNull(monitors.heartbeatLastReceivedAt),
+          lte(monitors.heartbeatLastReceivedAt, receivedAt)
+        )
+      ))
+      .returning();
+
+    if (!monitor) {
+      const [currentMonitor] = await tx
+        .select()
+        .from(monitors)
+        .where(and(
+          eq(monitors.id, existingMonitor.id),
+          eq(monitors.heartbeatToken, normalizedToken),
+          isNull(monitors.deletedAt)
+        ))
+        .limit(1);
+
+      return currentMonitor?.isActive
+        ? { accepted: true, paused: false, monitor: currentMonitor, receivedAt }
+        : { accepted: false, paused: true, monitor: currentMonitor ?? existingMonitor, receivedAt };
+    }
+
+    await appendMonitorEvent({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: "heartbeat-received",
+      status: monitor.status,
+      statusCode: monitor.statusCode,
+      latencyMs: null,
+      message: "Heartbeat ping received from the external job.",
+    }, tx);
+
     return {
-      accepted: false,
-      paused: true,
-      monitor: existingMonitor,
+      accepted: true,
+      paused: false,
+      monitor,
       receivedAt,
     };
-  }
-
-  const [monitor] = await db
-    .update(monitors)
-    .set({
-      heartbeatLastReceivedAt: receivedAt,
-      nextCheckAt: receivedAt,
-      leaseToken: null,
-      leaseExpiresAt: null,
-      updatedAt: new Date(),
-    })
-    .where(and(
-      eq(monitors.id, existingMonitor.id),
-      eq(monitors.isActive, true),
-      isNull(monitors.deletedAt)
-    ))
-    .returning();
-
-  if (!monitor) {
-    return {
-      accepted: false,
-      paused: true,
-      monitor: existingMonitor,
-      receivedAt,
-    };
-  }
-
-  await appendMonitorEvent({
-    monitorId: monitor.id,
-    userId: monitor.userId,
-    eventType: "heartbeat-received",
-    status: monitor.status,
-    statusCode: monitor.statusCode,
-    latencyMs: null,
-    message: "Heartbeat ping received from the external job.",
   });
-
-  return {
-    accepted: true,
-    paused: false,
-    monitor,
-    receivedAt,
-  };
 }
 
 export function normalizeHeartbeatTokenInput(token: string) {
@@ -717,8 +775,8 @@ export async function appendMonitorEvent(input: {
   rcaType?: string | null;
   rcaTitle?: string | null;
   rcaSummary?: string | null;
-}) {
-  await db.insert(monitorEvents).values({
+}, database: DatabaseExecutor = db) {
+  await database.insert(monitorEvents).values({
     monitorId: input.monitorId,
     userId: input.userId,
     eventType: input.eventType,
@@ -923,9 +981,7 @@ export async function getCompanySlaReport(userId: string, companyId: string) {
           .orderBy(desc(monitorChecks.createdAt))
           .limit(500),
   ]);
-  const completedRecentChecks = recentChecks.filter((check) => check.statusCode !== null);
-  const averageLatencyMs = averageValue(completedRecentChecks.map((check) => check.latencyMs).filter(isNumber));
-  const statusCodes = buildStatusCodeSummary(completedRecentChecks);
+  const { averageLatencyMs, statusCodes } = summarizeCompanyRecentChecks(recentChecks);
 
   return {
     companyId: company.id,
@@ -1015,6 +1071,18 @@ export async function getWorkerState() {
   }
 
   return existing;
+}
+
+export function summarizeCompanyRecentChecks(
+  checks: Array<{ status: string; statusCode: number | null; latencyMs: number | null }>
+) {
+  const completedChecks = checks.filter((check) => check.status !== "pending");
+  const averageLatencyMs = averageValue(completedChecks.map((check) => check.latencyMs).filter(isNumber));
+  const statusCodes = buildStatusCodeSummary(
+    completedChecks.filter((check) => check.statusCode !== null)
+  );
+
+  return { averageLatencyMs, statusCodes };
 }
 
 export async function updateWorkerState(values: Partial<typeof workerState.$inferInsert>) {
@@ -1112,7 +1180,7 @@ async function buildMonitorValues(
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
     emailBody: input.emailBody,
-    sendIncidentScreenshot: shouldPersistOutageScreenshot(monitorType, input.notificationPref, input.sendIncidentScreenshot),
+    sendOutageScreenshot: shouldPersistOutageScreenshot(monitorType, input.notificationPref, input.sendOutageScreenshot),
     isActive: input.isActive,
   };
 }
@@ -1354,7 +1422,7 @@ function resolveHeartbeatToken(
   return crypto.randomUUID();
 }
 
-function buildStatusCodeSummary(checks: Array<typeof monitorChecks.$inferSelect>) {
+function buildStatusCodeSummary(checks: Array<{ statusCode: number | null }>) {
   const counts = new Map<number, number>();
 
   for (const check of checks) {

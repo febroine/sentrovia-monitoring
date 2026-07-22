@@ -24,7 +24,7 @@ export function MonitorStats({ monitors }: { monitors: MonitorRecord[] }) {
           <CardContent className="p-0">
             <div className="border-b bg-muted/20 px-4 py-3">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
+                <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
                 <div className="rounded-lg bg-background p-2 shadow-sm ring-1 ring-border">
                   <item.icon className={`h-4 w-4 ${item.tone}`} />
                 </div>
