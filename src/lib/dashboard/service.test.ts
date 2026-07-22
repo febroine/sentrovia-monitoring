@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { buildCompanyHealth, calculateAverageIntervalMinutes, computeUptimePct } from "@/lib/dashboard/service";
+import { describe, expect, it, vi } from "vitest";
+import {
+  buildCompanyHealth,
+  calculateAverageIntervalMinutes,
+  computeUptimePct,
+  loadDashboardSection,
+} from "@/lib/dashboard/service";
 
 describe("dashboard service", () => {
   it("calculates average monitor interval in minutes across mixed units", () => {
@@ -42,5 +47,21 @@ describe("dashboard service", () => {
       expect.objectContaining({ name: "Unassigned", up: 1, down: 0 }),
       expect.objectContaining({ name: "Unassigned", up: 0, down: 1 }),
     ]));
+  });
+
+  it("keeps optional dashboard sections from crashing the entire page", async () => {
+    const error = new Error("relation monitor_outages does not exist");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const section = await loadDashboardSection("SLA history", Promise.reject(error), [
+      { uptimePct: 100 },
+    ]);
+
+    expect(section).toEqual({ data: [{ uptimePct: 100 }], warning: "SLA history" });
+    expect(consoleError).toHaveBeenCalledWith(
+      "[sentrovia] Dashboard SLA history unavailable.",
+      error,
+    );
+    consoleError.mockRestore();
   });
 });

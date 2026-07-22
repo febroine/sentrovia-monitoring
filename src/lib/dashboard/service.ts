@@ -5,33 +5,48 @@ import { getDeliveryOverview } from "@/lib/delivery/service";
 import { getSettings } from "@/lib/settings/service";
 import { getWorkerState } from "@/lib/monitors/service";
 import { intervalToMs } from "@/lib/monitors/utils";
-import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
+import { getMonitorSlaPeriods, type SlaPeriodSummary } from "@/lib/monitoring/sla-service";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 
 export async function getDashboardData(userId: string) {
-  const [monitorRows, eventRows, settings, worker, delivery] = await Promise.all([
-    db.select().from(monitors).where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt))),
+  const [monitorRows, settings] = await Promise.all([
     db
-      .select()
-      .from(monitorEvents)
-      .where(and(
-        eq(monitorEvents.userId, userId),
-        ne(monitorEvents.eventType, "check"),
-        notInArray(monitorEvents.eventType, [...NOTIFICATION_MARKER_EVENT_TYPES])
-      ))
-      .orderBy(desc(monitorEvents.createdAt))
-      .limit(10),
+      .select({
+        id: monitors.id,
+        companyId: monitors.companyId,
+        company: monitors.company,
+        isActive: monitors.isActive,
+        status: monitors.status,
+        latencyMs: monitors.latencyMs,
+        sslExpiresAt: monitors.sslExpiresAt,
+        notificationPref: monitors.notificationPref,
+        intervalValue: monitors.intervalValue,
+        intervalUnit: monitors.intervalUnit,
+      })
+      .from(monitors)
+      .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt))),
     getSettings(userId),
-    getWorkerState(),
-    getDeliveryOverview(userId),
   ]);
 
   const total = monitorRows.length;
   const activeRows = monitorRows.filter((monitor) => monitor.isActive);
-  const [sla24Hours, sla7Days] = await getMonitorSlaPeriods(
-    userId,
-    activeRows.map((monitor) => monitor.id)
-  );
+  const [eventsSection, workerSection, deliverySection, slaSection] = await Promise.all([
+    loadDashboardSection("recent events", getRecentDashboardEvents(userId), []),
+    loadDashboardSection("worker health", getDashboardWorkerState(), DEFAULT_DASHBOARD_WORKER),
+    loadDashboardSection("notification delivery", getDashboardDeliverySummary(userId), DEFAULT_DELIVERY_SUMMARY),
+    loadDashboardSection(
+      "SLA history",
+      getMonitorSlaPeriods(userId, activeRows.map((monitor) => monitor.id)),
+      DEFAULT_SLA_PERIODS
+    ),
+  ]);
+  const eventRows = eventsSection.data;
+  const worker = workerSection.data;
+  const delivery = deliverySection.data;
+  const [sla24Hours, sla7Days] = slaSection.data;
+  const warnings = [eventsSection, workerSection, deliverySection, slaSection]
+    .map((section) => section.warning)
+    .filter((warning): warning is string => Boolean(warning));
   const active = activeRows.length;
   const paused = total - active;
   const online = activeRows.filter((monitor) => monitor.status === "up").length;
@@ -56,7 +71,7 @@ export async function getDashboardData(userId: string) {
     companyHealth,
     monitors: activeRows.slice(0, 6),
     events: eventRows,
-    delivery: delivery.summary,
+    delivery,
     posture: {
       configuredNotifications,
       silentMonitors,
@@ -71,18 +86,78 @@ export async function getDashboardData(userId: string) {
       sla7d: sla7Days.uptimePct,
     },
     settings,
-    worker: {
-      running: worker.running,
-      desiredState: worker.desiredState,
-      statusMessage: worker.statusMessage,
-      connectivityStatus: worker.connectivityStatus,
-      connectivityCheckedAt: worker.connectivityCheckedAt?.toISOString() ?? null,
-      connectivityMessage: worker.connectivityMessage,
-    },
+    worker,
+    warnings,
   };
 }
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
+
+const DEFAULT_DELIVERY_SUMMARY = {
+  delivered: 0,
+  failed: 0,
+  retrying: 0,
+  pendingWebhookRetries: 0,
+};
+
+const DEFAULT_DASHBOARD_WORKER = {
+  running: false,
+  desiredState: "stopped",
+  statusMessage: "Worker health is temporarily unavailable.",
+  connectivityStatus: "unknown",
+  connectivityCheckedAt: null as string | null,
+  connectivityMessage: null as string | null,
+};
+
+const DEFAULT_SLA_PERIODS: [SlaPeriodSummary, SlaPeriodSummary] = [
+  { label: "24h SLA", uptimePct: 100, outages: 0, totalChecks: 0 },
+  { label: "7d SLA", uptimePct: 100, outages: 0, totalChecks: 0 },
+];
+
+async function getRecentDashboardEvents(userId: string) {
+  return db
+    .select({
+      id: monitorEvents.id,
+      eventType: monitorEvents.eventType,
+      message: monitorEvents.message,
+      statusCode: monitorEvents.statusCode,
+      latencyMs: monitorEvents.latencyMs,
+      createdAt: monitorEvents.createdAt,
+    })
+    .from(monitorEvents)
+    .where(and(
+      eq(monitorEvents.userId, userId),
+      ne(monitorEvents.eventType, "check"),
+      notInArray(monitorEvents.eventType, [...NOTIFICATION_MARKER_EVENT_TYPES])
+    ))
+    .orderBy(desc(monitorEvents.createdAt))
+    .limit(10);
+}
+
+async function getDashboardWorkerState() {
+  const worker = await getWorkerState();
+  return {
+    running: worker.running,
+    desiredState: worker.desiredState,
+    statusMessage: worker.statusMessage,
+    connectivityStatus: worker.connectivityStatus,
+    connectivityCheckedAt: worker.connectivityCheckedAt?.toISOString() ?? null,
+    connectivityMessage: worker.connectivityMessage,
+  };
+}
+
+async function getDashboardDeliverySummary(userId: string) {
+  return getDeliveryOverview(userId).then((delivery) => delivery.summary);
+}
+
+export async function loadDashboardSection<T>(label: string, request: Promise<T>, fallback: T) {
+  try {
+    return { data: await request, warning: null };
+  } catch (error) {
+    console.error(`[sentrovia] Dashboard ${label} unavailable.`, error);
+    return { data: fallback, warning: label };
+  }
+}
 
 type CompanyHealthMonitor = {
   companyId: string | null;
