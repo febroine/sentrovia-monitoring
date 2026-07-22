@@ -26,41 +26,11 @@ $ServiceStabilityWaitSeconds = 5
 $DefaultServiceNames = @("sentrovia-web", "sentrovia-worker")
 $ServiceNames = $DefaultServiceNames
 # Keep these upgrade cleanup targets until installations predating their removal are no longer supported.
-$RetiredProjectPaths = @(
-  "docker-compose.override.yml",
-  "ecosystem.config.cjs",
-  "errors.txt",
-  "project_architecture_guide.md",
-  "public\file.svg",
-  "public\globe.svg",
-  "public\next.svg",
-  "public\vercel.svg",
-  "public\window.svg",
-  "scripts\setup-production-windows-nssm.bat",
-  "scripts\setup-production-windows-pm2.bat",
-  "scripts\update-production-windows-nssm.bat",
-  "scripts\update-production-windows-pm2.bat",
-  "src\app\api\app-update",
-  "src\app\api\incidents",
-  "src\app\api\maintenance",
-  "src\app\api\auth\register",
-  "src\app\api\monitors\overview",
-  "src\app\incidents",
-  "src\app\maintenance",
-  "src\app\observability",
-  "src\app\signup",
-  "src\components\command-palette.tsx",
-  "src\components\incidents",
-  "src\components\maintenance",
-  "src\components\monitoring\worker-observability-dashboard.tsx",
-  "src\components\settings\app-update-card.tsx",
-  "src\components\settings\maintenance-windows-editor.tsx",
-  "src\components\update-banner.tsx",
-  "src\lib\app-update",
-  "src\lib\incidents",
-  "src\lib\maintenance",
-  "src\lib\reports\pdf.ts"
-)
+$RetiredProjectPathsFile = Join-Path $PSScriptRoot "retired-project-paths.json"
+if (-not (Test-Path -LiteralPath $RetiredProjectPathsFile)) {
+  throw "Retired project paths manifest is missing: $RetiredProjectPathsFile"
+}
+$RetiredProjectPaths = @(Get-Content -LiteralPath $RetiredProjectPathsFile -Raw | ConvertFrom-Json)
 . (Join-Path $PSScriptRoot "environment-utils.ps1")
 
 if ($RecreateServices -and $ExistingInstallation) {

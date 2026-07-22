@@ -16,6 +16,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/cleanup-retired-files.mjs --source-only",
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
