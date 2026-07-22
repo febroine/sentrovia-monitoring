@@ -112,6 +112,12 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
+      {data.warnings.length > 0 ? (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+          Some dashboard panels are temporarily unavailable: {data.warnings.join(", ")}. Core monitor status remains available.
+        </div>
+      ) : null}
+
       {showOutageBanner && data.summary.offline > 0 ? (
         <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {data.summary.offline} monitor currently offline. Verification and delivery history are available below.
