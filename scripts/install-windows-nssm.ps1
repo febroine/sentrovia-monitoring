@@ -57,6 +57,7 @@ $RetiredProjectPaths = @(
   "src\components\settings\maintenance-windows-editor.tsx",
   "src\components\update-banner.tsx",
   "src\lib\app-update",
+  "src\lib\incidents",
   "src\lib\maintenance",
   "src\lib\reports\pdf.ts"
 )
