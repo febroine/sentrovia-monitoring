@@ -5,6 +5,7 @@ import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
 import { createManyMonitors } from "@/lib/monitors/service";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
+import { applyImportDefaults } from "@/lib/monitors/import-defaults";
 import { getSettings } from "@/lib/settings/service";
 import { parseIntervalSetting, serializeMonitorRecord } from "@/lib/monitors/utils";
 import { MONITOR_CSV_IMPORT_LIMITS } from "@/lib/import-limits";
@@ -70,46 +71,4 @@ export async function POST(request: NextRequest) {
     const authError = toAuthError(error, "Unable to import monitors right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });
   }
-}
-
-function applyImportDefaults(
-  item: unknown,
-  settings: Awaited<ReturnType<typeof getSettings>>,
-  intervalDefaults: { intervalValue: number; intervalUnit: "sn" | "dk" | "sa" }
-) {
-  const record = item && typeof item === "object" ? ({ ...item } as Record<string, unknown>) : {};
-
-  if (!record.intervalValue) {
-    record.intervalValue = intervalDefaults.intervalValue;
-  }
-
-  if (!record.intervalUnit) {
-    record.intervalUnit = intervalDefaults.intervalUnit;
-  }
-
-  if (!record.timeout) {
-    record.timeout = settings?.monitoring.timeout ?? 60000;
-  }
-
-  if (!record.monitorType) {
-    record.monitorType = "http";
-  }
-
-  if (!record.retries && record.retries !== 0) {
-    record.retries = settings?.monitoring.retries ?? 3;
-  }
-
-  if (!record.method) {
-    record.method = settings?.monitoring.method ?? "GET";
-  }
-
-  if (!record.responseMaxLength) {
-    record.responseMaxLength = settings?.monitoring.responseMaxLength ?? 1024;
-  }
-
-  if (!record.maxRedirects && record.maxRedirects !== 0) {
-    record.maxRedirects = settings?.monitoring.maxRedirects ?? 5;
-  }
-
-  return record;
 }

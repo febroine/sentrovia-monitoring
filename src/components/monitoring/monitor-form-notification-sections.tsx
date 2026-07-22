@@ -122,8 +122,8 @@ export function NotificationMonitorSettings({
         <CheckRow
           label="Attach screenshot on confirmed down"
           description="Capture a bounded browser screenshot after outage verification and include it with email or Telegram alerts."
-          checked={values.sendIncidentScreenshot}
-          onChange={(checked) => onFieldChange("sendIncidentScreenshot", checked)}
+          checked={values.sendOutageScreenshot}
+          onChange={(checked) => onFieldChange("sendOutageScreenshot", checked)}
         />
       ) : null}
     </div>

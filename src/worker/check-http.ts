@@ -20,6 +20,7 @@ interface HttpResponseSnapshot {
 }
 
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
+const ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES = 100_000;
 
 export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
@@ -249,7 +250,10 @@ function buildRequestTimeoutError(timeoutMs: number) {
 }
 
 async function consumeResponse(response: IncomingMessage, responseMaxLength: number) {
-  const limit = Math.max(0, responseMaxLength || 0);
+  const configuredLimit = Number.isFinite(responseMaxLength) ? Math.max(0, responseMaxLength) : 0;
+  const limit = configuredLimit > 0
+    ? Math.min(configuredLimit, ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES)
+    : ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES;
   const chunks: Buffer[] = [];
   let received = 0;
 
@@ -257,7 +261,7 @@ async function consumeResponse(response: IncomingMessage, responseMaxLength: num
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     received += buffer.length;
 
-    if (limit > 0 && received > limit) {
+    if (received > limit) {
       chunks.push(buffer.subarray(0, Math.max(0, limit - (received - buffer.length))));
       break;
     }

@@ -1,22 +1,21 @@
-import { and, desc, eq, gte, ilike, inArray, isNull, lte, ne, notInArray, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, notInArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, monitorEvents, monitors } from "@/lib/db/schema";
+import { AuthError } from "@/lib/auth/errors";
 import type { LogLevel } from "@/lib/logs/types";
+import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 import { toEnglishUppercase } from "@/lib/text/casing";
 
-const HIDDEN_NOTIFICATION_MARKER_EVENTS: string[] = [
-  "failure-notification",
-  "latency-notification",
-  "ssl-expiry-notification",
-  "status-change-notification",
-  "downtime-reminder",
-];
+const HIDDEN_NOTIFICATION_MARKER_EVENTS: string[] = [...NOTIFICATION_MARKER_EVENT_TYPES];
 const WORKER_NOTIFICATION_MARKER_EVENTS: string[] = [...HIDDEN_NOTIFICATION_MARKER_EVENTS];
+const WARNING_EVENT_TYPES = ["ssl-expiry", "latency", "status-change"];
+const NON_ERROR_EVENT_TYPES = ["failure", "recovery", "check", ...WARNING_EVENT_TYPES];
+const LOG_LEVEL_FILTERS = new Set(["all", "info", "warning", "error", "critical"]);
 
-function mapEventToLevel(eventType: string, status: string | null): LogLevel {
+export function mapEventToLevel(eventType: string, status: string | null): LogLevel {
   if (eventType === "check") return "info";
   if (eventType === "failure") return "critical";
-  if (eventType === "ssl-expiry" || eventType === "latency" || eventType === "status-change") return "warning";
+  if (WARNING_EVENT_TYPES.includes(eventType)) return "warning";
   if (eventType === "recovery") return "info";
   if (status === "down") return "error";
   return "info";
@@ -44,12 +43,16 @@ export async function listLogs(
   const monitorConditions = [eq(monitors.userId, userId), isNull(monitors.deletedAt)];
 
   const fromDate = parseDateFilter(filters.from);
+  const toDate = parseDateFilter(filters.to);
+  if (fromDate && toDate && fromDate > toDate) {
+    throw new AuthError("The log start date must not be after the end date.", 400);
+  }
+
   if (fromDate) {
     conditions.push(gte(monitorEvents.createdAt, fromDate));
     monitorConditions.push(gte(monitors.lastCheckedAt, fromDate));
   }
 
-  const toDate = parseDateFilter(filters.to);
   if (toDate) {
     const end = new Date(toDate);
     end.setHours(23, 59, 59, 999);
@@ -90,10 +93,11 @@ export async function listLogs(
 
   if (filters.statusCode?.trim()) {
     const parsed = Number(filters.statusCode);
-    if (Number.isFinite(parsed)) {
-      conditions.push(eq(monitorEvents.statusCode, parsed));
-      monitorConditions.push(eq(monitors.statusCode, parsed));
+    if (!Number.isInteger(parsed) || parsed < 100 || parsed > 599) {
+      throw new AuthError("Enter a valid HTTP status code between 100 and 599.", 400);
     }
+    conditions.push(eq(monitorEvents.statusCode, parsed));
+    monitorConditions.push(eq(monitors.statusCode, parsed));
   }
 
   appendLevelConditions(conditions, filters.level);
@@ -102,7 +106,13 @@ export async function listLogs(
   const page = toBoundedInteger(filters.page, 1, 1);
   const pageSize = toBoundedInteger(filters.pageSize, 10, 10, 100);
   const offset = (page - 1) * pageSize;
-  const [eventRows, monitorRows] = await Promise.all([
+  const requiredRows = offset + pageSize;
+  const upSummaryConditions = [
+    ...monitorConditions,
+    eq(monitors.status, "up"),
+    isNotNull(monitors.lastCheckedAt),
+  ];
+  const [eventRows, monitorRows, eventCountRows, monitorCountRows] = await Promise.all([
     db
     .select({
       id: monitorEvents.id,
@@ -124,7 +134,8 @@ export async function listLogs(
     .leftJoin(monitors, eq(monitorEvents.monitorId, monitors.id))
     .leftJoin(companies, eq(monitors.companyId, companies.id))
     .where(and(...conditions))
-    .orderBy(desc(monitorEvents.createdAt)),
+    .orderBy(desc(monitorEvents.createdAt))
+    .limit(requiredRows),
     db
       .select({
         id: monitors.id,
@@ -145,20 +156,29 @@ export async function listLogs(
       })
       .from(monitors)
       .leftJoin(companies, eq(monitors.companyId, companies.id))
-      .where(and(...monitorConditions))
+      .where(and(...upSummaryConditions))
       .orderBy(desc(monitors.lastCheckedAt))
-      .limit(500),
+      .limit(requiredRows),
+    db
+      .select({ total: count() })
+      .from(monitorEvents)
+      .leftJoin(monitors, eq(monitorEvents.monitorId, monitors.id))
+      .leftJoin(companies, eq(monitors.companyId, companies.id))
+      .where(and(...conditions)),
+    db
+      .select({ total: count() })
+      .from(monitors)
+      .leftJoin(companies, eq(monitors.companyId, companies.id))
+      .where(and(...upSummaryConditions)),
   ]);
 
-  const summaryRows = monitorRows
-    .filter((row) => row.status === "up" && row.createdAt)
-    .map((row) => buildUpSummaryRow(row));
+  const summaryRows = monitorRows.map((row) => buildUpSummaryRow(row));
 
   const rows = [...summaryRows, ...eventRows]
     .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   const pagedRows = rows.slice(offset, offset + pageSize);
 
-  const totalRows = rows.length;
+  const totalRows = Number(eventCountRows[0]?.total ?? 0) + Number(monitorCountRows[0]?.total ?? 0);
 
   return {
     rows: pagedRows.map((row) => mapLogRow(row)),
@@ -168,13 +188,20 @@ export async function listLogs(
   };
 }
 
-function parseDateFilter(value: string | undefined) {
+export function parseDateFilter(value: string | undefined) {
   if (!value?.trim()) {
     return null;
   }
 
-  const parsed = parseLocalDateInput(value.trim()) ?? new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  const normalized = value.trim();
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+    ? parseLocalDateInput(normalized)
+    : new Date(normalized);
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    throw new AuthError("Enter a valid log date.", 400);
+  }
+
+  return parsed;
 }
 
 function parseLocalDateInput(value: string) {
@@ -184,7 +211,12 @@ function parseLocalDateInput(value: string) {
   }
 
   const [, year, month, day] = match;
-  return new Date(Number(year), Number(month) - 1, Number(day));
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  return parsed.getFullYear() === Number(year)
+    && parsed.getMonth() === Number(month) - 1
+    && parsed.getDate() === Number(day)
+    ? parsed
+    : null;
 }
 
 function toBoundedInteger(value: number | undefined, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER) {
@@ -227,7 +259,7 @@ export async function clearLogs(userId: string) {
 }
 
 function appendLevelConditions(conditions: unknown[], level?: string) {
-  if (!level || level === "all") {
+  if (!level || level === "all" || !LOG_LEVEL_FILTERS.has(level)) {
     return;
   }
 
@@ -237,7 +269,7 @@ function appendLevelConditions(conditions: unknown[], level?: string) {
   }
 
   if (level === "warning") {
-    conditions.push(inArray(monitorEvents.eventType, ["ssl-expiry", "latency", "status-change"]));
+    conditions.push(inArray(monitorEvents.eventType, WARNING_EVENT_TYPES));
     return;
   }
 
@@ -246,11 +278,16 @@ function appendLevelConditions(conditions: unknown[], level?: string) {
     return;
   }
 
-  conditions.push(and(eq(monitorEvents.status, "down"), ilike(monitorEvents.eventType, "%"))!);
+  conditions.push(
+    and(
+      eq(monitorEvents.status, "down"),
+      notInArray(monitorEvents.eventType, NON_ERROR_EVENT_TYPES)
+    )!
+  );
 }
 
 function appendMonitorLevelConditions(conditions: unknown[], level?: string) {
-  if (!level || level === "all" || level === "info") {
+  if (!level || level === "all" || level === "info" || !LOG_LEVEL_FILTERS.has(level)) {
     return;
   }
 
@@ -276,7 +313,7 @@ function buildUpSummaryRow(row: {
   lastSuccessAt: Date | null;
   lastFailureAt: Date | null;
 }) {
-  const upSince = resolveUpSince(row.lastSuccessAt, row.lastFailureAt, row.createdAt);
+  const latestSuccessfulCheck = row.lastSuccessAt ?? row.createdAt ?? new Date(0);
 
   return {
     id: `up-summary:${row.id}`,
@@ -293,11 +330,10 @@ function buildUpSummaryRow(row: {
     companyName: row.companyName,
     monitorId: row.monitorId,
     monitorName: row.monitorName,
-    detailTitle: "Current uptime window",
-    detailSummary: `This monitor has remained healthy since ${upSince.toLocaleString()}.`,
+    detailTitle: "Latest healthy check",
+    detailSummary: `The latest successful check completed at ${latestSuccessfulCheck.toLocaleString()}.`,
     detailItems: [
-      { label: "Up since", value: upSince.toLocaleString() },
-      { label: "Healthy for", value: formatDuration(Date.now() - upSince.getTime()) },
+      { label: "Latest successful check", value: latestSuccessfulCheck.toLocaleString() },
       { label: "Last check", value: row.lastCheckedAt?.toLocaleString() ?? "Never checked" },
       { label: "Current code", value: row.statusCode ? `HTTP ${row.statusCode}` : "No status code" },
       { label: "Latest latency", value: row.latencyMs !== null ? `${row.latencyMs}ms` : "No latency sample" },
@@ -346,29 +382,4 @@ function mapLogRow(row: {
 
 function compactDetailItems(items: Array<{ label: string; value: string } | null>) {
   return items.filter((item): item is { label: string; value: string } => Boolean(item));
-}
-
-function resolveUpSince(lastSuccessAt: Date | null, lastFailureAt: Date | null, fallback: Date | null) {
-  if (lastSuccessAt && lastFailureAt && lastSuccessAt > lastFailureAt) {
-    return lastSuccessAt;
-  }
-
-  return lastSuccessAt ?? fallback ?? new Date();
-}
-
-function formatDuration(durationMs: number) {
-  const totalMinutes = Math.max(1, Math.floor(durationMs / 60000));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-
-  if (days > 0) {
-    return `${days}d ${hours}h`;
-  }
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-
-  return `${minutes}m`;
 }

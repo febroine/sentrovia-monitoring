@@ -54,7 +54,7 @@ export function shouldCaptureScreenshot(monitor: Monitor) {
 }
 
 function getScreenshotSkipReason(monitor: Monitor) {
-  if (!monitor.sendIncidentScreenshot) {
+  if (!monitor.sendOutageScreenshot) {
     return "screenshot setting is disabled for this monitor";
   }
 

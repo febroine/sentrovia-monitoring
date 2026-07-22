@@ -376,7 +376,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
         />
       }
     >
-      <div className="rounded-2xl border bg-muted/15 p-4">
+      <div className="rounded-lg border bg-muted/15 p-4">
         <p className="text-sm font-medium">Override behavior</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           These values fill the gaps when a monitor is created manually or imported from CSV. If a monitor defines its
@@ -385,7 +385,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border bg-muted/15 p-5">
+        <div className="rounded-lg border bg-muted/15 p-5">
           <div className="space-y-1">
             <p className="text-sm font-medium">Scheduling and execution</p>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -412,8 +412,8 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
               />
             </Field>
             <Field
-              label="Verification attempts"
-              hint="How many 1-minute confirmation checks must fail before an outage is confirmed."
+              label="Consecutive failures required"
+              hint="Total failed probes required, including the initial failure. A final immediate confirmation probe must also fail before an outage is announced."
             >
               <Input
                 type="number"
@@ -438,7 +438,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
           </div>
         </div>
 
-        <div className="rounded-2xl border bg-muted/15 p-5">
+        <div className="rounded-lg border bg-muted/15 p-5">
           <div className="space-y-1">
             <p className="text-sm font-medium">HTTP request defaults</p>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -464,7 +464,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Response max length" hint="0 keeps the current unlimited behavior for new monitors.">
+            <Field label="Response max length" hint="0 uses the 100 KB worker safety limit for new monitors.">
               <Input
                 type="number"
                 min={0}
@@ -598,8 +598,8 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
       <ToggleRow
         label="Outage banner"
         description="Show a dashboard banner when one or more monitors are currently offline."
-        checked={settings.appearance.showIncidentBanner}
-        onChange={(checked) => updateSetting("appearance.showIncidentBanner", checked)}
+        checked={settings.appearance.showOutageBanner}
+        onChange={(checked) => updateSetting("appearance.showOutageBanner", checked)}
       />
       <Field label="Landing page">
         <Select
@@ -624,7 +624,13 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
 
 export function PublicStatusSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const { saveSection, savingSection } = useSectionSave(saveSettings);
+  const { companies, error: companyError, loading: companiesLoading } = usePublicStatusCompanies();
   const statusPath = settings.publicStatus.slug ? `/status/${settings.publicStatus.slug}` : "/status/your-status-slug";
+  const canOpenStatusPage = settings.publicStatus.enabled && settings.publicStatus.slug.length >= 3;
+  const selectedCompanyMissing = Boolean(
+    settings.publicStatus.companyId
+    && !companies.some((company) => company.id === settings.publicStatus.companyId)
+  );
 
   return (
     <SectionCard
@@ -658,10 +664,51 @@ export function PublicStatusSettingsTab({ settings, saving, saveSettings, update
         <Field label="Public URL">
           <div className="flex min-h-10 items-center gap-2 rounded-md border bg-muted/20 px-3 text-sm text-muted-foreground">
             <ExternalLink className="h-4 w-4 shrink-0" />
-            <span className="truncate">{statusPath}</span>
+            <span className="min-w-0 flex-1 truncate">{statusPath}</span>
+            {canOpenStatusPage ? (
+              <a
+                aria-label="Open public status page"
+                className="flex size-7 shrink-0 items-center justify-center rounded-sm hover:bg-muted hover:text-foreground"
+                href={statusPath}
+                rel="noreferrer"
+                target="_blank"
+                title="Open public status page"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            ) : null}
           </div>
         </Field>
       </div>
+      <Field
+        label="Published company"
+        hint="Choose one company to publish only its active monitors, or keep the full workspace visible."
+      >
+        <Select
+          value={settings.publicStatus.companyId || "all-companies"}
+          onValueChange={(value) => updateSetting(
+            "publicStatus.companyId",
+            value === "all-companies" ? "" : String(value)
+          )}
+          disabled={companiesLoading}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={companiesLoading ? "Loading companies..." : "Select company scope"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all-companies">All companies</SelectItem>
+            {selectedCompanyMissing ? (
+              <SelectItem value={settings.publicStatus.companyId}>Unavailable selected company</SelectItem>
+            ) : null}
+            {companies.map((company) => (
+              <SelectItem key={company.id} value={company.id}>
+                {company.name} ({company.monitorsCount} monitors)
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {companyError ? <p className="mt-2 text-xs text-destructive">{companyError}</p> : null}
+      </Field>
       <Field label="Page title" hint="Leave empty to use your organization name.">
         <Input
           value={settings.publicStatus.title}
@@ -678,6 +725,51 @@ export function PublicStatusSettingsTab({ settings, saving, saveSettings, update
       </Field>
     </SectionCard>
   );
+}
+
+type PublicStatusCompanyOption = {
+  id: string;
+  name: string;
+  monitorsCount: number;
+};
+
+function usePublicStatusCompanies() {
+  const [companies, setCompanies] = useState<PublicStatusCompanyOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadCompanies() {
+      try {
+        const response = await fetch("/api/companies", { cache: "no-store", signal: controller.signal });
+        const data = await response.json().catch(() => null) as {
+          companies?: PublicStatusCompanyOption[];
+          message?: string;
+        } | null;
+        if (!response.ok) {
+          throw new Error(data?.message ?? "Unable to load companies.");
+        }
+
+        setCompanies(data?.companies ?? []);
+        setError(null);
+      } catch (loadError) {
+        if (!controller.signal.aborted) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load companies.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadCompanies();
+    return () => controller.abort();
+  }, []);
+
+  return { companies, loading, error };
 }
 
 export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
@@ -1009,7 +1101,7 @@ function resolveProfileDescription(profile: UpdateInstallProfile) {
 function UpdateMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border p-4">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-2 text-lg font-semibold">{value}</p>
     </div>
   );
@@ -1095,7 +1187,7 @@ function SectionCard({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             {Icon ? (
-              <div className="rounded-2xl border border-border/70 bg-background/80 p-2.5 shadow-sm">
+              <div className="rounded-lg border border-border/70 bg-background/80 p-2.5 shadow-sm">
                 <Icon className={iconClassName ?? "text-primary"} />
               </div>
             ) : null}

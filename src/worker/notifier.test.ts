@@ -506,7 +506,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
-    sendIncidentScreenshot: false,
+    sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,

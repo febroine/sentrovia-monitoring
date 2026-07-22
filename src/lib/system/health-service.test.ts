@@ -7,6 +7,8 @@ describe("buildSystemHealthAlarms", () => {
       workerDesiredState: "running",
       workerHealthy: true,
       heartbeatAgeMs: 1_000,
+      connectivityStatus: "online",
+      connectivityMessage: null,
       delayedMonitorCount: 0,
       failedDeliveryCount: 0,
       queuedDeliveryCount: 0,
@@ -18,6 +20,8 @@ describe("buildSystemHealthAlarms", () => {
       workerDesiredState: "running",
       workerHealthy: false,
       heartbeatAgeMs: 240_000,
+      connectivityStatus: "online",
+      connectivityMessage: null,
       delayedMonitorCount: 12,
       failedDeliveryCount: 2,
       queuedDeliveryCount: 1,
@@ -37,9 +41,31 @@ describe("buildSystemHealthAlarms", () => {
       workerDesiredState: "stopped",
       workerHealthy: false,
       heartbeatAgeMs: null,
+      connectivityStatus: "offline",
+      connectivityMessage: "Internet is unavailable.",
       delayedMonitorCount: 0,
       failedDeliveryCount: 0,
       queuedDeliveryCount: 0,
     })).toEqual([]);
+  });
+
+  it("reports connectivity loss once and suppresses the expected delayed-check alarm", () => {
+    const alarms = buildSystemHealthAlarms({
+      workerDesiredState: "running",
+      workerHealthy: true,
+      heartbeatAgeMs: 1_000,
+      connectivityStatus: "offline",
+      connectivityMessage: "Monitoring is paused while all canaries are unavailable.",
+      delayedMonitorCount: 25,
+      failedDeliveryCount: 0,
+      queuedDeliveryCount: 0,
+    });
+
+    expect(alarms).toEqual([{
+      id: "worker-connectivity-offline",
+      severity: "critical",
+      title: "Internet connectivity is unavailable",
+      detail: "Monitoring is paused while all canaries are unavailable.",
+    }]);
   });
 });

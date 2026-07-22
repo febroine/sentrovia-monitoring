@@ -62,7 +62,7 @@ export interface SettingsPayload {
     compactDensity: boolean;
     sidebarAccent: string;
     dashboardLandingPage: string;
-    showIncidentBanner: boolean;
+    showOutageBanner: boolean;
     showChartsSection: boolean;
     highContrastSurfaces: boolean;
     timeZone: string;
@@ -73,6 +73,7 @@ export interface SettingsPayload {
     slug: string;
     title: string;
     summary: string;
+    companyId: string;
   };
   data: {
     retentionDays: number;
@@ -185,7 +186,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     compactDensity: false,
     sidebarAccent: "emerald",
     dashboardLandingPage: "dashboard",
-    showIncidentBanner: true,
+    showOutageBanner: true,
     showChartsSection: true,
     highContrastSurfaces: false,
     timeZone: "Europe/Istanbul",
@@ -196,6 +197,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     slug: "",
     title: "",
     summary: "",
+    companyId: "",
   },
   data: {
     retentionDays: 90,

@@ -1031,7 +1031,7 @@ function ReportDeliveryComposer({
             <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">HTML only</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Scheduled and manual report deliveries include one browser-ready HTML file. CSV, XLSX, and PDF exports are disabled.
+                Scheduled and manual deliveries include one browser-ready HTML report.
               </p>
             </div>
             <CompactToggle
@@ -1288,7 +1288,7 @@ function ReportPreviewPanel({
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden border-violet-500/15">
-        <CardHeader className="border-b bg-[linear-gradient(135deg,rgba(124,58,237,0.08),transparent_60%)]">
+        <CardHeader className="border-b bg-muted/20">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <CardTitle>{report.title}</CardTitle>
@@ -1332,8 +1332,8 @@ function ReportPreviewPanel({
 
       <Card className="overflow-hidden border-sky-500/15">
         <CardHeader className="border-b bg-sky-500/5">
-          <CardTitle className="text-base">Operational recommendations</CardTitle>
-          <CardDescription>Generated from current status, failure frequency, latency, and affected services.</CardDescription>
+          <CardTitle className="text-base">Report findings</CardTitle>
+          <CardDescription>Items derived from status, failure frequency, and latency in this period.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 pt-4 md:grid-cols-2">
           {report.recommendations.map((item, index) => (

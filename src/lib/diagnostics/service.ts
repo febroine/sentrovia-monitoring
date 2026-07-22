@@ -10,6 +10,11 @@ import {
   parsePortMonitorTarget,
   parsePostgresMonitorTarget,
 } from "@/lib/monitors/targets";
+import {
+  hasExpectedStatusCodeOverride,
+  isCustomExpectedStatusCode,
+  isExpectedHttpStatusCode,
+} from "@/lib/monitors/status-codes";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import type {
   DiagnosticFailureCategory,
@@ -102,7 +107,25 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
     });
   }
 
-  const httpResult = target.url ? await checkHttp(target.url, monitor, timeoutMs) : null;
+  let httpResult: Awaited<ReturnType<typeof checkHttp>> | null = null;
+  try {
+    httpResult = target.url ? await checkHttp(target.url, monitor, timeoutMs) : null;
+  } catch (error) {
+    const errorMessage = formatError(error);
+    return buildDiagnosticResult({
+      createdAt,
+      timeoutMs,
+      failedPhase: "http",
+      failureCategory: categorizeError(errorMessage, "http"),
+      summary: "The HTTP probe was stopped before a safe, complete response could be received.",
+      dnsStatus: dnsResult.status,
+      resolvedIps: dnsResult.addresses,
+      tcpStatus: tcpResult.status,
+      tlsStatus: tlsResult.status,
+      httpStatus: "failed",
+      errorMessage,
+    });
+  }
   const httpStatus = httpResult?.status ?? null;
   const failureCategory = httpResult?.status === "failed" ? categorizeHttpFailure(httpResult) : null;
 
@@ -230,9 +253,20 @@ function checkTls(
   });
 }
 
-function checkHttp(url: string, monitor: Monitor, timeoutMs: number, redirectCount = 0, startedAt = Date.now()) {
+async function checkHttp(
+  url: string,
+  monitor: Monitor,
+  timeoutMs: number,
+  redirectCount = 0,
+  startedAt = Date.now()
+) {
+  const parsed = new URL(url);
+  await assertMonitorNetworkTarget(parsed.hostname, {
+    allowPrivateTargets: env.monitorAllowPrivateTargets,
+    message: MONITOR_PUBLIC_TARGET_ERROR,
+  });
+
   return new Promise<DiagnosticStepResult & { statusCode: number | null; responseTimeMs: number | null }>((resolve) => {
-    const parsed = new URL(url);
     const transport = parsed.protocol === "https:" ? https : http;
     const request = transport.request(
       parsed,
@@ -245,7 +279,14 @@ function checkHttp(url: string, monitor: Monitor, timeoutMs: number, redirectCou
         const statusCode = response.statusCode ?? null;
         const location = response.headers.location;
 
-        if (statusCode && statusCode >= 300 && statusCode < 400 && location && redirectCount < monitor.maxRedirects) {
+        if (
+          statusCode
+          && statusCode >= 300
+          && statusCode < 400
+          && location
+          && redirectCount < monitor.maxRedirects
+          && !isCustomExpectedStatusCode(monitor.expectedStatusCodes, statusCode)
+        ) {
           response.resume();
           const nextUrl = new URL(location, parsed).toString();
           resolve(checkHttp(nextUrl, monitor, timeoutMs, redirectCount + 1, startedAt));
@@ -253,11 +294,12 @@ function checkHttp(url: string, monitor: Monitor, timeoutMs: number, redirectCou
         }
 
         response.resume();
+        const isHealthy = isHealthyHttpDiagnosticStatus(monitor, statusCode);
         resolve({
-          status: statusCode && statusCode >= 200 && statusCode < 300 ? "ok" : "failed",
+          status: isHealthy ? "ok" : "failed",
           statusCode,
           responseTimeMs: Math.max(1, Date.now() - startedAt),
-          errorMessage: buildHttpDiagnosticError(statusCode),
+          errorMessage: buildHttpDiagnosticError(monitor, statusCode),
         });
       }
     );
@@ -270,12 +312,25 @@ function checkHttp(url: string, monitor: Monitor, timeoutMs: number, redirectCou
   });
 }
 
-function buildHttpDiagnosticError(statusCode: number | null) {
-  if (!statusCode || (statusCode >= 200 && statusCode < 300)) {
+function isHealthyHttpDiagnosticStatus(monitor: Monitor, statusCode: number | null) {
+  if (statusCode === null || !isExpectedHttpStatusCode(monitor.expectedStatusCodes, statusCode)) {
+    return false;
+  }
+
+  return hasExpectedStatusCodeOverride(monitor.expectedStatusCodes)
+    || (statusCode >= 200 && statusCode < 300);
+}
+
+function buildHttpDiagnosticError(monitor: Monitor, statusCode: number | null) {
+  if (statusCode === null || isHealthyHttpDiagnosticStatus(monitor, statusCode)) {
     return null;
   }
 
-  if (statusCode >= 300 && statusCode < 400) {
+  if (
+    statusCode >= 300
+    && statusCode < 400
+    && !hasExpectedStatusCodeOverride(monitor.expectedStatusCodes)
+  ) {
     return `HTTP ${statusCode} redirect response was not followed within the configured redirect limit.`;
   }
 

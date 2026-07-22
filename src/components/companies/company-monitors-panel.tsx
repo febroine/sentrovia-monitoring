@@ -226,7 +226,7 @@ function MetricCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
             <p className="text-xl font-semibold tracking-tight">{value}</p>
             <p className="text-xs text-muted-foreground">{sub}</p>
           </div>

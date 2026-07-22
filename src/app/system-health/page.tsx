@@ -10,6 +10,8 @@ import {
   RefreshCw,
   Send,
   ServerCog,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +37,9 @@ interface SystemHealthResponse {
     lastCycleBacklog: number;
     lastErrorAt: string | null;
     lastErrorMessage: string | null;
+    connectivityStatus: "unknown" | "online" | "offline" | "disabled";
+    connectivityCheckedAt: string | null;
+    connectivityMessage: string | null;
   };
   queue: {
     dueBacklog: number;
@@ -119,7 +124,7 @@ export default function SystemHealthPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard
           label="Overall status"
           value={health ? formatOverallStatus(health.overallStatus) : "--"}
@@ -133,10 +138,16 @@ export default function SystemHealthPage() {
           tone={health?.worker.running && health.worker.processAlive ? "healthy" : health?.worker.desiredState === "stopped" ? "neutral" : "critical"}
         />
         <MetricCard
+          label="Internet"
+          value={health ? formatConnectivityStatus(health.worker.connectivityStatus) : "--"}
+          icon={health?.worker.connectivityStatus === "offline" ? WifiOff : Wifi}
+          tone={health?.worker.connectivityStatus === "offline" ? "critical" : health?.worker.connectivityStatus === "online" ? "healthy" : "neutral"}
+        />
+        <MetricCard
           label="Due queue"
           value={health ? String(health.queue.dueBacklog) : "--"}
           icon={Activity}
-          tone={health && health.queue.delayedMonitorCount > 0 ? "warning" : "healthy"}
+          tone={health?.worker.connectivityStatus === "offline" ? "neutral" : health && health.queue.delayedMonitorCount > 0 ? "warning" : "healthy"}
         />
         <MetricCard
           label="Failed notifications"
@@ -187,7 +198,9 @@ export default function SystemHealthPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {health?.queue.delayedMonitors.length ? (
+            {health?.worker.connectivityStatus === "offline" ? (
+              <EmptyMetric icon={WifiOff} text="Scheduling is paused while the worker host has no internet connection." />
+            ) : health?.queue.delayedMonitors.length ? (
               <div className="divide-y divide-border">
                 {health.queue.delayedMonitors.map((monitor) => (
                   <div key={monitor.id} className="py-3 first:pt-0 last:pb-0">
@@ -218,7 +231,7 @@ export default function SystemHealthPage() {
                 {health.delivery.recentFailures.map((event) => (
                   <div key={event.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium capitalize">{event.channel} · {event.kind}</p>
+                      <p className="text-sm font-medium capitalize">{event.channel} - {event.kind}</p>
                       <span className="text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">{event.destination}</p>
@@ -276,6 +289,13 @@ function EmptyMetric({ icon: Icon, text }: { icon: typeof Activity; text: string
 
 function formatOverallStatus(status: SystemHealthResponse["overallStatus"]) {
   return status === "healthy" ? "Healthy" : status === "critical" ? "Critical" : "Needs attention";
+}
+
+function formatConnectivityStatus(status: SystemHealthResponse["worker"]["connectivityStatus"]) {
+  if (status === "online") return "Online";
+  if (status === "offline") return "Paused";
+  if (status === "disabled") return "Not checked";
+  return "Waiting";
 }
 
 function formatDuration(milliseconds: number) {

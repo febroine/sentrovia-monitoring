@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isSlowPublicService, normalizePublicServiceStatus, sanitizePublicMonitorUrl } from "@/lib/public-status/service";
+import {
+  comparePublicStatusServices,
+  isPublicStatusCompanyAvailable,
+  isSlowPublicService,
+  normalizePublicServiceStatus,
+  sanitizePublicMonitorUrl,
+} from "@/lib/public-status/service";
 
 describe("sanitizePublicMonitorUrl", () => {
   it("removes credentials, query strings, and fragments before public rendering", () => {
@@ -47,5 +53,36 @@ describe("isSlowPublicService", () => {
   it("does not mark down or threshold-less services as slow", () => {
     expect(isSlowPublicService("down", 21, 20)).toBe(false);
     expect(isSlowPublicService("up", 21, null)).toBe(false);
+  });
+});
+
+describe("isPublicStatusCompanyAvailable", () => {
+  it("keeps an unscoped status page available", () => {
+    expect(isPublicStatusCompanyAvailable(null, null, null)).toBe(true);
+  });
+
+  it("rejects missing or deleted selected companies without broadening scope", () => {
+    expect(isPublicStatusCompanyAvailable("company-1", null, null)).toBe(false);
+    expect(isPublicStatusCompanyAvailable("company-1", "Holding", new Date())).toBe(false);
+  });
+
+  it("accepts an available selected company", () => {
+    expect(isPublicStatusCompanyAvailable("company-1", "Holding", null)).toBe(true);
+  });
+});
+
+describe("comparePublicStatusServices", () => {
+  it("places outages and degraded services before operational services", () => {
+    const services = [
+      { status: "up", url: "https://up.example.com" },
+      { status: "pending", url: "https://slow.example.com" },
+      { status: "down", url: "https://down.example.com" },
+    ];
+
+    expect(services.sort(comparePublicStatusServices).map((service) => service.status)).toEqual([
+      "down",
+      "pending",
+      "up",
+    ]);
   });
 });

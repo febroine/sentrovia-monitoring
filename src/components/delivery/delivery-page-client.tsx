@@ -62,7 +62,7 @@ export function DeliveryPageClient() {
       {
         label: "Failed",
         value: String(overview.summary.failed),
-        sub: "Needs operator review",
+        sub: "Review failed attempts",
         border: "border-l-rose-500",
       },
       {
@@ -220,7 +220,7 @@ export function DeliveryPageClient() {
     <div className="space-y-6">
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Delivery Operations</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Notification delivery</h1>
           <p className="text-sm text-muted-foreground">
             Manage webhook delivery, run email and telegram smoke tests, and review the retry queue.
           </p>
@@ -237,7 +237,7 @@ export function DeliveryPageClient() {
         {cards.map((card) => (
           <Card key={card.label} className="overflow-hidden">
             <CardContent className={`border-l-2 px-4 py-3 ${card.border}`}>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{card.label}</p>
+              <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
               <p className="mt-2 text-xl font-semibold tracking-tight">{card.value}</p>
               <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
             </CardContent>
@@ -248,7 +248,7 @@ export function DeliveryPageClient() {
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/15 pb-3">
-            <CardTitle className="text-base">Webhook Endpoint</CardTitle>
+            <CardTitle className="text-base">Webhook endpoint</CardTitle>
             <CardDescription>Store one outbound webhook and let Sentrovia retry failed posts.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 border-l-2 border-l-sky-500 p-5">
@@ -280,7 +280,7 @@ export function DeliveryPageClient() {
 
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/15 pb-3">
-            <CardTitle className="text-base">Test Delivery Lab</CardTitle>
+            <CardTitle className="text-base">Test delivery</CardTitle>
             <CardDescription>Validate email and telegram routing before relying on alerts.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 border-l-2 border-l-violet-500 p-5">
@@ -316,7 +316,7 @@ export function DeliveryPageClient() {
         <CardHeader className="border-b bg-muted/15 pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1.5">
-              <CardTitle className="text-base">Delivery History</CardTitle>
+              <CardTitle className="text-base">Delivery history</CardTitle>
               <CardDescription>Email, Telegram, Discord, and webhook attempts ordered from newest to oldest.</CardDescription>
             </div>
             <Button
@@ -482,7 +482,7 @@ export function DeliveryPageClient() {
                 <PayloadMetric label="Response" value={selectedRow.responseCode?.toString() ?? "N/A"} />
                 <PayloadMetric label="Attempts" value={selectedRow.attempts.toString()} />
               </div>
-              <div className="rounded-2xl border bg-muted/15 p-4">
+              <div className="rounded-lg border bg-muted/15 p-4">
                 <p className="text-sm font-medium">Payload</p>
                 <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-xl border bg-background p-4 text-xs leading-6 text-muted-foreground">
                   {JSON.stringify(selectedRow.payload ?? {}, null, 2)}
@@ -574,7 +574,7 @@ function isDeletionRangeReady(range: HistoryDeletionRange, from: string, to: str
 function PayloadMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border bg-muted/15 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-medium break-words">{value}</p>
     </div>
   );

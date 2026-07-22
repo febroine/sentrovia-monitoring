@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeReportStatus, scheduleNextRunAfter } from "@/lib/reports/service";
+import {
+  assertReportScheduleCompanyAvailable,
+  normalizeReportStatus,
+  scheduleNextRunAfter,
+} from "@/lib/reports/service";
 
 describe("normalizeReportStatus", () => {
   it("keeps supported status values unchanged", () => {
@@ -22,5 +26,17 @@ describe("scheduleNextRunAfter", () => {
     );
 
     expect(nextRun.toISOString()).toBe("2027-02-28T08:00:00.000Z");
+  });
+});
+
+describe("report schedule company availability", () => {
+  it("rejects company schedules whose company was deleted", () => {
+    expect(() => assertReportScheduleCompanyAvailable("company", null)).toThrow(
+      "The company assigned to this report schedule is unavailable."
+    );
+  });
+
+  it("allows workspace schedules without a company", () => {
+    expect(() => assertReportScheduleCompanyAvailable("global", null)).not.toThrow();
   });
 });

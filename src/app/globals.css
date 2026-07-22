@@ -7,7 +7,7 @@
 @theme {
   --font-sans: var(--font-inter);
 
-  /* Professional neutral dark palette */
+  /* Neutral dark palette */
   --color-background: #09090b;
   --color-foreground: #fafafa;
 
@@ -50,9 +50,9 @@
   --color-primary-dim: #4f46e5;
 
   /* Radius */
-  --radius-lg: 0.75rem;
-  --radius-md: calc(0.75rem - 2px);
-  --radius-sm: calc(0.75rem - 4px);
+  --radius-lg: 0.5rem;
+  --radius-md: 0.375rem;
+  --radius-sm: 0.25rem;
 }
 
 @layer base {
@@ -115,7 +115,7 @@
   }
 }
 
-/* ── Custom Scrollbar ── */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -140,7 +140,7 @@
   scrollbar-color: var(--color-surface-highest) transparent;
 }
 
-/* ── Hide Number Input Spinners ── */
+/* Hide number input spinners */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;

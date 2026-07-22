@@ -4,6 +4,14 @@ const MIN_WORKER_CONCURRENCY = 1;
 const MAX_WORKER_CONCURRENCY = 500;
 const MIN_WORKER_POLL_INTERVAL_MS = 1_000;
 const MAX_WORKER_POLL_INTERVAL_MS = 600_000;
+const DEFAULT_WORKER_CONNECTIVITY_TIMEOUT_MS = 5_000;
+const MIN_WORKER_CONNECTIVITY_TIMEOUT_MS = 1_000;
+const MAX_WORKER_CONNECTIVITY_TIMEOUT_MS = 30_000;
+const DEFAULT_WORKER_CONNECTIVITY_TARGETS = [
+  "https://www.google.com/generate_204",
+  "https://www.cloudflare.com/cdn-cgi/trace",
+  "https://www.msftconnecttest.com/connecttest.txt",
+];
 const DEFAULT_AUTH_SECRET = "change-me-before-production";
 const DEFAULT_APP_ENCRYPTION_SECRET = "change-me-before-production-encryption";
 const PLACEHOLDER_SECRET_MARKERS = ["change-me", "please-change", "replace-this", "replace-with", "local-docker", "example-"];
@@ -36,6 +44,28 @@ function parseBoolean(value: string | undefined, fallback = false) {
 
 function isProductionEnvironment() {
   return process.env.NODE_ENV === "production";
+}
+
+function parseHttpUrlList(value: string | undefined, fallback: string[]) {
+  if (!value?.trim()) {
+    return fallback;
+  }
+
+  const urls = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => {
+      try {
+        const parsed = new URL(item);
+        return (parsed.protocol === "http:" || parsed.protocol === "https:")
+          && !parsed.username
+          && !parsed.password;
+      } catch {
+        return false;
+      }
+    });
+
+  return urls.length > 0 ? Array.from(new Set(urls)) : fallback;
 }
 
 function isUnsafeSecret(value: string, fallback: string) {
@@ -113,4 +143,15 @@ export const env = {
   workerAutoStart: parseBoolean(process.env.WORKER_AUTO_START, false),
   disableEmbeddedWorkerSpawn: parseBoolean(process.env.DISABLE_EMBEDDED_WORKER_SPAWN, false),
   monitorAllowPrivateTargets: parseBoolean(process.env.MONITOR_ALLOW_PRIVATE_TARGETS, true),
+  workerConnectivityCheckEnabled: parseBoolean(process.env.WORKER_CONNECTIVITY_CHECK_ENABLED, true),
+  workerConnectivityTargets: parseHttpUrlList(
+    process.env.WORKER_CONNECTIVITY_TARGETS,
+    DEFAULT_WORKER_CONNECTIVITY_TARGETS
+  ),
+  workerConnectivityTimeoutMs: parseBoundedInteger(
+    process.env.WORKER_CONNECTIVITY_TIMEOUT_MS,
+    DEFAULT_WORKER_CONNECTIVITY_TIMEOUT_MS,
+    MIN_WORKER_CONNECTIVITY_TIMEOUT_MS,
+    MAX_WORKER_CONNECTIVITY_TIMEOUT_MS
+  ),
 };

@@ -4,7 +4,7 @@ import { AuthError } from "@/lib/auth/errors";
 import type { ChangePasswordInput, LoginInput, MemberCreateInput, OnboardingInput } from "@/lib/auth/schemas";
 import { createSessionToken, type SessionUser, type UserRole } from "@/lib/auth/token";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { users, userSettings } from "@/lib/db/schema";
 import { getAuthSecret } from "@/lib/env";
 
 const ONBOARDING_ADVISORY_LOCK_KEY = 77_481_307;
@@ -114,16 +114,14 @@ export async function createInitialAdmin(input: OnboardingInput) {
 
 export async function createMember(input: MemberCreateInput) {
   ensureAuthRuntimeReady();
-  const createdUser = await createUser(input, "member", db);
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  const createdUser = await db.transaction((tx) =>
+    createUserWithPasswordHash(input, "member", passwordHash, tx)
+  );
 
   return {
     user: serializeMember(createdUser),
   };
-}
-
-async function createUser(input: MemberCreateInput | OnboardingInput, role: UserRole, executor: UserCreateExecutor) {
-  const passwordHash = await bcrypt.hash(input.password, 12);
-  return createUserWithPasswordHash(input, role, passwordHash, executor);
 }
 
 async function createUserWithPasswordHash(
@@ -134,11 +132,11 @@ async function createUserWithPasswordHash(
 ) {
   const existingUser = await findExistingAccount(input.email, input.username, executor);
 
-  if (existingUser?.email === input.email) {
+  if (existingUser?.email.toLowerCase() === input.email) {
     throw new AuthError("An account with this email already exists.", 409);
   }
 
-  if (input.username && existingUser?.username === input.username) {
+  if (input.username && existingUser?.username?.toLowerCase() === input.username) {
     throw new AuthError("An account with this username already exists.", 409);
   }
 
@@ -159,11 +157,14 @@ async function createUserWithPasswordHash(
     throw new AuthError("Unable to create your account right now.", 500);
   }
 
+  await executor.insert(userSettings).values({ userId: createdUser.id });
+
   return createdUser;
 }
 
 async function findExistingAccount(email: string, username: string | null, executor: Pick<typeof db, "select">) {
-  const filters = username ? or(eq(users.email, email), sql`lower(${users.username}) = ${username}`) : eq(users.email, email);
+  const emailFilter = sql`lower(${users.email}) = ${email}`;
+  const filters = username ? or(emailFilter, sql`lower(${users.username}) = ${username}`) : emailFilter;
 
   return executor
     .select({ id: users.id, email: users.email, username: users.username })
@@ -179,7 +180,7 @@ export async function loginUser(input: LoginInput) {
   const user = await db
     .select(loginColumns)
     .from(users)
-    .where(or(eq(users.email, input.identifier), sql`lower(${users.username}) = ${input.identifier}`))
+    .where(or(sql`lower(${users.email}) = ${input.identifier}`, sql`lower(${users.username}) = ${input.identifier}`))
     .limit(1)
     .then((rows) => rows[0] as AuthLoginRecord | undefined);
 

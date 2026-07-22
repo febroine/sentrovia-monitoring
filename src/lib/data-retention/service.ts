@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { workerState } from "@/lib/db/schema";
+import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const RETENTION_LOCK_KEY = 54_821_903;
 const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
@@ -24,15 +25,17 @@ export async function runRetentionCleanup(now = new Date()) {
 
     await tx.execute(sql`
       delete from monitor_checks as record
-      using user_settings as settings
-      where record.user_id = settings.user_id
-        and record.created_at < ${now} - make_interval(days => settings.data_retention_days)
+      where record.created_at < ${now} - make_interval(days => coalesce(
+        (select settings.data_retention_days from user_settings as settings where settings.user_id = record.user_id),
+        ${DEFAULT_SETTINGS.data.retentionDays}
+      ))
     `);
     await tx.execute(sql`
       delete from monitor_events as record
-      using user_settings as settings
-      where record.user_id = settings.user_id
-        and record.created_at < ${now} - make_interval(days => settings.event_retention_days)
+      where record.created_at < ${now} - make_interval(days => coalesce(
+        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
+        ${DEFAULT_SETTINGS.data.eventRetentionDays}
+      ))
         and not (
           record.event_type in ('failure-notification', 'downtime-reminder')
           and exists (
@@ -44,29 +47,33 @@ export async function runRetentionCleanup(now = new Date()) {
     `);
     await tx.execute(sql`
       delete from monitor_diagnostics as record
-      using user_settings as settings
-      where record.user_id = settings.user_id
-        and record.created_at < ${now} - make_interval(days => settings.event_retention_days)
+      where record.created_at < ${now} - make_interval(days => coalesce(
+        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
+        ${DEFAULT_SETTINGS.data.eventRetentionDays}
+      ))
     `);
     await tx.execute(sql`
-      delete from incident_events as record
-      using user_settings as settings
-      where record.user_id = settings.user_id
-        and record.created_at < ${now} - make_interval(days => settings.event_retention_days)
+      delete from outage_events as record
+      where record.created_at < ${now} - make_interval(days => coalesce(
+        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
+        ${DEFAULT_SETTINGS.data.eventRetentionDays}
+      ))
     `);
     await tx.execute(sql`
-      delete from monitor_incidents as record
-      using user_settings as settings
-      where record.user_id = settings.user_id
-        and record.status = 'resolved'
-        and coalesce(record.resolved_at, record.updated_at) < ${now} - make_interval(days => settings.event_retention_days)
+      delete from monitor_outages as record
+      where record.status = 'resolved'
+        and coalesce(record.resolved_at, record.updated_at) < ${now} - make_interval(days => coalesce(
+          (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
+          ${DEFAULT_SETTINGS.data.eventRetentionDays}
+        ))
     `);
     await tx.execute(sql`
       delete from delivery_events as record
-      using user_settings as settings
-      where record.user_id = settings.user_id
-        and record.status in ('delivered', 'failed')
-        and record.created_at < ${now} - make_interval(days => settings.delivery_retention_days)
+      where record.status in ('delivered', 'failed')
+        and record.created_at < ${now} - make_interval(days => coalesce(
+          (select settings.delivery_retention_days from user_settings as settings where settings.user_id = record.user_id),
+          ${DEFAULT_SETTINGS.data.deliveryRetentionDays}
+        ))
     `);
     await tx.execute(sql`
       delete from worker_cycle_metrics
@@ -88,6 +95,18 @@ export function shouldRunRetentionCleanup(lastRunAt: Date | null, now: Date) {
 }
 
 async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db.transaction>[0]>[0], now: Date) {
+  await executor.execute(sql`
+    with expired_companies as (
+      select id from companies
+      where deleted_at is not null
+        and deleted_at < ${now} - make_interval(secs => ${SOFT_DELETE_GRACE_SECONDS})
+    )
+    update user_settings
+    set public_status_enabled = false,
+        public_status_company_id = null,
+        updated_at = ${now}
+    where public_status_company_id in (select id from expired_companies)
+  `);
   await executor.execute(sql`
     with expired_companies as (
       select id from companies

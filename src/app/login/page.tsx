@@ -19,7 +19,7 @@ import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 
 const inputClassName =
-  "h-12 rounded-xl border-border/80 bg-surface-low/80 text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
+  "h-12 rounded-md border-border/80 bg-surface-low/80 text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -101,38 +101,27 @@ export default function LoginPage() {
   return (
     <AuthShell
       tone="primary"
-      heroTitle="Return to the Sentrovia control plane with the worker, logs, and delivery view in sync."
-      heroDescription="Sign in to review live monitor state, verification progress, delivery attempts, and company-level visibility from one database-backed workspace."
+      heroTitle="Monitor health, outages, and notification delivery."
+      heroDescription="Sentrovia keeps service checks, verification history, alerts, and reports in one place."
       showcaseCards={[
         {
           icon: TimerReset,
-          title: "Verification Timeline",
-          description: "See whether a failure is still being confirmed or has already become a verified outage.",
-          meta: "OUTAGE CLARITY",
+          title: "Verified outages",
+          description: "Transient failures are rechecked before an outage notification is sent.",
         },
         {
           icon: BellRing,
-          title: "Delivery Trace",
-          description: "Inspect exactly what Sentrovia tried to send after a failure, recovery, or latency event.",
-          meta: "ALERT HISTORY",
+          title: "Delivery history",
+          description: "Inspect email, Telegram, Discord, and webhook delivery outcomes.",
         },
         {
           icon: Database,
-          title: "Worker-Backed State",
-          description: "The console reads persisted worker output rather than temporary browser assumptions.",
-          meta: "PERSISTED VISIBILITY",
+          title: "Company views",
+          description: "Organize monitors and reports around the teams or companies you operate.",
         },
       ]}
-      stats={[
-        { label: "Check Model", value: "Async", detail: "Batch selection with concurrency control" },
-        { label: "Event Trail", value: "Live", detail: "Logs and timelines update from persisted checks" },
-        { label: "Monitor Types", value: "3", detail: "HTTP, TCP, and PostgreSQL coverage" },
-      ]}
-      statsTitle="What you are signing back into"
-      statsDescription="Sentrovia is designed as an operational workspace: checks, verification, delivery, logs, and worker state all read from the same durable model."
-      formEyebrow="Sign In"
-      formTitle="Open the Sentrovia workspace"
-      formDescription="Use your email address or username with your password to continue into the monitoring console."
+      formTitle="Sign in to Sentrovia"
+      formDescription="Use your email address or username and password."
     >
       <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit}>
         <FieldBlock label="Email or Username" htmlFor="identifier">
@@ -175,7 +164,7 @@ export default function LoginPage() {
               variant="ghost"
               size="icon-sm"
               onClick={() => setShowPassword((value) => !value)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md text-muted-foreground hover:bg-muted/70 hover:text-foreground"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <Eye /> : <EyeOff />}
@@ -184,12 +173,12 @@ export default function LoginPage() {
         </FieldBlock>
 
         {error ? (
-          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
             {error}
           </div>
         ) : null}
 
-        <Button type="submit" size="lg" disabled={busy} className="h-12 rounded-xl">
+        <Button type="submit" size="lg" disabled={busy} className="h-12 rounded-md">
           {busy ? (
             <>
               <LoaderCircle data-icon="inline-start" className="animate-spin" />
@@ -197,7 +186,7 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              Continue to Dashboard
+              Sign in
               <ArrowRight data-icon="inline-end" />
             </>
           )}
@@ -238,7 +227,7 @@ function FieldBlock({
       <div className="flex items-center justify-between gap-3">
         <Label
           htmlFor={htmlFor}
-          className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground"
+          className="text-xs font-medium text-muted-foreground"
         >
           {label}
         </Label>

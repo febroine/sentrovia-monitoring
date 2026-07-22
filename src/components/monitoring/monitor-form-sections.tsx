@@ -414,7 +414,9 @@ export function CheckMonitorSettings({
             onChange={(event) => onFieldChange("timeout", Number(event.target.value) || 1000)}
           />
           <p className="text-[11px] text-muted-foreground">
-            The monitor is considered failed only when the request cannot complete inside this window.
+            {isHeartbeatMonitor
+              ? "Extra arrival grace after the expected heartbeat interval before verification starts."
+              : "The monitor is considered failed only when the request cannot complete inside this window."}
           </p>
         </Field>
       </div>
@@ -453,7 +455,7 @@ export function CheckMonitorSettings({
       ) : null}
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Verification attempts">
+        <Field label="Consecutive failures required">
           <Input
             type="number"
             min={2}
@@ -555,9 +557,8 @@ export function CheckMonitorSettings({
 
       <Separator />
       <p className="text-xs text-muted-foreground">
-        The worker uses the verification attempt count as the outage confirmation threshold. After the first failed
-        check, Sentrovia switches to 1-minute verification checks until the threshold is reached or the endpoint
-        recovers.
+        The threshold includes the initial failed probe. Sentrovia then runs 1-minute verification probes and, when
+        the threshold is reached, requires one final immediate confirmation failure before announcing an outage.
       </p>
 
       {isHttpMonitor || isAssertionMonitor ? (

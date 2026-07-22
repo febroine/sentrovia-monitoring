@@ -282,7 +282,7 @@ function FilterMiniStat({
     <div
       className={`relative overflow-hidden rounded-xl border border-border/70 bg-background/75 px-4 py-3 before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-full ${accent}`}
     >
-      <p className="pl-3 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="pl-3 text-xs font-medium text-muted-foreground">{label}</p>
       <p className="pl-3 pt-2 text-sm font-semibold text-foreground">{value}</p>
       <p className="pl-3 pt-1 text-xs text-muted-foreground">{helper}</p>
     </div>

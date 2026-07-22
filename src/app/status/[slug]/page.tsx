@@ -1,33 +1,24 @@
 import { notFound } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Clock3, Globe2, ShieldCheck, type LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Globe2,
+  ShieldCheck,
+  type LucideIcon,
+} from "lucide-react";
 import { SentroviaMark } from "@/components/brand/sentrovia-mark";
-import { Badge } from "@/components/ui/badge";
 import { getPublicStatusPage } from "@/lib/public-status/service";
 import { formatDateTime, type TimeDisplaySettings } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { StatusPageRefresh } from "./status-page-refresh";
+import { ServiceStatusBoard } from "./service-status-board";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type Params = Promise<{ slug: string }>;
 type StatusPageData = NonNullable<Awaited<ReturnType<typeof getPublicStatusPage>>>;
-type StatusService = StatusPageData["services"][number];
-type ServiceStatus = "up" | "pending" | "down";
-type StatusTone = "emerald" | "amber" | "rose" | "slate";
-
-type StatusMetricProps = {
-  title: string;
-  value: string;
-  detail: string;
-  tone: StatusTone;
-  icon: LucideIcon;
-};
-
-type StatusDetailProps = {
-  label: string;
-  value: string;
-};
 
 export default async function PublicStatusPage({ params }: { params: Params }) {
   const { slug } = await params;
@@ -49,27 +40,29 @@ function PublicStatusView({ statusPage }: { statusPage: StatusPageData }) {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <StatusPageRefresh />
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="flex w-full flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 2xl:px-10">
         <StatusHeader
+          companyName={statusPage.scope.companyName}
           generatedAt={statusPage.generatedAt}
           overall={overall}
           timeDisplaySettings={timeDisplaySettings}
           title={statusPage.title}
         />
-        <StatusSummary overall={overall} summary={statusPage.summary} totals={statusPage.totals} />
-        <ServiceStatusList services={statusPage.services} timeDisplaySettings={timeDisplaySettings} />
+        <StatusOverview overall={overall} statusPage={statusPage} />
+        <ServiceStatusBoard services={statusPage.services} timeDisplaySettings={timeDisplaySettings} />
       </div>
     </main>
   );
 }
 
 function StatusHeader({
+  companyName,
   generatedAt,
   overall,
   timeDisplaySettings,
   title,
 }: {
+  companyName: string | null;
   generatedAt: string;
   overall: ReturnType<typeof getOverallStatus>;
   timeDisplaySettings: TimeDisplaySettings;
@@ -81,220 +74,88 @@ function StatusHeader({
   });
 
   return (
-    <header className="flex flex-col gap-4 border-b border-border/70 pb-5 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex items-center gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">
-          <SentroviaMark className="text-sm" />
+    <header className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 items-center gap-4">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+          <SentroviaMark className="text-base" />
         </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Sentrovia Public Status
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-muted-foreground">
+            {companyName ? `${companyName} public status` : "Sentrovia public status"}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground md:text-3xl">{title}</h1>
+          <h1 className="mt-1 break-words text-2xl font-semibold sm:text-3xl">{title}</h1>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card/70 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-4">
-        <span className={cn("inline-flex items-center gap-2 font-medium", overall.text)}>
-          <span className={cn("size-2 rounded-full", overall.dot)} />
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <span className={cn("inline-flex items-center gap-2 font-semibold", overall.text)}>
+          <span className={cn("size-3 rounded-full", overall.dot)} />
           {overall.label}
         </span>
         <span className="text-muted-foreground">Updated {updatedAt}</span>
+        <StatusPageRefresh />
       </div>
     </header>
   );
 }
 
-function StatusSummary({
+function StatusOverview({
   overall,
-  summary,
-  totals,
+  statusPage,
 }: {
   overall: ReturnType<typeof getOverallStatus>;
-  summary: string;
-  totals: StatusPageData["totals"];
+  statusPage: StatusPageData;
 }) {
-  return (
-    <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-      <div className={cn("rounded-lg border bg-card/75 p-5", overall.border)}>
-        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-          <div className="max-w-3xl">
-            <Badge variant="outline" className={cn("border-border bg-background/60", overall.text)}>
-              {overall.badge}
-            </Badge>
-            <p className="mt-4 text-base leading-7 text-muted-foreground">{summary}</p>
-          </div>
-          <PublishedServices total={totals.total} />
-        </div>
-      </div>
+  const metrics = [
+    { label: "Operational", value: statusPage.totals.operational, icon: CheckCircle2, tone: "text-emerald-600 dark:text-emerald-300" },
+    { label: "Degraded", value: statusPage.totals.degraded, icon: Clock3, tone: "text-amber-600 dark:text-amber-300" },
+    { label: "Outage", value: statusPage.totals.outage, icon: AlertTriangle, tone: "text-rose-600 dark:text-rose-300" },
+    { label: "Published", value: statusPage.totals.total, icon: ShieldCheck, tone: "text-slate-600 dark:text-slate-300" },
+  ];
 
-      <div className="grid grid-cols-2 gap-3">
-        <StatusMetric
-          title="Operational"
-          value={String(totals.operational)}
-          detail="Healthy"
-          tone="emerald"
-          icon={CheckCircle2}
-        />
-        <StatusMetric
-          title="Degraded"
-          value={String(totals.degraded)}
-          detail="Pending"
-          tone="amber"
-          icon={Clock3}
-        />
-        <StatusMetric
-          title="Outage"
-          value={String(totals.outage)}
-          detail="Failing"
-          tone="rose"
-          icon={AlertTriangle}
-        />
-        <StatusMetric
-          title="Coverage"
-          value={String(totals.total)}
-          detail="Tracked"
-          tone="slate"
-          icon={ShieldCheck}
-        />
-      </div>
-    </section>
-  );
-}
-
-function PublishedServices({ total }: { total: number }) {
   return (
-    <div className="rounded-lg border border-border bg-background/70 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        Published Services
-      </p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight">{total}</p>
-    </div>
-  );
-}
-
-function ServiceStatusList({
-  services,
-  timeDisplaySettings,
-}: {
-  services: StatusService[];
-  timeDisplaySettings: TimeDisplaySettings;
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-card/70">
-      <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className={cn("overflow-hidden rounded-md border", overall.border, overall.surface)}>
+      <div className="flex flex-col gap-3 border-b border-current/10 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm font-semibold">Service Status</p>
-          <p className="mt-1 text-xs text-muted-foreground">Live view of published monitors and active outages.</p>
+          <p className={cn("text-lg font-semibold", overall.text)}>{overall.badge}</p>
+          <p className="mt-1 max-w-5xl text-sm leading-6 text-muted-foreground sm:text-base">
+            {statusPage.summary}
+          </p>
         </div>
-        <Badge variant="outline" className="w-fit border-border bg-background/60 text-muted-foreground">
-          {services.length} services
-        </Badge>
+        {statusPage.scope.companyName ? (
+          <div className="inline-flex w-fit items-center gap-2 rounded-md border border-current/15 bg-background/65 px-3 py-2 text-sm font-medium">
+            <Globe2 className="h-4 w-4" />
+            {statusPage.scope.companyName}
+          </div>
+        ) : null}
       </div>
-
-      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-        {services.length > 0 ? (
-          services.map((service) => (
-            <ServiceCard
-              key={service.id}
-              healthLabel={service.healthLabel}
-              lastCheckedAt={formatLastCheckedAt(service.lastCheckedAt, timeDisplaySettings)}
-              service={service}
-              status={normalizeServiceStatus(service.status)}
-            />
-          ))
-        ) : (
-          <EmptyServiceState />
-        )}
+      <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
+        {metrics.map((metric) => (
+          <StatusMetric key={metric.label} {...metric} />
+        ))}
       </div>
     </section>
   );
 }
 
-function EmptyServiceState() {
-  return (
-    <div className="rounded-lg border border-dashed border-border px-5 py-10 text-center text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
-      No services are currently published on this status page.
-    </div>
-  );
-}
-
-function StatusMetric({ title, value, detail, tone, icon: Icon }: StatusMetricProps) {
-  const toneClass = getToneClass(tone);
-
-  return (
-    <div className="rounded-lg border border-border bg-card/70 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {title}
-          </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-        </div>
-        <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg border", toneClass)}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ServiceCard({
-  healthLabel,
-  lastCheckedAt,
-  service,
-  status,
+function StatusMetric({
+  icon: Icon,
+  label,
+  tone,
+  value,
 }: {
-  healthLabel: string;
-  lastCheckedAt: string;
-  service: StatusService;
-  status: ServiceStatus;
+  icon: LucideIcon;
+  label: string;
+  tone: string;
+  value: number;
 }) {
-  const meta = getStatusMeta(status);
-
   return (
-    <article className={cn("flex min-h-[260px] flex-col justify-between rounded-lg border bg-background/75 p-4", meta.card)}>
-      <div className="min-w-0">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              <Globe2 className="h-3.5 w-3.5" />
-              {service.company}
-            </p>
-            <h2 className="mt-3 break-all text-sm font-semibold leading-6 text-foreground">{service.url}</h2>
-          </div>
-          <span className={cn("mt-1 size-2.5 shrink-0 rounded-full", meta.dot)} />
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Badge variant="outline" className={cn("border-border bg-background/70", meta.text)}>
-            {meta.label}
-          </Badge>
-          {service.hasOpenOutage ? (
-            <Badge variant="outline" className="border-rose-500/35 bg-rose-500/10 text-rose-300">
-              Outage active
-            </Badge>
-          ) : null}
-        </div>
-
-        <p className="mt-2 text-xs text-muted-foreground">Last checked {lastCheckedAt}</p>
+    <div className="flex min-h-24 items-center gap-3 bg-background/55 px-4 py-4 sm:px-5">
+      <Icon className={cn("h-5 w-5 shrink-0", tone)} />
+      <div>
+        <p className="text-2xl font-semibold">{value}</p>
+        <p className="text-sm text-muted-foreground">{label}</p>
       </div>
-
-      <div className="mt-5 grid gap-2 sm:grid-cols-3">
-        <StatusDetail label="Health" value={`${service.healthScore} / ${healthLabel}`} />
-        <StatusDetail label="Uptime" value={service.uptime} />
-        <StatusDetail label="Latency" value={typeof service.latencyMs === "number" ? `${service.latencyMs}ms` : "--"} />
-      </div>
-    </article>
-  );
-}
-
-function StatusDetail({ label, value }: StatusDetailProps) {
-  return (
-    <div className="rounded-lg border border-border bg-background/70 px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium text-foreground">{value}</p>
     </div>
   );
 }
@@ -303,97 +164,42 @@ function getOverallStatus(totals: { total: number; operational: number; degraded
   if (totals.outage > 0) {
     return {
       label: "Service outage",
-      badge: "Action needed",
-      border: "border-rose-500/35",
-      dot: "bg-rose-400",
-      text: "text-rose-300",
+      badge: "One or more services are unavailable",
+      border: "border-rose-500/45",
+      dot: "bg-rose-500",
+      text: "text-rose-700 dark:text-rose-300",
+      surface: "bg-rose-50/70 dark:bg-rose-950/20",
     };
   }
 
   if (totals.degraded > 0) {
     return {
       label: "Partial degradation",
-      badge: "Degraded performance",
-      border: "border-amber-500/35",
-      dot: "bg-amber-400",
-      text: "text-amber-300",
+      badge: "Some services are responding slowly or being verified",
+      border: "border-amber-500/45",
+      dot: "bg-amber-500",
+      text: "text-amber-700 dark:text-amber-300",
+      surface: "bg-amber-50/70 dark:bg-amber-950/20",
     };
   }
 
   if (totals.total === 0) {
     return {
       label: "No services published",
-      badge: "Empty status page",
+      badge: "No active monitors are available",
       border: "border-slate-500/35",
-      dot: "bg-slate-400",
-      text: "text-slate-300",
+      dot: "bg-slate-500",
+      text: "text-slate-700 dark:text-slate-300",
+      surface: "bg-slate-50/70 dark:bg-slate-950/20",
     };
   }
 
   return {
     label: "All systems operational",
-    badge: "Operational",
-    border: "border-emerald-500/35",
-    dot: "bg-emerald-400",
-    text: "text-emerald-300",
+    badge: "All published services are operational",
+    border: "border-emerald-500/45",
+    dot: "bg-emerald-500",
+    text: "text-emerald-700 dark:text-emerald-300",
+    surface: "bg-emerald-50/70 dark:bg-emerald-950/20",
   };
-}
-
-function getStatusMeta(status: ServiceStatus) {
-  if (status === "down") {
-    return {
-      label: "Outage",
-      dot: "bg-rose-400",
-      text: "text-rose-300",
-      card: "border-rose-500/35 bg-rose-500/10",
-    };
-  }
-
-  if (status === "pending") {
-    return {
-      label: "Degraded",
-      dot: "bg-amber-400",
-      text: "text-amber-300",
-      card: "border-amber-500/35 bg-amber-500/10",
-    };
-  }
-
-  return {
-    label: "Operational",
-    dot: "bg-emerald-400",
-    text: "text-emerald-300",
-    card: "border-emerald-500/25 bg-emerald-500/10",
-  };
-}
-
-function getToneClass(tone: StatusTone) {
-  if (tone === "emerald") {
-    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
-  }
-
-  if (tone === "amber") {
-    return "border-amber-500/30 bg-amber-500/10 text-amber-300";
-  }
-
-  if (tone === "rose") {
-    return "border-rose-500/30 bg-rose-500/10 text-rose-300";
-  }
-
-  return "border-slate-500/30 bg-slate-500/10 text-slate-300";
-}
-
-function normalizeServiceStatus(status: string): ServiceStatus {
-  if (status === "up" || status === "pending" || status === "down") {
-    return status;
-  }
-
-  return "pending";
-}
-
-function formatLastCheckedAt(value: string | null, settings: TimeDisplaySettings) {
-  if (!value) {
-    return "Not checked yet";
-  }
-
-  return formatDateTime(value, settings, { includeSeconds: true });
 }

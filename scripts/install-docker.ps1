@@ -50,6 +50,8 @@ function Initialize-DockerEnvironment {
     $AddedDefaults = Add-SentroviaEnvironmentDefaults -Path $Path -Defaults ([ordered]@{
       AUTH_TRUST_PROXY_HEADERS = "false"
       MONITOR_ALLOW_PRIVATE_TARGETS = "true"
+      WORKER_CONNECTIVITY_CHECK_ENABLED = "true"
+      WORKER_CONNECTIVITY_TIMEOUT_MS = "5000"
     })
     Write-Host "Using the existing .env file. Secrets were not changed."
     if ($AddedDefaults.Count -gt 0) {
@@ -74,6 +76,8 @@ function Initialize-DockerEnvironment {
     "",
     "WORKER_CONCURRENCY=20",
     "WORKER_POLL_INTERVAL_MS=10000",
+    "WORKER_CONNECTIVITY_CHECK_ENABLED=true",
+    "WORKER_CONNECTIVITY_TIMEOUT_MS=5000",
     "MONITOR_ALLOW_PRIVATE_TARGETS=true"
   )
   Write-Host "Created .env with cryptographically strong secrets."

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_MONITOR_FORM, type WorkspaceBackupBundle } from "@/lib/monitors/types";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
+import { settingsSchema } from "@/lib/settings/schemas";
 import { encryptValue } from "@/lib/security/encryption";
 import {
   buildCompanyIdByName,
   buildWorkspaceRestorePreview,
   parseWorkspaceBackup,
+  preparePublicStatusSettingsForBackup,
   resolveRestoredCompanyId,
+  remapPublicStatusCompany,
   restorePostgresMonitorPasswords,
   validateWorkspaceBackupBundle,
 } from "@/lib/system/backup-service";
@@ -164,6 +167,44 @@ describe("workspace backup validation", () => {
     expect(resolveRestoredCompanyId(" acme operations ", companyIdByName)).toBe("company-1");
   });
 
+  it("remaps a public status company to its restored id", () => {
+    const settings = settingsSchema.parse({
+      ...buildSettingsPayload(),
+      publicStatus: {
+        ...buildSettingsPayload().publicStatus,
+        companyId: "00000000-0000-4000-8000-000000000001",
+      },
+    });
+
+    const remapped = remapPublicStatusCompany(
+      settings,
+      "ACME Operations",
+      buildCompanyIdByName([{ id: "new-company-id", name: "acme operations" }])
+    );
+
+    expect(remapped.publicStatus.companyId).toBe("new-company-id");
+  });
+
+  it("rejects a scoped public status backup without company metadata", () => {
+    const settings = buildSettingsPayload();
+    settings.publicStatus.companyId = "00000000-0000-4000-8000-000000000001";
+
+    expect(() => validateWorkspaceBackupBundle(buildBackupBundle({ settings }))).toThrow(
+      "missing its public status company scope"
+    );
+  });
+
+  it("does not broaden an unavailable public status scope during backup", () => {
+    const settings = buildSettingsPayload();
+    settings.publicStatus.enabled = true;
+    settings.publicStatus.companyId = "00000000-0000-4000-8000-000000000001";
+
+    const exported = preparePublicStatusSettingsForBackup(settings, null);
+
+    expect(exported.publicStatus.enabled).toBe(false);
+    expect(exported.publicStatus.companyId).toBe("");
+  });
+
   it("describes records that a restore will replace without mutating them", () => {
     const validated = validateWorkspaceBackupBundle(buildBackupBundle({
       companies: [{ name: "Kept company", description: "", isActive: true }],
@@ -237,6 +278,9 @@ function buildBackupBundle(overrides: Partial<WorkspaceBackupBundle> = {}): Work
 function buildSettingsPayload() {
   return {
     ...DEFAULT_SETTINGS,
+    publicStatus: {
+      ...DEFAULT_SETTINGS.publicStatus,
+    },
     profile: {
       ...DEFAULT_SETTINGS.profile,
       firstName: "Aykut",

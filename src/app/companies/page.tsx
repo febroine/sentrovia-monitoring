@@ -215,7 +215,7 @@ export default function CompaniesPage() {
       </div>
 
       {selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} compan{selectedIds.size === 1 ? "y" : "ies"} selected</p>
             <p className="text-xs text-muted-foreground">Apply the same action across the selected organizations.</p>
@@ -272,7 +272,7 @@ export default function CompaniesPage() {
                   </TableCell>
                   <TableCell className="pl-1">
                     <div className="flex items-start gap-3">
-                      <div className="rounded-2xl border bg-muted/30 p-3">
+                      <div className="rounded-lg border bg-muted/30 p-3">
                         <Building2 className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <div className="space-y-1">
@@ -391,7 +391,7 @@ function CompanyDialog({
 }
 
 function StatCard({ label, value, sub, icon: Icon, tone }: { label: string; value: string; sub: string; icon: ElementType; tone: "neutral" | "green" | "red" }) {
-  return <Card className="overflow-hidden"><CardContent className={`border-l-2 px-4 py-3 ${tone === "green" ? "border-l-emerald-500" : tone === "red" ? "border-l-red-500" : "border-l-slate-400"}`}><div className="flex items-start justify-between gap-3"><div className="space-y-1"><p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p><p className="text-xl font-semibold tracking-tight">{value}</p><p className="text-xs text-muted-foreground">{sub}</p></div><div className="rounded-xl bg-muted/70 p-2.5"><Icon className="h-4 w-4" /></div></div></CardContent></Card>;
+  return <Card className="overflow-hidden"><CardContent className={`border-l-2 px-4 py-3 ${tone === "green" ? "border-l-emerald-500" : tone === "red" ? "border-l-red-500" : "border-l-slate-400"}`}><div className="flex items-start justify-between gap-3"><div className="space-y-1"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="text-xl font-semibold tracking-tight">{value}</p><p className="text-xs text-muted-foreground">{sub}</p></div><div className="rounded-lg bg-muted/70 p-2.5"><Icon className="h-4 w-4" /></div></div></CardContent></Card>;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

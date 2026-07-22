@@ -25,6 +25,7 @@ export const quickNotes = [
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
   "If a hostname has no DNS record yet, you can still save it; the worker records a DNS failure until it resolves.",
   "If a timeout alert feels noisy, check whether it was a confirmed timeout outage or a slow-but-online latency warning.",
+  "If every monitor appears stale at once, check System Health for an internet outage pause before changing monitor settings.",
   "If a new release is available, use Settings > Updates for host-side commands instead of expecting the browser to update the app.",
 ];
 
@@ -69,7 +70,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What does the retries field control right now?",
         answer:
-          "Retries act as the confirmation threshold inside Verification Mode. If a monitor is configured for four attempts, Sentrovia performs up to four one-minute verification failures before it confirms the outage.",
+          "The failure threshold includes the initial failed probe. Sentrovia then performs one-minute verification probes and requires one final immediate confirmation failure before it confirms the outage, which prevents a service that just recovered from producing a stale down alert.",
       },
       {
         question: "What happens if a monitor recovers during verification?",
@@ -94,7 +95,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Why might a due monitor not run immediately?",
         answer:
-          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. The worker still processes it from persisted due state, but it may wait behind other due work.",
+          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. The worker also pauses due work when all configured internet canaries are unreachable, preventing a server-side connection loss from turning every monitor into a false outage. System Health shows this state and work resumes automatically.",
       },
       {
         question: "Does changing a monitor affect future checks immediately?",
@@ -221,7 +222,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Which file formats are sent with reports?",
         answer:
-          "Scheduled and manual report delivery sends one browser-ready HTML attachment. CSV, XLSX, and PDF report attachments are intentionally disabled so recipients get one readable report instead of multiple overlapping exports.",
+          "Scheduled and manual report delivery sends one browser-ready HTML attachment.",
       },
       {
         question: "Why is there no status-code table or checks count in the report?",
@@ -260,7 +261,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What happens on the first install?",
         answer:
-          "The first boot starts with onboarding. The first user enters their own email, username, and password, then Sentrovia creates that account with admin privileges. Signup is closed after onboarding; future access uses login, and admins manage members from the Members page.",
+          "The first boot starts with onboarding. The first user enters their own email, username, and password, then Sentrovia creates that account with admin privileges. After setup, future access uses login and admins manage accounts from the Members page.",
       },
       {
         question: "Do I need to create every environment value manually?",
@@ -270,7 +271,12 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Can I tell if the worker is truly alive?",
         answer:
-          "Yes. Dashboard and Monitoring surfaces show worker heartbeat age, last cycle time, checked count, process state, backlog, and recent worker errors. In Docker mode, stale heartbeat is still the clearest sign of a worker problem.",
+          "Yes. Dashboard and Monitoring surfaces show worker heartbeat age, last cycle time, process state, internet connectivity, backlog, and recent worker errors. A live worker can be intentionally paused by the internet outage guard, which is shown separately from a stopped process.",
+      },
+      {
+        question: "How does Sentrovia avoid mass false alerts when the server loses internet access?",
+        answer:
+          "The worker probes multiple independent HTTP or HTTPS canaries before monitoring. If none responds, it keeps monitor and outage state unchanged, pauses checks and outbound tasks, and retries on the next worker poll. Any response, including a non-success HTTP status, proves network reachability. Restricted environments can override WORKER_CONNECTIVITY_TARGETS with reliable endpoints reachable from that host.",
       },
       {
         question: "What happens if the worker container restarts?",

@@ -1,6 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { db, sql, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, users } from "@/lib/db/schema";
+import { AuthError } from "@/lib/auth/errors";
+import { getCompanyById } from "@/lib/companies/service";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-safety";
 import type { SettingsInput } from "@/lib/settings/schemas";
@@ -114,7 +116,7 @@ const USER_SETTINGS_COLUMN_MAP = {
   compactDensity: "compact_density",
   sidebarAccent: "sidebar_accent",
   dashboardLandingPage: "dashboard_landing_page",
-  showIncidentBanner: "show_incident_banner",
+  showOutageBanner: "show_outage_banner",
   showChartsSection: "show_charts_section",
   highContrastSurfaces: "high_contrast_surfaces",
   timeZone: "time_zone",
@@ -123,6 +125,7 @@ const USER_SETTINGS_COLUMN_MAP = {
   publicStatusSlug: "public_status_slug",
   publicStatusTitle: "public_status_title",
   publicStatusSummary: "public_status_summary",
+  publicStatusCompanyId: "public_status_company_id",
   dataRetentionDays: "data_retention_days",
   deliveryRetentionDays: "delivery_retention_days",
   autoBackupEnabled: "auto_backup_enabled",
@@ -345,9 +348,9 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       sidebarAccent: stringOrEmpty(settings?.sidebarAccent) || DEFAULT_SETTINGS.appearance.sidebarAccent,
       dashboardLandingPage:
         stringOrEmpty(settings?.dashboardLandingPage) || DEFAULT_SETTINGS.appearance.dashboardLandingPage,
-      showIncidentBanner: booleanOrDefault(
-        settings?.showIncidentBanner,
-        DEFAULT_SETTINGS.appearance.showIncidentBanner
+      showOutageBanner: booleanOrDefault(
+        settings?.showOutageBanner,
+        DEFAULT_SETTINGS.appearance.showOutageBanner
       ),
       showChartsSection: booleanOrDefault(
         settings?.showChartsSection,
@@ -365,6 +368,7 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       slug: stringOrEmpty(settings?.publicStatusSlug),
       title: stringOrEmpty(settings?.publicStatusTitle),
       summary: stringOrEmpty(settings?.publicStatusSummary),
+      companyId: stringOrEmpty(settings?.publicStatusCompanyId),
     },
     data: {
       retentionDays: numberOrDefault(settings?.dataRetentionDays, DEFAULT_SETTINGS.data.retentionDays),
@@ -534,6 +538,10 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     throw buildMissingSettingsTableError();
   }
 
+  if (input.publicStatus.enabled) {
+    await assertPublicStatusCompanyAvailable(userId, input.publicStatus.companyId, executor);
+  }
+
   await updateUserCompat(executor, userId, input, userColumns);
 
   const encryptedPassword = resolveSmtpPasswordEncrypted(
@@ -590,7 +598,7 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     compactDensity: input.appearance.compactDensity,
     sidebarAccent: input.appearance.sidebarAccent,
     dashboardLandingPage: input.appearance.dashboardLandingPage,
-    showIncidentBanner: input.appearance.showIncidentBanner,
+    showOutageBanner: input.appearance.showOutageBanner,
     showChartsSection: input.appearance.showChartsSection,
     highContrastSurfaces: input.appearance.highContrastSurfaces,
     timeZone: input.appearance.timeZone,
@@ -599,6 +607,7 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     publicStatusSlug: input.publicStatus.enabled ? emptyToNull(input.publicStatus.slug) : null,
     publicStatusTitle: emptyToNull(input.publicStatus.title),
     publicStatusSummary: emptyToNull(input.publicStatus.summary),
+    publicStatusCompanyId: emptyToNull(input.publicStatus.companyId),
     dataRetentionDays: input.data.retentionDays,
     deliveryRetentionDays: input.data.deliveryRetentionDays,
     autoBackupEnabled: input.data.autoBackupEnabled,
@@ -619,6 +628,21 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
   }
 
   await clearInheritedMonitorTemplates(executor, userId, existing);
+}
+
+async function assertPublicStatusCompanyAvailable(
+  userId: string,
+  companyId: string,
+  executor: DatabaseExecutor
+) {
+  if (!companyId) {
+    return;
+  }
+
+  const company = await getCompanyById(userId, companyId, executor);
+  if (!company) {
+    throw new AuthError("The selected public status company is unavailable.", 400);
+  }
 }
 
 async function updateUserCompat(

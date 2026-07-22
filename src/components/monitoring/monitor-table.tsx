@@ -143,7 +143,7 @@ export function MonitorTable({
                     <span className={`size-1.5 rounded-full ${monitor.status === "up" ? "bg-emerald-500" : monitor.status === "down" ? "bg-destructive" : "bg-muted-foreground"}`} />
                     <div className="space-y-1">
                       <span className="font-medium">{monitor.name}</span>
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                      <p className="text-xs font-medium text-muted-foreground">
                         {getMonitorTypeLabel(monitor.monitorType)}
                       </p>
                     </div>

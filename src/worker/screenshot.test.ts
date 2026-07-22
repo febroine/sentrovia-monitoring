@@ -8,11 +8,11 @@ import {
 
 describe("failure screenshot capture rules", () => {
   it("allows enabled HTTP monitors with email delivery", () => {
-    expect(shouldCaptureScreenshot(buildMonitor({ sendIncidentScreenshot: true }))).toBe(true);
+    expect(shouldCaptureScreenshot(buildMonitor({ sendOutageScreenshot: true }))).toBe(true);
   });
 
   it("skips monitors when the setting is disabled", () => {
-    expect(shouldCaptureScreenshot(buildMonitor({ sendIncidentScreenshot: false }))).toBe(false);
+    expect(shouldCaptureScreenshot(buildMonitor({ sendOutageScreenshot: false }))).toBe(false);
   });
 
   it("reports when screenshots are skipped because the monitor setting is disabled", async () => {
@@ -20,7 +20,7 @@ describe("failure screenshot capture rules", () => {
 
     await expect(
       buildFailureScreenshotAttachment(
-        buildMonitor({ sendIncidentScreenshot: false }),
+        buildMonitor({ sendOutageScreenshot: false }),
         new Date("2026-05-15T08:00:00.000Z"),
         onSkipped
       )
@@ -30,13 +30,13 @@ describe("failure screenshot capture rules", () => {
   });
 
   it("skips monitor types that do not render web pages", () => {
-    expect(shouldCaptureScreenshot(buildMonitor({ monitorType: "ping", sendIncidentScreenshot: true }))).toBe(false);
+    expect(shouldCaptureScreenshot(buildMonitor({ monitorType: "ping", sendOutageScreenshot: true }))).toBe(false);
   });
 
   it("allows enabled HTTP monitors with telegram delivery", () => {
     expect(
       shouldCaptureScreenshot(
-        buildMonitor({ notificationPref: "telegram", sendIncidentScreenshot: true })
+        buildMonitor({ notificationPref: "telegram", sendOutageScreenshot: true })
       )
     ).toBe(true);
   });
@@ -47,7 +47,7 @@ describe("failure screenshot capture rules", () => {
 
     await expect(
       buildFailureScreenshotAttachment(
-        buildMonitor({ url: "http://127.0.0.1:3000/admin", sendIncidentScreenshot: true }),
+        buildMonitor({ url: "http://127.0.0.1:3000/admin", sendOutageScreenshot: true }),
         new Date("2026-05-15T08:00:00.000Z"),
         onSkipped
       )
@@ -63,7 +63,7 @@ describe("failure screenshot capture rules", () => {
 
     await expect(
       buildFailureScreenshotAttachment(
-        buildMonitor({ url: "http://localhost.:3000/admin", sendIncidentScreenshot: true })
+        buildMonitor({ url: "http://localhost.:3000/admin", sendOutageScreenshot: true })
       )
     ).resolves.toBeNull();
 
@@ -76,7 +76,7 @@ describe("failure screenshot capture rules", () => {
 
     await expect(
       buildFailureScreenshotAttachment(
-        buildMonitor({ url: "http://169.254.169.254/latest/meta-data", sendIncidentScreenshot: true })
+        buildMonitor({ url: "http://169.254.169.254/latest/meta-data", sendOutageScreenshot: true })
       )
     ).resolves.toBeNull();
 
@@ -89,7 +89,7 @@ describe("failure screenshot capture rules", () => {
 
     await expect(
       buildFailureScreenshotAttachment(
-        buildMonitor({ url: "http://metadata.google.internal./computeMetadata/v1", sendIncidentScreenshot: true })
+        buildMonitor({ url: "http://metadata.google.internal./computeMetadata/v1", sendOutageScreenshot: true })
       )
     ).resolves.toBeNull();
 
@@ -205,7 +205,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
-    sendIncidentScreenshot: false,
+    sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,

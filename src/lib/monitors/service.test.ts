@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRestoredMonitorState,
   calculateMonitorLeaseMs,
   filterDuplicateMonitorInputs,
   normalizeHeartbeatTokenInput,
   selectDueMonitorsForCycle,
   spreadInitialMonitorChecks,
+  summarizeCompanyRecentChecks,
 } from "@/lib/monitors/service";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import { buildMonitorIdentityKey } from "@/lib/monitors/targets";
@@ -12,6 +14,10 @@ import { buildMonitorIdentityKey } from "@/lib/monitors/targets";
 describe("monitor due selection", () => {
   it("keeps leases longer than the slowest monitor timeout", () => {
     expect(calculateMonitorLeaseMs([{ timeout: 120_000 }])).toBe(240_000);
+  });
+
+  it("keeps verification leases long enough for the final confirmation probe", () => {
+    expect(calculateMonitorLeaseMs([{ timeout: 60_000, verificationMode: true }])).toBe(360_000);
   });
 
   it("prioritizes verification checks before normal due monitors within the batch", () => {
@@ -41,6 +47,39 @@ describe("monitor due selection", () => {
     );
 
     expect(selected.map((monitor) => monitor.id)).toEqual(["user-1-verification", "user-2-normal"]);
+  });
+});
+
+describe("monitor restore state", () => {
+  it("does not revive stale outage and verification state after undo", () => {
+    expect(buildRestoredMonitorState()).toEqual({
+      status: "pending",
+      statusCode: null,
+      uptime: "--",
+      lastCheckedAt: null,
+      lastFailureAt: null,
+      sslExpiresAt: null,
+      lastErrorMessage: null,
+      consecutiveFailures: 0,
+      verificationMode: false,
+      verificationFailureCount: 0,
+      latencyMs: null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+    });
+  });
+});
+
+describe("company recent check summary", () => {
+  it("includes non-HTTP monitor latency while keeping status-code counts HTTP-only", () => {
+    const summary = summarizeCompanyRecentChecks([
+      { status: "up", statusCode: 200, latencyMs: 100 },
+      { status: "up", statusCode: null, latencyMs: 300 },
+      { status: "pending", statusCode: null, latencyMs: 900 },
+    ]);
+
+    expect(summary.averageLatencyMs).toBe(200);
+    expect(summary.statusCodes).toEqual([{ statusCode: 200, count: 1 }]);
   });
 });
 
@@ -201,7 +240,7 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
-    sendIncidentScreenshot: false,
+    sendOutageScreenshot: false,
     isActive: true,
     ...overrides,
   };

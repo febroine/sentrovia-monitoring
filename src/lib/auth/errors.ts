@@ -123,5 +123,9 @@ function mapUniqueConstraintError(error: DatabaseErrorShape) {
     return new AuthError("A company with this name already exists.", 409);
   }
 
+  if (constraint.includes("monitors_heartbeat_token")) {
+    return new AuthError("This heartbeat token is already in use. Generate a different token.", 409);
+  }
+
   return new AuthError("A record with this value already exists.", 409);
 }

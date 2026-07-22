@@ -19,14 +19,13 @@ export default function ProfilePage() {
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-200">
-      <header className="rounded-2xl border bg-card p-6">
+      <header className="rounded-lg border bg-card p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
-            <div className="rounded-2xl border bg-muted/20 p-3 shadow-sm">
+            <div className="rounded-lg border bg-muted/20 p-3 shadow-sm">
               <UserRound className="h-5 w-5 text-sky-700 dark:text-sky-300" />
             </div>
             <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-700 dark:text-sky-300">Operator profile</p>
               <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                 Update account identity, contact details, and organization metadata used across ownership views, notifications, and templates.
@@ -51,7 +50,7 @@ export default function ProfilePage() {
       ) : (
         <>
           <Tabs defaultValue="identity" className="flex-col gap-5">
-            <TabsList variant="line" className="w-fit justify-start rounded-2xl border bg-card p-2">
+            <TabsList variant="line" className="w-fit justify-start rounded-lg border bg-card p-2">
               <TabsTrigger value="identity" className="flex-none rounded-xl px-4">
                 <UserRound data-icon="inline-start" />
                 Identity
@@ -97,7 +96,7 @@ function ProfileStat({
       <CardContent className="border-l-2 border-l-sky-500 px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
             <p className={`mt-2 text-sm font-medium ${valueClassName ?? "truncate"}`}>{value}</p>
           </div>
           <div className="rounded-xl bg-muted/50 p-2">

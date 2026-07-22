@@ -246,7 +246,7 @@ function ExpandedRow({
               <p className="text-sm">{log.message ?? log.eventType}</p>
               <p className="text-xs text-muted-foreground">
                 {log.eventType === "up-summary"
-                  ? "Healthy summary. Click to see uptime details."
+                  ? "Healthy summary. Click to see the latest successful check."
                   : log.detailSummary ?? log.eventType}
               </p>
             </div>
@@ -274,7 +274,7 @@ function ExpandedRow({
                     key={`${log.id}-${item.label}`}
                     className="rounded-lg border border-l-2 border-l-sky-500 bg-background px-3 py-3"
                   >
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="text-xs font-medium text-muted-foreground">
                       {item.label}
                     </p>
                     <p className="mt-2 break-all text-sm font-medium">{item.value}</p>

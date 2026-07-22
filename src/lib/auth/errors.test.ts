@@ -29,6 +29,16 @@ describe("auth error mapping", () => {
     expect(error.message).toBe("A company with this name already exists.");
   });
 
+  it("maps heartbeat token conflicts without exposing database details", () => {
+    const error = toAuthError(
+      { code: "23505", constraint: "monitors_heartbeat_token_unique" },
+      "Unable to save monitor."
+    );
+
+    expect(error.status).toBe(409);
+    expect(error.message).toContain("heartbeat token is already in use");
+  });
+
   it("maps serializable transaction conflicts to a retryable response", () => {
     const error = toAuthError(
       { cause: { code: "40001", message: "could not serialize access" } },

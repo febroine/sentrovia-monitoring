@@ -10,7 +10,7 @@ import { buildCanonicalMonitorTarget, buildMonitorIdentityKey, toMonitorPayload 
 import type { MonitorRecord, WorkspaceBackupBundle } from "@/lib/monitors/types";
 import { decryptValue } from "@/lib/security/encryption";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
-import { DEFAULT_SETTINGS } from "@/lib/settings/types";
+import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { createCompany, listCompanies } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
@@ -42,15 +42,23 @@ export async function buildWorkspaceBackupBundle(userId: string): Promise<Worksp
 
   const exportedAt = new Date().toISOString();
   const resolvedSettings = settings ?? DEFAULT_SETTINGS;
+  const selectedPublicStatusCompany = companyRows.find(
+    (company) => company.id === resolvedSettings.publicStatus.companyId
+  );
+  const exportedSettings = preparePublicStatusSettingsForBackup(
+    resolvedSettings,
+    selectedPublicStatusCompany?.name ?? null
+  );
 
   return {
     version: 1,
     exportedAt,
     source: "sentrovia",
+    publicStatusCompanyName: selectedPublicStatusCompany?.name ?? null,
     settings: {
-      ...resolvedSettings,
+      ...exportedSettings,
       data: {
-        ...resolvedSettings.data,
+        ...exportedSettings.data,
         lastBackupAt: exportedAt,
       },
     },
@@ -60,6 +68,24 @@ export async function buildWorkspaceBackupBundle(userId: string): Promise<Worksp
       isActive: company.isActive,
     })),
     monitors: monitorRows.map((monitor) => redactMonitorExportSecrets(toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord))),
+  };
+}
+
+export function preparePublicStatusSettingsForBackup(
+  settings: SettingsPayload,
+  selectedCompanyName: string | null
+) {
+  if (!settings.publicStatus.companyId || selectedCompanyName) {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    publicStatus: {
+      ...settings.publicStatus,
+      enabled: false,
+      companyId: "",
+    },
   };
 }
 
@@ -133,8 +159,6 @@ export async function restoreWorkspaceBackup(
       .innerJoin(companies, eq(reportSchedules.companyId, companies.id))
       .where(eq(reportSchedules.userId, userId));
 
-    await upsertSettings(userId, validated.settings, tx, true);
-
     await tx.delete(monitorChecks).where(eq(monitorChecks.userId, userId));
     await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));
     await tx.delete(monitorOutages).where(eq(monitorOutages.userId, userId));
@@ -146,6 +170,12 @@ export async function restoreWorkspaceBackup(
     );
 
     const companyIdByName = buildCompanyIdByName(restoredCompanies);
+    const restoredSettings = remapPublicStatusCompany(
+      validated.settings,
+      validated.publicStatusCompanyName,
+      companyIdByName
+    );
+    await upsertSettings(userId, restoredSettings, tx, true);
     await remapReportScheduleCompanies(userId, scheduleCompanyMappings, companyIdByName, tx);
     const restoredMonitors = restorableMonitors.map((monitor) => ({
       ...monitor,
@@ -169,13 +199,15 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   const settings = settingsSchema.parse(bundle.settings);
   const companies = companyInputSchema.array().parse(bundle.companies);
   const monitors = monitorInputSchema.array().parse(bundle.monitors);
+  const publicStatusCompanyName = normalizeBackupCompanyName(bundle.publicStatusCompanyName);
 
   assertBackupItemCounts(companies.length, monitors.length);
   assertUniqueCompanyNames(companies);
   assertMonitorCompanyReferences(monitors, companies);
   assertUniqueMonitorTargets(monitors);
+  assertPublicStatusCompanyReference(settings.publicStatus.companyId, publicStatusCompanyName, companies);
 
-  return { settings, companies, monitors };
+  return { settings, companies, monitors, publicStatusCompanyName };
 }
 
 export function restorePostgresMonitorPasswords(
@@ -391,6 +423,43 @@ export function resolveRestoredCompanyId(companyName: string | null, companyIdBy
   }
 
   return companyIdByName.get(normalizeCompanyName(companyName)) ?? "";
+}
+
+export function remapPublicStatusCompany(
+  settings: ReturnType<typeof settingsSchema.parse>,
+  companyName: string | null,
+  companyIdByName: Map<string, string>
+) {
+  return {
+    ...settings,
+    publicStatus: {
+      ...settings.publicStatus,
+      companyId: companyName
+        ? companyIdByName.get(normalizeCompanyName(companyName)) ?? ""
+        : "",
+    },
+  };
+}
+
+function normalizeBackupCompanyName(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function assertPublicStatusCompanyReference(
+  companyId: string,
+  companyName: string | null,
+  backupCompanies: Array<{ name: string }>
+) {
+  if (companyId && !companyName) {
+    throw new Error("The backup file is missing its public status company scope.");
+  }
+
+  if (
+    companyName
+    && !backupCompanies.some((company) => normalizeCompanyName(company.name) === normalizeCompanyName(companyName))
+  ) {
+    throw new Error(`Public status references a missing company: ${companyName}`);
+  }
 }
 
 function normalizeCompanyName(name: string) {

@@ -11,10 +11,7 @@ import {
   Database,
   Eye,
   EyeOff,
-  FileText,
-  Globe2,
   LoaderCircle,
-  LockKeyhole,
   RadioTower,
   ShieldCheck,
   UsersRound,
@@ -38,16 +35,10 @@ const productSteps = [
   { icon: BellRing, title: "Notify", description: "Send clear alerts with the reason, timing, and latest evidence." },
 ];
 
-const introHighlights = [
-  { icon: ShieldCheck, title: "Verification-aware alerts", detail: "Timeouts and HTTP failures are classified before notification." },
-  { icon: Globe2, title: "Status visibility", detail: "Publish clean public pages for the services your team owns." },
-  { icon: FileText, title: "Readable reports", detail: "Scheduled HTML reports focus on signals operators can act on." },
-];
-
 const setupItems = [
   { icon: ShieldCheck, label: "Administrator", value: "First account" },
   { icon: UsersRound, label: "Members", value: "Admin-managed" },
-  { icon: LockKeyhole, label: "Signup", value: "Closed" },
+  { icon: ShieldCheck, label: "Access", value: "Admin-controlled" },
   { icon: Database, label: "Storage", value: "PostgreSQL" },
 ];
 
@@ -112,8 +103,7 @@ export default function OnboardingPage() {
 
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="relative isolate min-h-screen">
-        <OnboardingBackdrop />
+      <div className="relative min-h-screen">
         <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-7 px-4 py-5 sm:px-6 lg:px-8">
           <OnboardingHeader currentStep={step} />
 
@@ -165,16 +155,6 @@ async function handleReadinessResponse(
   setReady(true);
 }
 
-function OnboardingBackdrop() {
-  return (
-    <>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(99,102,241,0.17),transparent_30%),radial-gradient(circle_at_82%_10%,rgba(34,197,94,0.1),transparent_24%),radial-gradient(circle_at_50%_100%,rgba(59,130,246,0.1),transparent_26%)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[size:36px_36px] opacity-30" />
-      <div className="absolute inset-x-0 top-0 h-32 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)]" />
-    </>
-  );
-}
-
 function OnboardingHeader({ currentStep }: { currentStep: OnboardingStep }) {
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border/70 pb-5">
@@ -211,16 +191,13 @@ function StepDot({ active, label }: { active: boolean; label: string }) {
 
 function IntroStep({ ready, error, onContinue }: { ready: boolean; error: string | null; onContinue: () => void }) {
   return (
-    <section className="grid flex-1 items-center gap-8 py-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] lg:py-8">
+    <section className="grid flex-1 items-center gap-10 py-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:py-10">
       <div className="flex flex-col gap-8">
         <IntroCopy ready={ready} error={error} onContinue={onContinue} />
         <ProductStepList />
       </div>
 
-      <div className="flex flex-col gap-4">
-        <MonitoringPreview />
-        <IntroHighlightGrid />
-      </div>
+      <MonitoringPreview />
     </section>
   );
 }
@@ -228,15 +205,12 @@ function IntroStep({ ready, error, onContinue }: { ready: boolean; error: string
 function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string | null; onContinue: () => void }) {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <Badge variant="outline" className="w-fit border-primary/25 bg-primary/10 px-3 py-1 text-primary-foreground">
-        Initial workspace setup
-      </Badge>
       <div className="flex flex-col gap-4">
-        <h1 className="max-w-2xl text-5xl leading-[0.95] font-semibold tracking-[-0.045em] text-balance sm:text-6xl lg:text-7xl">
-          Verify before alerting.
+        <h1 className="max-w-2xl text-4xl leading-tight font-semibold text-balance sm:text-5xl">
+          Set up Sentrovia monitoring
         </h1>
         <p className="max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-          Sentrovia checks your services, verifies suspicious failures, and gives your team the context needed before an outage becomes noise.
+          Create the first administrator, then add monitors, notification channels, and public status pages from the dashboard.
         </p>
       </div>
       {error ? <FormError message={error} /> : null}
@@ -262,10 +236,10 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
 
 function ProductStepList() {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid border-y border-border/70 sm:grid-cols-3 sm:divide-x sm:divide-border/70">
       {productSteps.map((item) => (
-        <div key={item.title} className="rounded-xl border border-border/70 bg-card/72 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur">
-          <div className="mb-4 flex size-9 items-center justify-center rounded-lg border border-border/80 bg-background/70">
+        <div key={item.title} className="py-4 sm:px-4 sm:first:pl-0 sm:last:pr-0">
+          <div className="mb-3 flex size-8 items-center justify-center rounded-md border border-border/80 bg-background">
             <item.icon className="size-4 text-foreground" />
           </div>
           <h2 className="text-sm font-semibold">{item.title}</h2>
@@ -278,11 +252,10 @@ function ProductStepList() {
 
 function MonitoringPreview() {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border/75 bg-card/82 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
-      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,rgba(99,102,241,0.9),rgba(34,197,94,0.55),transparent)]" />
+    <div className="overflow-hidden rounded-lg border border-border/75 bg-card p-4">
       <PreviewHeader />
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
-        <SignalMap />
+      <div className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <MonitorSampleList />
         <VerificationTimeline />
       </div>
     </div>
@@ -293,8 +266,8 @@ function PreviewHeader() {
   return (
     <div className="flex items-start justify-between gap-4">
       <div>
-        <p className="text-sm font-semibold tracking-tight">Live verification flow</p>
-        <p className="mt-1 text-sm text-muted-foreground">Slow, timeout, and HTTP failures stay explainable.</p>
+        <p className="text-sm font-semibold">Monitor verification preview</p>
+        <p className="mt-1 text-sm text-muted-foreground">Recent checks and their verification state.</p>
       </div>
       <Badge variant="outline" className="border-emerald-400/25 bg-emerald-400/10 text-emerald-200">
         Online
@@ -303,39 +276,31 @@ function PreviewHeader() {
   );
 }
 
-function SignalMap() {
+function MonitorSampleList() {
   return (
-    <div className="relative min-h-[300px] overflow-hidden rounded-lg border border-border/65 bg-surface-low/80 p-4">
-      <div className="absolute left-9 right-9 top-1/2 h-px bg-[linear-gradient(90deg,transparent,rgba(99,102,241,0.8),rgba(34,197,94,0.65),transparent)]" />
-      <div className="absolute bottom-10 left-1/2 top-10 w-px bg-[linear-gradient(180deg,transparent,rgba(59,130,246,0.7),transparent)]" />
-      <SignalNode className="left-[12%] top-[16%]" label="API" tone="up" />
-      <SignalNode className="right-[10%] top-[18%]" label="Web" tone="up" />
-      <SignalNode className="bottom-[18%] left-[16%]" label="TCP" tone="slow" />
-      <SignalNode className="bottom-[15%] right-[15%]" label="DB" tone="up" />
-      <div className="absolute left-1/2 top-1/2 flex size-24 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-primary/30 bg-primary/10">
-        <div className="absolute size-28 rounded-full border border-primary/20 animate-[sentrovia-ping_3.8s_ease-out_infinite]" />
-        <div className="flex size-14 items-center justify-center rounded-xl border border-border/80 bg-background">
-          <ShieldCheck className="size-6 text-primary" />
-        </div>
-      </div>
+    <div className="divide-y divide-border/70 rounded-lg border border-border/70 bg-surface-low/70 px-4">
+      <MonitorSample url="https://api.example.com/health" detail="HTTP 200 - 184ms" tone="up" />
+      <MonitorSample url="https://portal.example.com" detail="HTTP 200 - 1.2s" tone="up" />
+      <MonitorSample url="db.example.net:5432" detail="Verification in progress" tone="pending" />
     </div>
   );
 }
 
-function SignalNode({ className, label, tone }: { className: string; label: string; tone: "up" | "slow" }) {
-  const toneClass = tone === "up" ? "bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.5)]" : "bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.45)]";
-
+function MonitorSample({ url, detail, tone }: { url: string; detail: string; tone: "up" | "pending" }) {
   return (
-    <div className={cn("absolute flex items-center gap-2 rounded-lg border border-border/75 bg-card/90 px-3 py-2 text-sm", className)}>
-      <span className={cn("size-2 rounded-full animate-[sentrovia-node_2.4s_ease-in-out_infinite]", toneClass)} />
-      <span>{label}</span>
+    <div className="flex items-center gap-3 py-4">
+      <span className={cn("size-2.5 shrink-0 rounded-full", tone === "up" ? "bg-emerald-400" : "bg-amber-300 animate-pulse")} />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{url}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+      </div>
     </div>
   );
 }
 
 function VerificationTimeline() {
   return (
-    <div className="flex min-h-[300px] flex-col justify-between rounded-lg border border-border/65 bg-surface-low/80 p-4">
+    <div className="flex flex-col justify-between gap-5 rounded-lg border border-border/65 bg-surface-low/70 p-4">
       <div>
         <p className="text-sm font-semibold">Verified notification</p>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">A single timeout waits for confirmation before it becomes an outage alert.</p>
@@ -345,7 +310,7 @@ function VerificationTimeline() {
         <TimelineRow label="Verification retry" meta="checking again" tone="blue" />
         <TimelineRow label="Service recovered" meta="no down alert sent" tone="emerald" />
       </div>
-      <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-3 text-sm text-emerald-100">
+      <div className="rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-3 text-sm text-emerald-100">
         Online but slow is reported separately from confirmed down.
       </div>
     </div>
@@ -366,20 +331,6 @@ function TimelineRow({ label, meta, tone }: { label: string; meta: string; tone:
         <p className="truncate text-sm font-medium">{label}</p>
         <p className="truncate text-xs text-muted-foreground">{meta}</p>
       </div>
-    </div>
-  );
-}
-
-function IntroHighlightGrid() {
-  return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {introHighlights.map((item) => (
-        <div key={item.title} className="rounded-xl border border-border/70 bg-card/70 p-4 backdrop-blur">
-          <item.icon className="size-4 text-muted-foreground" />
-          <h2 className="mt-3 text-sm font-semibold">{item.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
-        </div>
-      ))}
     </div>
   );
 }
@@ -427,10 +378,10 @@ function AdminSetupStep({
 
 function SetupPanel({ onBack }: { onBack: () => void }) {
   return (
-    <Card className="border-border/80 bg-card/80 shadow-sm backdrop-blur">
+    <Card className="border-border/80 bg-card shadow-sm">
       <CardHeader>
         <CardTitle className="text-xl tracking-tight">Workspace access</CardTitle>
-        <CardDescription>The first account becomes the administrator. Signup stays closed after setup.</CardDescription>
+        <CardDescription>The first account becomes the administrator. Additional accounts are created by an admin.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
         {setupItems.map((item) => (
@@ -479,7 +430,7 @@ function AdminFormCard({
   onTogglePassword: () => void;
 }) {
   return (
-    <Card className="border-border/80 bg-card/95 shadow-sm backdrop-blur">
+    <Card className="border-border/80 bg-card shadow-sm">
       <CardHeader className="gap-3 border-b border-border/70">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

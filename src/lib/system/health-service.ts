@@ -85,10 +85,14 @@ export async function getSystemHealth() {
   const workerHealthy =
     worker.desiredState !== "running" ||
     (worker.running && processAlive && heartbeatAgeMs !== null && heartbeatAgeMs <= staleThresholdMs);
+  const connectivityOffline =
+    worker.desiredState === "running" && worker.connectivityStatus === "offline";
   const alarms = buildSystemHealthAlarms({
     workerDesiredState: worker.desiredState,
     workerHealthy,
     heartbeatAgeMs,
+    connectivityStatus: worker.connectivityStatus,
+    connectivityMessage: worker.connectivityMessage,
     delayedMonitorCount: allDelayedMonitors.length,
     failedDeliveryCount,
     queuedDeliveryCount,
@@ -113,11 +117,14 @@ export async function getSystemHealth() {
       lastCycleBacklog: worker.lastCycleBacklog,
       lastErrorAt: worker.lastErrorAt?.toISOString() ?? null,
       lastErrorMessage: worker.lastErrorMessage,
+      connectivityStatus: worker.connectivityStatus,
+      connectivityCheckedAt: worker.connectivityCheckedAt?.toISOString() ?? null,
+      connectivityMessage: worker.connectivityMessage,
     },
     queue: {
       dueBacklog: monitorRows.filter((monitor) => isMonitorDue(monitor, now)).length,
-      delayedMonitorCount: allDelayedMonitors.length,
-      delayedMonitors,
+      delayedMonitorCount: connectivityOffline ? 0 : allDelayedMonitors.length,
+      delayedMonitors: connectivityOffline ? [] : delayedMonitors,
     },
     delivery: {
       failedLast24Hours: failedDeliveryCount,
@@ -167,6 +174,8 @@ export function buildSystemHealthAlarms(input: {
   workerDesiredState: string;
   workerHealthy: boolean;
   heartbeatAgeMs: number | null;
+  connectivityStatus: string;
+  connectivityMessage: string | null;
   delayedMonitorCount: number;
   failedDeliveryCount: number;
   queuedDeliveryCount: number;
@@ -184,7 +193,20 @@ export function buildSystemHealthAlarms(input: {
     });
   }
 
-  if (input.delayedMonitorCount > 0) {
+  const connectivityOffline =
+    input.workerDesiredState === "running" && input.connectivityStatus === "offline";
+
+  if (connectivityOffline) {
+    alarms.push({
+      id: "worker-connectivity-offline",
+      severity: "critical",
+      title: "Internet connectivity is unavailable",
+      detail: input.connectivityMessage
+        ?? "Monitor checks and outbound worker tasks are paused until connectivity returns.",
+    });
+  }
+
+  if (input.delayedMonitorCount > 0 && !connectivityOffline) {
     alarms.push({
       id: "checks-delayed",
       severity: input.delayedMonitorCount >= 10 ? "critical" : "warning",

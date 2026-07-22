@@ -5,7 +5,7 @@ import type { CheckResult } from "@/worker/types";
 export async function checkHeartbeatMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
   const lastHeartbeatAt = monitor.heartbeatLastReceivedAt;
-  const expectedWindowMs = intervalToMs(monitor.intervalValue, monitor.intervalUnit);
+  const expectedWindowMs = intervalToMs(monitor.intervalValue, monitor.intervalUnit) + monitor.timeout;
 
   if (!lastHeartbeatAt) {
     return buildHeartbeatFailure(

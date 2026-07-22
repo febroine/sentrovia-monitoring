@@ -1,4 +1,5 @@
 import type { SiteStatus } from "@/lib/monitors/types";
+import { intervalToMs } from "@/lib/monitors/utils";
 
 type MonitorHealthBand = "excellent" | "good" | "warning" | "critical";
 
@@ -16,6 +17,11 @@ type MonitorHealthInput = {
   uptime: string;
   isActive: boolean;
   lastCheckedAt?: Date | string | null;
+  nextCheckAt?: Date | string | null;
+  intervalValue?: number;
+  intervalUnit?: string;
+  timeout?: number;
+  now?: Date;
 };
 
 const MAX_SCORE = 100;
@@ -36,7 +42,7 @@ export function buildMonitorHealthSummary(input: MonitorHealthInput): MonitorHea
   score -= Math.min(input.consecutiveFailures * FAILURE_PENALTY_STEP, MAX_FAILURE_PENALTY);
   score -= resolveLatencyPenalty(input.latencyMs);
   score -= resolveUptimePenalty(input.uptime);
-  score -= resolveStaleCheckPenalty(input.lastCheckedAt);
+  score -= isMonitorCheckStale(input) ? STALE_CHECK_PENALTY : 0;
 
   const boundedScore = Math.max(0, Math.min(MAX_SCORE, Math.round(score)));
   const band = resolveHealthBand(boundedScore);
@@ -121,18 +127,44 @@ function resolveUptimePenalty(uptime: string) {
   return 0;
 }
 
-function resolveStaleCheckPenalty(lastCheckedAt?: Date | string | null) {
+export function isMonitorCheckStale(input: Pick<
+  MonitorHealthInput,
+  "lastCheckedAt" | "nextCheckAt" | "intervalValue" | "intervalUnit" | "timeout" | "now"
+>) {
+  const now = input.now ?? new Date();
+  const nextCheckAt = parseDate(input.nextCheckAt);
+  const lastCheckedAt = parseDate(input.lastCheckedAt);
+  const hasInterval = typeof input.intervalValue === "number" && Boolean(input.intervalUnit);
+
+  if (hasInterval) {
+    const intervalMs = intervalToMs(input.intervalValue!, input.intervalUnit!);
+    const expectedAt = nextCheckAt
+      ?? (lastCheckedAt ? new Date(lastCheckedAt.getTime() + intervalMs) : null);
+    if (!expectedAt) {
+      return true;
+    }
+
+    const timeoutMs = typeof input.timeout === "number" && Number.isFinite(input.timeout)
+      ? Math.max(0, input.timeout)
+      : 0;
+    const graceMs = Math.max(intervalMs, timeoutMs, 60_000);
+    return now.getTime() - expectedAt.getTime() > graceMs;
+  }
+
   if (!lastCheckedAt) {
-    return STALE_CHECK_PENALTY;
+    return true;
   }
 
-  const parsed = lastCheckedAt instanceof Date ? lastCheckedAt : new Date(lastCheckedAt);
-  if (Number.isNaN(parsed.getTime())) {
-    return STALE_CHECK_PENALTY;
+  return now.getTime() - lastCheckedAt.getTime() > 180 * 60_000;
+}
+
+function parseDate(value: Date | string | null | undefined) {
+  if (!value) {
+    return null;
   }
 
-  const ageMinutes = (Date.now() - parsed.getTime()) / 60_000;
-  return ageMinutes > 180 ? STALE_CHECK_PENALTY : 0;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function resolveHealthLabel(band: MonitorHealthBand) {

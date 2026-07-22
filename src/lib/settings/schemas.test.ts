@@ -3,6 +3,24 @@ import { settingsSchema } from "@/lib/settings/schemas";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 describe("settings schema", () => {
+  it("normalizes profile login identifiers", () => {
+    const input = buildSettingsPayload();
+    input.profile.email = "  Admin@Example.COM ";
+    input.profile.username = "  Workspace.Admin ";
+
+    const result = settingsSchema.parse(input);
+
+    expect(result.profile.email).toBe("admin@example.com");
+    expect(result.profile.username).toBe("workspace.admin");
+  });
+
+  it("rejects profile usernames that cannot be used to log in", () => {
+    const input = buildSettingsPayload();
+    input.profile.username = "invalid username";
+
+    expect(settingsSchema.safeParse(input).success).toBe(false);
+  });
+
   it("keeps public status disabled when legacy payloads omit it", () => {
     const legacyPayload = { ...buildSettingsPayload(), publicStatus: undefined };
 
@@ -13,7 +31,23 @@ describe("settings schema", () => {
       slug: "",
       title: "",
       summary: "",
+      companyId: "",
     });
+  });
+
+  it("maps the retired dashboard banner field in older backups", () => {
+    const input = buildSettingsPayload();
+    const legacyAppearance = Object.fromEntries(
+      Object.entries(input.appearance).filter(([key]) => key !== "showOutageBanner")
+    );
+
+    const parsed = settingsSchema.parse({
+      ...input,
+      appearance: { ...legacyAppearance, showIncidentBanner: false },
+    });
+
+    expect(parsed.appearance.showOutageBanner).toBe(false);
+    expect(parsed.appearance).not.toHaveProperty("showIncidentBanner");
   });
 
   it("normalizes public status slugs", () => {
@@ -24,6 +58,7 @@ describe("settings schema", () => {
         slug: "My Status Page!!",
         title: "",
         summary: "",
+        companyId: "",
       },
     });
 
@@ -38,6 +73,19 @@ describe("settings schema", () => {
         slug: "",
         title: "",
         summary: "",
+        companyId: "",
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects malformed public status company ids", () => {
+    const parsed = settingsSchema.safeParse({
+      ...buildSettingsPayload(),
+      publicStatus: {
+        ...buildSettingsPayload().publicStatus,
+        companyId: "holding",
       },
     });
 

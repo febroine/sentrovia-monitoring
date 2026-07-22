@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
-import { companies, monitors, reportSchedules } from "@/lib/db/schema";
+import { companies, monitors, reportSchedules, userSettings } from "@/lib/db/schema";
 import type { CompanyInput } from "@/lib/companies/schemas";
 
 export const COMPANY_SOFT_DELETE_UNDO_MS = 60_000;
@@ -32,7 +32,15 @@ export async function listCompanies(userId: string, database: DatabaseExecutor =
   });
 }
 
-export async function createCompany(userId: string, input: CompanyInput, database: DatabaseExecutor = db) {
+export async function createCompany(userId: string, input: CompanyInput, database?: DatabaseExecutor) {
+  if (!database) {
+    return db.transaction((tx) => persistCompany(userId, input, tx));
+  }
+
+  return persistCompany(userId, input, database);
+}
+
+async function persistCompany(userId: string, input: CompanyInput, database: DatabaseExecutor) {
   await releaseExpiredCompanyName(userId, input.name, database);
   const [company] = await database
     .insert(companies)
@@ -69,6 +77,14 @@ async function releaseExpiredCompanyName(userId: string, name: string, database:
   }
 
   const now = new Date();
+  await database
+    .update(userSettings)
+    .set({
+      publicStatusEnabled: false,
+      publicStatusCompanyId: null,
+      updatedAt: now,
+    })
+    .where(and(eq(userSettings.userId, userId), inArray(userSettings.publicStatusCompanyId, expiredIds)));
   await database
     .update(monitors)
     .set({ companyId: null, company: null, updatedAt: now })

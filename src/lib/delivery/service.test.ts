@@ -35,6 +35,7 @@ vi.mock("@/lib/settings/service", () => ({
 
 import {
   readLimitedResponseText,
+  retryWebhookQueue,
   retryWebhookQueueForAllUsers,
   sendChannelWebhookDelivery,
   sendEmailDelivery,
@@ -129,6 +130,42 @@ describe("delivery service", () => {
 
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
     expect(where).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not count a webhook retry that another worker already claimed", async () => {
+    const endpointWhere = vi.fn().mockResolvedValue([
+      {
+        userId: "user-1",
+        url: "https://8.8.8.8/hooks/sentrovia",
+        secretEncrypted: null,
+        isActive: true,
+      },
+    ]);
+    const dueLimit = vi.fn().mockResolvedValue([
+      {
+        id: "delivery-1",
+        userId: "user-1",
+        payloadJson: "{}",
+      },
+    ]);
+    mocks.db.select
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({ where: endpointWhere })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({ limit: dueLimit })),
+          })),
+        })),
+      });
+    mocks.updateReturning.mockResolvedValueOnce([]);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(retryWebhookQueue("user-1")).resolves.toEqual({ processed: 0 });
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fails telegram delivery without calling Telegram when credentials are missing", async () => {
