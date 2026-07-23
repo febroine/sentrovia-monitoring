@@ -12,7 +12,11 @@ export type WorkerPhaseResult =
 export async function runWorkerPhases(
   isRunRequested: () => Promise<boolean>
 ): Promise<WorkerPhaseResult> {
-  await runRetentionCleanup();
+  try {
+    await runRetentionCleanup();
+  } catch (error) {
+    console.error("[sentrovia] Retention cleanup failed; monitor checks will continue.", error);
+  }
   if (!(await isRunRequested())) return { status: "stopped" };
 
   const beforeMonitoring = await ensureWorkerConnectivity();
