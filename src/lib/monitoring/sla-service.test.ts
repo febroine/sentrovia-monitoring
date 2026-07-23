@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { calculateSlaPeriod, isMissingOutageHistorySchema } from "@/lib/monitoring/sla-service";
+import { describe, expect, it, vi } from "vitest";
+import { calculateSlaPeriod, loadOutageCountsOrFallback } from "@/lib/monitoring/sla-service";
 
 describe("SLA period calculations", () => {
   it("calculates uptime from all settled checks", () => {
@@ -23,9 +23,18 @@ describe("SLA period calculations", () => {
     });
   });
 
-  it("recognizes missing outage history schema through wrapped database errors", () => {
-    expect(isMissingOutageHistorySchema({ cause: { code: "42P01" } })).toBe(true);
-    expect(isMissingOutageHistorySchema({ code: "42703" })).toBe(true);
-    expect(isMissingOutageHistorySchema({ code: "08006" })).toBe(false);
+  it("keeps SLA check history available when outage counts cannot be loaded", async () => {
+    const error = new Error("outage history unavailable");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(loadOutageCountsOrFallback(Promise.reject(error))).resolves.toEqual({
+      total24Hours: 0,
+      total7Days: 0,
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "[sentrovia] Outage counts unavailable; SLA uptime will use monitor check history.",
+      error
+    );
+    consoleError.mockRestore();
   });
 });

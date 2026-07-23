@@ -50,16 +50,21 @@ describe("dashboard service", () => {
   });
 
   it("keeps optional dashboard sections from crashing the entire page", async () => {
-    const error = new Error("relation monitor_outages does not exist");
+    const error = new Error("delivery history is unavailable");
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const section = await loadDashboardSection("SLA history", Promise.reject(error), [
-      { uptimePct: 100 },
-    ]);
+    const section = await loadDashboardSection(
+      "notification delivery",
+      Promise.reject(error),
+      { delivered: 0 }
+    );
 
-    expect(section).toEqual({ data: [{ uptimePct: 100 }], warning: "SLA history" });
+    expect(section).toEqual({
+      data: { delivered: 0 },
+      warning: "notification delivery",
+    });
     expect(consoleError).toHaveBeenCalledWith(
-      "[sentrovia] Dashboard SLA history unavailable.",
+      "[sentrovia] Dashboard notification delivery unavailable.",
       error,
     );
     consoleError.mockRestore();

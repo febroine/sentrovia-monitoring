@@ -64,8 +64,7 @@ async function getOutageCounts(
   since24Hours: Date,
   since7Days: Date
 ) {
-  try {
-    const [counts] = await db
+  const request = db
       .select({
         total24Hours: sql<number>`count(*) filter (where ${monitorOutages.startedAt} >= ${since24Hours})::int`,
         total7Days: sql<number>`count(*)::int`,
@@ -78,26 +77,24 @@ async function getOutageCounts(
           gte(monitorOutages.startedAt, since7Days)
         )
       );
-    return counts ?? { total24Hours: 0, total7Days: 0 };
-  } catch (error) {
-    if (!isMissingOutageHistorySchema(error)) {
-      throw error;
-    }
 
-    console.warn("[sentrovia] Outage history schema is unavailable; SLA will use monitor checks only.");
-    return { total24Hours: 0, total7Days: 0 };
-  }
+  return loadOutageCountsOrFallback(request);
 }
 
-export function isMissingOutageHistorySchema(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
+export async function loadOutageCountsOrFallback(
+  request: Promise<Array<{ total24Hours: number; total7Days: number }>>
+) {
+  try {
+    const [counts] = await request;
+    return counts ?? EMPTY_OUTAGE_COUNTS;
+  } catch (error) {
+    console.error(
+      "[sentrovia] Outage counts unavailable; SLA uptime will use monitor check history.",
+      error
+    );
 
-  const databaseError = error as { code?: string; cause?: unknown };
-  return databaseError.code === "42P01"
-    || databaseError.code === "42703"
-    || isMissingOutageHistorySchema(databaseError.cause);
+    return EMPTY_OUTAGE_COUNTS;
+  }
 }
 
 export function calculateSlaPeriod(
@@ -120,3 +117,8 @@ export function calculateSlaPeriod(
 function emptyPeriod(label: SlaPeriodSummary["label"]): SlaPeriodSummary {
   return calculateSlaPeriod(label, 0, 0, 0);
 }
+
+const EMPTY_OUTAGE_COUNTS = Object.freeze({
+  total24Hours: 0,
+  total7Days: 0,
+});

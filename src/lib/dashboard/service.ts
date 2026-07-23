@@ -5,7 +5,6 @@ import { getDeliveryOverview } from "@/lib/delivery/service";
 import { getSettings } from "@/lib/settings/service";
 import { getWorkerState } from "@/lib/monitors/service";
 import { intervalToMs } from "@/lib/monitors/utils";
-import { getMonitorSlaPeriods, type SlaPeriodSummary } from "@/lib/monitoring/sla-service";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
@@ -19,21 +18,15 @@ export async function getDashboardData(userId: string) {
 
   const total = monitorRows.length;
   const activeRows = monitorRows.filter((monitor) => monitor.isActive);
-  const [eventsSection, workerSection, deliverySection, slaSection] = await Promise.all([
+  const [eventsSection, workerSection, deliverySection] = await Promise.all([
     loadDashboardSection("recent events", getRecentDashboardEvents(userId), []),
     loadDashboardSection("worker health", getDashboardWorkerState(), DEFAULT_DASHBOARD_WORKER),
     loadDashboardSection("notification delivery", getDashboardDeliverySummary(userId), DEFAULT_DELIVERY_SUMMARY),
-    loadDashboardSection(
-      "SLA history",
-      getMonitorSlaPeriods(userId, activeRows.map((monitor) => monitor.id)),
-      DEFAULT_SLA_PERIODS
-    ),
   ]);
   const eventRows = eventsSection.data;
   const worker = workerSection.data;
   const delivery = deliverySection.data;
-  const [sla24Hours, sla7Days] = slaSection.data;
-  const warnings = [monitorSection, settingsSection, eventsSection, workerSection, deliverySection, slaSection]
+  const warnings = [monitorSection, settingsSection, eventsSection, workerSection, deliverySection]
     .map((section) => section.warning)
     .filter((warning): warning is string => Boolean(warning));
   const active = activeRows.length;
@@ -71,8 +64,6 @@ export async function getDashboardData(userId: string) {
           .split(",")
           .map((item) => item.trim())
           .filter(Boolean).length ?? 0,
-      sla24h: sla24Hours.uptimePct,
-      sla7d: sla7Days.uptimePct,
     },
     settings,
     worker,
@@ -97,11 +88,6 @@ const DEFAULT_DASHBOARD_WORKER = {
   connectivityCheckedAt: null as string | null,
   connectivityMessage: null as string | null,
 };
-
-const DEFAULT_SLA_PERIODS: [SlaPeriodSummary, SlaPeriodSummary] = [
-  { label: "24h SLA", uptimePct: 100, outages: 0, totalChecks: 0 },
-  { label: "7d SLA", uptimePct: 100, outages: 0, totalChecks: 0 },
-];
 
 function getDashboardMonitors(userId: string) {
   return db
