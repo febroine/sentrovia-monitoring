@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useWorkerStore } from "@/stores/use-worker-store";
+import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
 export function WorkerPulseCard() {
   const { worker, commandLoading, error, loadWorker, toggleWorker } = useWorkerStore();
@@ -55,7 +56,10 @@ export function WorkerPulseCard() {
               <span>Backlog: {worker?.observability?.summary.dueBacklog ?? 0}</span>
               <span>Cycle Duration: {formatNullableMs(worker?.lastCycleDurationMs)}</span>
             </div>
-            <p className="text-xs text-muted-foreground">{error ?? worker?.statusMessage ?? "Worker status will appear here."}</p>
+            <p className="text-xs text-muted-foreground">
+              {sanitizeWorkerStatusMessage(error ?? worker?.statusMessage)
+                ?? "Worker status will appear here."}
+            </p>
           </div>
 
           <Button

@@ -7,6 +7,7 @@ import { getWorkerState } from "@/lib/monitors/service";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { getMonitorSlaPeriods, type SlaPeriodSummary } from "@/lib/monitoring/sla-service";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
+import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
 export async function getDashboardData(userId: string) {
   const [monitorSection, settingsSection] = await Promise.all([
@@ -145,7 +146,7 @@ async function getDashboardWorkerState() {
   return {
     running: worker.running,
     desiredState: worker.desiredState,
-    statusMessage: worker.statusMessage,
+    statusMessage: sanitizeWorkerStatusMessage(worker.statusMessage),
     connectivityStatus: worker.connectivityStatus,
     connectivityCheckedAt: worker.connectivityCheckedAt?.toISOString() ?? null,
     connectivityMessage: worker.connectivityMessage,

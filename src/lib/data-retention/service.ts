@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const RETENTION_LOCK_KEY = 54_821_903;
 const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
-const SOFT_DELETE_GRACE_SECONDS = 60;
+const SOFT_DELETE_GRACE_MS = 60_000;
 const WORKER_STATE_ID = "primary";
 
 export async function runRetentionCleanup(now = new Date()) {
@@ -95,11 +95,13 @@ export function shouldRunRetentionCleanup(lastRunAt: Date | null, now: Date) {
 }
 
 async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db.transaction>[0]>[0], now: Date) {
+  const cutoff = getSoftDeleteCutoff(now);
+
   await executor.execute(sql`
     with expired_companies as (
       select id from companies
       where deleted_at is not null
-        and deleted_at < ${now} - make_interval(secs => ${SOFT_DELETE_GRACE_SECONDS})
+        and deleted_at < ${cutoff}
     )
     update user_settings
     set public_status_enabled = false,
@@ -111,7 +113,7 @@ async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db
     with expired_companies as (
       select id from companies
       where deleted_at is not null
-        and deleted_at < ${now} - make_interval(secs => ${SOFT_DELETE_GRACE_SECONDS})
+        and deleted_at < ${cutoff}
     )
     update report_schedules
     set company_id = null,
@@ -125,7 +127,7 @@ async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db
     with expired_companies as (
       select id from companies
       where deleted_at is not null
-        and deleted_at < ${now} - make_interval(secs => ${SOFT_DELETE_GRACE_SECONDS})
+        and deleted_at < ${cutoff}
     )
     update monitors
     set company_id = null, company = null, updated_at = ${now}
@@ -134,11 +136,15 @@ async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db
   await executor.execute(sql`
     delete from companies
     where deleted_at is not null
-      and deleted_at < ${now} - make_interval(secs => ${SOFT_DELETE_GRACE_SECONDS})
+      and deleted_at < ${cutoff}
   `);
   await executor.execute(sql`
     delete from monitors
     where deleted_at is not null
-      and deleted_at < ${now} - make_interval(secs => ${SOFT_DELETE_GRACE_SECONDS})
+      and deleted_at < ${cutoff}
   `);
+}
+
+export function getSoftDeleteCutoff(now: Date) {
+  return new Date(now.getTime() - SOFT_DELETE_GRACE_MS);
 }

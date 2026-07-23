@@ -8,6 +8,7 @@ import { updateWorkerState, getWorkerState, withWorkerControlLock } from "@/lib/
 import type { WorkerObservabilityRange } from "@/lib/monitors/types";
 import { getWorkerObservability } from "@/lib/worker/observability";
 import { isPidAlive, spawnWorkerProcess } from "@/lib/worker/process";
+import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
 export const runtime = "nodejs";
 
@@ -46,12 +47,12 @@ function serializeWorkerState(
     lastCycleAverageLatencyMs: state.lastCycleAverageLatencyMs,
     lastCycleBacklog: state.lastCycleBacklog,
     lastErrorAt: state.lastErrorAt?.toISOString() ?? null,
-    lastErrorMessage: state.lastErrorMessage,
+    lastErrorMessage: sanitizeWorkerStatusMessage(state.lastErrorMessage),
     heartbeatAt: state.heartbeatAt?.toISOString() ?? null,
     startedAt: state.startedAt?.toISOString() ?? null,
     stoppedAt: state.stoppedAt?.toISOString() ?? null,
     pid: state.pid,
-    statusMessage: state.statusMessage,
+    statusMessage: sanitizeWorkerStatusMessage(state.statusMessage),
     connectivityStatus: state.connectivityStatus,
     connectivityCheckedAt: state.connectivityCheckedAt?.toISOString() ?? null,
     connectivityMessage: state.connectivityMessage,

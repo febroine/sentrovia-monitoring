@@ -96,6 +96,25 @@ describe("worker route authorization", () => {
     expect(getWorkerObservability).toHaveBeenCalledWith("admin-1", expect.any(Object), "24h");
   });
 
+  it("does not expose persisted SQL details in worker telemetry", async () => {
+    vi.mocked(getSession).mockResolvedValueOnce(adminSession);
+    vi.mocked(getWorkerState).mockResolvedValueOnce({
+      ...buildWorkerState(),
+      lastErrorMessage: "Failed query: select secret from settings params: value",
+      statusMessage: "Failed query: select secret from settings params: value",
+    });
+
+    const response = await GET(new NextRequest("https://example.com/api/worker"));
+    const body = (await response.json()) as {
+      lastErrorMessage: string;
+      statusMessage: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.lastErrorMessage).not.toContain("select secret");
+    expect(body.statusMessage).not.toContain("select secret");
+  });
+
   it("keeps a running worker active until the current check finishes after a stop request", async () => {
     vi.mocked(getSession).mockResolvedValueOnce(adminSession);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateSlaPeriod } from "@/lib/monitoring/sla-service";
+import { calculateSlaPeriod, isMissingOutageHistorySchema } from "@/lib/monitoring/sla-service";
 
 describe("SLA period calculations", () => {
   it("calculates uptime from all settled checks", () => {
@@ -21,5 +21,11 @@ describe("SLA period calculations", () => {
       outages: 14,
       totalChecks: 10,
     });
+  });
+
+  it("recognizes missing outage history schema through wrapped database errors", () => {
+    expect(isMissingOutageHistorySchema({ cause: { code: "42P01" } })).toBe(true);
+    expect(isMissingOutageHistorySchema({ code: "42703" })).toBe(true);
+    expect(isMissingOutageHistorySchema({ code: "08006" })).toBe(false);
   });
 });

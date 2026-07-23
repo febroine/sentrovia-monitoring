@@ -6,6 +6,7 @@ import { getWorkerState } from "@/lib/monitors/service";
 import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { isPidAlive } from "@/lib/worker/process";
+import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
 const DAY_MS = 24 * 60 * 60_000;
 const MIN_DELAY_GRACE_MS = 60_000;
@@ -116,7 +117,7 @@ export async function getSystemHealth() {
       lastCycleDurationMs: worker.lastCycleDurationMs,
       lastCycleBacklog: worker.lastCycleBacklog,
       lastErrorAt: worker.lastErrorAt?.toISOString() ?? null,
-      lastErrorMessage: worker.lastErrorMessage,
+      lastErrorMessage: sanitizeWorkerStatusMessage(worker.lastErrorMessage),
       connectivityStatus: worker.connectivityStatus,
       connectivityCheckedAt: worker.connectivityCheckedAt?.toISOString() ?? null,
       connectivityMessage: worker.connectivityMessage,

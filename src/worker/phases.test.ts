@@ -70,4 +70,20 @@ describe("worker phase connectivity guard", () => {
     expect(retryWebhookQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
   });
+
+  it("continues monitor checks when retention cleanup fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(runRetentionCleanup).mockRejectedValueOnce(new Error("retention unavailable"));
+
+    await expect(runWorkerPhases(async () => true)).resolves.toEqual({ status: "completed" });
+
+    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(retryWebhookQueueForAllUsers).toHaveBeenCalledOnce();
+    expect(runDueReportSchedules).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledWith(
+      "[sentrovia] Retention cleanup failed; monitor checks will continue.",
+      expect.any(Error)
+    );
+    consoleError.mockRestore();
+  });
 });

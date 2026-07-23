@@ -2,6 +2,7 @@ import "@/worker/load-env";
 import { env } from "@/lib/env";
 import { getWorkerState, updateWorkerState } from "@/lib/monitors/service";
 import { runWorkerPhases } from "@/worker/phases";
+import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
 let active = true;
 const shutdownWaiters = new Set<() => void>();
@@ -69,12 +70,13 @@ async function main() {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Worker cycle failed.";
+        console.error("[sentrovia] Worker cycle failed.", error);
         await updateWorkerState({
           running: true,
           heartbeatAt: new Date(),
           lastErrorAt: new Date(),
           lastErrorMessage: message,
-          statusMessage: message,
+          statusMessage: sanitizeWorkerStatusMessage(message),
         });
       }
     } else if (state.running) {
@@ -167,7 +169,7 @@ void main().catch(async (error) => {
       running: false,
       stoppedAt: new Date(),
       heartbeatAt: new Date(),
-      statusMessage: message,
+      statusMessage: sanitizeWorkerStatusMessage(message),
     });
   } catch (stateError) {
     console.error(stateError instanceof Error ? stateError.message : "Unable to persist the worker crash state.");
