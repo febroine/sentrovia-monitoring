@@ -1,5 +1,6 @@
 import http from "node:http";
 import https from "node:https";
+import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import type { IncomingMessage } from "node:http";
 import type { TLSSocket } from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
@@ -9,7 +10,7 @@ import {
   isCustomExpectedStatusCode,
   isExpectedHttpStatusCode,
 } from "@/lib/monitors/status-codes";
-import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
@@ -145,10 +146,14 @@ async function requestWithRedirects(
   method: Monitor["method"] = monitor.method
 ): Promise<HttpResponseSnapshot> {
   const parsed = new URL(url);
-  await assertMonitorNetworkTarget(parsed.hostname, {
+  const resolutionTimeoutMs = deadlineAt - Date.now();
+  if (resolutionTimeoutMs <= 0) {
+    throw buildRequestTimeoutError(monitor.timeout);
+  }
+  await assertMonitorNetworkTargetWithTimeout(parsed.hostname, {
     allowPrivateTargets: env.monitorAllowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
-  });
+  }, resolutionTimeoutMs);
   const remainingTimeoutMs = deadlineAt - Date.now();
   if (remainingTimeoutMs <= 0) {
     throw buildRequestTimeoutError(monitor.timeout);
@@ -269,7 +274,41 @@ async function consumeResponse(response: IncomingMessage, responseMaxLength: num
     chunks.push(buffer);
   }
 
-  return Buffer.concat(chunks).toString("utf8");
+  let decodedBody: Buffer;
+  try {
+    decodedBody = decodeResponseBody(Buffer.concat(chunks), response.headers["content-encoding"]);
+  } catch {
+    throw new Error("Response body assertion could not be evaluated because the encoded body is invalid or truncated.");
+  }
+  return decodedBody.subarray(0, limit).toString("utf8");
+}
+
+function decodeResponseBody(body: Buffer, contentEncoding: string | string[] | undefined) {
+  if (body.length === 0) {
+    return body;
+  }
+
+  const encodings = (Array.isArray(contentEncoding) ? contentEncoding.join(",") : contentEncoding ?? "")
+    .split(",")
+    .map((encoding) => encoding.trim().toLowerCase())
+    .filter(Boolean)
+    .reverse();
+
+  return encodings.reduce((decoded, encoding) => {
+    if (encoding === "gzip" || encoding === "x-gzip") {
+      return gunzipSync(decoded, { maxOutputLength: ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES });
+    }
+
+    if (encoding === "br") {
+      return brotliDecompressSync(decoded, { maxOutputLength: ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES });
+    }
+
+    if (encoding === "deflate") {
+      return inflateSync(decoded, { maxOutputLength: ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES });
+    }
+
+    return decoded;
+  }, body);
 }
 
 function buildRequestUrl(url: string, cacheBuster: boolean) {

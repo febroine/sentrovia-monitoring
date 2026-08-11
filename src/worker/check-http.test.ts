@@ -1,10 +1,12 @@
 import http from "node:http";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
 import { checkHttpMonitor } from "@/worker/check-http";
 
 vi.mock("@/lib/security/public-network-target", () => ({
   assertMonitorNetworkTarget: vi.fn(),
+  assertMonitorNetworkTargetWithTimeout: vi.fn(),
 }));
 
 const servers: http.Server[] = [];
@@ -158,6 +160,41 @@ describe("http monitor checks", () => {
     expect(result.statusCode).toBe(500);
     expect(result.failureReason).toBe("http_status");
     expect(result.errorMessage).toBe("Service returned HTTP 500.");
+  });
+
+  it("decompresses gzip responses before evaluating keyword assertions", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Encoding": "gzip" });
+      response.end(gzipSync("healthy response"));
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        monitorType: "keyword",
+        url: `http://127.0.0.1:${resolveServerPort(server)}/gzip`,
+        keywordQuery: "healthy response",
+      })
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("decompresses Brotli responses before evaluating JSON assertions", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Encoding": "br" });
+      response.end(brotliCompressSync(JSON.stringify({ status: "healthy" })));
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        monitorType: "json",
+        url: `http://127.0.0.1:${resolveServerPort(server)}/brotli`,
+        jsonPath: "status",
+        jsonExpectedValue: "healthy",
+      })
+    );
+
+    expect(result.ok).toBe(true);
   });
 
   it("classifies request timeout failures with a timeout-specific message", async () => {

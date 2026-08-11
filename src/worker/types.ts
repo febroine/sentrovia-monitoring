@@ -11,7 +11,8 @@ export type CheckFailureReason =
   | "assertion"
   | "redirect"
   | "network"
-  | "database";
+  | "database"
+  | "configuration";
 
 export interface CheckResult {
   ok: boolean;

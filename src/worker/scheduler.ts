@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { hasRecentFailedNotificationDelivery } from "@/lib/delivery/service";
 import { runMonitorDiagnostics } from "@/lib/diagnostics/service";
 import { openOrUpdateOutage, resolveOutage } from "@/lib/outages/service";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
@@ -10,9 +11,11 @@ import {
   incrementWorkerCheckedCount,
   countDueMonitors,
   claimDueMonitors,
+  getRecentMonitorEventMessage,
   isMonitorActive,
   recordMonitorResult,
   releaseMonitorLease,
+  renewMonitorLease,
   updateWorkerState,
 } from "@/lib/monitors/service";
 import { calculateVerificationTimeout } from "@/lib/monitors/verification";
@@ -127,6 +130,11 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   let processingError: unknown;
 
   try {
+    const leaseRenewed = await renewMonitorLease(monitor.id, monitor.leaseToken, monitor);
+    if (!leaseRenewed) {
+      return null;
+    }
+
     return await processClaimedMonitor(monitor);
   } catch (error) {
     processingError = error;
@@ -156,6 +164,11 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
   let executedProbeCount = 1;
   let recoveredDuringFinalConfirmation = false;
 
+  const checkStartedAt = new Date();
+  if (!result.ok && result.failureReason === "configuration") {
+    return recordConfigurationFailure(monitor, result, checkStartedAt);
+  }
+
   if (!result.ok && !(await ensureWorkerConnectivity()).available) {
     return null;
   }
@@ -171,6 +184,11 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
     }
   }
 
+  const checkCompletedAt = new Date();
+  if (!result.ok && result.failureReason === "configuration") {
+    return recordConfigurationFailure(monitor, result, checkCompletedAt);
+  }
+
   const rca = analyzeRootCause(result);
   let outageConfirmedThisCycle = false;
   let failureEventMessage: string | null = null;
@@ -183,7 +201,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
       statusCode: result.statusCode,
       uptime: "100%",
       lastCheckedAt: result.checkedAt,
-      nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt),
+      nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, checkCompletedAt),
       lastSuccessAt: result.checkedAt,
       lastFailureAt: null,
       sslExpiresAt: result.sslExpiresAt,
@@ -204,7 +222,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
       statusCode: result.statusCode,
       uptime: "0%",
       lastCheckedAt: result.checkedAt,
-      nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt),
+      nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, checkCompletedAt),
       lastSuccessAt: monitor.lastSuccessAt,
       lastFailureAt: monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
@@ -231,8 +249,8 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
       uptime: confirmedOutage ? "0%" : monitor.uptime,
       lastCheckedAt: result.checkedAt,
       nextCheckAt: confirmedOutage
-        ? calculateNextCheckAt(monitor, result.checkedAt)
-        : calculateVerificationCheckAt(result.checkedAt),
+        ? calculateNextCheckAt(monitor, result.checkedAt, checkCompletedAt)
+        : calculateVerificationCheckAt(result.checkedAt, checkCompletedAt),
       lastSuccessAt: monitor.lastSuccessAt,
       lastFailureAt: previousStatus === "up" ? result.checkedAt : monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
@@ -274,7 +292,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
       statusCode: result.statusCode,
       uptime: monitor.uptime,
       lastCheckedAt: result.checkedAt,
-      nextCheckAt: calculateVerificationCheckAt(result.checkedAt),
+      nextCheckAt: calculateVerificationCheckAt(result.checkedAt, checkCompletedAt),
       lastSuccessAt: monitor.lastSuccessAt,
       lastFailureAt: previousStatus === "up" ? result.checkedAt : monitor.lastFailureAt ?? result.checkedAt,
       sslExpiresAt: result.sslExpiresAt,
@@ -404,7 +422,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
         monitor,
         result,
         rca,
-        buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
+        buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
       });
       if (failureNotificationSent) {
         await appendDetailedEvent(
@@ -428,7 +446,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
         monitor,
         result,
         rca,
-        buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
+        buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
       });
 
       if (reminderSent) {
@@ -456,7 +474,10 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
       metadata: { statusCode: result.statusCode, latencyMs: result.latencyMs },
       createdAt: result.checkedAt,
     });
-    await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
+    const notificationSent = await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
+    if (notificationSent) {
+      await appendDetailedEvent(monitor, result, "recovery-notification", message, rca, "up");
+    }
   }
 
   if (
@@ -476,7 +497,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
       monitor,
       result,
       rca,
-      buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result.checkedAt),
+      buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
     });
     if (notificationSent) {
       await appendDetailedEvent(
@@ -490,10 +511,134 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
     }
   }
 
+  await retryTransitionNotifications(monitor, result, rca);
+
   return {
     finalStatus: checkStatus,
     latencyMs: result.latencyMs,
   };
+}
+
+async function recordConfigurationFailure(
+  monitor: Monitor,
+  result: Awaited<ReturnType<typeof checkMonitor>>,
+  completedAt: Date
+): Promise<MonitorCycleResult | null> {
+  const recorded = await recordActiveMonitorResult(monitor, {
+    status: monitor.status === "down" ? "down" : "pending",
+    statusCode: monitor.statusCode,
+    uptime: monitor.uptime,
+    lastCheckedAt: result.checkedAt,
+    nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, completedAt),
+    lastSuccessAt: monitor.lastSuccessAt,
+    lastFailureAt: monitor.lastFailureAt,
+    sslExpiresAt: monitor.sslExpiresAt,
+    lastErrorMessage: result.errorMessage,
+    consecutiveFailures: monitor.consecutiveFailures,
+    verificationMode: monitor.verificationMode,
+    verificationFailureCount: monitor.verificationFailureCount,
+    latencyMs: result.latencyMs,
+  });
+  if (!recorded) {
+    return null;
+  }
+
+  const rca = analyzeRootCause(result);
+  await updateWorkerState({ heartbeatAt: completedAt });
+  await incrementWorkerCheckedCount(1);
+  await appendMonitorCheck({
+    monitorId: monitor.id,
+    userId: monitor.userId,
+    status: "pending",
+    statusCode: null,
+    latencyMs: result.latencyMs,
+    createdAt: result.checkedAt,
+  });
+  await appendDetailedEvent(
+    monitor,
+    result,
+    "configuration-error",
+    result.errorMessage ?? "Monitor configuration could not be checked.",
+    rca,
+    "pending"
+  );
+
+  return { finalStatus: "pending", latencyMs: result.latencyMs };
+}
+
+async function retryTransitionNotifications(
+  monitor: Monitor,
+  result: Awaited<ReturnType<typeof checkMonitor>>,
+  rca: ReturnType<typeof analyzeRootCause>
+) {
+  if (!result.ok) {
+    return;
+  }
+
+  const before = new Date(result.checkedAt.getTime() - 1);
+  const since = new Date(before.getTime() - DAY_MS);
+  await retryTransitionNotification("recovery", monitor, result, rca, since, before);
+  await retryTransitionNotification("status-change", monitor, result, rca, since, before);
+}
+
+async function retryTransitionNotification(
+  kind: "recovery" | "status-change",
+  monitor: Monitor,
+  result: Awaited<ReturnType<typeof checkMonitor>>,
+  rca: ReturnType<typeof analyzeRootCause>,
+  since: Date,
+  before: Date
+) {
+  const transitionMessage = await getRecentMonitorEventMessage({
+    monitorId: monitor.id,
+    eventType: kind,
+    since,
+    before,
+  });
+  if (!transitionMessage) {
+    return;
+  }
+
+  const notificationRecorded = await getRecentMonitorEventMessage({
+    monitorId: monitor.id,
+    eventType: `${kind}-notification`,
+    since,
+    before,
+  });
+  if (notificationRecorded) {
+    return;
+  }
+
+  const failedDelivery = await hasRecentFailedNotificationDelivery({
+    userId: monitor.userId,
+    kind,
+    since,
+    before,
+  });
+  if (!failedDelivery) {
+    return;
+  }
+
+  const notificationSent = await sendMonitorNotifications({
+    kind,
+    message: transitionMessage,
+    monitor,
+    result,
+    rca,
+    buildEmailAttachments: kind === "status-change"
+      ? () => buildAlertEmailAttachments(monitor, result)
+      : undefined,
+  });
+  if (notificationSent) {
+    await appendDetailedEvent(
+      monitor,
+      result,
+      `${kind}-notification`,
+      transitionMessage,
+      rca,
+      "up"
+    );
+  }
 }
 
 function shouldRunFinalConfirmationProbe(
@@ -509,9 +654,25 @@ function shouldRunFinalConfirmationProbe(
     && verificationAttempt + 1 >= threshold;
 }
 
-async function buildAlertEmailAttachments(monitor: Monitor, checkedAt: Date) {
+async function buildAlertEmailAttachments(
+  monitor: Monitor,
+  result: Awaited<ReturnType<typeof checkMonitor>>
+) {
+  if (!isScreenshotEvidenceStable(result)) {
+    await appendMonitorEvent({
+      monitorId: monitor.id,
+      userId: monitor.userId,
+      eventType: "screenshot-skipped",
+      status: monitor.status,
+      statusCode: monitor.statusCode,
+      latencyMs: monitor.latencyMs,
+      message: "Failure screenshot skipped because the check did not receive a stable HTTP response.",
+    });
+    return undefined;
+  }
+
   let skippedReason: string | null = null;
-  const screenshot = await buildFailureScreenshotAttachment(monitor, checkedAt, (reason) => {
+  const screenshot = await buildFailureScreenshotAttachment(monitor, result.checkedAt, (reason) => {
     skippedReason = reason;
   });
 
@@ -528,6 +689,16 @@ async function buildAlertEmailAttachments(monitor: Monitor, checkedAt: Date) {
   }
 
   return screenshot ? [screenshot] : undefined;
+}
+
+function isScreenshotEvidenceStable(result: Awaited<ReturnType<typeof checkMonitor>>) {
+  if (result.ok) {
+    return true;
+  }
+
+  return result.failureReason === "http_status"
+    || result.failureReason === "assertion"
+    || result.failureReason === "redirect";
 }
 
 async function recordFailureDiagnostics(monitor: Monitor) {

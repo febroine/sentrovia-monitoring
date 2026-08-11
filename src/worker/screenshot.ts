@@ -3,17 +3,18 @@ import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import {
-  assertMonitorNetworkTarget,
+  assertMonitorNetworkTargetWithTimeout,
   normalizeNetworkHostname,
 } from "@/lib/security/public-network-target";
 
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
 const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
+const SCREENSHOT_TOTAL_TIMEOUT_MS = 15_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
 const MAX_CONCURRENT_SCREENSHOTS = 3;
-const SCREENSHOT_QUEUE_TIMEOUT_MS = 5 * 60_000;
+const SCREENSHOT_QUEUE_TIMEOUT_MS = 5_000;
 const CHROMIUM_HEADLESS_ARGS = ["--headless=new", "--disable-gpu"];
 const SCREENSHOT_PUBLIC_TARGET_ERROR = "screenshot target is not allowed by the current network safety policy";
 
@@ -37,8 +38,10 @@ export async function buildFailureScreenshotAttachment(
   }
 
   try {
-    await assertScreenshotTargetAllowed(monitor);
-    return await withScreenshotSlot(() => captureScreenshotAttachment(monitor, capturedAt));
+    return await withScreenshotDeadline(async () => {
+      await assertScreenshotTargetAllowed(monitor);
+      return withScreenshotSlot(() => captureScreenshotAttachment(monitor, capturedAt));
+    });
   } catch (error) {
     const message = toScreenshotErrorMessage(error);
     onSkipped?.(message);
@@ -75,10 +78,28 @@ async function assertScreenshotTargetAllowed(monitor: Monitor) {
     throw new Error("screenshot target is not a valid URL");
   }
 
-  await assertMonitorNetworkTarget(hostname, {
+  await assertMonitorNetworkTargetWithTimeout(hostname, {
     allowPrivateTargets: env.monitorAllowPrivateTargets,
     message: SCREENSHOT_PUBLIC_TARGET_ERROR,
+  }, SCREENSHOT_TIMEOUT_MS);
+}
+
+async function withScreenshotDeadline<T>(task: () => Promise<T>) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error("screenshot capture timed out")),
+      SCREENSHOT_TOTAL_TIMEOUT_MS
+    );
   });
+
+  try {
+    return await Promise.race([task(), timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function parseScreenshotHostname(value: string) {

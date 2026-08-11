@@ -65,6 +65,25 @@ export async function assertMonitorNetworkTarget(
   }
 }
 
+export async function assertMonitorNetworkTargetWithTimeout(
+  hostname: string,
+  options: { allowPrivateTargets: boolean; allowUnresolved?: boolean; message?: string },
+  timeoutMs: number
+) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Network target resolution timed out.")), Math.max(1, timeoutMs));
+  });
+
+  try {
+    return await Promise.race([assertMonitorNetworkTarget(hostname, options), timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 export function isPublicNetworkHostnameLiteral(hostname: string) {
   const normalizedHostname = normalizeNetworkHostname(hostname);
   if (!normalizedHostname || isBlockedNetworkHostname(normalizedHostname)) {

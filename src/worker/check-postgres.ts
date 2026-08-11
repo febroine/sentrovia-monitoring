@@ -3,7 +3,7 @@ import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePostgresMonitorTarget } from "@/lib/monitors/targets";
 import { decryptValue } from "@/lib/security/encryption";
-import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 import { classifyFailureMessage } from "@/worker/failure-reasons";
 import type { CheckFailureReason, CheckResult } from "@/worker/types";
 
@@ -11,32 +11,52 @@ const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the curren
 
 export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
-  const target = parsePostgresMonitorTarget(monitor.url);
-  const password = decryptValue(monitor.databasePasswordEncrypted);
+  let target: ReturnType<typeof parsePostgresMonitorTarget>;
+  let password: string | null;
+
+  try {
+    target = parsePostgresMonitorTarget(monitor.url);
+    password = decryptValue(monitor.databasePasswordEncrypted);
+  } catch (error) {
+    return buildFailure(
+      checkedAt,
+      error instanceof Error ? error.message : "Database configuration could not be read.",
+      "configuration"
+    );
+  }
 
   if (!target.host || !target.databaseName || !target.databaseUsername || !password) {
-    return buildFailure(checkedAt, "Database credentials are incomplete.", "database");
+    return buildFailure(checkedAt, "Database credentials are incomplete.", "configuration");
   }
 
   try {
-    await assertMonitorNetworkTarget(target.host, {
+    await assertMonitorNetworkTargetWithTimeout(target.host, {
       allowPrivateTargets: env.monitorAllowPrivateTargets,
       message: MONITOR_PUBLIC_TARGET_ERROR,
-    });
+    }, monitor.timeout);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Database check failed.";
     return buildFailure(checkedAt, message, classifyFailureMessage(message, "database"));
   }
 
+  const remainingTimeoutMs = monitor.timeout - (Date.now() - checkedAt.getTime());
+  if (remainingTimeoutMs <= 0) {
+    return buildFailure(
+      checkedAt,
+      "Database check timed out before the query completed.",
+      "timeout"
+    );
+  }
+
   const connection = postgres(buildConnectionString(target, password), {
-    connect_timeout: Math.max(1, Math.ceil(monitor.timeout / 1000)),
+    connect_timeout: Math.max(1, Math.ceil(remainingTimeoutMs / 1000)),
     idle_timeout: 0,
     max: 1,
     prepare: false,
     ssl: monitor.databaseSsl ? "require" : false,
   });
   const timeoutGuard = createTimeoutGuard(
-    monitor.timeout,
+    remainingTimeoutMs,
     "Database check timed out before the query completed."
   );
 

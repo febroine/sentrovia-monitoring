@@ -10,29 +10,58 @@ import type { CheckResult } from "@/worker/types";
 const VERIFICATION_INTERVAL_MS = 60_000;
 
 export async function checkMonitor(monitor: Monitor): Promise<CheckResult> {
-  if (monitor.monitorType === "port") {
-    return checkPortMonitor(monitor);
-  }
+  const checkedAt = new Date();
 
-  if (monitor.monitorType === "ping") {
-    return checkPingMonitor(monitor);
-  }
+  try {
+    if (monitor.monitorType === "port") {
+      return await checkPortMonitor(monitor);
+    }
 
-  if (monitor.monitorType === "postgres") {
-    return checkPostgresMonitor(monitor);
-  }
+    if (monitor.monitorType === "ping") {
+      return await checkPingMonitor(monitor);
+    }
 
-  if (monitor.monitorType === "heartbeat") {
-    return checkHeartbeatMonitor(monitor);
-  }
+    if (monitor.monitorType === "postgres") {
+      return await checkPostgresMonitor(monitor);
+    }
 
-  return checkHttpMonitor(monitor);
+    if (monitor.monitorType === "heartbeat") {
+      return await checkHeartbeatMonitor(monitor);
+    }
+
+    if (monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json") {
+      return await checkHttpMonitor(monitor);
+    }
+
+    return buildConfigurationFailure(checkedAt, `Unsupported monitor type: ${monitor.monitorType}.`);
+  } catch (error) {
+    return buildConfigurationFailure(
+      checkedAt,
+      error instanceof Error ? error.message : "Monitor configuration could not be checked."
+    );
+  }
 }
 
-export function calculateNextCheckAt(monitor: Monitor, checkedAt: Date) {
-  return new Date(checkedAt.getTime() + intervalToMs(monitor.intervalValue, monitor.intervalUnit));
+export function calculateNextCheckAt(monitor: Monitor, checkedAt: Date, completedAt = checkedAt) {
+  return new Date(Math.max(
+    checkedAt.getTime() + intervalToMs(monitor.intervalValue, monitor.intervalUnit),
+    completedAt.getTime()
+  ));
 }
 
-export function calculateVerificationCheckAt(checkedAt: Date) {
-  return new Date(checkedAt.getTime() + VERIFICATION_INTERVAL_MS);
+export function calculateVerificationCheckAt(checkedAt: Date, completedAt = checkedAt) {
+  return new Date(Math.max(checkedAt.getTime() + VERIFICATION_INTERVAL_MS, completedAt.getTime()));
+}
+
+function buildConfigurationFailure(checkedAt: Date, errorMessage: string): CheckResult {
+  return {
+    ok: false,
+    status: "down",
+    statusCode: null,
+    latencyMs: Math.max(1, Date.now() - checkedAt.getTime()),
+    errorMessage,
+    failureReason: "configuration",
+    checkedAt,
+    sslExpiresAt: null,
+  };
 }

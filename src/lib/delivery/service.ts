@@ -83,6 +83,29 @@ export async function getDeliveryOverview(userId: string, requestedPage = 1): Pr
   };
 }
 
+export async function hasRecentFailedNotificationDelivery(input: {
+  userId: string;
+  kind: DeliveryKind;
+  since: Date;
+  before: Date;
+}) {
+  const [event] = await db
+    .select({ id: deliveryEvents.id })
+    .from(deliveryEvents)
+    .where(
+      and(
+        eq(deliveryEvents.userId, input.userId),
+        eq(deliveryEvents.kind, input.kind),
+        eq(deliveryEvents.status, "failed"),
+        gte(deliveryEvents.createdAt, input.since),
+        lte(deliveryEvents.createdAt, input.before)
+      )
+    )
+    .limit(1);
+
+  return Boolean(event);
+}
+
 export async function deleteDeliveryHistory(userId: string, range: DeliveryHistoryDeletionRange) {
   if (!isValidDeletionRange(range)) {
     throw new Error("Invalid delivery history deletion range.");
