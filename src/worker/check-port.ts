@@ -2,7 +2,7 @@ import net from "node:net";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePortMonitorTarget } from "@/lib/monitors/targets";
-import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
@@ -10,14 +10,18 @@ const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the curren
 
 export async function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
-  const target = parsePortMonitorTarget(monitor.url);
 
   try {
-    await assertMonitorNetworkTarget(target.host, {
+    const target = parsePortMonitorTarget(monitor.url);
+    await assertMonitorNetworkTargetWithTimeout(target.host, {
       allowPrivateTargets: env.monitorAllowPrivateTargets,
       message: MONITOR_PUBLIC_TARGET_ERROR,
-    });
-    return await checkTcpPort(monitor, target, checkedAt);
+    }, monitor.timeout);
+    const remainingTimeoutMs = monitor.timeout - (Date.now() - checkedAt.getTime());
+    if (remainingTimeoutMs <= 0) {
+      throw new Error(`TCP service did not respond within ${formatTimeoutDuration(monitor.timeout)}.`);
+    }
+    return await checkTcpPort(monitor, target, checkedAt, remainingTimeoutMs);
   } catch (error) {
     return buildCheckResult(checkedAt, {
       ok: false,
@@ -32,7 +36,8 @@ export async function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
 function checkTcpPort(
   monitor: Monitor,
   target: ReturnType<typeof parsePortMonitorTarget>,
-  checkedAt: Date
+  checkedAt: Date,
+  timeoutMs: number
 ): Promise<CheckResult> {
   return new Promise((resolve) => {
     const socket = net.createConnection({
@@ -52,12 +57,12 @@ function checkTcpPort(
       resolve(buildCheckResult(checkedAt, result));
     };
 
-    socket.setTimeout(monitor.timeout, () => {
+    socket.setTimeout(timeoutMs, () => {
       finish({
         ok: false,
         status: "down",
         statusCode: null,
-        errorMessage: `TCP service did not respond within ${formatTimeoutDuration(monitor.timeout)}.`,
+        errorMessage: `TCP service did not respond within ${formatTimeoutDuration(timeoutMs)}.`,
         failureReason: "timeout",
       });
     });

@@ -2,6 +2,7 @@ import { lookup } from "node:dns/promises";
 import { describe, expect, it, vi } from "vitest";
 import {
   assertMonitorNetworkTarget,
+  assertMonitorNetworkTargetWithTimeout,
   assertPublicNetworkTarget,
   isNonPublicIpAddress,
   isMonitorNetworkHostnameLiteralAllowed,
@@ -90,5 +91,21 @@ describe("public network target safety", () => {
     await expect(
       assertMonitorNetworkTarget("missing.example", { allowPrivateTargets: true })
     ).rejects.toMatchObject({ code: "ENOTFOUND" });
+  });
+
+  it("bounds runtime DNS resolution with the monitor timeout", async () => {
+    vi.useFakeTimers();
+    vi.mocked(lookup).mockReturnValueOnce(new Promise(() => undefined) as never);
+
+    const pendingCheck = assertMonitorNetworkTargetWithTimeout(
+      "slow.example",
+      { allowPrivateTargets: true },
+      25
+    );
+    const rejection = expect(pendingCheck).rejects.toThrow("resolution timed out");
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
+    vi.useRealTimers();
   });
 });

@@ -6,6 +6,14 @@ export function classifyFailureMessage(
 ): CheckFailureReason {
   const normalized = message.toLowerCase();
 
+  if (normalized.includes("network safety policy") || normalized.includes("not allowed by the current network")) {
+    return "configuration";
+  }
+
+  if (normalized.includes("assertion")) {
+    return "assertion";
+  }
+
   if (normalized.includes("etimedout") || normalized.includes("timed out") || normalized.includes("timeout")) {
     return "timeout";
   }

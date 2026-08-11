@@ -15,7 +15,7 @@ import {
   isCustomExpectedStatusCode,
   isExpectedHttpStatusCode,
 } from "@/lib/monitors/status-codes";
-import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 import type {
   DiagnosticFailureCategory,
   DiagnosticPhase,
@@ -41,6 +41,7 @@ interface DiagnosticTarget {
 export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDiagnosticResult> {
   const createdAt = new Date();
   const timeoutMs = resolveDiagnosticTimeout(monitor.timeout);
+  const deadlineAt = createdAt.getTime() + timeoutMs;
   const target = resolveDiagnosticTarget(monitor);
 
   if (!target || !target.host) {
@@ -55,11 +56,11 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
     });
   }
 
-  await assertMonitorNetworkTarget(target.host, {
+  await assertMonitorNetworkTargetWithTimeout(target.host, {
     allowPrivateTargets: env.monitorAllowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
-  });
-  const dnsResult = await checkDns(target.host);
+  }, getRemainingTimeout(deadlineAt));
+  const dnsResult = await checkDns(target.host, getRemainingTimeout(deadlineAt));
   if (dnsResult.status === "failed") {
     return buildDiagnosticResult({
       createdAt,
@@ -74,7 +75,9 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
   }
 
   const targetWithPort = target.port ? { ...target, port: target.port } : null;
-  const tcpResult = targetWithPort ? await checkTcp(targetWithPort, timeoutMs) : skippedStep();
+  const tcpResult = targetWithPort
+    ? await checkTcp(targetWithPort, getRemainingTimeout(deadlineAt))
+    : skippedStep();
   if (tcpResult.status === "failed") {
     return buildDiagnosticResult({
       createdAt,
@@ -90,7 +93,7 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
   }
 
   const tlsResult = target.protocol === "https:" && targetWithPort
-    ? await checkTls(targetWithPort, monitor, timeoutMs)
+    ? await checkTls(targetWithPort, monitor, getRemainingTimeout(deadlineAt))
     : skippedStep();
   if (tlsResult.status === "failed") {
     return buildDiagnosticResult({
@@ -109,7 +112,9 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
 
   let httpResult: Awaited<ReturnType<typeof checkHttp>> | null = null;
   try {
-    httpResult = target.url ? await checkHttp(target.url, monitor, timeoutMs) : null;
+    httpResult = target.url
+      ? await checkHttp(target.url, monitor, timeoutMs, 0, Date.now(), deadlineAt)
+      : null;
   } catch (error) {
     const errorMessage = formatError(error);
     return buildDiagnosticResult({
@@ -189,9 +194,13 @@ function resolveDiagnosticTarget(monitor: Monitor): DiagnosticTarget | null {
   }
 }
 
-async function checkDns(host: string): Promise<DiagnosticStepResult & { addresses: string[] }> {
+async function checkDns(host: string, timeoutMs: number): Promise<DiagnosticStepResult & { addresses: string[] }> {
   try {
-    const records = await dns.lookup(host, { all: true });
+    const records = await withTimeout(
+      dns.lookup(host, { all: true }),
+      timeoutMs,
+      `DNS diagnostics timed out after ${timeoutMs}ms.`
+    );
     return {
       status: records.length > 0 ? "ok" : "failed",
       addresses: records.map((record) => record.address),
@@ -199,6 +208,30 @@ async function checkDns(host: string): Promise<DiagnosticStepResult & { addresse
     };
   } catch (error) {
     return { status: "failed", addresses: [], errorMessage: formatError(error) };
+  }
+}
+
+function getRemainingTimeout(deadlineAt: number) {
+  const remainingTimeoutMs = deadlineAt - Date.now();
+  if (remainingTimeoutMs <= 0) {
+    throw new Error("Network diagnostics timed out before completion.");
+  }
+
+  return remainingTimeoutMs;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), Math.max(1, timeoutMs));
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -258,21 +291,33 @@ async function checkHttp(
   monitor: Monitor,
   timeoutMs: number,
   redirectCount = 0,
-  startedAt = Date.now()
+  startedAt = Date.now(),
+  deadlineAt = startedAt + timeoutMs
 ) {
   const parsed = new URL(url);
-  await assertMonitorNetworkTarget(parsed.hostname, {
+  const remainingTimeoutMs = getRemainingTimeout(deadlineAt);
+  await assertMonitorNetworkTargetWithTimeout(parsed.hostname, {
     allowPrivateTargets: env.monitorAllowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
-  });
+  }, remainingTimeoutMs);
 
   return new Promise<DiagnosticStepResult & { statusCode: number | null; responseTimeMs: number | null }>((resolve) => {
     const transport = parsed.protocol === "https:" ? https : http;
+    let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
+    const resolveAndClear = (
+      result: (DiagnosticStepResult & { statusCode: number | null; responseTimeMs: number | null })
+        | PromiseLike<DiagnosticStepResult & { statusCode: number | null; responseTimeMs: number | null }>
+    ) => {
+      if (deadlineTimer) {
+        clearTimeout(deadlineTimer);
+      }
+      resolve(result);
+    };
     const request = transport.request(
       parsed,
       {
         method: monitor.method,
-        timeout: timeoutMs,
+        timeout: remainingTimeoutMs,
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
       (response) => {
@@ -289,13 +334,13 @@ async function checkHttp(
         ) {
           response.resume();
           const nextUrl = new URL(location, parsed).toString();
-          resolve(checkHttp(nextUrl, monitor, timeoutMs, redirectCount + 1, startedAt));
+          resolveAndClear(checkHttp(nextUrl, monitor, timeoutMs, redirectCount + 1, startedAt, deadlineAt));
           return;
         }
 
         response.resume();
         const isHealthy = isHealthyHttpDiagnosticStatus(monitor, statusCode);
-        resolve({
+        resolveAndClear({
           status: isHealthy ? "ok" : "failed",
           statusCode,
           responseTimeMs: Math.max(1, Date.now() - startedAt),
@@ -304,9 +349,12 @@ async function checkHttp(
       }
     );
 
+    deadlineTimer = setTimeout(() => {
+      request.destroy(new Error(`HTTP diagnostics timed out after ${timeoutMs}ms.`));
+    }, remainingTimeoutMs);
     request.on("timeout", () => request.destroy(new Error(`HTTP diagnostics timed out after ${timeoutMs}ms.`)));
     request.on("error", (error) =>
-      resolve({ status: "failed", statusCode: null, responseTimeMs: Math.max(1, Date.now() - startedAt), errorMessage: error.message })
+      resolveAndClear({ status: "failed", statusCode: null, responseTimeMs: Math.max(1, Date.now() - startedAt), errorMessage: error.message })
     );
     request.end();
   });

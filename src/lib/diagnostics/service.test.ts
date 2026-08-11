@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/security/public-network-target", () => ({
   assertMonitorNetworkTarget: mocks.assertMonitorNetworkTarget,
+  assertMonitorNetworkTargetWithTimeout: mocks.assertMonitorNetworkTarget,
 }));
 
 let activeServer: http.Server | null = null;

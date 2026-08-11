@@ -632,7 +632,12 @@ export async function recordMonitorResult(
     .set({
       ...update,
       ...(expectedLeaseToken
-        ? { leaseExpiresAt: new Date(Date.now() + MONITOR_LEASE_MS) }
+        ? {
+            leaseExpiresAt: sql`greatest(
+              coalesce(${monitors.leaseExpiresAt}, now()),
+              ${new Date(Date.now() + MONITOR_LEASE_MS)}
+            )`,
+          }
         : {}),
       updatedAt: new Date(),
     })
@@ -647,6 +652,38 @@ export async function recordMonitorResult(
     .returning();
 
   return monitor;
+}
+
+export async function renewMonitorLease(
+  monitorId: string,
+  expectedLeaseToken: string | null,
+  monitor: Pick<typeof monitors.$inferSelect, "timeout" | "verificationMode">
+) {
+  if (!expectedLeaseToken) {
+    return false;
+  }
+
+  const leaseDurationMs = calculateMonitorLeaseMs([monitor]);
+  const [updated] = await db
+    .update(monitors)
+    .set({
+      leaseExpiresAt: sql`greatest(
+        coalesce(${monitors.leaseExpiresAt}, now()),
+        ${new Date(Date.now() + leaseDurationMs)}
+      )`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(monitors.id, monitorId),
+        eq(monitors.isActive, true),
+        isNull(monitors.deletedAt),
+        eq(monitors.leaseToken, expectedLeaseToken)
+      )
+    )
+    .returning({ id: monitors.id });
+
+  return Boolean(updated);
 }
 
 export async function releaseMonitorLease(monitorId: string, expectedLeaseToken: string | null) {
@@ -811,6 +848,29 @@ export async function hasRecentMonitorEvent(input: {
     .limit(1);
 
   return Boolean(event);
+}
+
+export async function getRecentMonitorEventMessage(input: {
+  monitorId: string;
+  eventType: string;
+  since: Date;
+  before: Date;
+}) {
+  const [event] = await db
+    .select({ message: monitorEvents.message })
+    .from(monitorEvents)
+    .where(
+      and(
+        eq(monitorEvents.monitorId, input.monitorId),
+        eq(monitorEvents.eventType, input.eventType),
+        gte(monitorEvents.createdAt, input.since),
+        lte(monitorEvents.createdAt, input.before)
+      )
+    )
+    .orderBy(desc(monitorEvents.createdAt))
+    .limit(1);
+
+  return event?.message ?? null;
 }
 
 export async function countMonitorEvents(input: {

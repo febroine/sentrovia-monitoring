@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePingMonitorTarget } from "@/lib/monitors/targets";
-import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
+import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
@@ -12,14 +12,18 @@ const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the curren
 
 export async function checkPingMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
-  const target = parsePingMonitorTarget(monitor.url);
 
   try {
-    await assertMonitorNetworkTarget(target.host, {
+    const target = parsePingMonitorTarget(monitor.url);
+    await assertMonitorNetworkTargetWithTimeout(target.host, {
       allowPrivateTargets: env.monitorAllowPrivateTargets,
       message: MONITOR_PUBLIC_TARGET_ERROR,
-    });
-    const latencyMs = await measurePingLatency(target.host, monitor.timeout);
+    }, monitor.timeout);
+    const remainingTimeoutMs = monitor.timeout - (Date.now() - checkedAt.getTime());
+    if (remainingTimeoutMs <= 0) {
+      throw new Error(`Ping target did not respond within ${formatTimeoutDuration(monitor.timeout)}.`);
+    }
+    const latencyMs = await measurePingLatency(target.host, remainingTimeoutMs);
     return {
       ok: true,
       status: "up",
@@ -68,7 +72,7 @@ async function measurePingLatency(host: string, timeoutMs: number) {
   assertSafePingHost(host);
   const { command, args } = buildPingCommand(host, timeoutMs);
   const { stdout, stderr } = await execFileAsync(command, args, {
-    timeout: Math.max(timeoutMs + 1_000, 2_000),
+    timeout: Math.max(1, timeoutMs),
     windowsHide: true,
   });
   const output = `${stdout}\n${stderr}`;
