@@ -36,10 +36,10 @@ It is built for teams that do not want an alert every time a single request time
 | --- | --- |
 | Verified alerts | Rechecks failures before sending down notifications |
 | Monitor types | HTTP, keyword, JSON, TCP, PostgreSQL, ping, heartbeat |
-| Evidence | Captures Chromium screenshots for confirmed HTTP-style outages |
+| Evidence | Captures Chromium screenshots when a confirmed HTTP-style failure has stable page evidence |
 | Notifications | Email, Telegram, Discord, and generic webhooks |
 | Reports | Scheduled and manual HTML reports |
-| Status pages | Public pages for service health |
+| Status pages | Workspace or company-scoped public pages for service health |
 | Members | First admin onboarding, then admin-managed members |
 | Windows services | Guided NSSM installation and one-click updates |
 
@@ -74,7 +74,7 @@ It is built for teams that do not want an alert every time a single request time
     </td>
   </tr>
   <tr>
-    <td><sub>Delivery testing, immutable history, retry visibility, and channel diagnostics.</sub></td>
+    <td><sub>Delivery testing, paginated history, controlled cleanup, retry visibility, and channel diagnostics.</sub></td>
     <td><sub>Built-in operational documentation for checks, workers, reports, notifications, and troubleshooting.</sub></td>
   </tr>
 </table>
@@ -91,6 +91,7 @@ It is built for teams that do not want an alert every time a single request time
 | Windows + NSSM | Windows servers running without Docker | `scripts/install-windows-nssm.ps1` |
 
 Both installers preserve existing environment files. They never rotate database passwords or encryption keys automatically.
+For a new installation, do not create an environment file by hand: the selected installer creates the correct private file and strong secrets.
 
 ## Install With Docker
 
@@ -108,7 +109,7 @@ chmod +x scripts/install-docker.sh
 ./scripts/install-docker.sh
 ```
 
-The installer creates `.env` with strong random secrets and starts PostgreSQL, the web console, and the worker. Open [http://localhost:3000](http://localhost:3000) and follow onboarding to create the first administrator.
+The installer creates `.env` with strong random secrets and starts PostgreSQL, the web console, and the worker. Open [http://localhost:3000](http://localhost:3000) and follow onboarding to create the first administrator. The Docker Compose file is intentionally strict: running `docker compose up` without the generated `.env` stops before PostgreSQL is initialized with a password you cannot recover.
 If a PostgreSQL volume already exists but `.env` is missing, the installer stops instead of generating a mismatched database password. Restore the original `.env` from backup.
 
 Normal start and stop commands:
@@ -146,7 +147,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-windows-nssm.ps1
 ```
 
-The installer creates `.env.local` when needed, applies migrations, builds the app, and creates `sentrovia-web` and `sentrovia-worker`. For an existing installation it preserves `.env.local` and database records.
+The installer creates `.env.local` when needed, prompts for the PostgreSQL connection, applies migrations, builds the app, and creates `sentrovia-web` and `sentrovia-worker`. For an existing installation it preserves `.env.local` and database records. It also recognizes the legacy `SentroviaWeb` and `SentroviaWorker` service names during updates.
 
 <details>
 <summary>Remote PostgreSQL parameters</summary>
@@ -167,6 +168,7 @@ $DbPassword = Read-Host "PostgreSQL password" -AsSecureString
 
 - `.env` and `.env.local` are private runtime files and are ignored by Git.
 - `.env.example` is documentation only; never use its placeholder secrets in production.
+- Docker uses `.env`; Windows NSSM uses `.env.local`. The application and service scripts load these files automatically.
 - Back up PostgreSQL before production updates.
 - Never replace `APP_ENCRYPTION_SECRET` on a live database without a credential-rotation plan. Stored SMTP, webhook, and monitor credentials depend on it.
 - Set `AUTH_TRUST_PROXY_HEADERS=true` only behind a trusted proxy that sanitizes forwarded headers.
@@ -305,7 +307,9 @@ Sentrovia separates availability failures from degraded latency:
 - `2xx` and `3xx` responses are healthy by default.
 - `4xx`, `5xx`, DNS, TLS, connection, assertion, and timeout errors are failures.
 - A timeout enters verification first; after the consecutive-failure threshold is reached, one final immediate probe must also fail before Sentrovia sends an outage notification.
+- The configured HTTP timeout is a complete request budget: DNS resolution, redirects, connection, response, and assertion processing share it.
 - Any failed probe is discarded before state or notification processing when the worker detects that its own internet connection is unavailable.
+- Invalid monitor configuration and blocked monitor policy checks are recorded as pending configuration errors. They do not create outages or send down notifications.
 - A response that finishes after the slow-response threshold stays `up`, appears degraded on status pages, and sends a latency notification only after repeated slow checks.
 - HTTP monitors can define custom expected status codes, such as `200, 204, 401`, when a non-standard response is still healthy.
 
@@ -334,8 +338,8 @@ Notification channels:
 
 Evidence features:
 
-- Screenshot capture after confirmed HTTP, keyword, and JSON outages
-- Delivery history with status, attempt count, response code, payload summary, and error details
+- Screenshot capture after confirmed HTTP, keyword, and JSON outages that return a stable HTTP response. Timeout, DNS, TLS, and connection failures do not attach a potentially contradictory screenshot.
+- Delivery history with status, attempt count, response code, payload summary, error details, ten-item pagination, and date-range cleanup for completed records
 - Recovery, status-change, latency, and prolonged-downtime templates
 - Workspace-level templates with monitor-level overrides
 
@@ -362,6 +366,8 @@ Sentrovia currently sends HTML reports only:
 - Manual preview and scheduled delivery
 - URL-first tables, readable failure details, and service snapshots
 - One browser-ready HTML attachment per delivery
+
+Public status pages can be workspace-wide or limited to one company in **Settings**. A company-scoped page uses the selected slug, such as `/status/holding`, prioritizes down services, and makes the monitored URLs prominent for wall displays.
 
 ## Tech Stack
 
@@ -390,7 +396,7 @@ Possible next improvements:
 - Signed release builds
 - Demo video or GIF
 - Hosted demo instance
-- Role-based access controls
+- More granular role-based access controls
 - Escalation policies
 - Multi-region workers
 - DNS-specific monitors
