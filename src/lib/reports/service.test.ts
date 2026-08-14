@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertReportScheduleCompanyAvailable,
   normalizeReportStatus,
+  resolveReportPeriod,
   scheduleNextRunAfter,
 } from "@/lib/reports/service";
 
@@ -26,6 +27,25 @@ describe("scheduleNextRunAfter", () => {
     );
 
     expect(nextRun.toISOString()).toBe("2027-02-28T08:00:00.000Z");
+  });
+});
+
+describe("resolveReportPeriod", () => {
+  const now = new Date("2026-08-14T12:00:00.000Z");
+
+  it("uses a rolling seven-day window for weekly reports", () => {
+    const period = resolveReportPeriod("weekly", now);
+
+    expect(period.startedAt.toISOString()).toBe("2026-08-07T12:00:00.000Z");
+    expect(period.endedAt).toBe(now);
+    expect(period.label).toBe("Last 7 days");
+  });
+
+  it("uses a rolling thirty-day window for monthly reports", () => {
+    const period = resolveReportPeriod("monthly", now);
+
+    expect(period.startedAt.toISOString()).toBe("2026-07-15T12:00:00.000Z");
+    expect(period.label).toBe("Last 30 days");
   });
 });
 

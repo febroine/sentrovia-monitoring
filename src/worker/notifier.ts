@@ -34,6 +34,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
       await sendEmailDelivery({
         userId: context.monitor.userId,
         kind: context.kind,
+        monitorId: context.monitor.id,
         destinationOverride: context.monitor.notifEmail,
         subject: rendered.subject,
         textBody: rendered.textBody,
@@ -49,6 +50,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
       await sendTelegramDelivery({
         userId: context.monitor.userId,
         kind: context.kind,
+        monitorId: context.monitor.id,
         botToken: context.monitor.telegramBotToken ?? "",
         chatId: context.monitor.telegramChatId ?? "",
         body: rendered.telegramBody,
@@ -60,7 +62,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
 
   if (settings.notifications.discordEnabled && settings.notifications.discordWebhookUrl) {
     deliveryResults.push(
-      await sendChannelWebhookDelivery(context.monitor.userId, "discord", context.kind, rendered.textBody)
+      await sendChannelWebhookDelivery(context.monitor.userId, "discord", context.kind, rendered.textBody, context.monitor.id)
     );
   }
 
@@ -77,7 +79,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     rcaTitle: context.rca.title,
     rcaSummary: context.rca.summary,
   });
-  deliveryResults.push(await sendWebhookDelivery(context.monitor.userId, context.kind, webhookPayload));
+  deliveryResults.push(await sendWebhookDelivery(context.monitor.userId, context.kind, webhookPayload, context.monitor.id));
 
   return deliveryResults.some(isAcceptedDelivery);
 }

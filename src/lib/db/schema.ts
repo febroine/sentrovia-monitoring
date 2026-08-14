@@ -37,8 +37,8 @@ export const users = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("users_email_unique").on(table.email),
-    uniqueIndex("users_username_unique").on(table.username),
+    uniqueIndex("users_email_unique").on(sql`lower(${table.email})`),
+    uniqueIndex("users_username_unique").on(sql`lower(${table.username})`),
   ]
 );
 
@@ -102,6 +102,9 @@ export const userSettings = pgTable(
     compactDensity: boolean("compact_density").default(false).notNull(),
     sidebarAccent: varchar("sidebar_accent", { length: 24 }).default("emerald").notNull(),
     dashboardLandingPage: varchar("dashboard_landing_page", { length: 32 }).default("dashboard").notNull(),
+    dashboardWidgets: text("dashboard_widgets"),
+    dashboardCompanyId: text("dashboard_company_id"),
+    dashboardFocus: varchar("dashboard_focus", { length: 16 }).default("all").notNull(),
     showOutageBanner: boolean("show_outage_banner").default(true).notNull(),
     showChartsSection: boolean("show_charts_section").default(true).notNull(),
     highContrastSurfaces: boolean("high_contrast_surfaces").default(false).notNull(),
@@ -172,6 +175,8 @@ export const monitors = pgTable("monitors", {
   statusCode: integer("status_code"),
   uptime: varchar("uptime", { length: 32 }).default("--").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  isFavorite: boolean("is_favorite").default(false).notNull(),
+  isCritical: boolean("is_critical").default(false).notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedWasActive: boolean("deleted_was_active"),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
@@ -229,6 +234,7 @@ export const monitors = pgTable("monitors", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("monitors_user_deleted_at_idx").on(table.userId, table.deletedAt),
+  index("monitors_user_favorite_critical_idx").on(table.userId, table.isFavorite, table.isCritical, table.status),
   uniqueIndex("monitors_heartbeat_token_unique").on(table.heartbeatToken),
 ]);
 
@@ -339,6 +345,7 @@ export const deliveryEvents = pgTable("delivery_events", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  monitorId: text("monitor_id").references(() => monitors.id, { onDelete: "set null" }),
   channel: varchar("channel", { length: 16 }).notNull(),
   kind: varchar("kind", { length: 24 }).notNull(),
   destination: text("destination").notNull(),
@@ -352,6 +359,7 @@ export const deliveryEvents = pgTable("delivery_events", {
   claimToken: text("claim_token"),
   claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  deadLetteredAt: timestamp("dead_lettered_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("delivery_events_webhook_claim_due_idx").on(
@@ -362,6 +370,7 @@ export const deliveryEvents = pgTable("delivery_events", {
     table.createdAt
   ),
   index("delivery_events_user_created_at_idx").on(table.userId, table.createdAt),
+  index("delivery_events_queue_due_idx").on(table.status, table.nextRetryAt, table.claimExpiresAt, table.createdAt),
 ]);
 
 export const workerState = pgTable("worker_state", {

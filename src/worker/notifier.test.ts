@@ -457,6 +457,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 500,
     uptime: "0%",
     isActive: true,
+    isFavorite: false,
+    isCritical: false,
     deletedAt: null,
     deletedWasActive: null,
     lastCheckedAt: now,

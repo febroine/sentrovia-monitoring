@@ -28,7 +28,6 @@ export const en = {
     members: "Members",
     logs: "Event Logs",
     delivery: "Delivery",
-    systemHealth: "System Health",
     reports: "Reports",
     settings: "Settings"
   },
@@ -231,7 +230,6 @@ export const en = {
     greeting: "Welcome Back,",
     desc: "System status and global telemetry · Last updated: Just now",
     addSite: "Add Site",
-    systemHealth: "System Health",
     systemStatus: "Real-Time Resource Status",
     startMonitoring: "Start Monitoring",
     stopMonitoring: "Stop Monitoring",

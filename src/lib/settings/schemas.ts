@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidTimeZone } from "@/lib/time";
+import { DASHBOARD_WIDGET_IDS } from "@/lib/dashboard/preferences";
 
 const optionalString = (maxLength: number) =>
   z
@@ -103,6 +104,9 @@ const settingsObjectSchema = z.object({
     compactDensity: z.boolean(),
     sidebarAccent: z.enum(["amber", "emerald", "sky", "rose", "violet", "slate"]),
     dashboardLandingPage: z.enum(["dashboard", "monitoring", "companies", "logs", "settings"]),
+    dashboardWidgets: z.array(z.enum(DASHBOARD_WIDGET_IDS)).min(1).max(DASHBOARD_WIDGET_IDS.length).default([...DASHBOARD_WIDGET_IDS]),
+    dashboardCompanyId: z.union([z.literal(""), z.string().uuid()]).default(""),
+    dashboardFocus: z.enum(["all", "favorites", "critical"]).default("all"),
     showOutageBanner: z.boolean(),
     showChartsSection: z.boolean(),
     highContrastSurfaces: z.boolean(),

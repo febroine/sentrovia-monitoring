@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   AlertCircle,
@@ -10,12 +10,17 @@ import {
   ChevronRight,
   Clock3,
   Server,
+  SlidersHorizontal,
   XCircle,
 } from "lucide-react";
 import { SystemStatus } from "@/components/system-status";
+import { DashboardCustomizationPanel } from "@/components/dashboard/dashboard-customization-panel";
+import { DashboardMonitorFocus } from "@/components/dashboard/dashboard-monitor-focus";
+import { SystemHealthCard } from "@/components/dashboard/system-health-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DEFAULT_DASHBOARD_PREFERENCES, type DashboardPreferences, type DashboardWidgetId } from "@/lib/dashboard/preferences";
 import type { DashboardData } from "@/lib/dashboard/service";
 
 export function DashboardLive({ initialData }: { initialData: DashboardData }) {
@@ -23,6 +28,11 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [companyPage, setCompanyPage] = useState(1);
   const [eventPage, setEventPage] = useState(1);
+  const [customizationOpen, setCustomizationOpen] = useState(false);
+  const [draftPreferences, setDraftPreferences] = useState<DashboardPreferences>(initialData.preferences);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  const [customizationError, setCustomizationError] = useState<string | null>(null);
+  const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
 
   useEffect(() => {
     const stream = new EventSource("/api/dashboard/stream");
@@ -42,6 +52,65 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
 
     return () => stream.close();
   }, []);
+
+  useEffect(() => {
+    if (!customizationOpen) {
+      setDraftPreferences(data.preferences);
+    }
+  }, [customizationOpen, data.preferences]);
+
+  async function savePreferences() {
+    setSavingPreferences(true);
+    setCustomizationError(null);
+    try {
+      const response = await fetch("/api/dashboard/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draftPreferences),
+      });
+      const body = (await response.json()) as { dashboard?: DashboardData; message?: string };
+      if (!response.ok || !body.dashboard) {
+        throw new Error(body.message ?? "Unable to save dashboard preferences.");
+      }
+
+      setData(body.dashboard);
+      setCustomizationOpen(false);
+    } catch (error) {
+      setCustomizationError(error instanceof Error ? error.message : "Unable to save dashboard preferences.");
+    } finally {
+      setSavingPreferences(false);
+    }
+  }
+
+  async function updateMonitorFlag(monitorId: string, field: "isFavorite" | "isCritical", value: boolean) {
+    setFlagPendingId(monitorId);
+    setCustomizationError(null);
+    try {
+      const response = await fetch(`/api/monitors/${monitorId}/flags`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const body = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Unable to update monitor dashboard flags.");
+      }
+
+      setData((current) => {
+        const updatedMonitors = current.monitors.map((monitor) =>
+          monitor.id === monitorId ? { ...monitor, [field]: value } : monitor
+        );
+        return {
+          ...current,
+          monitors: sortFocusMonitors(updatedMonitors, current.preferences.focus),
+        };
+      });
+    } catch (error) {
+      setCustomizationError(error instanceof Error ? error.message : "Unable to update monitor dashboard flags.");
+    } finally {
+      setFlagPendingId(null);
+    }
+  }
 
   const cards = useMemo(
     () => [
@@ -91,20 +160,100 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const showOutageBanner = data.settings?.appearance.showOutageBanner ?? true;
   const use24HourClock = data.settings?.appearance.use24HourClock ?? true;
   const isAdmin = data.settings?.profile.role === "admin";
+  const preferences = data.preferences ?? DEFAULT_DASHBOARD_PREFERENCES;
+  const visibleWidgets = preferences.widgets.filter((widget) => {
+    if (!isAdmin && widget === "system") {
+      return false;
+    }
+
+    return showChartsSection || !["company-health", "recent-events", "delivery"].includes(widget);
+  });
+
+  function renderWidget(widget: DashboardWidgetId): ReactNode {
+    if (widget === "summary") {
+      return (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {cards.map((card) => (
+            <Card key={card.label} className="overflow-hidden">
+              <CardContent className={`border-l-2 p-4 ${card.border}`}>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
+                  <div className="rounded-lg bg-muted p-2"><card.icon className={`h-4 w-4 ${card.tone}`} /></div>
+                </div>
+                <p className={`text-3xl font-semibold tracking-tight ${card.tone}`}>{card.value}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    if (widget === "system") {
+      return <div className="space-y-4"><SystemHealthCard /><SystemStatus use24HourClock={use24HourClock} /></div>;
+    }
+
+    if (widget === "monitor-focus") {
+      return <DashboardMonitorFocus monitors={data.monitors} focus={preferences.focus} pendingId={flagPendingId} onFlag={updateMonitorFlag} />;
+    }
+
+    if (widget === "company-health") {
+      return <PanelCompanyHealth companies={companyItems} page={currentCompanyPage} totalPages={companyPages} onPageChange={setCompanyPage} />;
+    }
+
+    if (widget === "recent-events") {
+      return <PanelRecentEvents events={eventItems} page={currentEventPage} totalPages={eventPages} onPageChange={setEventPage} use24HourClock={use24HourClock} />;
+    }
+
+    return (
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Notification delivery</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
+          <MetricCard label="Retry Queue" value={String(data.delivery.pendingRetries)} sub="Delivery items waiting for retry" tone="amber" />
+          <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Review failed attempts" tone="rose" />
+          <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
+          <MetricCard label="Dead-lettered" value={String(data.delivery.deadLettered)} sub="Exhausted or permanent failures" tone="rose" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <Badge variant="outline" className="border-sky-500/30 text-sky-600 dark:text-sky-400">
-            Live
-          </Badge>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+            <Badge variant="outline" className="border-sky-500/30 text-sky-600 dark:text-sky-400">Live</Badge>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => { setCustomizationError(null); setCustomizationOpen((open) => !open); }}>
+            <SlidersHorizontal className="h-4 w-4" />
+            Customize
+          </Button>
         </div>
         <p className="text-sm text-muted-foreground">
           Current monitor status, notification delivery, and worker health.
         </p>
       </header>
+
+      {customizationOpen ? (
+        <DashboardCustomizationPanel
+          preferences={draftPreferences}
+          companyOptions={data.companyOptions}
+          isAdmin={isAdmin}
+          saving={savingPreferences}
+          onChange={setDraftPreferences}
+          onSave={savePreferences}
+          onClose={() => { setCustomizationError(null); setCustomizationOpen(false); }}
+        />
+      ) : null}
+
+      {customizationError ? (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {customizationError}
+        </div>
+      ) : null}
 
       {streamError ? (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
@@ -124,51 +273,9 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
-      {isAdmin ? <SystemStatus use24HourClock={use24HourClock} /> : null}
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => (
-          <Card key={card.label} className="overflow-hidden">
-            <CardContent className={`border-l-2 p-4 ${card.border}`}>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
-                <div className="rounded-lg bg-muted p-2">
-                  <card.icon className={`h-4 w-4 ${card.tone}`} />
-                </div>
-              </div>
-              <p className={`text-3xl font-semibold tracking-tight ${card.tone}`}>{card.value}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="space-y-4">
+        {visibleWidgets.map((widget) => <div key={widget}>{renderWidget(widget)}</div>)}
       </div>
-
-      {showChartsSection ? (
-        <>
-          <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-            <PanelCompanyHealth companies={companyItems} page={currentCompanyPage} totalPages={companyPages} onPageChange={setCompanyPage} />
-            <PanelRecentEvents
-              events={eventItems}
-              page={currentEventPage}
-              totalPages={eventPages}
-              onPageChange={setEventPage}
-              use24HourClock={use24HourClock}
-            />
-          </div>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Notification delivery</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-4">
-              <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
-              <MetricCard label="Retry Queue" value={String(data.delivery.pendingWebhookRetries)} sub="Webhook items waiting for retry" tone="amber" />
-              <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Review failed attempts" tone="rose" />
-              <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
-            </CardContent>
-          </Card>
-        </>
-      ) : null}
     </div>
   );
 }
@@ -363,4 +470,20 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
   const safePage = Math.max(1, page);
   const start = (safePage - 1) * pageSize;
   return items.slice(start, start + pageSize);
+}
+
+function sortFocusMonitors(monitors: DashboardData["monitors"], focus: DashboardPreferences["focus"]) {
+  const filtered = focus === "favorites"
+    ? monitors.filter((monitor) => monitor.isFavorite)
+    : focus === "critical"
+      ? monitors.filter((monitor) => monitor.isCritical)
+      : monitors;
+
+  return [...filtered].sort((left, right) => {
+    if (left.isCritical !== right.isCritical) return left.isCritical ? -1 : 1;
+    if (left.isFavorite !== right.isFavorite) return left.isFavorite ? -1 : 1;
+    const statusRank = (status: string) => status === "down" ? 0 : status === "pending" ? 1 : 2;
+    const statusDifference = statusRank(left.status) - statusRank(right.status);
+    return statusDifference !== 0 ? statusDifference : left.name.localeCompare(right.name);
+  });
 }

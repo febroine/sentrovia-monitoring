@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, FlaskConical, Inbox, RefreshCw, RotateCcw, Send, Trash2, Webhook } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleX, FlaskConical, Inbox, RefreshCw, RotateCcw, Send, Trash2, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,13 +13,14 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCalendarDateInput, shiftLocalCalendarDays } from "@/lib/delivery/history-range";
-import type { DeliveryHistoryRecord, DeliveryOverview } from "@/lib/delivery/types";
+import type { DeliveryChannelHealth, DeliveryHistoryRecord, DeliveryOverview } from "@/lib/delivery/types";
 import { toEnglishUppercase } from "@/lib/text/casing";
 
 const EMPTY_OVERVIEW: DeliveryOverview = {
   webhook: null,
   history: [],
-  summary: { delivered: 0, failed: 0, retrying: 0, pendingWebhookRetries: 0 },
+  summary: { delivered: 0, failed: 0, retrying: 0, pendingWebhookRetries: 0, pendingRetries: 0, deadLettered: 0 },
+  channelHealth: buildEmptyChannelHealth(),
   pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 1 },
 };
 
@@ -55,8 +56,8 @@ export function DeliveryPageClient() {
       },
       {
         label: "Retry Queue",
-        value: String(overview.summary.pendingWebhookRetries),
-        sub: "Webhook items waiting for retry",
+        value: String(overview.summary.pendingRetries),
+        sub: "Delivery items waiting for retry",
         border: "border-l-amber-500",
       },
       {
@@ -70,6 +71,12 @@ export function DeliveryPageClient() {
         value: String(overview.summary.retrying),
         sub: "Waiting for the next attempt",
         border: "border-l-slate-400",
+      },
+      {
+        label: "Dead-lettered",
+        value: String(overview.summary.deadLettered),
+        sub: "Exhausted or permanent failures",
+        border: "border-l-rose-700",
       },
     ],
     [overview.summary]
@@ -85,7 +92,7 @@ export function DeliveryPageClient() {
         throw new Error(data?.message ?? "Unable to load delivery operations.");
       }
 
-      const nextOverview = data?.overview ?? EMPTY_OVERVIEW;
+      const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
       setWebhookUrl(nextOverview.webhook?.url ?? "");
@@ -120,8 +127,9 @@ export function DeliveryPageClient() {
         throw new Error(data?.message ?? "Unable to save webhook settings.");
       }
 
-      setOverview(data?.overview ?? EMPTY_OVERVIEW);
-      setHistoryPage(data?.overview?.pagination.page ?? 1);
+      const nextOverview = normalizeOverview(data?.overview);
+      setOverview(nextOverview);
+      setHistoryPage(nextOverview.pagination.page);
       setWebhookSecret("");
       setMessage("Webhook endpoint saved.");
     } catch (error) {
@@ -171,14 +179,37 @@ export function DeliveryPageClient() {
         message?: string;
       }>(response);
       if (!response.ok) {
-        throw new Error(data?.message ?? "Unable to retry webhook queue.");
+        throw new Error(data?.message ?? "Unable to retry the delivery queue.");
       }
 
-      setOverview(data?.overview ?? EMPTY_OVERVIEW);
-      setHistoryPage(data?.overview?.pagination.page ?? 1);
-      setMessage(`Processed ${data?.result?.processed ?? 0} webhook retry item(s).`);
+      const nextOverview = normalizeOverview(data?.overview);
+      setOverview(nextOverview);
+      setHistoryPage(nextOverview.pagination.page);
+      setMessage(`Processed ${data?.result?.processed ?? 0} delivery retry item(s).`);
     } catch (error) {
-      setMessage(toMessage(error, "Unable to retry webhook queue."));
+      setMessage(toMessage(error, "Unable to retry the delivery queue."));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function retryDelivery(eventId: string) {
+    setPendingAction(`retry-${eventId}`);
+
+    try {
+      const response = await fetch(`/api/delivery/retry?eventId=${encodeURIComponent(eventId)}`, { method: "POST" });
+      const data = await readJsonOrNull<{ delivery?: DeliveryHistoryRecord; overview?: DeliveryOverview; message?: string }>(response);
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to retry this delivery.");
+      }
+
+      const nextOverview = normalizeOverview(data?.overview);
+      setOverview(nextOverview);
+      setHistoryPage(nextOverview.pagination.page);
+      setSelectedRow(data?.delivery ?? null);
+      setMessage("Delivery retry completed.");
+    } catch (error) {
+      setMessage(toMessage(error, "Unable to retry this delivery."));
     } finally {
       setPendingAction(null);
     }
@@ -203,7 +234,7 @@ export function DeliveryPageClient() {
         throw new Error(data?.message ?? "Unable to delete delivery history.");
       }
 
-      const nextOverview = data?.overview ?? EMPTY_OVERVIEW;
+      const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
       setSelectedRow(null);
@@ -222,7 +253,7 @@ export function DeliveryPageClient() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Notification delivery</h1>
           <p className="text-sm text-muted-foreground">
-            Manage webhook delivery, run email and telegram smoke tests, and review the retry queue.
+            Review delivery health, retry failed notifications, and verify that monitoring results reached their destination.
           </p>
         </div>
         <Button variant="outline" onClick={() => void loadOverview(historyPage)} disabled={loading}>
@@ -233,7 +264,7 @@ export function DeliveryPageClient() {
 
       {message ? <div className="rounded-lg border px-4 py-3 text-sm">{message}</div> : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
           <Card key={card.label} className="overflow-hidden">
             <CardContent className={`border-l-2 px-4 py-3 ${card.border}`}>
@@ -244,6 +275,20 @@ export function DeliveryPageClient() {
           </Card>
         ))}
       </div>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b bg-muted/15 pb-3">
+          <CardTitle className="text-base">Channel health</CardTitle>
+          <CardDescription>Delivery attempts and error rates from the last 24 hours.</CardDescription>
+        </CardHeader>
+        <CardContent className="border-l-2 border-l-sky-500 p-0">
+          <div className="divide-y">
+            {overview.channelHealth.map((channel) => (
+              <ChannelHealthRow key={channel.channel} channel={channel} />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <Card className="overflow-hidden">
@@ -269,10 +314,6 @@ export function DeliveryPageClient() {
               <Button variant="outline" onClick={() => void sendTest("webhook")} disabled={!webhookUrl.trim() || pendingAction !== null}>
                 <Send className="mr-2 h-4 w-4" />
                 Send Test Webhook
-              </Button>
-              <Button variant="outline" onClick={() => void retryQueue()} disabled={pendingAction !== null}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Retry Queue
               </Button>
             </div>
           </CardContent>
@@ -317,18 +358,29 @@ export function DeliveryPageClient() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1.5">
               <CardTitle className="text-base">Delivery history</CardTitle>
-              <CardDescription>Email, Telegram, Discord, and webhook attempts ordered from newest to oldest.</CardDescription>
+              <CardDescription>Email, Telegram, Discord, and webhook attempts ordered from newest to oldest. Failed rows can be retried manually.</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setClearHistoryOpen(true)}
-              disabled={pendingAction !== null || overview.summary.delivered + overview.summary.failed === 0}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Clear History
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void retryQueue()}
+                disabled={pendingAction !== null || overview.summary.pendingRetries === 0}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Retry Queue
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setClearHistoryOpen(true)}
+                disabled={pendingAction !== null || overview.summary.delivered + overview.summary.failed === 0}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Clear History
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="border-l-2 border-l-emerald-500 p-0">
@@ -365,7 +417,7 @@ export function DeliveryPageClient() {
                     </TableCell>
                     <TableCell className="font-medium">{toTitleCase(item.kind)}</TableCell>
                     <TableCell className="max-w-[260px] truncate">{item.destination}</TableCell>
-                    <TableCell className={statusTone(item.status)}>{toTitleCase(item.status)}</TableCell>
+                    <TableCell className={statusTone(item.status, item.deadLetteredAt)}>{statusLabel(item)}</TableCell>
                     <TableCell>{item.attempts}</TableCell>
                     <TableCell>{item.responseCode ?? "N/A"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</TableCell>
@@ -477,7 +529,7 @@ export function DeliveryPageClient() {
               <div className="grid gap-3 md:grid-cols-2">
                 <PayloadMetric label="Channel" value={toTitleCase(selectedRow.channel)} />
                 <PayloadMetric label="Kind" value={toTitleCase(selectedRow.kind)} />
-                <PayloadMetric label="Status" value={toTitleCase(selectedRow.status)} />
+                <PayloadMetric label="Status" value={statusLabel(selectedRow)} />
                 <PayloadMetric label="Destination" value={selectedRow.destination} />
                 <PayloadMetric label="Response" value={selectedRow.responseCode?.toString() ?? "N/A"} />
                 <PayloadMetric label="Attempts" value={selectedRow.attempts.toString()} />
@@ -490,10 +542,101 @@ export function DeliveryPageClient() {
               </div>
             </div>
           ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedRow(null)}>
+              Close
+            </Button>
+            {selectedRow?.status === "failed" ? (
+              <Button
+                onClick={() => void retryDelivery(selectedRow.id)}
+                disabled={pendingAction !== null}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                {pendingAction === `retry-${selectedRow.id}` ? "Retrying..." : "Retry delivery"}
+              </Button>
+            ) : null}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function normalizeOverview(value: DeliveryOverview | undefined): DeliveryOverview {
+  if (!value) return EMPTY_OVERVIEW;
+
+  return {
+    ...value,
+    summary: { ...EMPTY_OVERVIEW.summary, ...value.summary },
+    channelHealth: value.channelHealth ?? EMPTY_OVERVIEW.channelHealth,
+  };
+}
+
+function buildEmptyChannelHealth(): DeliveryChannelHealth[] {
+  return ["email", "telegram", "discord", "webhook"].map((channel) => ({
+    channel: channel as DeliveryChannelHealth["channel"],
+    totalAttempts: 0,
+    delivered: 0,
+    failed: 0,
+    retrying: 0,
+    errorRatePct: null,
+    status: "unknown",
+    lastAttemptAt: null,
+    lastErrorMessage: null,
+  }));
+}
+
+function ChannelHealthRow({ channel }: { channel: DeliveryChannelHealth }) {
+  const status = channelStatusPresentation(channel.status);
+  return (
+    <div className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex items-center gap-3">
+        <span className={`flex h-9 w-9 items-center justify-center rounded-lg border ${status.iconClass}`}>
+          {status.icon}
+        </span>
+        <div>
+          <p className="text-sm font-medium">{toTitleCase(channel.channel)}</p>
+          <p className="text-xs text-muted-foreground">
+            {channel.totalAttempts === 0 ? "No attempts in the selected window" : `${channel.totalAttempts} attempts`}
+          </p>
+          {channel.lastAttemptAt ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">Last attempt: {formatTimestamp(channel.lastAttemptAt)}</p>
+          ) : null}
+        </div>
+      </div>
+      <div className="grid gap-3 text-xs sm:grid-cols-4 lg:min-w-[560px]">
+        <HealthMetric label="Status" value={status.label} tone={status.textClass} />
+        <HealthMetric label="Error rate" value={channel.errorRatePct === null ? "No data" : `${channel.errorRatePct.toFixed(1)}%`} />
+        <HealthMetric label="Delivered / failed" value={`${channel.delivered} / ${channel.failed}`} />
+        <HealthMetric label="Retrying" value={String(channel.retrying)} />
+      </div>
+      {channel.lastErrorMessage ? (
+        <p className="max-w-xl text-xs text-rose-600 dark:text-rose-300">{channel.lastErrorMessage}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function HealthMetric({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
+  return (
+    <div>
+      <p className="text-muted-foreground">{label}</p>
+      <p className={`mt-1 font-medium ${tone}`}>{value}</p>
+    </div>
+  );
+}
+
+function channelStatusPresentation(status: DeliveryChannelHealth["status"]) {
+  if (status === "healthy") {
+    return { label: "Healthy", textClass: "text-emerald-600 dark:text-emerald-400", iconClass: "border-emerald-500/30 bg-emerald-500/10", icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" /> };
+  }
+  if (status === "unhealthy") {
+    return { label: "Unhealthy", textClass: "text-rose-600 dark:text-rose-400", iconClass: "border-rose-500/30 bg-rose-500/10", icon: <CircleX className="h-4 w-4 text-rose-500" /> };
+  }
+  if (status === "degraded") {
+    return { label: "Degraded", textClass: "text-amber-600 dark:text-amber-400", iconClass: "border-amber-500/30 bg-amber-500/10", icon: <AlertTriangle className="h-4 w-4 text-amber-500" /> };
+  }
+  return { label: "No data", textClass: "text-muted-foreground", iconClass: "border-border bg-muted/20", icon: <AlertTriangle className="h-4 w-4 text-muted-foreground" /> };
 }
 
 function ActionProgress({ label }: { label: string }) {
@@ -539,7 +682,7 @@ function toTitleCase(value: string) {
     .join(" ");
 }
 
-function statusTone(value: string) {
+function statusTone(value: string, deadLetteredAt: string | null = null) {
   if (value === "delivered") {
     return "text-emerald-600 dark:text-emerald-400";
   }
@@ -549,7 +692,7 @@ function statusTone(value: string) {
   }
 
   if (value === "failed") {
-    return "text-destructive";
+    return deadLetteredAt ? "font-medium text-rose-700 dark:text-rose-400" : "text-destructive";
   }
 
   return "";
@@ -559,12 +702,21 @@ function progressLabel(value: string) {
   return toTitleCase(value.replace("test-", "sending "));
 }
 
+function statusLabel(item: DeliveryHistoryRecord) {
+  return item.status === "failed" && item.deadLetteredAt ? "Dead letter" : toTitleCase(item.status);
+}
+
 async function readJsonOrNull<T>(response: Response) {
   return (await response.json().catch(() => null)) as T | null;
 }
 
 function toMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function formatTimestamp(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
 }
 
 function isDeletionRangeReady(range: HistoryDeletionRange, from: string, to: string) {

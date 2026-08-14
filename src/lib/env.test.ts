@@ -47,6 +47,17 @@ describe("runtime environment parsing", () => {
     expect(getAuthSessionId()).toBe("deployment-two");
   });
 
+  it("auto-starts a standalone worker by default while preserving an explicit opt-out", async () => {
+    delete process.env.WORKER_AUTO_START;
+    const defaultEnvironment = await import("@/lib/env");
+    expect(defaultEnvironment.env.workerAutoStart).toBe(true);
+
+    vi.resetModules();
+    process.env.WORKER_AUTO_START = "false";
+    const optedOutEnvironment = await import("@/lib/env");
+    expect(optedOutEnvironment.env.workerAutoStart).toBe(false);
+  });
+
 });
 
 function restoreEnvironment() {

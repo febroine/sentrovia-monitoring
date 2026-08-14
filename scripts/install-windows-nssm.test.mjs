@@ -24,10 +24,15 @@ function readGitLines(args) {
     .filter(Boolean);
 }
 
+function readCurrentReleasePaths() {
+  const deletedPaths = new Set(readGitLines(["ls-files", "--deleted"]));
+  return readGitLines(["ls-files"]).filter((path) => !deletedPaths.has(path));
+}
+
 describe("Windows NSSM update cleanup", () => {
   it("covers every file removed from the repository", () => {
     const retiredPaths = readRetiredProjectPaths();
-    const trackedPaths = new Set(readGitLines(["ls-files"]));
+    const trackedPaths = new Set(readCurrentReleasePaths());
     const deletedPaths = new Set(
       readGitLines(["log", "--all", "--diff-filter=D", "--name-only", "--pretty=format:"]),
     );
@@ -45,7 +50,7 @@ describe("Windows NSSM update cleanup", () => {
 
   it("never removes a file tracked by the current release", () => {
     const retiredPaths = readRetiredProjectPaths();
-    const trackedPaths = readGitLines(["ls-files"]);
+    const trackedPaths = readCurrentReleasePaths();
     const unsafePaths = trackedPaths.filter((trackedPath) =>
       retiredPaths.some(
         (retiredPath) =>

@@ -37,10 +37,12 @@ function PublicStatusView({ statusPage }: { statusPage: StatusPageData }) {
     use24HourClock: statusPage.use24HourClock,
   };
   const overall = getOverallStatus(statusPage.totals);
+  const outageServices = statusPage.services.filter((service) => service.status === "down");
 
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="flex w-full flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 2xl:px-10">
+        {outageServices.length > 0 ? <PublicOutageBanner services={outageServices} /> : null}
         <StatusHeader
           companyName={statusPage.scope.companyName}
           generatedAt={statusPage.generatedAt}
@@ -52,6 +54,50 @@ function PublicStatusView({ statusPage }: { statusPage: StatusPageData }) {
         <ServiceStatusBoard services={statusPage.services} timeDisplaySettings={timeDisplaySettings} />
       </div>
     </main>
+  );
+}
+
+type PublicStatusService = StatusPageData["services"][number];
+
+function PublicOutageBanner({ services }: { services: PublicStatusService[] }) {
+  const serviceLabel = services.length === 1 ? "This service is" : "These services are";
+
+  return (
+    <section
+      aria-live="assertive"
+      aria-label="Current service outage"
+      className="overflow-hidden rounded-md border-2 border-rose-500 bg-rose-50 shadow-sm dark:bg-rose-950/35"
+      role="alert"
+    >
+      <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+        <div className="flex min-w-0 gap-4">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-rose-600 text-white dark:bg-rose-500 dark:text-rose-950">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-lg font-semibold text-rose-900 dark:text-rose-100">Service outage detected</p>
+            <p className="mt-1 text-sm leading-6 text-rose-800/85 dark:text-rose-200/85">
+              {serviceLabel} currently unavailable. The affected service{services.length === 1 ? " is" : "s are"} listed below.
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex w-fit shrink-0 items-center rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white dark:bg-rose-500 dark:text-rose-950">
+          {services.length} down
+        </span>
+      </div>
+
+      <ul className="divide-y divide-rose-500/20 border-t border-rose-500/25 bg-rose-100/55 dark:bg-rose-950/20">
+        {services.map((service) => (
+          <li className="flex min-w-0 items-start gap-3 px-5 py-3 sm:px-6" key={service.id}>
+            <span className="mt-1.5 size-2.5 shrink-0 rounded-full bg-rose-600 dark:bg-rose-400" />
+            <div className="min-w-0">
+              <p className="break-all text-sm font-semibold text-rose-950 dark:text-rose-100">{service.url}</p>
+              <p className="mt-1 text-xs text-rose-800/75 dark:text-rose-200/75">{service.company}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

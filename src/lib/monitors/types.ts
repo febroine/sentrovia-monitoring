@@ -41,6 +41,8 @@ export interface MonitorRecord {
   statusCode: number | null;
   uptime: string;
   isActive: boolean;
+  isFavorite: boolean;
+  isCritical: boolean;
   lastCheckedAt: string | null;
   nextCheckAt: string | null;
   lastSuccessAt: string | null;

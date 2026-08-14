@@ -5,7 +5,6 @@ import {
   Database,
   FileText,
   Globe2,
-  HeartPulse,
   ServerCog,
   Settings2,
   ShieldCheck,
@@ -91,10 +90,6 @@ export default function AboutPage() {
         </div>
         <div className="flex gap-2">
           <Link href="/help" className={linkButtonClassName}>Open help</Link>
-          <Link href="/system-health" className={linkButtonClassName}>
-            <HeartPulse data-icon="inline-start" />
-            System health
-          </Link>
         </div>
       </header>
 

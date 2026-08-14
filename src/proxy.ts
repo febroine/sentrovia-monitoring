@@ -45,6 +45,5 @@ export const config = {
     "/reports/:path*",
     "/status-codes/:path*",
     "/settings/:path*",
-    "/system-health/:path*",
   ],
 };

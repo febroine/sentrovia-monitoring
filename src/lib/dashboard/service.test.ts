@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCompanyHealth,
+  buildDashboardMonitorFocus,
   calculateAverageIntervalMinutes,
   computeUptimePct,
   loadDashboardSection,
@@ -68,5 +69,57 @@ describe("dashboard service", () => {
       error,
     );
     consoleError.mockRestore();
+  });
+
+  it("keeps critical and favorite monitors at the top of the focus list", () => {
+    const monitors = buildDashboardMonitorFocus([
+      {
+        id: "down",
+        name: "Down service",
+        monitorType: "http",
+        url: "https://down.example.com",
+        companyId: null,
+        company: null,
+        isActive: true,
+        isFavorite: false,
+        isCritical: false,
+        status: "down",
+        statusCode: 500,
+        latencyMs: null,
+        lastCheckedAt: null,
+      },
+      {
+        id: "favorite",
+        name: "Favorite service",
+        monitorType: "http",
+        url: "https://favorite.example.com",
+        companyId: null,
+        company: null,
+        isActive: true,
+        isFavorite: true,
+        isCritical: false,
+        status: "up",
+        statusCode: 200,
+        latencyMs: 100,
+        lastCheckedAt: null,
+      },
+      {
+        id: "critical",
+        name: "Critical service",
+        monitorType: "http",
+        url: "https://critical.example.com",
+        companyId: null,
+        company: null,
+        isActive: true,
+        isFavorite: false,
+        isCritical: true,
+        status: "up",
+        statusCode: 200,
+        latencyMs: 120,
+        lastCheckedAt: null,
+      },
+    ], "all");
+
+    expect(monitors.map((monitor) => monitor.id)).toEqual(["critical", "favorite", "down"]);
   });
 });

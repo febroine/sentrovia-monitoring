@@ -69,7 +69,7 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
     return buildFailure(checkedAt, message, classifyFailureMessage(message, "database"));
   } finally {
     timeoutGuard.cancel();
-    await connection.end().catch(() => undefined);
+    await connection.end({ timeout: 0 }).catch(() => undefined);
   }
 }
 

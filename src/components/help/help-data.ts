@@ -25,7 +25,7 @@ export const quickNotes = [
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
   "If a hostname has no DNS record yet, you can still save it; the worker records a DNS failure until it resolves.",
   "If a timeout alert feels noisy, check whether it was a confirmed timeout outage or a slow-but-online latency warning.",
-  "If every monitor appears stale at once, check System Health for an internet outage pause before changing monitor settings.",
+  "If every monitor appears stale at once, check the Dashboard System Health card for an internet outage pause before changing monitor settings.",
   "If a new release is available, use Settings > Updates for host-side commands instead of expecting the browser to update the app.",
 ];
 
@@ -95,7 +95,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Why might a due monitor not run immediately?",
         answer:
-          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. The worker also pauses due work when all configured internet canaries are unreachable, preventing a server-side connection loss from turning every monitor into a false outage. System Health shows this state and work resumes automatically.",
+          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. The worker also pauses due work when all configured internet canaries are unreachable, preventing a server-side connection loss from turning every monitor into a false outage. The Dashboard System Health card shows this state and work resumes automatically.",
       },
       {
         question: "Does changing a monitor affect future checks immediately?",
@@ -139,7 +139,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What should I do when recent worker errors appear?",
         answer:
-          "Start with the worker status card, then inspect recent errors, due backlog, and failing monitors together. If the worker is offline or stale, restart it and confirm the database schema and runtime env are current.",
+          "Start with the System Health card on Dashboard, then inspect recent errors, due backlog, and failing monitors together. If the worker is offline or stale, restart it and confirm the database schema and runtime env are current.",
       },
       {
         question: "Why was Slow Monitors removed from this dashboard?",
@@ -176,14 +176,19 @@ export const helpCategories: HelpCategory[] = [
           "Yes. The Delivery area includes test tooling so you can validate SMTP, Telegram, Discord, and webhook destinations without waiting for a real monitor failure.",
       },
       {
-        question: "Where do webhook failures go?",
+        question: "Where do notification failures go?",
         answer:
-          "Webhook attempts are stored in delivery history with retry metadata, response codes, and error details. The retry workflow helps recover from temporary delivery problems without losing the original event context.",
+          "Email, Telegram, Discord, and webhook attempts are stored in Delivery history with retry metadata, response codes, and error details. Temporary failures remain in the retry queue; permanent or exhausted failures are marked as dead-lettered.",
       },
       {
         question: "Can a failed delivery be retried manually?",
         answer:
-          "Yes. Manual retry is intended for channel recovery scenarios where the original monitoring event is still valid but the first outbound attempt failed.",
+          "Yes. Open a failed row in Delivery history and choose Retry delivery. Sentrovia reuses the original event and records the new result on the same history item instead of creating a duplicate notification.",
+      },
+      {
+        question: "How is channel health calculated?",
+        answer:
+          "Delivery shows a 24-hour health view for each channel. It includes delivered, failed, and retrying events, the terminal error rate, the latest error, and whether the channel is healthy, degraded, unhealthy, or has no recent data.",
       },
       {
         question: "Will a channel failure block the rest of the channels?",
@@ -271,7 +276,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Can I tell if the worker is truly alive?",
         answer:
-          "Yes. Dashboard and Monitoring surfaces show worker heartbeat age, last cycle time, process state, internet connectivity, backlog, and recent worker errors. A live worker can be intentionally paused by the internet outage guard, which is shown separately from a stopped process.",
+          "Yes. The Dashboard System Health card and Monitoring surface show worker heartbeat age, last cycle time, process state, internet connectivity, backlog, and recent worker errors. A live worker can be intentionally paused by the internet outage guard, which is shown separately from a stopped process.",
       },
       {
         question: "How does Sentrovia avoid mass false alerts when the server loses internet access?",
@@ -311,6 +316,11 @@ export const helpCategories: HelpCategory[] = [
         question: "Where does dashboard data come from?",
         answer:
           "Dashboard panels read durable state from PostgreSQL, including current monitor status, worker heartbeat, recent checks, events, delivery outcomes, and report schedule state. The browser is never the source of truth.",
+      },
+      {
+        question: "Can I customize my dashboard?",
+        answer:
+          "Yes. Use Customize on Dashboard to choose widgets, change their order, save a company scope, and switch between all, favorite, or critical monitors. Favorite and critical flags are stored per monitor and can be changed directly from the monitor focus widget.",
       },
       {
         question: "What is the difference between timeline, logs, reports, and dashboard summaries?",

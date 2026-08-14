@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 type OnboardingStep = "intro" | "form";
 
 const inputClassName =
-  "h-11 rounded-lg border-border/80 bg-surface-low/80 text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
+  "h-11 rounded-lg border-white/10 bg-[#0d0e11] text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
 
 const productSteps = [
   { icon: RadioTower, title: "Monitor", description: "Track websites, APIs, TCP, PostgreSQL, ping, and heartbeat jobs." },
@@ -102,9 +102,9 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-hidden bg-background text-foreground">
+    <main className="min-h-screen overflow-hidden bg-[#090a0c] text-foreground">
       <div className="relative min-h-screen">
-        <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-7 px-4 py-5 sm:px-6 lg:px-8">
+        <div className="relative mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-7 px-5 py-6 sm:px-8 lg:px-12">
           <OnboardingHeader currentStep={step} />
 
           {step === "intro" ? (
@@ -157,15 +157,18 @@ async function handleReadinessResponse(
 
 function OnboardingHeader({ currentStep }: { currentStep: OnboardingStep }) {
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-border/70 pb-5">
+    <header className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
       <div className="flex items-center gap-3">
-        <SentroviaMark className="size-10 rounded-lg border border-border/80 bg-card text-lg text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]" />
+        <SentroviaMark className="size-9 rounded-md border border-emerald-400/30 bg-emerald-400/10 text-sm text-emerald-300" />
         <div>
           <p className="text-sm font-semibold tracking-tight">Sentrovia</p>
-          <p className="text-xs text-muted-foreground">First launch workspace setup</p>
+          <p className="text-xs text-muted-foreground">First launch setup</p>
         </div>
       </div>
-      <StepIndicator currentStep={currentStep} />
+      <div className="flex items-center gap-3">
+        <span className="hidden text-xs text-muted-foreground sm:inline">Workspace setup</span>
+        <StepIndicator currentStep={currentStep} />
+      </div>
     </header>
   );
 }
@@ -174,7 +177,7 @@ function StepIndicator({ currentStep }: { currentStep: OnboardingStep }) {
   return (
     <div className="hidden items-center gap-2 sm:flex">
       <StepDot active={currentStep === "intro"} label="Overview" />
-      <span className="h-px w-8 bg-border" />
+      <span className="h-px w-8 bg-white/15" />
       <StepDot active={currentStep === "form"} label="Admin account" />
     </div>
   );
@@ -183,7 +186,7 @@ function StepIndicator({ currentStep }: { currentStep: OnboardingStep }) {
 function StepDot({ active, label }: { active: boolean; label: string }) {
   return (
     <div className={cn("flex items-center gap-2 text-xs", active ? "text-foreground" : "text-muted-foreground")}>
-      <span className={cn("size-2 rounded-full", active ? "bg-primary shadow-[0_0_18px_rgba(99,102,241,0.85)]" : "bg-border")} />
+      <span className={cn("size-2 rounded-full", active ? "bg-primary shadow-[0_0_18px_rgba(99,102,241,0.85)]" : "bg-white/15")} />
       <span>{label}</span>
     </div>
   );
@@ -191,7 +194,7 @@ function StepDot({ active, label }: { active: boolean; label: string }) {
 
 function IntroStep({ ready, error, onContinue }: { ready: boolean; error: string | null; onContinue: () => void }) {
   return (
-    <section className="grid flex-1 items-center gap-10 py-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:py-10">
+    <section className="grid flex-1 items-center gap-12 py-8 lg:grid-cols-[minmax(0,0.82fr)_minmax(520px,1.18fr)] lg:py-12">
       <div className="flex flex-col gap-8">
         <IntroCopy ready={ready} error={error} onContinue={onContinue} />
         <ProductStepList />
@@ -206,11 +209,12 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-4">
-        <h1 className="max-w-2xl text-4xl leading-tight font-semibold text-balance sm:text-5xl">
-          Set up Sentrovia monitoring
+        <p className="text-xs font-semibold tracking-[0.16em] text-emerald-400">FIRST RUN / ADMIN SETUP</p>
+        <h1 className="max-w-2xl text-4xl leading-[1.08] font-semibold tracking-tight text-balance sm:text-5xl">
+          Bring your monitoring workspace online.
         </h1>
-        <p className="max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-          Create the first administrator, then add monitors, notification channels, and public status pages from the dashboard.
+        <p className="max-w-xl text-base leading-7 text-zinc-400 sm:text-lg">
+          Create the first administrator, then use one focused workspace for monitors, evidence, delivery, and public status pages.
         </p>
       </div>
       {error ? <FormError message={error} /> : null}
@@ -228,7 +232,7 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
             </>
           )}
         </Button>
-        <p className="text-sm text-muted-foreground">The next step creates the first administrator account.</p>
+        <p className="text-sm text-muted-foreground">The next step creates the first account with admin access.</p>
       </div>
     </div>
   );
@@ -236,11 +240,11 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
 
 function ProductStepList() {
   return (
-    <div className="grid border-y border-border/70 sm:grid-cols-3 sm:divide-x sm:divide-border/70">
+    <div className="grid gap-5 border-y border-white/10 py-1 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
       {productSteps.map((item) => (
-        <div key={item.title} className="py-4 sm:px-4 sm:first:pl-0 sm:last:pr-0">
-          <div className="mb-3 flex size-8 items-center justify-center rounded-md border border-border/80 bg-background">
-            <item.icon className="size-4 text-foreground" />
+        <div key={item.title} className="py-4 sm:px-5 sm:first:pl-0 sm:last:pr-0">
+          <div className="mb-3 flex size-8 items-center justify-center rounded-md border border-white/10 bg-[#101114]">
+            <item.icon className="size-4 text-emerald-300" />
           </div>
           <h2 className="text-sm font-semibold">{item.title}</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
@@ -252,7 +256,7 @@ function ProductStepList() {
 
 function MonitoringPreview() {
   return (
-    <div className="overflow-hidden rounded-lg border border-border/75 bg-card p-4">
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101114] p-4 shadow-2xl shadow-black/20 sm:p-5">
       <PreviewHeader />
       <div className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         <MonitorSampleList />
@@ -270,7 +274,7 @@ function PreviewHeader() {
         <p className="mt-1 text-sm text-muted-foreground">Recent checks and their verification state.</p>
       </div>
       <Badge variant="outline" className="border-emerald-400/25 bg-emerald-400/10 text-emerald-200">
-        Online
+        Workspace ready
       </Badge>
     </div>
   );
@@ -278,7 +282,7 @@ function PreviewHeader() {
 
 function MonitorSampleList() {
   return (
-    <div className="divide-y divide-border/70 rounded-lg border border-border/70 bg-surface-low/70 px-4">
+    <div className="divide-y divide-white/10 rounded-lg border border-white/10 bg-[#0d0e11] px-4">
       <MonitorSample url="https://api.example.com/health" detail="HTTP 200 - 184ms" tone="up" />
       <MonitorSample url="https://portal.example.com" detail="HTTP 200 - 1.2s" tone="up" />
       <MonitorSample url="db.example.net:5432" detail="Verification in progress" tone="pending" />
@@ -300,7 +304,7 @@ function MonitorSample({ url, detail, tone }: { url: string; detail: string; ton
 
 function VerificationTimeline() {
   return (
-    <div className="flex flex-col justify-between gap-5 rounded-lg border border-border/65 bg-surface-low/70 p-4">
+    <div className="flex flex-col justify-between gap-5 rounded-lg border border-white/10 bg-[#0d0e11] p-4">
       <div>
         <p className="text-sm font-semibold">Verified notification</p>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">A single timeout waits for confirmation before it becomes an outage alert.</p>
@@ -325,7 +329,7 @@ function TimelineRow({ label, meta, tone }: { label: string; meta: string; tone:
   }[tone];
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border/65 bg-background/55 px-3 py-3">
+      <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#101114] px-3 py-3">
       <span className={cn("size-2.5 rounded-full", toneClass)} />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{label}</p>
@@ -359,7 +363,7 @@ function AdminSetupStep({
   onTogglePassword: () => void;
 }) {
   return (
-    <section className="grid flex-1 items-center gap-6 py-4 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
+    <section className="grid flex-1 items-center gap-8 py-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
       <SetupPanel onBack={onBack} />
       <AdminFormCard
         busy={busy}
@@ -378,16 +382,16 @@ function AdminSetupStep({
 
 function SetupPanel({ onBack }: { onBack: () => void }) {
   return (
-    <Card className="border-border/80 bg-card shadow-sm">
+    <Card className="border-white/10 bg-[#111215] shadow-2xl shadow-black/20">
       <CardHeader>
         <CardTitle className="text-xl tracking-tight">Workspace access</CardTitle>
         <CardDescription>The first account becomes the administrator. Additional accounts are created by an admin.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
         {setupItems.map((item) => (
-          <div key={item.label} className="flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-muted/20 px-3 py-3">
+          <div key={item.label} className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-[#0d0e11] px-3 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border/80 bg-background">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-[#101114]">
                 <item.icon className="size-4 text-muted-foreground" />
               </div>
               <p className="truncate text-sm font-medium">{item.label}</p>
@@ -399,7 +403,7 @@ function SetupPanel({ onBack }: { onBack: () => void }) {
           <CheckCircle2 className="size-4 shrink-0" />
           <span>Ready for administrator details</span>
         </div>
-        <Button type="button" variant="ghost" onClick={onBack} className="mt-2 justify-start text-muted-foreground">
+        <Button type="button" variant="ghost" onClick={onBack} className="mt-2 justify-start text-muted-foreground hover:bg-white/5 hover:text-foreground">
           <ArrowLeft data-icon="inline-start" />
           Back to overview
         </Button>
@@ -430,8 +434,8 @@ function AdminFormCard({
   onTogglePassword: () => void;
 }) {
   return (
-    <Card className="border-border/80 bg-card shadow-sm">
-      <CardHeader className="gap-3 border-b border-border/70">
+    <Card className="border-white/10 bg-[#111215] shadow-2xl shadow-black/20">
+      <CardHeader className="gap-3 border-b border-white/10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="text-2xl tracking-tight">Create administrator</CardTitle>

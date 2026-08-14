@@ -21,6 +21,7 @@
   "src/app/maintenance",
   "src/app/observability",
   "src/app/signup",
+  "src/app/system-health",
   "src/components/command-palette.tsx",
   "src/components/incidents",
   "src/components/maintenance",

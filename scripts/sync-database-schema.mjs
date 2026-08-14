@@ -7,9 +7,10 @@ import postgres from "postgres";
 
 const { loadEnvConfig } = nextEnv;
 const CORE_TABLES = ["users", "monitors", "user_settings"];
-const SCHEMA_LOCK_KEYS = [728551, 493028];
+const SCHEMA_LOCK_KEYS = [728551, 493027];
 const SCHEMA_LOCK_ATTEMPTS = 150;
 const SCHEMA_LOCK_RETRY_MS = 2_000;
+const SCHEMA_LOCK_HELD_ENV = "SENTROVIA_SCHEMA_LOCK_HELD";
 const PROJECT_ROOT = process.cwd();
 const MANUAL_MIGRATION_SCRIPT = path.join(PROJECT_ROOT, "scripts", "apply-manual-migrations.mjs");
 const DRIZZLE_KIT_CLI = path.join(PROJECT_ROOT, "node_modules", "drizzle-kit", "bin.cjs");
@@ -109,13 +110,24 @@ async function readCoreTablePresence(sql) {
   return rows[0];
 }
 
+export function buildSchemaStepEnvironment(step, baseEnvironment = process.env) {
+  if (step !== "db:manual") {
+    return baseEnvironment;
+  }
+
+  return {
+    ...baseEnvironment,
+    [SCHEMA_LOCK_HELD_ENV]: "true",
+  };
+}
+
 function runSchemaStep(step) {
   const args = step === "db:manual"
     ? [MANUAL_MIGRATION_SCRIPT]
     : [DRIZZLE_KIT_CLI, "push", "--force"];
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
-      env: process.env,
+      env: buildSchemaStepEnvironment(step),
       shell: false,
       stdio: "inherit",
     });

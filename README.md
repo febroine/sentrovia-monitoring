@@ -362,6 +362,7 @@ Evidence features:
 
 - Screenshot capture after confirmed HTTP, keyword, and JSON outages that return a stable HTTP response. Timeout, DNS, TLS, and connection failures do not attach a potentially contradictory screenshot.
 - Delivery history with status, attempt count, response code, payload summary, error details, ten-item pagination, and date-range cleanup for completed records
+- Delivery assurance with bounded retries across every channel, dead-letter visibility, manual resend, and 24-hour channel health summaries
 - Recovery, status-change, latency, and prolonged-downtime templates
 - Workspace-level templates with monitor-level overrides
 

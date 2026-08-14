@@ -1,7 +1,6 @@
 import packageJson from "../../../package.json";
 
 const GITHUB_RELEASE_TIMEOUT_MS = 8_000;
-const FALLBACK_RELEASE_TAG = "<release-tag>";
 const GITHUB_REPOSITORY_PART_PATTERN = /^[A-Za-z0-9_.-]+$/;
 const RELEASE_TAG_PATTERN = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/i;
 const BACKUP_REMINDER =
@@ -43,6 +42,23 @@ export async function getUpdateStatus() {
     const latestVersion = normalizeVersion(release.tag_name ?? "");
     const targetTag = resolveTargetTag(release.tag_name, latestVersion);
 
+    if (!latestVersion || !targetTag) {
+      return {
+        currentVersion,
+        repository,
+        latestVersion: null,
+        updateAvailable: false,
+        releaseUrl: release.html_url ?? null,
+        releaseName: release.name ?? release.tag_name ?? null,
+        publishedAt: release.published_at ?? null,
+        notes: truncateNotes(release.body ?? ""),
+        checkedAt: new Date().toISOString(),
+        status: "error" as const,
+        message: "The latest GitHub release does not have a valid semantic version tag.",
+        ...buildUpdateGuidance(null),
+      };
+    }
+
     return {
       currentVersion,
       repository,
@@ -54,7 +70,7 @@ export async function getUpdateStatus() {
       notes: truncateNotes(release.body ?? ""),
       checkedAt: new Date().toISOString(),
       status: "ok" as const,
-      message: latestVersion ? "Latest GitHub release checked." : "Latest release does not include a version tag.",
+      message: "Latest GitHub release checked.",
       ...buildUpdateGuidance(targetTag),
     };
   } catch (error) {
@@ -123,7 +139,10 @@ async function fetchLatestGitHubRelease(repository: string) {
 
   try {
     const response = await fetch(releaseUrl, {
-      headers: { Accept: "application/vnd.github+json" },
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Sentrovia-Update-Assistant",
+      },
       signal: controller.signal,
     });
 
@@ -207,19 +226,28 @@ function resolveTargetTag(rawTag: string | undefined, latestVersion: string | nu
     return tag;
   }
 
-  return latestVersion ? `v${latestVersion}` : FALLBACK_RELEASE_TAG;
+  return latestVersion ? `v${latestVersion}` : null;
 }
 
 export function buildUpdateGuidance(targetTag: string | null) {
-  const tag = targetTag ?? FALLBACK_RELEASE_TAG;
+  if (!targetTag) {
+    return {
+      recommendedCommands: [],
+      dockerCommands: [],
+      serviceCommands: [],
+      backupReminder: BACKUP_REMINDER,
+      requiresManualAction: false,
+    };
+  }
+
   const dockerCommands = [
     "git fetch --tags origin",
-    `git checkout ${tag}`,
-    "./scripts/install-docker.sh",
+    `git checkout ${targetTag}`,
+    "docker compose up -d --build",
   ];
   const serviceCommands = [
     "git fetch --tags origin",
-    `git checkout ${tag}`,
+    `git checkout ${targetTag}`,
     "UPDATE-SENTROVIA.bat",
   ];
 
