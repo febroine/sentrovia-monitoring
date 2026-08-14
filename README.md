@@ -63,7 +63,7 @@ Every version tag also publishes an image to GitHub Container Registry:
 docker pull ghcr.io/febroine/sentrovia-monitoring:latest
 ```
 
-Versioned images are available as `ghcr.io/febroine/sentrovia-monitoring:0.1.1` and follow-up release tags. Set the GHCR package visibility to **Public** after the first publish if anonymous pulls are required. The image still requires the same runtime environment and PostgreSQL configuration described below.
+Versioned images are available as `ghcr.io/febroine/sentrovia-monitoring:0.1.2` and follow-up release tags. Set the GHCR package visibility to **Public** after the first publish if anonymous pulls are required. The image still requires the same runtime environment and PostgreSQL configuration described below.
 
 ## Screenshots
 

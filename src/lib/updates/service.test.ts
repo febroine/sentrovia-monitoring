@@ -12,14 +12,15 @@ afterEach(() => {
 describe("update service", () => {
   it("detects a newer GitHub release", async () => {
     process.env.APP_UPDATE_REPO = "aykutbyrm/sentrovia-monitoring";
-    mockLatestRelease("v0.1.2");
+    const newerVersion = bumpPatchVersion(packageJson.version);
+    mockLatestRelease(`v${newerVersion}`);
 
     const status = await getUpdateStatus();
 
     expect(status.currentVersion).toBe(packageJson.version);
-    expect(status.latestVersion).toBe("0.1.2");
+    expect(status.latestVersion).toBe(newerVersion);
     expect(status.updateAvailable).toBe(true);
-    expect(status.dockerCommands).toContain("git checkout v0.1.2");
+    expect(status.dockerCommands).toContain(`git checkout v${newerVersion}`);
     expect(status.requiresManualAction).toBe(true);
   });
 
@@ -130,4 +131,9 @@ function mockLatestRelease(tagName: string) {
       })
     )
   );
+}
+
+function bumpPatchVersion(version: string) {
+  const [major, minor, patch] = version.split(".").map(Number);
+  return `${major}.${minor}.${patch + 1}`;
 }
