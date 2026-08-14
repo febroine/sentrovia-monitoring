@@ -4,8 +4,8 @@ import { config, proxy } from "@/proxy";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/token";
 
 describe("authenticated route matcher", () => {
-  it("protects the system health page", () => {
-    expect(config.matcher).toContain("/system-health/:path*");
+  it("does not expose the retired system health page", () => {
+    expect(config.matcher).not.toContain("/system-health/:path*");
   });
 
   it("clears an invalid session cookie before redirecting to login", async () => {

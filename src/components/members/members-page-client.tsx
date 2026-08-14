@@ -12,7 +12,6 @@ import {
   ShieldCheck,
   Square,
   Trash2,
-  UserRound,
   UsersRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { MemberRecord } from "@/lib/members/types";
 
 type MemberRole = MemberRecord["role"];
+type MemberRoleFilter = "all" | MemberRole;
 type CreateMemberForm = {
   firstName: string;
   lastName: string;
@@ -56,6 +56,7 @@ export default function MembersPageClient() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<MemberRoleFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingMember, setEditingMember] = useState<MemberRecord | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
@@ -71,17 +72,20 @@ export default function MembersPageClient() {
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) {
-      return members;
-    }
+    return members.filter((member) => {
+      const matchesRole = roleFilter === "all" || member.role === roleFilter;
+      const searchableText = [
+        member.firstName,
+        member.lastName,
+        member.email,
+        member.username ?? "",
+        member.organization ?? "",
+        member.role,
+      ].join(" ").toLowerCase();
 
-    return members.filter((member) =>
-      [member.firstName, member.lastName, member.email, member.username ?? "", member.organization ?? "", member.role]
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [members, search]);
+      return matchesRole && (!query || searchableText.includes(query));
+    });
+  }, [members, roleFilter, search]);
 
   const totals = {
     members: members.length,
@@ -274,29 +278,43 @@ export default function MembersPageClient() {
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-200">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <header className="flex flex-col gap-5">
         <div>
-          <h1 className="mb-1 text-2xl font-semibold tracking-tight">Members</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
+            <Badge variant="outline" className="border-sky-500/30 text-sky-600 dark:text-sky-400">
+              {members.length} total
+            </Badge>
+          </div>
           <p className="text-sm text-muted-foreground">
             {isAdmin
               ? "Manage workspace access, add members, and remove accounts."
               : "Review and maintain your own account details."}
           </p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:max-w-lg sm:flex-row sm:items-center">
-          <div className="relative flex-1">
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 sm:w-72">
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search members" className="pl-9" />
+            </div>
+            <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-muted/20 p-1" aria-label="Filter members by role">
+              <RoleFilterButton active={roleFilter === "all"} onClick={() => setRoleFilter("all")}>All</RoleFilterButton>
+              <RoleFilterButton active={roleFilter === "admin"} onClick={() => setRoleFilter("admin")}>Admins</RoleFilterButton>
+              <RoleFilterButton active={roleFilter === "member"} onClick={() => setRoleFilter("member")}>Members</RoleFilterButton>
+            </div>
           </div>
-          {isAdmin ? (
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus data-icon="inline-start" />
-              Add member
+          <div className="flex flex-wrap gap-2">
+            {isAdmin ? (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus data-icon="inline-start" />
+                Add member
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => void loadMembers()} disabled={loading}>
+              Refresh
             </Button>
-          ) : null}
-          <Button variant="outline" onClick={() => void loadMembers()} disabled={loading}>
-            Refresh
-          </Button>
+          </div>
         </div>
       </header>
 
@@ -332,89 +350,108 @@ export default function MembersPageClient() {
         </div>
       ) : null}
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/10 pb-4">
-          <CardTitle className="text-base">Workspace users</CardTitle>
-          <CardDescription>
-            {isAdmin ? "All members are visible here. New accounts are created by admins." : "Only your own profile is visible here."}
-          </CardDescription>
+      <Card className="overflow-hidden border-border/80">
+        <CardHeader className="border-b bg-muted/10 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Workspace users</CardTitle>
+              <CardDescription className="mt-1">
+                {isAdmin ? "All members are visible here. New accounts are created by admins." : "Only your own profile is visible here."}
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="shrink-0 border-border/70 text-muted-foreground">
+              {filtered.length} shown
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <Table className="min-w-[820px]">
             <TableHeader>
-              <TableRow className="bg-muted/20">
-                <TableHead className="w-14 pl-4">
+              <TableRow className="bg-muted/20 hover:bg-muted/20">
+                <TableHead className="w-12 pl-4">
                   <button
                     type="button"
                     onClick={toggleAllFiltered}
-                    className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={allFilteredSelected ? "Clear visible member selection" : "Select all visible members"}
+                    title={allFilteredSelected ? "Clear visible selection" : "Select all visible members"}
+                    className="flex items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={selectableFilteredIds.length === 0}
                   >
                     {allFilteredSelected ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
+                <TableHead className="min-w-[250px]">Member</TableHead>
+                <TableHead>Access</TableHead>
                 <TableHead>Username</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="w-28 pr-6 text-right">Action</TableHead>
+                <TableHead>Joined</TableHead>
+                <TableHead className="w-24 pr-6 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">Loading members...</TableCell>
+                  <TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">Loading members...</TableCell>
                 </TableRow>
               ) : null}
               {!loading && filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8}>
+                  <TableCell colSpan={7}>
                     <EmptyState icon={SearchX} title="No members found" description="Try another search term or refresh the member list." />
                   </TableCell>
                 </TableRow>
               ) : null}
               {!loading ? filtered.map((member) => (
                 <TableRow key={member.id} className={selectedIds.has(member.id) ? "bg-sky-500/5" : "hover:bg-muted/10"}>
-                  <TableCell className="pl-4">
+                  <TableCell className="pl-4 align-top pt-4">
                     <button
                       type="button"
                       onClick={() => toggleSelect(member)}
-                      className="flex items-center justify-center text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={selectedIds.has(member.id) ? `Deselect ${member.firstName} ${member.lastName}` : `Select ${member.firstName} ${member.lastName}`}
+                      className="flex items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
                       disabled={!canSelectMember(member)}
                     >
                       {selectedIds.has(member.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                     </button>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="align-top py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-xl border bg-muted/20 p-2.5">
-                        <UserRound className="size-4 text-muted-foreground" />
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/10 text-xs font-semibold text-sky-700 dark:text-sky-300">
+                        {getMemberInitials(member)}
                       </div>
-                      <div>
-                        <p className="font-medium">{member.firstName} {member.lastName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {member.id === currentUserId ? "Your account" : member.jobTitle ?? "Workspace member"}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{member.firstName} {member.lastName}</p>
+                          {member.id === currentUserId ? <Badge variant="outline" className="h-5 border-sky-500/30 px-1.5 text-[10px] text-sky-600 dark:text-sky-400">You</Badge> : null}
+                        </div>
+                        <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                          <Mail className="size-3 shrink-0" />
+                          <span className="truncate">{member.email}</span>
+                        </p>
+                        <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
+                          {member.jobTitle ?? "Workspace member"}
                         </p>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>{member.email}</TableCell>
-                  <TableCell><RoleBadge role={member.role} /></TableCell>
-                  <TableCell>{member.username ?? "--"}</TableCell>
-                  <TableCell>{member.department ?? "--"}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="border-border/70 text-muted-foreground">
-                      {new Date(member.createdAt).toLocaleDateString()}
-                    </Badge>
+                  <TableCell className="align-top py-3.5"><RoleBadge role={member.role} /></TableCell>
+                  <TableCell className="align-top py-3.5">
+                    <span className="font-mono text-xs text-muted-foreground">{member.username ? `@${member.username}` : "--"}</span>
                   </TableCell>
-                  <TableCell className="pr-4 text-right md:pr-6">
-                    <div className="flex justify-end gap-1 pr-1">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(member)} disabled={!isAdmin && member.id !== currentUserId}>
+                  <TableCell className="align-top py-3.5">
+                    <span className="text-sm text-muted-foreground">{member.department ?? "Unassigned"}</span>
+                  </TableCell>
+                  <TableCell className="align-top py-3.5">
+                    <time dateTime={member.createdAt} className="text-xs text-muted-foreground">
+                      {formatMemberDate(member.createdAt)}
+                    </time>
+                  </TableCell>
+                  <TableCell className="align-top pr-4 pt-3.5 text-right md:pr-6">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon-sm" aria-label={`Edit ${member.firstName} ${member.lastName}`} title="Edit member" onClick={() => openEdit(member)} disabled={!isAdmin && member.id !== currentUserId}>
                         <Pencil className="size-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => openDeleteConfirmation([member.id])} disabled={saving || (!isAdmin && member.id !== currentUserId)}>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Delete ${member.firstName} ${member.lastName}`} title="Delete member" onClick={() => openDeleteConfirmation([member.id])} disabled={saving || (!isAdmin && member.id !== currentUserId)}>
                         <Trash2 className="size-4 text-destructive" />
                       </Button>
                     </div>
@@ -583,7 +620,50 @@ function MetricCard({
 }
 
 function RoleBadge({ role }: { role: MemberRole }) {
-  return <Badge variant={role === "admin" ? "default" : "secondary"}>{role === "admin" ? "Admin" : "Member"}</Badge>;
+  return (
+    <Badge
+      variant="outline"
+      className={role === "admin" ? "border-violet-500/30 bg-violet-500/5 text-violet-700 dark:text-violet-300" : "border-border/70 text-muted-foreground"}
+    >
+      <span className={`size-1.5 rounded-full ${role === "admin" ? "bg-violet-500" : "bg-slate-400"}`} />
+      {role === "admin" ? "Admin" : "Member"}
+    </Badge>
+  );
+}
+
+function RoleFilterButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function getMemberInitials(member: MemberRecord) {
+  const initials = `${member.firstName.charAt(0)}${member.lastName.charAt(0)}`.trim();
+  return initials.toUpperCase() || "?";
+}
+
+function formatMemberDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "--"
+    : date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

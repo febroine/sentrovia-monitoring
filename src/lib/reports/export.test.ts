@@ -11,6 +11,9 @@ describe("report exports", () => {
     expect(html).toContain("What needs attention");
     expect(html).toContain("Failure details");
     expect(html).toContain("Top failing URLs");
+    expect(html).toContain("Reporting window");
+    expect(html).toContain("period-chip");
+    expect(html).toContain("Sentrovia &middot; Last 7 days &middot; HTML report");
     expect(html).toContain("URL breakdown");
     expect(html).toContain("https://api.example.com");
     expect(html).toContain("The service did not accept a TCP connection before the timeout.");

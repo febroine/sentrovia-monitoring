@@ -942,7 +942,7 @@ function ReportOptionsPanel({
       </summary>
       <div className="space-y-5 border-t border-border/70 px-4 py-4">
         <TemplateStrip value={template} onChange={onTemplateChange} />
-        <ReportDeliveryComposer draft={draft} onChange={onChange} />
+        <ReportDeliveryComposer template={template} draft={draft} onChange={onChange} />
       </div>
     </details>
   );
@@ -1000,12 +1000,17 @@ type ReportDeliveryDraft = Pick<
 >;
 
 function ReportDeliveryComposer({
+  template,
   draft,
   onChange,
 }: {
+  template: ReportTemplateVariant;
   draft: ReportDeliveryDraft;
   onChange: (patch: Partial<ReportDeliveryDraft>) => void;
 }) {
+  const reportTypeLabel = template === "executive" ? "Executive Report" : template === "client" ? "Client Report" : "Operations Report";
+  const reportBrand = draft.reportBrandName.trim() || "Sentrovia";
+
   return (
     <div>
       <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
@@ -1053,6 +1058,9 @@ function ReportDeliveryComposer({
               onChange={(event) => onChange({ reportBrandName: event.target.value })}
               placeholder="Sentrovia"
             />
+            <p className="text-xs leading-5 text-muted-foreground">
+              Changes the brand in the default subject prefix. Preview: [{reportBrand} {reportTypeLabel}]
+            </p>
           </Field>
           <Field label="Email subject template">
             <Input
@@ -1060,6 +1068,9 @@ function ReportDeliveryComposer({
               onChange={(event) => onChange({ emailSubjectTemplate: event.target.value })}
               placeholder="[{brand} Report] {title} - {health_status}"
             />
+            <p className="text-xs leading-5 text-muted-foreground">
+              Leave blank to use the default subject. Add a template to replace the complete subject, including the report prefix.
+            </p>
           </Field>
           <TemplateEditor
             label="Email intro template"

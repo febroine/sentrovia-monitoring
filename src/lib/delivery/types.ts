@@ -13,6 +13,7 @@ type DeliveryStatus = "pending" | "retrying" | "processing" | "delivered" | "fai
 
 export interface DeliveryHistoryRecord {
   id: string;
+  monitorId: string | null;
   channel: DeliveryChannel;
   kind: DeliveryKind | string;
   destination: string;
@@ -24,6 +25,7 @@ export interface DeliveryHistoryRecord {
   lastAttemptAt: string | null;
   nextRetryAt: string | null;
   deliveredAt: string | null;
+  deadLetteredAt: string | null;
   payload: Record<string, unknown> | null;
 }
 
@@ -39,13 +41,30 @@ export interface DeliveryOverview {
     failed: number;
     retrying: number;
     pendingWebhookRetries: number;
+    pendingRetries: number;
+    deadLettered: number;
   };
+  channelHealth: DeliveryChannelHealth[];
   pagination: {
     page: number;
     pageSize: number;
     totalItems: number;
     totalPages: number;
   };
+}
+
+export type DeliveryChannelHealthStatus = "healthy" | "degraded" | "unhealthy" | "unknown";
+
+export interface DeliveryChannelHealth {
+  channel: DeliveryChannel;
+  totalAttempts: number;
+  delivered: number;
+  failed: number;
+  retrying: number;
+  errorRatePct: number | null;
+  status: DeliveryChannelHealthStatus;
+  lastAttemptAt: string | null;
+  lastErrorMessage: string | null;
 }
 
 export interface DeliveryHistoryDeletionRange {

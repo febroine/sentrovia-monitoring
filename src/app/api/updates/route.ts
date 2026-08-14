@@ -4,14 +4,19 @@ import { toAuthError } from "@/lib/auth/errors";
 import { getUpdateStatus } from "@/lib/updates/service";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     await requireAdminSession();
 
-    return NextResponse.json({ update: await getUpdateStatus() });
+    const response = NextResponse.json({ update: await getUpdateStatus() });
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (error) {
     const authError = toAuthError(error, "Unable to check updates right now.");
-    return NextResponse.json({ message: authError.message }, { status: authError.status });
+    const response = NextResponse.json({ message: authError.message }, { status: authError.status });
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   }
 }

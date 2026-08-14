@@ -1,22 +1,41 @@
 import "@/worker/load-env";
 import { env } from "@/lib/env";
 import { getWorkerState, updateWorkerState } from "@/lib/monitors/service";
+import { isPidAlive } from "@/lib/worker/process";
 import { runWorkerPhases } from "@/worker/phases";
+import { shouldAutoStartWorker } from "@/worker/startup";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
+import { acquireWorkerProcessLock } from "@/lib/worker/process-lock";
 
 let active = true;
 const shutdownWaiters = new Set<() => void>();
 const HEARTBEAT_INTERVAL_MS = Math.min(30_000, Math.max(1_000, env.workerPollIntervalMs));
 
 async function main() {
+  const releaseProcessLock = await acquireWorkerProcessLock();
+  if (!releaseProcessLock) {
+    console.error("[sentrovia] Another worker process is already running.");
+    return;
+  }
+
+  try {
+    await runWorkerLoop();
+  } finally {
+    await releaseProcessLock();
+  }
+}
+
+async function runWorkerLoop() {
   void runHeartbeatLoop();
   const currentState = await getWorkerState();
-  const shouldAutoStart =
-    env.workerAutoStart &&
-    currentState.desiredState !== "running" &&
-    !currentState.running &&
-    !currentState.startedAt &&
-    (currentState.checkedCount ?? 0) === 0;
+  const previousProcessAlive = currentState.pid !== null
+    && currentState.pid !== process.pid
+    && isPidAlive(currentState.pid);
+  const shouldAutoStart = shouldAutoStartWorker(
+    currentState,
+    env.workerAutoStart,
+    previousProcessAlive
+  );
 
   await updateWorkerState({
     desiredState: shouldAutoStart ? "running" : currentState.desiredState,

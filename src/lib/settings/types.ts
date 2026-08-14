@@ -1,3 +1,5 @@
+import type { DashboardFocus, DashboardWidgetId } from "@/lib/dashboard/preferences";
+
 export interface SettingsPayload {
   profile: {
     firstName: string;
@@ -62,6 +64,9 @@ export interface SettingsPayload {
     compactDensity: boolean;
     sidebarAccent: string;
     dashboardLandingPage: string;
+    dashboardWidgets: DashboardWidgetId[];
+    dashboardCompanyId: string;
+    dashboardFocus: DashboardFocus;
     showOutageBanner: boolean;
     showChartsSection: boolean;
     highContrastSurfaces: boolean;
@@ -186,6 +191,9 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     compactDensity: false,
     sidebarAccent: "emerald",
     dashboardLandingPage: "dashboard",
+    dashboardWidgets: ["summary", "system", "monitor-focus", "company-health", "recent-events", "delivery"],
+    dashboardCompanyId: "",
+    dashboardFocus: "all",
     showOutageBanner: true,
     showChartsSection: true,
     highContrastSurfaces: false,

@@ -1,5 +1,5 @@
 import { runRetentionCleanup } from "@/lib/data-retention/service";
-import { retryWebhookQueueForAllUsers } from "@/lib/delivery/service";
+import { retryDeliveryQueueForAllUsers } from "@/lib/delivery/service";
 import { runDueReportSchedules } from "@/lib/reports/service";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { runMonitoringCycle } from "@/worker/scheduler";
@@ -32,7 +32,7 @@ export async function runWorkerPhases(
     return { status: "connectivity-paused", message: beforeOutboundWork.message };
   }
 
-  await retryWebhookQueueForAllUsers();
+  await retryDeliveryQueueForAllUsers();
   if (!(await isRunRequested())) return { status: "stopped" };
 
   await runDueReportSchedules();

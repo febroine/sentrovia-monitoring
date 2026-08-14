@@ -96,10 +96,14 @@ export async function buildMonitorForTest(
       verificationMode: false,
       verificationFailureCount: 0,
       latencyMs: null,
+      isFavorite: false,
+      isCritical: false,
       createdAt: now,
       updatedAt: now,
     }),
     ...values,
+    isFavorite: existingMonitor?.isFavorite ?? false,
+    isCritical: existingMonitor?.isCritical ?? false,
     leaseToken: null,
     leaseExpiresAt: null,
     updatedAt: now,
@@ -204,6 +208,28 @@ export async function updateMonitorActiveState(userId: string, monitorId: string
     await resolveOutageOnPause(existingMonitor, isActive, now, tx);
     return monitor;
   });
+}
+
+export async function updateMonitorFlags(
+  userId: string,
+  monitorId: string,
+  input: { isFavorite?: boolean; isCritical?: boolean }
+) {
+  if (input.isFavorite === undefined && input.isCritical === undefined) {
+    throw new AuthError("At least one dashboard flag is required.", 400);
+  }
+
+  const [monitor] = await db
+    .update(monitors)
+    .set({
+      ...(input.isFavorite === undefined ? {} : { isFavorite: input.isFavorite }),
+      ...(input.isCritical === undefined ? {} : { isCritical: input.isCritical }),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
+    .returning();
+
+  return monitor ?? null;
 }
 
 export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {

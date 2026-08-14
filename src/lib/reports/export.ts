@@ -63,6 +63,21 @@ export function buildPrintableReportHtml(
             color: #fff;
             padding: 28px;
           }
+          .hero-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+          }
+          .period-chip {
+            border: 1px solid #3b82f6;
+            border-radius: 999px;
+            color: #bfdbfe;
+            padding: 5px 9px;
+            font-size: 11px;
+            font-weight: 750;
+            white-space: nowrap;
+          }
           .report-type, .stat-label, th {
             -webkit-locale: "en";
             font-feature-settings: "locl" 0;
@@ -130,10 +145,26 @@ export function buildPrintableReportHtml(
           .status-up { background: #dcfce7; color: #166534; }
           .status-down { background: #fee2e2; color: #991b1b; }
           .status-pending { background: #fef3c7; color: #92400e; }
+          .empty-state {
+            border: 1px dashed var(--line);
+            border-radius: 12px;
+            background: var(--surface-soft);
+            color: var(--muted);
+            padding: 14px;
+            font-size: 13px;
+          }
+          .report-footer {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.5;
+            text-align: right;
+          }
           @media (max-width: 820px) {
             main { padding: 18px 12px 28px; }
             .stats, .grid-two, .recommendations { grid-template-columns: 1fr; }
             .panel-header { display: block; }
+            .hero-top { display: block; }
+            .period-chip { display: inline-block; margin-top: 14px; }
             table { display: block; overflow-x: auto; white-space: nowrap; }
           }
           @media print {
@@ -148,9 +179,14 @@ export function buildPrintableReportHtml(
         <main>
           <div class="report-shell">
             <section class="hero">
-              <div class="report-type">${escapeHtml(report.templateLabel)}</div>
+              <div class="hero-top">
+                <div class="report-type">${escapeHtml(report.workspaceName)} / ${escapeHtml(report.templateLabel)}</div>
+                <span class="period-chip">${escapeHtml(report.periodLabel)}</span>
+              </div>
               <h1>${escapeHtml(report.title)}</h1>
-              <p class="summary">${escapeHtml(report.workspaceName)} &middot; ${escapeHtml(report.periodLabel)} &middot; Generated ${escapeHtml(
+              <p class="summary">${escapeHtml(report.scope === "company" ? report.companyName ?? "Company" : "Workspace")} &middot; ${escapeHtml(
+                new Date(report.periodStartedAt).toLocaleString()
+              )} - ${escapeHtml(new Date(report.periodEndedAt).toLocaleString())} &middot; Generated ${escapeHtml(
                 new Date(report.generatedAt).toLocaleString()
               )}</p>
             </section>
@@ -190,7 +226,9 @@ export function buildPrintableReportHtml(
               </div>
               <div class="panel-body">
                 <ul class="recommendations">
-                  ${report.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                  ${report.recommendations.length > 0
+                    ? report.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+                    : '<li class="empty-state">No immediate action items were identified in this period.</li>'}
                 </ul>
               </div>
             </section>
@@ -256,6 +294,7 @@ export function buildPrintableReportHtml(
                 </table>
               </div>
             </section>
+            <div class="report-footer">${escapeHtml(report.workspaceName)} &middot; ${escapeHtml(report.periodLabel)} &middot; HTML report</div>
           </div>
         </main>
       </body>

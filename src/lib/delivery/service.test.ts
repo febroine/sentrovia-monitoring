@@ -34,6 +34,7 @@ vi.mock("@/lib/settings/service", () => ({
 }));
 
 import {
+  buildDeliveryChannelHealth,
   readLimitedResponseText,
   retryWebhookQueue,
   retryWebhookQueueForAllUsers,
@@ -108,6 +109,24 @@ describe("delivery service", () => {
     );
   });
 
+  it("queues transient SMTP failures instead of dead-lettering them immediately", async () => {
+    mocks.getSmtpSettings.mockResolvedValue(buildSmtpSettings());
+    mocks.sendMail.mockRejectedValueOnce(Object.assign(new Error("Connection reset"), { code: "ECONNECTION" }));
+    mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "retrying" }]);
+
+    const result = await sendEmailDelivery({
+      userId: "user-1",
+      kind: "failure",
+      destinationOverride: "alerts@example.com",
+      subject: "Down",
+      textBody: "Down",
+      htmlBody: "<p>Down</p>",
+    });
+
+    expect(result?.status).toBe("retrying");
+    expect(mocks.updateReturning).toHaveBeenCalled();
+  });
+
   it("limits delivery failure response bodies before storing them", async () => {
     const response = new Response("abcdef");
 
@@ -118,6 +137,38 @@ describe("delivery service", () => {
     const response = new Response("abc");
 
     await expect(readLimitedResponseText(response, 3)).resolves.toBe("abc");
+  });
+
+  it("reports unknown health when a channel has no recent delivery events", () => {
+    const health = buildDeliveryChannelHealth([], []);
+
+    expect(health).toHaveLength(4);
+    expect(health.find((item) => item.channel === "email")).toMatchObject({
+      status: "unknown",
+      errorRatePct: null,
+      totalAttempts: 0,
+    });
+  });
+
+  it("marks a channel unhealthy when terminal failures dominate recent deliveries", () => {
+    const health = buildDeliveryChannelHealth(
+      [
+        { channel: "email", status: "delivered", total: 1 },
+        { channel: "email", status: "failed", total: 3 },
+        { channel: "email", status: "retrying", total: 1 },
+      ],
+      [{ channel: "email", status: "failed", createdAt: new Date("2026-07-14T10:00:00Z"), lastAttemptAt: new Date("2026-07-14T10:05:00Z"), errorMessage: "SMTP refused connection" }]
+    );
+
+    expect(health.find((item) => item.channel === "email")).toMatchObject({
+      status: "unhealthy",
+      totalAttempts: 5,
+      delivered: 1,
+      failed: 3,
+      retrying: 1,
+      errorRatePct: 75,
+      lastErrorMessage: "SMTP refused connection",
+    });
   });
 
   it("does not let disabled webhook endpoints occupy the global retry batch", async () => {
@@ -203,6 +254,25 @@ describe("delivery service", () => {
     expect(result?.status).toBe("delivered");
     expect(payload.text).toHaveLength(4096);
     expect(payload.text.endsWith("...[truncated]")).toBe(true);
+  });
+
+  it("treats Telegram ok:false responses as failed deliveries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: false, error_code: 400, description: "Chat not found" }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "failed" }]);
+
+    const result = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      botToken: "123456:telegram-token",
+      chatId: "-1001234567890",
+      body: "Down",
+    });
+
+    expect(result?.status).toBe("failed");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("sends a telegram photo after the text message when a screenshot is available", async () => {

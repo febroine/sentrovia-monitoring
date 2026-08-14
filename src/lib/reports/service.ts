@@ -25,6 +25,7 @@ const DEFAULT_FIRST_RUN_DELAY_MS = 60 * 60 * 1000;
 const REPORT_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const DUE_REPORT_BATCH_SIZE = 5;
 const DEFAULT_REPORT_TEMPLATE: ReportTemplateVariant = "operations";
+const REPORT_DAY_MS = 24 * 60 * 60 * 1000;
 type ReportCheckAggregate = {
   monitorId: string;
   totalChecks: number;
@@ -681,20 +682,24 @@ function emptyReportMetrics() {
   };
 }
 
-function resolveReportPeriod(cadence: ReportCadence, now: Date) {
-  const startedAt = new Date(now);
-
+export function resolveReportPeriod(cadence: ReportCadence, now: Date) {
   if (cadence === "weekly") {
-    startedAt.setDate(startedAt.getDate() - 7);
-    return { startedAt, endedAt: now, label: "Last 7 days" };
+    return {
+      startedAt: new Date(now.getTime() - 7 * REPORT_DAY_MS),
+      endedAt: now,
+      label: "Last 7 days",
+    };
   }
 
   if (cadence === "all_time") {
     return { startedAt: new Date("1970-01-01T00:00:00.000Z"), endedAt: now, label: "All time" };
   }
 
-  startedAt.setDate(startedAt.getDate() - 30);
-  return { startedAt, endedAt: now, label: "Last 30 days" };
+  return {
+    startedAt: new Date(now.getTime() - 30 * REPORT_DAY_MS),
+    endedAt: now,
+    label: "Last 30 days",
+  };
 }
 
 function buildReportTitle(cadence: ReportCadence, scope: ReportPreviewInput["scope"], companyName: string | null) {
@@ -1038,19 +1043,37 @@ function buildReportMessage(report: GeneratedReport, options: ReportDeliveryOpti
 function buildReportEmailHtml(report: GeneratedReport, introLine: string, options: ReportDeliveryOptions) {
   const scopeLabel = report.scope === "company" ? report.companyName ?? "Company" : "Workspace";
   const generatedAt = new Date(report.generatedAt).toLocaleString();
+  const periodStartedAt = new Date(report.periodStartedAt).toLocaleString();
+  const periodEndedAt = new Date(report.periodEndedAt).toLocaleString();
 
   return `
-    <div style="margin:0;padding:0;background:#f8fafc;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#f8fafc;">
+    <div style="margin:0;padding:0;background:#eef2f7;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef2f7;">
         <tr>
-          <td align="center" style="padding:24px 12px;">
-            <table role="presentation" width="720" cellpadding="0" cellspacing="0" style="width:720px;max-width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+          <td align="center" style="padding:28px 12px;">
+            <table role="presentation" width="760" cellpadding="0" cellspacing="0" style="width:760px;max-width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #dbe3ef;border-radius:16px;overflow:hidden;">
               <tr>
-                <td style="padding:24px;background:#0f172a;color:#ffffff;">
-                  <div style="font-size:13px;font-weight:700;color:#93c5fd;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.templateLabel)}</div>
-                  <h1 style="margin:8px 0 8px;font-size:24px;line-height:1.25;">${escapeHtml(report.title)}</h1>
-                  <div style="font-size:14px;line-height:1.6;color:#cbd5e1;">${escapeHtml(report.workspaceName)} / ${escapeHtml(report.periodLabel)} / ${escapeHtml(scopeLabel)}</div>
+                <td style="padding:26px;background:#0f172a;color:#ffffff;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td style="padding:0;vertical-align:top;">
+                        <div style="font-size:13px;font-weight:700;color:#93c5fd;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.workspaceName)}</div>
+                      </td>
+                      <td align="right" style="padding:0;vertical-align:top;">
+                        <span style="display:inline-block;padding:5px 9px;border:1px solid #3b82f6;border-radius:999px;color:#bfdbfe;font-size:11px;font-weight:700;">${escapeHtml(report.periodLabel)}</span>
+                      </td>
+                    </tr>
+                  </table>
+                  <h1 style="margin:12px 0 8px;font-size:25px;line-height:1.25;">${escapeHtml(report.title)}</h1>
+                  <div style="font-size:14px;line-height:1.6;color:#cbd5e1;">${escapeHtml(report.templateLabel)} / ${escapeHtml(scopeLabel)}</div>
                   <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#e2e8f0;">${escapeHtml(introLine)}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 24px 2px;">
+                  <div style="border-left:3px solid #2563eb;background:#eff6ff;padding:11px 13px;color:#1e3a8a;font-size:12px;line-height:1.6;">
+                    <strong>Reporting window:</strong> ${escapeHtml(periodStartedAt)} - ${escapeHtml(periodEndedAt)}
+                  </div>
                 </td>
               </tr>
               <tr>
@@ -1073,8 +1096,8 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
               ${renderReportEmailDetailSections(report, options)}
               <tr>
                 <td style="padding:18px 24px 24px;">
-                  <div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:14px 16px;color:#1e3a8a;font-size:13px;line-height:1.6;">
-                    ${escapeHtml(buildAttachmentSummary())} Generated at ${escapeHtml(generatedAt)}.
+                  <div style="border-top:1px solid #e2e8f0;padding-top:16px;color:#64748b;font-size:12px;line-height:1.6;">
+                    ${escapeHtml(buildAttachmentSummary())}<br />Generated at ${escapeHtml(generatedAt)}.
                   </div>
                 </td>
               </tr>

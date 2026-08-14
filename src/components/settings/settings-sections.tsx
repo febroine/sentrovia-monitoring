@@ -889,6 +889,7 @@ export function UpdateAssistantTab() {
       setUpdate(data.update ?? null);
       setMessage(null);
     } catch (error) {
+      setUpdate(null);
       setMessage(error instanceof Error ? error.message : "Unable to check for updates.");
     } finally {
       setLoading(false);
@@ -899,11 +900,13 @@ export function UpdateAssistantTab() {
     void loadUpdateStatus();
   }, []);
 
-  const selectedCommands = update
+  const selectedCommands = update?.status === "ok"
     ? installProfile === "docker"
       ? update.dockerCommands
       : update.serviceCommands
     : [];
+  const hasGuidance =
+    update?.status === "ok" && update.updateAvailable && Boolean(update.latestVersion) && update.requiresManualAction;
 
   async function copySelectedCommands() {
     if (selectedCommands.length === 0) {
@@ -911,7 +914,7 @@ export function UpdateAssistantTab() {
     }
 
     try {
-      await navigator.clipboard.writeText(selectedCommands.join("\n"));
+      await copyText(selectedCommands.join("\n"));
       setCopiedProfile(installProfile);
       window.setTimeout(() => setCopiedProfile(null), 1800);
     } catch {
@@ -939,7 +942,8 @@ export function UpdateAssistantTab() {
         </div>
       ) : null}
       <ReleaseNotes update={update} />
-      {update ? (
+      {update?.status === "unconfigured" ? <RepositoryHint /> : null}
+      {hasGuidance ? (
         <div className="space-y-3 rounded-xl border bg-muted/15 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -950,7 +954,6 @@ export function UpdateAssistantTab() {
             </div>
             <ProfileSelector value={installProfile} onChange={setInstallProfile} />
           </div>
-          {update.status === "unconfigured" ? <RepositoryHint /> : null}
           <CommandBlock
             commands={selectedCommands}
             copied={copiedProfile === installProfile}
@@ -1090,6 +1093,29 @@ function RepositoryHint() {
   );
 }
 
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Clipboard access is unavailable.");
+    }
+  } finally {
+    textarea.remove();
+  }
+}
+
 function resolveProfileDescription(profile: UpdateInstallProfile) {
   if (profile === "service") {
     return "For an existing Windows/NSSM install. Update the checkout, then run the one-click updater as Administrator; it handles migrations, build, service restart, and logging.";
@@ -1116,7 +1142,12 @@ function resolveUpdateStatusLabel(update: UpdateStatus | null, loading: boolean)
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown";
+  }
+
+  return new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
 function useSectionSave(saveSettings: (section?: SettingsSaveSection) => Promise<void>) {

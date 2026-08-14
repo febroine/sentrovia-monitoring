@@ -5,6 +5,11 @@ import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
 import { decryptValue, encryptValue } from "@/lib/security/encryption";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-safety";
+import {
+  normalizeDashboardPreferences,
+  parseDashboardWidgets,
+  type DashboardPreferences,
+} from "@/lib/dashboard/preferences";
 import type { SettingsInput } from "@/lib/settings/schemas";
 import {
   DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE,
@@ -116,6 +121,9 @@ const USER_SETTINGS_COLUMN_MAP = {
   compactDensity: "compact_density",
   sidebarAccent: "sidebar_accent",
   dashboardLandingPage: "dashboard_landing_page",
+  dashboardWidgets: "dashboard_widgets",
+  dashboardCompanyId: "dashboard_company_id",
+  dashboardFocus: "dashboard_focus",
   showOutageBanner: "show_outage_banner",
   showChartsSection: "show_charts_section",
   highContrastSurfaces: "high_contrast_surfaces",
@@ -213,6 +221,14 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
   const notificationLanguage = languageOrDefault(settings?.notificationLanguage);
   const notificationTemplates = getDefaultNotificationTemplates(notificationLanguage);
   const legacyNotificationTemplates = buildLegacyNotificationTemplateSets();
+  const dashboardPreferences = normalizeDashboardPreferences({
+    widgets: parseDashboardWidgets(settings?.dashboardWidgets) ?? undefined,
+    companyId: stringOrEmpty(settings?.dashboardCompanyId),
+    focus:
+      settings?.dashboardFocus === "favorites" || settings?.dashboardFocus === "critical" || settings?.dashboardFocus === "all"
+        ? settings.dashboardFocus
+        : undefined,
+  });
 
   return {
     profile: {
@@ -348,6 +364,9 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       sidebarAccent: stringOrEmpty(settings?.sidebarAccent) || DEFAULT_SETTINGS.appearance.sidebarAccent,
       dashboardLandingPage:
         stringOrEmpty(settings?.dashboardLandingPage) || DEFAULT_SETTINGS.appearance.dashboardLandingPage,
+      dashboardWidgets: dashboardPreferences.widgets,
+      dashboardCompanyId: dashboardPreferences.companyId,
+      dashboardFocus: dashboardPreferences.focus,
       showOutageBanner: booleanOrDefault(
         settings?.showOutageBanner,
         DEFAULT_SETTINGS.appearance.showOutageBanner
@@ -527,6 +546,35 @@ export async function upsertSettings(
   return skipReadback ? null : getSettings(userId);
 }
 
+export async function updateDashboardPreferences(userId: string, input: DashboardPreferences) {
+  const preferences = normalizeDashboardPreferences(input);
+  const settingsColumns = await getTableColumns("user_settings");
+  if (!settingsColumns.has("user_id")) {
+    throw buildMissingSettingsTableError();
+  }
+
+  const values = filterValuesForColumns(
+    {
+      userId,
+      dashboardWidgets: JSON.stringify(preferences.widgets),
+      dashboardCompanyId: emptyToNull(preferences.companyId),
+      dashboardFocus: preferences.focus,
+      updatedAt: new Date(),
+    },
+    USER_SETTINGS_COLUMN_MAP,
+    settingsColumns
+  );
+  const existing = await readUserSettingsCompat(userId);
+
+  if (existing) {
+    await db.update(userSettings).set(values).where(eq(userSettings.userId, userId));
+  } else {
+    await db.insert(userSettings).values(values as typeof values & { userId: string });
+  }
+
+  return getSettings(userId);
+}
+
 async function persistSettings(userId: string, input: SettingsInput, executor: DatabaseExecutor) {
   const [userColumns, settingsColumns, existing] = await Promise.all([
     getTableColumns("users"),
@@ -598,6 +646,9 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     compactDensity: input.appearance.compactDensity,
     sidebarAccent: input.appearance.sidebarAccent,
     dashboardLandingPage: input.appearance.dashboardLandingPage,
+    dashboardWidgets: JSON.stringify(input.appearance.dashboardWidgets),
+    dashboardCompanyId: emptyToNull(input.appearance.dashboardCompanyId),
+    dashboardFocus: input.appearance.dashboardFocus,
     showOutageBanner: input.appearance.showOutageBanner,
     showChartsSection: input.appearance.showChartsSection,
     highContrastSurfaces: input.appearance.highContrastSurfaces,

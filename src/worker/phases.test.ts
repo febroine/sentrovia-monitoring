@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runRetentionCleanup } from "@/lib/data-retention/service";
-import { retryWebhookQueueForAllUsers } from "@/lib/delivery/service";
+import { retryDeliveryQueueForAllUsers } from "@/lib/delivery/service";
 import { runDueReportSchedules } from "@/lib/reports/service";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { runWorkerPhases } from "@/worker/phases";
 import { runMonitoringCycle } from "@/worker/scheduler";
 
 vi.mock("@/lib/data-retention/service", () => ({ runRetentionCleanup: vi.fn() }));
-vi.mock("@/lib/delivery/service", () => ({ retryWebhookQueueForAllUsers: vi.fn() }));
+vi.mock("@/lib/delivery/service", () => ({ retryDeliveryQueueForAllUsers: vi.fn() }));
 vi.mock("@/lib/reports/service", () => ({ runDueReportSchedules: vi.fn() }));
 vi.mock("@/worker/connectivity", () => ({ ensureWorkerConnectivity: vi.fn() }));
 vi.mock("@/worker/scheduler", () => ({ runMonitoringCycle: vi.fn() }));
@@ -44,7 +44,7 @@ describe("worker phase connectivity guard", () => {
 
     expect(runRetentionCleanup).toHaveBeenCalledOnce();
     expect(runMonitoringCycle).not.toHaveBeenCalled();
-    expect(retryWebhookQueueForAllUsers).not.toHaveBeenCalled();
+    expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
 
@@ -58,7 +58,7 @@ describe("worker phase connectivity guard", () => {
     });
 
     expect(runMonitoringCycle).toHaveBeenCalledOnce();
-    expect(retryWebhookQueueForAllUsers).not.toHaveBeenCalled();
+    expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
 
@@ -67,7 +67,7 @@ describe("worker phase connectivity guard", () => {
 
     expect(runRetentionCleanup).toHaveBeenCalledOnce();
     expect(runMonitoringCycle).toHaveBeenCalledOnce();
-    expect(retryWebhookQueueForAllUsers).toHaveBeenCalledOnce();
+    expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
   });
 
@@ -78,7 +78,7 @@ describe("worker phase connectivity guard", () => {
     await expect(runWorkerPhases(async () => true)).resolves.toEqual({ status: "completed" });
 
     expect(runMonitoringCycle).toHaveBeenCalledOnce();
-    expect(retryWebhookQueueForAllUsers).toHaveBeenCalledOnce();
+    expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
     expect(consoleError).toHaveBeenCalledWith(
       "[sentrovia] Retention cleanup failed; monitor checks will continue.",

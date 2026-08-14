@@ -9,6 +9,7 @@ const { loadEnvConfig } = nextEnv;
 
 const MIGRATION_SUFFIX = "_manual.sql";
 const ADVISORY_LOCK_KEYS = [728551, 493027];
+const SCHEMA_LOCK_HELD_ENV = "SENTROVIA_SCHEMA_LOCK_HELD";
 
 loadEnvConfig(process.cwd());
 
@@ -41,7 +42,15 @@ const db = postgres(databaseUrl, {
   onnotice: () => undefined,
 });
 
+const parentSchemaLockHeld = process.env[SCHEMA_LOCK_HELD_ENV] === "true";
+let migrationLockAcquired = false;
+
 try {
+  if (!options.dryRun && !parentSchemaLockHeld) {
+    await acquireMigrationLock(db);
+    migrationLockAcquired = true;
+  }
+
   const hasMigrationTable = await prepareMigrationTable(db, options);
   const result = await applyMigrations(db, migrations, options, hasMigrationTable);
   printSummary(result, options);
@@ -49,6 +58,9 @@ try {
   console.error(error instanceof Error ? error.message : "Manual migration failed.");
   process.exitCode = 1;
 } finally {
+  if (migrationLockAcquired) {
+    await releaseMigrationLock(db);
+  }
   await db.end().catch(() => undefined);
 }
 
@@ -136,7 +148,6 @@ async function applyMigrations(sql, migrations, options, hasMigrationTable) {
 
   for (const migration of migrations) {
     await sql.begin(async (tx) => {
-      await tx`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEYS[0]}, ${ADVISORY_LOCK_KEYS[1]})`;
       const existing = hasMigrationTable ? await findExistingMigration(tx, migration.file) : null;
 
       if (existing) {
@@ -151,6 +162,18 @@ async function applyMigrations(sql, migrations, options, hasMigrationTable) {
   }
 
   return result;
+}
+
+async function acquireMigrationLock(sql) {
+  await sql`
+    SELECT pg_advisory_lock(${ADVISORY_LOCK_KEYS[0]}, ${ADVISORY_LOCK_KEYS[1]})
+  `;
+}
+
+async function releaseMigrationLock(sql) {
+  await sql`
+    SELECT pg_advisory_unlock(${ADVISORY_LOCK_KEYS[0]}, ${ADVISORY_LOCK_KEYS[1]})
+  `.catch(() => undefined);
 }
 
 async function findExistingMigration(sql, filename) {

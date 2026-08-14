@@ -57,7 +57,7 @@ describe("update service", () => {
 
     expect(status.status).toBe("unconfigured");
     expect(status.repository).toBeNull();
-    expect(status.recommendedCommands).toContain("git checkout <release-tag>");
+    expect(status.recommendedCommands).toEqual([]);
   });
 
   it("does not place invalid release tags into shell commands", async () => {
@@ -66,8 +66,9 @@ describe("update service", () => {
 
     const status = await getUpdateStatus();
 
+    expect(status.status).toBe("error");
     expect(status.latestVersion).toBeNull();
-    expect(status.dockerCommands).toContain("git checkout <release-tag>");
+    expect(status.dockerCommands).toEqual([]);
     expect(status.dockerCommands.join("\n")).not.toContain("rm -rf");
   });
 
@@ -97,13 +98,22 @@ describe("update service", () => {
     expect(guidance.dockerCommands).toEqual([
       "git fetch --tags origin",
       "git checkout v2.0.0",
-      "./scripts/install-docker.sh",
+      "docker compose up -d --build",
     ]);
     expect(guidance.serviceCommands).toEqual([
       "git fetch --tags origin",
       "git checkout v2.0.0",
       "UPDATE-SENTROVIA.bat",
     ]);
+  });
+
+  it("does not generate executable commands without a valid release tag", () => {
+    expect(buildUpdateGuidance(null)).toMatchObject({
+      recommendedCommands: [],
+      dockerCommands: [],
+      serviceCommands: [],
+      requiresManualAction: false,
+    });
   });
 });
 

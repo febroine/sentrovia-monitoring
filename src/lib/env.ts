@@ -145,7 +145,7 @@ export const env = {
     MIN_WORKER_POLL_INTERVAL_MS,
     MAX_WORKER_POLL_INTERVAL_MS
   ),
-  workerAutoStart: parseBoolean(process.env.WORKER_AUTO_START, false),
+  workerAutoStart: parseBoolean(process.env.WORKER_AUTO_START, true),
   disableEmbeddedWorkerSpawn: parseBoolean(process.env.DISABLE_EMBEDDED_WORKER_SPAWN, false),
   monitorAllowPrivateTargets: parseBoolean(process.env.MONITOR_ALLOW_PRIVATE_TARGETS, true),
   workerConnectivityCheckEnabled: parseBoolean(process.env.WORKER_CONNECTIVITY_CHECK_ENABLED, true),
