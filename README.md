@@ -1,47 +1,69 @@
-# Sentrovia
-
-<p align="center">
-  <img src="docs/screenshots/banner.png" alt="Sentrovia banner" width="100%">
-</p>
+# SENTROVIA
 
 <p align="center">
   <strong>Verification-aware monitoring for internal teams.</strong><br>
-  Fewer false alarms, clearer evidence, and a clean operations console.
+  Fewer false alarms. Better evidence. A calmer operations console.
 </p>
 
 <p align="center">
-  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16.2-black?style=flat-square&logo=next.js" />
-  <img alt="React" src="https://img.shields.io/badge/React-19-0f172a?style=flat-square&logo=react" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-First-2563eb?style=flat-square&logo=typescript&logoColor=white" />
-  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-0f172a?style=flat-square&logo=postgresql" />
-  <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2563eb?style=flat-square&logo=docker&logoColor=white" />
+  <a href="https://github.com/febroine/sentrovia-monitoring/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/febroine/sentrovia-monitoring?style=flat-square&label=release" /></a>
+  <a href="https://github.com/febroine/sentrovia-monitoring/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/febroine/sentrovia-monitoring?style=flat-square" /></a>
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" />
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white" />
 </p>
 
-## What Is Sentrovia?
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Sentrovia dashboard" width="100%">
+</p>
 
-Sentrovia is a self-hosted monitoring platform for websites, APIs, TCP ports, PostgreSQL endpoints, ping targets, JSON assertions, keyword checks, and heartbeat jobs.
+<p align="center"><sub>Monitor services, confirm failures, and understand what happened from one focused workspace.</sub></p>
 
-It is built for teams that do not want an alert every time a single request times out. Sentrovia verifies failures first, records evidence, then sends notifications when an outage is confirmed.
+## Why Sentrovia?
 
-**Good fit for:**
+- [x] Verify outages before alerting
+- [x] Keep screenshot evidence for confirmed HTTP-style failures
+- [x] Monitor HTTP, TCP, ping, PostgreSQL, JSON, keyword, and heartbeat targets
+- [x] Deliver notifications through Telegram, Discord, email, and webhooks
+- [x] Publish workspace or company-scoped public status pages
+- [x] Run with Docker Compose or Windows services through NSSM
 
-- Internal IT and operations teams
-- Windows-heavy environments
-- Teams that need PostgreSQL-backed worker state
-- Operators who want alert history, delivery visibility, and HTML reports
+## Quick Start
 
-## Highlights
+The installer creates the private environment file, generates strong secrets, starts PostgreSQL, applies the database schema, and launches Sentrovia.
 
-| Area | What Sentrovia Does |
-| --- | --- |
-| Verified alerts | Rechecks failures before sending down notifications |
-| Monitor types | HTTP, keyword, JSON, TCP, PostgreSQL, ping, heartbeat |
-| Evidence | Captures Chromium screenshots when a confirmed HTTP-style failure has stable page evidence |
-| Notifications | Email, Telegram, Discord, and generic webhooks |
-| Reports | Scheduled and manual HTML reports |
-| Status pages | Workspace or company-scoped public pages for service health |
-| Members | First admin onboarding, then admin-managed members |
-| Windows services | Guided NSSM installation and one-click updates |
+Linux or macOS:
+
+```bash
+git clone https://github.com/febroine/sentrovia-monitoring.git
+cd sentrovia-monitoring
+chmod +x scripts/install-docker.sh
+./scripts/install-docker.sh
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/febroine/sentrovia-monitoring.git
+cd sentrovia-monitoring
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install-docker.ps1
+```
+
+Open [http://localhost:3000](http://localhost:3000) and complete the first administrator onboarding. For an installation that already has a private `.env`, the normal restart command is:
+
+```bash
+docker compose up -d --build
+```
+
+Never commit `.env` or `.env.local`; they contain deployment secrets. The detailed migration, security, update, and Windows service documentation is below.
+
+Every version tag also publishes an image to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/febroine/sentrovia-monitoring:latest
+```
+
+Versioned images are available as `ghcr.io/febroine/sentrovia-monitoring:0.1.1` and follow-up release tags. Set the GHCR package visibility to **Public** after the first publish if anonymous pulls are required. The image still requires the same runtime environment and PostgreSQL configuration described below.
 
 ## Screenshots
 
