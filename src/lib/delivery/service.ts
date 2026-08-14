@@ -203,6 +203,7 @@ function resolveChannelHealthStatus(
 
 export async function hasRecentFailedNotificationDelivery(input: {
   userId: string;
+  monitorId: string;
   kind: DeliveryKind;
   since: Date;
   before: Date;
@@ -213,6 +214,7 @@ export async function hasRecentFailedNotificationDelivery(input: {
     .where(
       and(
         eq(deliveryEvents.userId, input.userId),
+        eq(deliveryEvents.monitorId, input.monitorId),
         eq(deliveryEvents.kind, input.kind),
         eq(deliveryEvents.status, "failed"),
         gte(deliveryEvents.createdAt, input.since),
@@ -327,7 +329,7 @@ export async function sendEmailDelivery(input: {
   buildAttachments?: () => Promise<Mail.Attachment[] | undefined>;
 }) {
   const smtp = await getSmtpSettings(input.userId);
-  const destination = input.destinationOverride || smtp?.defaultToEmail || "";
+  const destination = input.destinationOverride?.trim() || smtp?.defaultToEmail?.trim() || "";
   const event = await createDeliveryEvent(input.userId, "email", input.kind, destination || "Email not configured", {
     subject: input.subject,
     textBody: input.textBody,
@@ -357,7 +359,9 @@ export async function sendEmailDelivery(input: {
 
     return markDeliveryDelivered(event.id, 250);
   } catch (error) {
-    return markDeliveryFailed(event.id, null, toMessage(error));
+    return isRetryableDeliveryError(error)
+      ? markDeliveryRetryable(event.id, 1, null, toMessage(error))
+      : markDeliveryFailed(event.id, null, toMessage(error));
   }
 }
 
@@ -601,7 +605,11 @@ export async function retryDeliveryEvent(userId: string, eventId: string) {
 
   if (!event || event.status !== "failed") return null;
 
-  const claimed = await claimDeliveryEvent(event.id, { userId, allowFailed: true });
+  const claimed = await claimDeliveryEvent(event.id, {
+    userId,
+    allowFailed: true,
+    resetAttempts: true,
+  });
   if (!claimed) return null;
   return deliverClaimedDelivery(claimed);
 }
@@ -773,7 +781,12 @@ async function deliverWebhookClaimed(
 
 async function claimDeliveryEvent(
   eventId: string,
-  options: { userId?: string; allowFailed?: boolean; allowFreshPending?: boolean } = {}
+  options: {
+    userId?: string;
+    allowFailed?: boolean;
+    allowFreshPending?: boolean;
+    resetAttempts?: boolean;
+  } = {}
 ) {
   const now = new Date();
   const claimToken = crypto.randomUUID();
@@ -796,6 +809,7 @@ async function claimDeliveryEvent(
     .update(deliveryEvents)
     .set({
       status: "processing",
+      ...(options.resetAttempts ? { attempts: 0 } : {}),
       claimToken,
       claimExpiresAt: new Date(now.getTime() + DELIVERY_CLAIM_LEASE_MS),
       deadLetteredAt: null,

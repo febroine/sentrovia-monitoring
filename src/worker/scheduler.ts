@@ -611,6 +611,7 @@ async function retryTransitionNotification(
 
   const failedDelivery = await hasRecentFailedNotificationDelivery({
     userId: monitor.userId,
+    monitorId: monitor.id,
     kind,
     since,
     before,

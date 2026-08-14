@@ -154,28 +154,57 @@ async function getDashboardMonitors(userId: string): Promise<DashboardMonitorDat
       throw error;
     }
 
-    const legacyRows = await db
-      .select({
-        id: monitors.id,
-        name: monitors.name,
-        monitorType: monitors.monitorType,
-        url: monitors.url,
-        companyId: monitors.companyId,
-        company: monitors.company,
-        isActive: monitors.isActive,
-        status: monitors.status,
-        statusCode: monitors.statusCode,
-        latencyMs: monitors.latencyMs,
-        sslExpiresAt: monitors.sslExpiresAt,
-        lastCheckedAt: monitors.lastCheckedAt,
-        notificationPref: monitors.notificationPref,
-        intervalValue: monitors.intervalValue,
-        intervalUnit: monitors.intervalUnit,
-      })
-      .from(monitors)
-      .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
+    try {
+      const legacyRows = await db
+        .select({
+          id: monitors.id,
+          name: monitors.name,
+          monitorType: monitors.monitorType,
+          url: monitors.url,
+          companyId: monitors.companyId,
+          company: monitors.company,
+          isActive: monitors.isActive,
+          status: monitors.status,
+          statusCode: monitors.statusCode,
+          latencyMs: monitors.latencyMs,
+          sslExpiresAt: monitors.sslExpiresAt,
+          lastCheckedAt: monitors.lastCheckedAt,
+          notificationPref: monitors.notificationPref,
+          intervalValue: monitors.intervalValue,
+          intervalUnit: monitors.intervalUnit,
+        })
+        .from(monitors)
+        .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
 
-    return legacyRows.map((monitor) => ({ ...monitor, isFavorite: false, isCritical: false }));
+      return legacyRows.map((monitor) => ({ ...monitor, isFavorite: false, isCritical: false }));
+    } catch (legacyError) {
+      if (!isSchemaDriftError(legacyError)) {
+        throw legacyError;
+      }
+
+      const rowsWithoutSoftDelete = await db
+        .select({
+          id: monitors.id,
+          name: monitors.name,
+          monitorType: monitors.monitorType,
+          url: monitors.url,
+          companyId: monitors.companyId,
+          company: monitors.company,
+          isActive: monitors.isActive,
+          status: monitors.status,
+          statusCode: monitors.statusCode,
+          latencyMs: monitors.latencyMs,
+          sslExpiresAt: monitors.sslExpiresAt,
+          lastCheckedAt: monitors.lastCheckedAt,
+          notificationPref: monitors.notificationPref,
+          intervalValue: monitors.intervalValue,
+          intervalUnit: monitors.intervalUnit,
+        })
+        .from(monitors)
+        .where(eq(monitors.userId, userId));
+
+      return rowsWithoutSoftDelete.map((monitor) => ({ ...monitor, isFavorite: false, isCritical: false }));
+    }
   }
 }
 
@@ -194,11 +223,27 @@ function isSchemaDriftError(error: unknown): boolean {
 }
 
 async function getRecentDashboardEvents(userId: string, companyId: string) {
+  try {
+    return await queryRecentDashboardEvents(userId, companyId, true);
+  } catch (error) {
+    if (!isSchemaDriftError(error)) {
+      throw error;
+    }
+
+    return queryRecentDashboardEvents(userId, companyId, false);
+  }
+}
+
+async function queryRecentDashboardEvents(userId: string, companyId: string, includeSoftDeleteFilter: boolean) {
   const conditions = [
     eq(monitorEvents.userId, userId),
     ne(monitorEvents.eventType, "check"),
     notInArray(monitorEvents.eventType, [...NOTIFICATION_MARKER_EVENT_TYPES]),
   ];
+
+  if (includeSoftDeleteFilter) {
+    conditions.push(isNull(monitors.deletedAt));
+  }
 
   if (companyId) {
     conditions.push(eq(monitors.companyId, companyId));
