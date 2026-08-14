@@ -553,6 +553,11 @@ export async function updateDashboardPreferences(userId: string, input: Dashboar
     throw buildMissingSettingsTableError();
   }
 
+  const dashboardColumns = ["dashboard_widgets", "dashboard_company_id", "dashboard_focus"];
+  if (!dashboardColumns.every((column) => settingsColumns.has(column))) {
+    throw new AuthError("Dashboard customization requires the latest database migration.", 503);
+  }
+
   const values = filterValuesForColumns(
     {
       userId,

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getSmtpSettings: vi.fn(),
   insertReturning: vi.fn(),
   sendMail: vi.fn(),
+  updateSet: vi.fn(),
   updateReturning: vi.fn(),
   db: {
     insert: vi.fn(),
@@ -41,6 +42,7 @@ import {
   sendChannelWebhookDelivery,
   sendEmailDelivery,
   sendTelegramDelivery,
+  retryDeliveryEvent,
 } from "@/lib/delivery/service";
 
 describe("delivery service", () => {
@@ -54,9 +56,10 @@ describe("delivery service", () => {
     mocks.db.insert.mockReturnValue({
       values: vi.fn(() => ({ returning: mocks.insertReturning })),
     });
-    mocks.db.update.mockReturnValue({
-      set: vi.fn(() => ({ where: vi.fn(() => ({ returning: mocks.updateReturning })) })),
-    });
+    mocks.updateSet.mockImplementation(() => ({
+      where: vi.fn(() => ({ returning: mocks.updateReturning })),
+    }));
+    mocks.db.update.mockReturnValue({ set: mocks.updateSet });
     mocks.getSettings.mockResolvedValue(null);
   });
 
@@ -124,7 +127,37 @@ describe("delivery service", () => {
     });
 
     expect(result?.status).toBe("retrying");
-    expect(mocks.updateReturning).toHaveBeenCalled();
+    expect(mocks.updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "retrying",
+        attempts: 1,
+        deadLetteredAt: null,
+        nextRetryAt: expect.any(Date),
+      })
+    );
+  });
+
+  it("resets the retry budget when manually resending a dead-lettered delivery", async () => {
+    const event = buildFailedEmailEvent();
+    const limit = vi.fn().mockResolvedValue([event]);
+    mocks.db.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({ limit })),
+      })),
+    });
+    mocks.getSmtpSettings.mockResolvedValue(buildSmtpSettings());
+    mocks.updateReturning
+      .mockResolvedValueOnce([{ ...event, status: "processing", attempts: 0, claimToken: "claim-1" }])
+      .mockResolvedValueOnce([{ ...event, status: "delivered", attempts: 1 }]);
+
+    const result = await retryDeliveryEvent("user-1", event.id);
+
+    expect(result?.status).toBe("delivered");
+    expect(mocks.updateSet).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ status: "processing", attempts: 0 })
+    );
+    expect(mocks.sendMail).toHaveBeenCalledTimes(1);
   });
 
   it("limits delivery failure response bodies before storing them", async () => {
@@ -354,5 +387,33 @@ function buildSmtpSettings() {
     secure: false,
     requireTls: true,
     insecureSkipVerify: false,
+  };
+}
+
+function buildFailedEmailEvent() {
+  return {
+    id: "delivery-1",
+    userId: "user-1",
+    monitorId: null,
+    channel: "email",
+    kind: "failure",
+    destination: "alerts@example.com",
+    payloadJson: JSON.stringify({
+      to: "alerts@example.com",
+      subject: "Down",
+      textBody: "Down",
+      htmlBody: "<p>Down</p>",
+    }),
+    status: "failed",
+    attempts: 5,
+    responseCode: null,
+    errorMessage: "Connection reset",
+    createdAt: new Date("2026-07-14T10:00:00Z"),
+    lastAttemptAt: new Date("2026-07-14T10:05:00Z"),
+    nextRetryAt: null,
+    claimToken: null,
+    claimExpiresAt: null,
+    deliveredAt: null,
+    deadLetteredAt: new Date("2026-07-14T10:05:00Z"),
   };
 }

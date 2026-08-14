@@ -344,6 +344,9 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "recovery" })
     );
+    expect(mocks.hasRecentFailedNotificationDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ monitorId: "monitor-1", kind: "recovery" })
+    );
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "recovery-notification" })
     );
