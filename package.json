@@ -1,6 +1,6 @@
 {
   "name": "sentrovia",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Sentrovia is a verification-aware monitoring platform for HTTP, TCP, and PostgreSQL uptime checks.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
