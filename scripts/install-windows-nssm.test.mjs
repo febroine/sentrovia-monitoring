@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 const projectRoot = resolve(import.meta.dirname, "..");
 const manifestPath = resolve(projectRoot, "scripts", "retired-project-paths.json");
 const installerPath = resolve(projectRoot, "scripts", "install-windows-nssm.ps1");
+const installerSource = readFileSync(installerPath, "utf8");
 
 function normalizePath(value) {
   return value.trim().replaceAll("\\", "/");
@@ -31,6 +32,13 @@ function readCurrentReleasePaths() {
 }
 
 describe("Windows NSSM update cleanup", () => {
+  it("uses Windows service controls for start transitions", () => {
+    expect(installerSource).toContain("Start-Service -Name $Name -ErrorAction Stop");
+    expect(installerSource).toContain("Resume-Service -Name $Name -ErrorAction Stop");
+    expect(installerSource).toContain('@("Running", "StartPending")');
+    expect(installerSource).not.toContain('Invoke-NssmCommand -Arguments @($Action, $Name)');
+  });
+
   it("covers every file removed from the repository", () => {
     const retiredPaths = readRetiredProjectPaths();
     const trackedPaths = new Set(readCurrentReleasePaths());

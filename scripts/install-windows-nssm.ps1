@@ -372,6 +372,32 @@ function Start-NssmServiceBestEffort {
   }
 }
 
+function Request-NssmServiceStart {
+  param(
+    [string]$Name,
+    [bool]$ResumePausedService
+  )
+
+  try {
+    if ($ResumePausedService) {
+      Resume-Service -Name $Name -ErrorAction Stop
+    } else {
+      Start-Service -Name $Name -ErrorAction Stop
+    }
+  } catch {
+    $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    $AcceptedStatuses = if ($ResumePausedService) {
+      @("Running", "ContinuePending")
+    } else {
+      @("Running", "StartPending")
+    }
+
+    if (-not $Service -or $Service.Status.ToString() -notin $AcceptedStatuses) {
+      throw
+    }
+  }
+}
+
 function Start-NssmService {
   param([string]$Name)
 
@@ -396,8 +422,7 @@ function Start-NssmService {
     return
   }
 
-  $Action = if ($Service.Status -eq "Paused") { "continue" } else { "start" }
-  Invoke-NssmCommand -Arguments @($Action, $Name) -FailureMessage "Unable to $Action $Name."
+  Request-NssmServiceStart -Name $Name -ResumePausedService ($Service.Status -eq "Paused")
   Wait-NssmServiceStatus -Name $Name -ExpectedStatus "Running" -TimeoutSeconds $ServiceStartTimeoutSeconds
 }
 
