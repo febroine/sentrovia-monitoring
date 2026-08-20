@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type ElementType, type ReactNode } from "react";
 import { Bell, Database, DownloadCloud, Globe, Palette, RadioTower } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AppearanceSettingsTab,
@@ -38,7 +37,7 @@ export default function SettingsPageClient() {
   }, [loadSettings]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6">
       <header>
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
@@ -55,13 +54,11 @@ export default function SettingsPageClient() {
         orientation="vertical"
         className="gap-6 md:grid md:grid-cols-[200px_minmax(0,1fr)]"
       >
-        <TabsList className="h-auto w-full flex-row items-stretch justify-start overflow-x-auto rounded-lg border bg-card p-1.5 md:h-fit md:flex-col md:overflow-visible">
+        <TabsList className="h-auto w-full flex-row items-stretch justify-start overflow-x-auto rounded-md border bg-card p-1 md:h-fit md:flex-col md:overflow-visible">
           {visibleTabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} className="h-auto shrink-0 justify-start rounded-md px-2.5 py-2 text-left md:w-full">
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="rounded-md border bg-muted/30 p-1.5">
-                  <tab.icon className={`h-4 w-4 ${tab.tone}`} />
-                </span>
+              <span className="flex min-w-0 items-center gap-2.5">
+                <tab.icon className={`size-4 shrink-0 ${tab.tone}`} />
                 <span className="block min-w-0 truncate text-sm font-medium">{tab.label}</span>
               </span>
             </TabsTrigger>
@@ -70,9 +67,7 @@ export default function SettingsPageClient() {
 
         <div className="space-y-6">
           {loading ? (
-            <Card>
-              <CardContent className="p-6 text-sm text-muted-foreground">Loading settings...</CardContent>
-            </Card>
+            <div className="border-y py-8 text-sm text-muted-foreground">Loading settings...</div>
           ) : (
             <>
               <TabsContent value="notifications">
@@ -113,10 +108,10 @@ function Banner({
 }) {
   return (
     <div
-      className={`rounded-lg border px-4 py-3 text-sm ${
+      className={`border-l-2 px-4 py-2 text-sm ${
         tone === "error"
-          ? "border-destructive/20 bg-destructive/5 text-destructive"
-          : "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
+          ? "border-destructive text-destructive"
+          : "border-emerald-500 text-emerald-700 dark:text-emerald-400"
       }`}
     >
       {children}

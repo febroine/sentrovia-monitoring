@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Activity, Play, Square, WifiOff } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useWorkerStore } from "@/stores/use-worker-store";
@@ -34,20 +33,19 @@ export function WorkerPulseCard() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">Worker Pulse</p>
-              <Badge
-                variant="outline"
-                className={
+              <span
+                className={`text-xs font-medium ${
                   connectivityOffline
-                    ? "border-destructive/30 text-destructive"
+                    ? "text-destructive"
                     : worker?.running
-                    ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                    ? "text-emerald-600 dark:text-emerald-400"
                     : stale
-                      ? "border-amber-500/30 text-amber-600 dark:text-amber-400"
-                      : "border-border text-muted-foreground"
-                }
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
+                }`}
               >
                 {connectivityOffline ? "Monitoring paused" : worker?.running ? "Running" : worker?.processAlive ? "Standby" : "Offline"}
-              </Badge>
+              </span>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>Heartbeat: {heartbeatAge === null ? "--" : `${heartbeatAge}s ago`}</span>
@@ -79,13 +77,13 @@ export function WorkerPulseCard() {
         </div>
 
         {stale ? (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <div className="mt-3 flex items-center gap-2 border-l-2 border-amber-500 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             <Activity className="h-3.5 w-3.5" />
             The worker has not reported a healthy heartbeat recently.
           </div>
         ) : null}
         {connectivityOffline ? (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <div className="mt-3 flex items-center gap-2 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
             <WifiOff className="h-3.5 w-3.5" />
             {worker.connectivityMessage ?? "Internet connectivity is unavailable. Monitor checks and outbound tasks are paused."}
           </div>

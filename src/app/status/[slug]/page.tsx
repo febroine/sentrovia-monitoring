@@ -1,11 +1,7 @@
 import { notFound } from "next/navigation";
 import {
   AlertTriangle,
-  CheckCircle2,
-  Clock3,
   Globe2,
-  ShieldCheck,
-  type LucideIcon,
 } from "lucide-react";
 import { SentroviaMark } from "@/components/brand/sentrovia-mark";
 import { getPublicStatusPage } from "@/lib/public-status/service";
@@ -41,7 +37,7 @@ function PublicStatusView({ statusPage }: { statusPage: StatusPageData }) {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="flex w-full flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 2xl:px-10">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
         {outageServices.length > 0 ? <PublicOutageBanner services={outageServices} /> : null}
         <StatusHeader
           companyName={statusPage.scope.companyName}
@@ -66,14 +62,12 @@ function PublicOutageBanner({ services }: { services: PublicStatusService[] }) {
     <section
       aria-live="assertive"
       aria-label="Current service outage"
-      className="overflow-hidden rounded-md border-2 border-rose-500 bg-rose-50 shadow-sm dark:bg-rose-950/35"
+      className="overflow-hidden border-l-4 border-rose-500 bg-rose-50 dark:bg-rose-950/35"
       role="alert"
     >
       <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
         <div className="flex min-w-0 gap-4">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-rose-600 text-white dark:bg-rose-500 dark:text-rose-950">
-            <AlertTriangle className="h-5 w-5" />
-          </div>
+          <AlertTriangle className="mt-1 size-5 shrink-0 text-rose-600 dark:text-rose-400" />
           <div className="min-w-0">
             <p className="text-lg font-semibold text-rose-900 dark:text-rose-100">Service outage detected</p>
             <p className="mt-1 text-sm leading-6 text-rose-800/85 dark:text-rose-200/85">
@@ -81,7 +75,7 @@ function PublicOutageBanner({ services }: { services: PublicStatusService[] }) {
             </p>
           </div>
         </div>
-        <span className="inline-flex w-fit shrink-0 items-center rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white dark:bg-rose-500 dark:text-rose-950">
+        <span className="w-fit shrink-0 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
           {services.length} down
         </span>
       </div>
@@ -122,9 +116,7 @@ function StatusHeader({
   return (
     <header className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex min-w-0 items-center gap-4">
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
-          <SentroviaMark className="text-base" />
-        </div>
+        <SentroviaMark className="size-10 shrink-0 text-base text-emerald-600 dark:text-emerald-300" />
         <div className="min-w-0">
           <p className="text-sm font-medium text-muted-foreground">
             {companyName ? `${companyName} public status` : "Sentrovia public status"}
@@ -153,10 +145,10 @@ function StatusOverview({
   statusPage: StatusPageData;
 }) {
   const metrics = [
-    { label: "Operational", value: statusPage.totals.operational, icon: CheckCircle2, tone: "text-emerald-600 dark:text-emerald-300" },
-    { label: "Degraded", value: statusPage.totals.degraded, icon: Clock3, tone: "text-amber-600 dark:text-amber-300" },
-    { label: "Outage", value: statusPage.totals.outage, icon: AlertTriangle, tone: "text-rose-600 dark:text-rose-300" },
-    { label: "Published", value: statusPage.totals.total, icon: ShieldCheck, tone: "text-slate-600 dark:text-slate-300" },
+    { label: "Operational", value: statusPage.totals.operational, tone: "text-emerald-600 dark:text-emerald-300" },
+    { label: "Degraded", value: statusPage.totals.degraded, tone: "text-amber-600 dark:text-amber-300" },
+    { label: "Outage", value: statusPage.totals.outage, tone: "text-rose-600 dark:text-rose-300" },
+    { label: "Published", value: statusPage.totals.total, tone: "text-slate-600 dark:text-slate-300" },
   ];
 
   return (
@@ -185,23 +177,18 @@ function StatusOverview({
 }
 
 function StatusMetric({
-  icon: Icon,
   label,
   tone,
   value,
 }: {
-  icon: LucideIcon;
   label: string;
   tone: string;
   value: number;
 }) {
   return (
-    <div className="flex min-h-24 items-center gap-3 bg-background/55 px-4 py-4 sm:px-5">
-      <Icon className={cn("h-5 w-5 shrink-0", tone)} />
-      <div>
-        <p className="text-2xl font-semibold">{value}</p>
-        <p className="text-sm text-muted-foreground">{label}</p>
-      </div>
+    <div className="bg-background/55 px-4 py-4 sm:px-5">
+      <p className={cn("text-xl font-semibold", tone)}>{value}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
     </div>
   );
 }

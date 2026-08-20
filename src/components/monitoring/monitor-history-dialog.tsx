@@ -1,6 +1,5 @@
 "use client";
 
-import { Activity, ArrowRight, CheckCircle2, Clock3, ListChecks, Network, ShieldAlert, TimerReset } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type {
   MonitorDiagnosticRecord,
@@ -32,7 +31,7 @@ export function MonitorHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[86vh] overflow-y-auto border-r-2 border-r-primary/45 pr-5 shadow-[inset_-10px_0_18px_-18px_rgba(99,102,241,0.75)] sm:max-w-2xl">
+      <DialogContent className="max-h-[86vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Timeline details</DialogTitle>
           <DialogDescription>
@@ -41,44 +40,36 @@ export function MonitorHistoryDialog({
         </DialogHeader>
 
         {!monitor || !selection ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground">
+          <div className="border-l-2 border-border px-4 py-4 text-sm text-muted-foreground">
             Select a timeline point to inspect its state window.
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
               <HistoryStat
                 label="State"
                 value={getStateLabel(selection.point.status)}
                 helper={getStateHelper(selection.point.status)}
-                accent={getStateAccent(selection.point.status)}
-                icon={selection.point.status === "up" ? CheckCircle2 : selection.point.status === "pending" ? Clock3 : ShieldAlert}
               />
               <HistoryStat
                 label="Window length"
                 value={selection.durationLabel}
                 helper="Continuous state duration"
-                accent="before:bg-sky-500"
-                icon={Clock3}
               />
               <HistoryStat
                 label="Status code"
                 value={selection.point.statusCode ? `HTTP ${selection.point.statusCode}` : "--"}
                 helper="Response seen in this check"
-                accent="before:bg-amber-500"
-                icon={Activity}
               />
               <HistoryStat
                 label="Latency"
                 value={selection.point.latencyMs ? `${selection.point.latencyMs}ms` : "--"}
                 helper="Measured response time"
-                accent="before:bg-violet-500"
-                icon={TimerReset}
               />
-            </div>
+            </dl>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-              <div className="rounded-xl border border-border/70 bg-background/70 p-4">
+              <div className="border-y py-4">
                 <p className="text-sm font-medium">Selected window</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   This range covers the uninterrupted period where the monitor stayed in the same state.
@@ -91,7 +82,7 @@ export function MonitorHistoryDialog({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-border/70 bg-muted/15 p-4">
+              <div className="border-y py-4">
                 <p className="text-sm font-medium">State summary</p>
                 <p className="mt-1 text-xs text-muted-foreground">{buildStateSummary(selection, monitor)}</p>
                 <div className="mt-4 flex flex-wrap gap-1.5">
@@ -125,11 +116,8 @@ export function MonitorHistoryDialog({
             </div>
 
             {latestDiagnostic ? (
-              <div className="rounded-xl border border-border/70 bg-background/70 p-4">
-                <div className="flex items-center gap-2">
-                  <Network className="h-4 w-4 text-sky-500" />
-                  <p className="text-sm font-medium">Latest diagnostics</p>
-                </div>
+              <div className="border-y py-4">
+                <p className="text-sm font-medium">Latest diagnostics</p>
                 <p className="mt-1 text-xs text-muted-foreground">{latestDiagnostic.summary}</p>
                 <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
                   <DiagnosticPill label="DNS" value={formatStepStatus(latestDiagnostic.dnsStatus)} />
@@ -151,14 +139,11 @@ export function MonitorHistoryDialog({
             ) : null}
 
             {outageEvents.length > 0 ? (
-              <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
-                <div className="flex items-center gap-2">
-                  <ListChecks className="h-4 w-4 text-amber-500" />
-                  <p className="text-sm font-medium">Outage timeline</p>
-                </div>
-                <div className="mt-3 space-y-2">
+              <div className="border-y py-4">
+                <p className="text-sm font-medium">Outage timeline</p>
+                <div className="mt-3 divide-y">
                   {outageEvents.map((event) => (
-                    <div key={event.id} className="rounded-lg border border-border/70 bg-background/70 px-3 py-2">
+                    <div key={event.id} className="py-3">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-medium">{event.title}</p>
                         <span className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</span>
@@ -170,18 +155,15 @@ export function MonitorHistoryDialog({
               </div>
             ) : null}
 
-            <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
-              <div className="flex items-center gap-2">
-                <ArrowRight className="h-4 w-4 text-sky-500" />
-                <p className="text-sm font-medium">Recent state flow</p>
-              </div>
-              <div className="mt-3 space-y-2">
+            <div className="border-y py-4">
+              <p className="text-sm font-medium">Recent state flow</p>
+              <div className="mt-3 divide-y">
                 {points.map((point) => (
                   <div
                     key={point.id}
                     className={[
-                      "flex items-center justify-between rounded-lg border px-3 py-2 text-sm",
-                      point.id === selection.point.id ? "border-primary/40 bg-primary/5" : "border-border/70 bg-background/70",
+                      "flex items-center justify-between py-3 text-sm",
+                      point.id === selection.point.id ? "bg-primary/5" : "",
                     ].join(" ")}
                   >
                     <div className="flex items-center gap-3">
@@ -218,25 +200,16 @@ function HistoryStat({
   label,
   value,
   helper,
-  accent,
-  icon: Icon,
 }: {
   label: string;
   value: string;
   helper: string;
-  accent: string;
-  icon: typeof CheckCircle2;
 }) {
   return (
-    <div
-      className={`relative overflow-hidden rounded-xl border border-border/70 bg-background/75 px-4 py-3 before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-full ${accent}`}
-    >
-      <div className="flex items-center gap-2 pl-3">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      </div>
-      <p className="pl-3 pt-2 text-sm font-semibold text-foreground">{value}</p>
-      <p className="pl-3 pt-1 text-xs text-muted-foreground">{helper}</p>
+    <div className="border-b px-4 py-3 last:border-b-0 xl:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="pt-2 text-sm font-semibold text-foreground">{value}</dd>
+      <p className="pt-1 text-xs text-muted-foreground">{helper}</p>
     </div>
   );
 }
@@ -252,7 +225,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 function DiagnosticPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-muted/15 px-3 py-2">
+    <div className="border-l-2 border-border py-1 pl-3">
       <p className="font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
@@ -347,14 +320,6 @@ function getStateHelper(status: MonitorHistoryPoint["status"]) {
   }
 
   return status === "up" ? "Healthy check window" : "Failure window";
-}
-
-function getStateAccent(status: MonitorHistoryPoint["status"]) {
-  if (status === "pending") {
-    return "before:bg-amber-500";
-  }
-
-  return status === "up" ? "before:bg-emerald-500" : "before:bg-destructive";
 }
 
 function formatStepStatus(status: string | null) {

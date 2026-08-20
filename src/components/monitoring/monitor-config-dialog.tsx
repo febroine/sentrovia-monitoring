@@ -152,9 +152,9 @@ export function MonitorConfigDialog({
               />
             </div>
 
-            {message ? <div className="rounded-lg border px-3 py-2 text-sm">{message}</div> : null}
+            {message ? <div className="border-l-2 border-border px-3 py-2 text-sm">{message}</div> : null}
             {preview ? (
-              <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+              <div className="space-y-3 border-y py-4">
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <PreviewCount label="Add" value={preview.summary.added} tone="text-emerald-600" />
                   <PreviewCount label="Skip" value={preview.summary.skipped} tone="text-amber-600" />

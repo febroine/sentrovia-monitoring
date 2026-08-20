@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleX, FlaskConical, Inbox, RefreshCw, RotateCcw, Send, Trash2, Webhook } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleX, Inbox, RefreshCw, RotateCcw, Send, Trash2, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -52,31 +52,26 @@ export function DeliveryPageClient() {
         label: "Delivered",
         value: String(overview.summary.delivered),
         sub: "All completed deliveries",
-        border: "border-l-emerald-500",
       },
       {
         label: "Retry Queue",
         value: String(overview.summary.pendingRetries),
         sub: "Delivery items waiting for retry",
-        border: "border-l-amber-500",
       },
       {
         label: "Failed",
         value: String(overview.summary.failed),
         sub: "Review failed attempts",
-        border: "border-l-rose-500",
       },
       {
         label: "Retrying",
         value: String(overview.summary.retrying),
         sub: "Waiting for the next attempt",
-        border: "border-l-slate-400",
       },
       {
         label: "Dead-lettered",
         value: String(overview.summary.deadLettered),
         sub: "Exhausted or permanent failures",
-        border: "border-l-rose-700",
       },
     ],
     [overview.summary]
@@ -262,26 +257,24 @@ export function DeliveryPageClient() {
         </Button>
       </header>
 
-      {message ? <div className="rounded-lg border px-4 py-3 text-sm">{message}</div> : null}
+      {message ? <div className="border-l-2 border-border px-4 py-2 text-sm">{message}</div> : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <dl className="grid border-y md:grid-cols-2 xl:grid-cols-5 xl:divide-x">
         {cards.map((card) => (
-          <Card key={card.label} className="overflow-hidden">
-            <CardContent className={`border-l-2 px-4 py-3 ${card.border}`}>
-              <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
-              <p className="mt-2 text-xl font-semibold tracking-tight">{card.value}</p>
+          <div key={card.label} className="border-b px-4 py-4 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+              <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
+              <dd className="mt-2 text-xl font-semibold tracking-tight">{card.value}</dd>
               <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
-            </CardContent>
-          </Card>
+          </div>
         ))}
-      </div>
+      </dl>
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/15 pb-3">
           <CardTitle className="text-base">Channel health</CardTitle>
           <CardDescription>Delivery attempts and error rates from the last 24 hours.</CardDescription>
         </CardHeader>
-        <CardContent className="border-l-2 border-l-sky-500 p-0">
+        <CardContent className="p-0">
           <div className="divide-y">
             {overview.channelHealth.map((channel) => (
               <ChannelHealthRow key={channel.channel} channel={channel} />
@@ -296,10 +289,10 @@ export function DeliveryPageClient() {
             <CardTitle className="text-base">Webhook endpoint</CardTitle>
             <CardDescription>Store one outbound webhook and let Sentrovia retry failed posts.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 border-l-2 border-l-sky-500 p-5">
+          <CardContent className="space-y-4 p-5">
             <Field label="URL" id="webhook-url" value={webhookUrl} onChange={setWebhookUrl} placeholder="https://hooks.example.com/sentrovia" />
             <Field label="Secret" id="webhook-secret" value={webhookSecret} onChange={setWebhookSecret} placeholder={overview.webhook?.secretConfigured ? "Secret already configured" : "Optional HMAC shared secret"} />
-            <div className="flex items-center justify-between rounded-lg border px-3 py-3">
+            <div className="flex items-center justify-between border-y py-3">
               <div>
                 <p className="text-sm font-medium">Webhook Active</p>
                 <p className="text-xs text-muted-foreground">Inactive endpoints stay saved but stop receiving events.</p>
@@ -324,7 +317,7 @@ export function DeliveryPageClient() {
             <CardTitle className="text-base">Test delivery</CardTitle>
             <CardDescription>Validate email and telegram routing before relying on alerts.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 border-l-2 border-l-violet-500 p-5">
+          <CardContent className="space-y-4 p-5">
             {pendingAction ? <ActionProgress label={pendingAction} /> : null}
             <Field label="Email Target" id="email-target" value={emailTarget} onChange={setEmailTarget} placeholder="alerts@example.com" />
             <div className="grid gap-4 md:grid-cols-2">
@@ -336,16 +329,13 @@ export function DeliveryPageClient() {
               <Textarea id="delivery-message" value={testMessage} onChange={(event) => setTestMessage(event.target.value)} rows={4} />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void sendTest("email")} disabled={pendingAction !== null}>
-                <FlaskConical className="mr-2 h-4 w-4" />
+              <Button onClick={() => void sendTest("email")} disabled={pendingAction !== null}>
                 Test Email
               </Button>
-              <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void sendTest("telegram")} disabled={pendingAction !== null}>
-                <FlaskConical className="mr-2 h-4 w-4" />
+              <Button variant="outline" onClick={() => void sendTest("telegram")} disabled={pendingAction !== null}>
                 Test Telegram
               </Button>
               <Button variant="outline" onClick={() => void sendTest("discord")} disabled={pendingAction !== null}>
-                <FlaskConical className="mr-2 h-4 w-4" />
                 Test Discord
               </Button>
             </div>
@@ -383,7 +373,7 @@ export function DeliveryPageClient() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="border-l-2 border-l-emerald-500 p-0">
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
@@ -496,7 +486,7 @@ export function DeliveryPageClient() {
                 </div>
               </div>
             ) : null}
-            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-3 text-xs leading-5 text-muted-foreground">
+            <div className="border-l-2 border-amber-500 px-3 py-2 text-xs leading-5 text-muted-foreground">
               This action cannot be undone. Active retry queue entries are never deleted by history cleanup.
             </div>
           </div>
@@ -526,17 +516,17 @@ export function DeliveryPageClient() {
           </DialogHeader>
           {selectedRow ? (
             <div className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2">
+              <dl className="grid border-y md:grid-cols-2 md:divide-x">
                 <PayloadMetric label="Channel" value={toTitleCase(selectedRow.channel)} />
                 <PayloadMetric label="Kind" value={toTitleCase(selectedRow.kind)} />
                 <PayloadMetric label="Status" value={statusLabel(selectedRow)} />
                 <PayloadMetric label="Destination" value={selectedRow.destination} />
                 <PayloadMetric label="Response" value={selectedRow.responseCode?.toString() ?? "N/A"} />
                 <PayloadMetric label="Attempts" value={selectedRow.attempts.toString()} />
-              </div>
-              <div className="rounded-lg border bg-muted/15 p-4">
+              </dl>
+              <div className="border-y py-4">
                 <p className="text-sm font-medium">Payload</p>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-xl border bg-background p-4 text-xs leading-6 text-muted-foreground">
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-md border bg-background p-4 text-xs leading-6 text-muted-foreground">
                   {JSON.stringify(selectedRow.payload ?? {}, null, 2)}
                 </pre>
               </div>
@@ -591,9 +581,7 @@ function ChannelHealthRow({ channel }: { channel: DeliveryChannelHealth }) {
   return (
     <div className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex items-center gap-3">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg border ${status.iconClass}`}>
-          {status.icon}
-        </span>
+        <span className={status.textClass}>{status.icon}</span>
         <div>
           <p className="text-sm font-medium">{toTitleCase(channel.channel)}</p>
           <p className="text-xs text-muted-foreground">
@@ -628,20 +616,20 @@ function HealthMetric({ label, value, tone = "" }: { label: string; value: strin
 
 function channelStatusPresentation(status: DeliveryChannelHealth["status"]) {
   if (status === "healthy") {
-    return { label: "Healthy", textClass: "text-emerald-600 dark:text-emerald-400", iconClass: "border-emerald-500/30 bg-emerald-500/10", icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" /> };
+    return { label: "Healthy", textClass: "text-emerald-600 dark:text-emerald-400", icon: <CheckCircle2 className="h-4 w-4" /> };
   }
   if (status === "unhealthy") {
-    return { label: "Unhealthy", textClass: "text-rose-600 dark:text-rose-400", iconClass: "border-rose-500/30 bg-rose-500/10", icon: <CircleX className="h-4 w-4 text-rose-500" /> };
+    return { label: "Unhealthy", textClass: "text-rose-600 dark:text-rose-400", icon: <CircleX className="h-4 w-4" /> };
   }
   if (status === "degraded") {
-    return { label: "Degraded", textClass: "text-amber-600 dark:text-amber-400", iconClass: "border-amber-500/30 bg-amber-500/10", icon: <AlertTriangle className="h-4 w-4 text-amber-500" /> };
+    return { label: "Degraded", textClass: "text-amber-600 dark:text-amber-400", icon: <AlertTriangle className="h-4 w-4" /> };
   }
-  return { label: "No data", textClass: "text-muted-foreground", iconClass: "border-border bg-muted/20", icon: <AlertTriangle className="h-4 w-4 text-muted-foreground" /> };
+  return { label: "No data", textClass: "text-muted-foreground", icon: <AlertTriangle className="h-4 w-4" /> };
 }
 
 function ActionProgress({ label }: { label: string }) {
   return (
-    <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-3 py-3">
+    <div className="border-l-2 border-violet-500 px-3 py-2">
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="font-medium text-violet-700 dark:text-violet-300">{progressLabel(label)}</span>
         <span className="text-xs text-muted-foreground">Please wait...</span>
@@ -725,9 +713,9 @@ function isDeletionRangeReady(range: HistoryDeletionRange, from: string, to: str
 
 function PayloadMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border bg-muted/15 px-4 py-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-medium break-words">{value}</p>
+    <div className="border-b px-4 py-3 last:border-b-0 md:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1 break-words text-sm font-medium">{value}</dd>
     </div>
   );
 }

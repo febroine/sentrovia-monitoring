@@ -3,22 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
-  Activity,
   ArrowLeft,
-  ArrowRight,
-  BellRing,
-  CheckCircle2,
-  Database,
   Eye,
   EyeOff,
   LoaderCircle,
-  RadioTower,
-  ShieldCheck,
-  UsersRound,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SentroviaMark } from "@/components/brand/sentrovia-mark";
@@ -27,19 +17,19 @@ import { cn } from "@/lib/utils";
 type OnboardingStep = "intro" | "form";
 
 const inputClassName =
-  "h-11 rounded-lg border-white/10 bg-[#0d0e11] text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
+  "h-11 rounded-md border-white/10 bg-[#0d0e11] text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
 
 const productSteps = [
-  { icon: RadioTower, title: "Monitor", description: "Track websites, APIs, TCP, PostgreSQL, ping, and heartbeat jobs." },
-  { icon: Activity, title: "Verify", description: "Confirm failures before the first outage message is sent." },
-  { icon: BellRing, title: "Notify", description: "Send clear alerts with the reason, timing, and latest evidence." },
+  { title: "Monitor", description: "Add websites, APIs, TCP, PostgreSQL, ping, and heartbeat checks." },
+  { title: "Verify", description: "Confirm failures before the first outage message is sent." },
+  { title: "Notify", description: "Send alerts with the reason, timing, and latest evidence." },
 ];
 
 const setupItems = [
-  { icon: ShieldCheck, label: "Administrator", value: "First account" },
-  { icon: UsersRound, label: "Members", value: "Admin-managed" },
-  { icon: ShieldCheck, label: "Access", value: "Admin-controlled" },
-  { icon: Database, label: "Storage", value: "PostgreSQL" },
+  { label: "Administrator", value: "First account" },
+  { label: "Members", value: "Admin-managed" },
+  { label: "Access", value: "Admin-controlled" },
+  { label: "Storage", value: "PostgreSQL" },
 ];
 
 export default function OnboardingPage() {
@@ -186,7 +176,7 @@ function StepIndicator({ currentStep }: { currentStep: OnboardingStep }) {
 function StepDot({ active, label }: { active: boolean; label: string }) {
   return (
     <div className={cn("flex items-center gap-2 text-xs", active ? "text-foreground" : "text-muted-foreground")}>
-      <span className={cn("size-2 rounded-full", active ? "bg-primary shadow-[0_0_18px_rgba(99,102,241,0.85)]" : "bg-white/15")} />
+      <span className={cn("size-2 rounded-full", active ? "bg-primary" : "bg-white/15")} />
       <span>{label}</span>
     </div>
   );
@@ -194,13 +184,13 @@ function StepDot({ active, label }: { active: boolean; label: string }) {
 
 function IntroStep({ ready, error, onContinue }: { ready: boolean; error: string | null; onContinue: () => void }) {
   return (
-    <section className="grid flex-1 items-center gap-12 py-8 lg:grid-cols-[minmax(0,0.82fr)_minmax(520px,1.18fr)] lg:py-12">
+    <section className="grid flex-1 items-center gap-12 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
       <div className="flex flex-col gap-8">
         <IntroCopy ready={ready} error={error} onContinue={onContinue} />
         <ProductStepList />
       </div>
 
-      <MonitoringPreview />
+      <SetupOverview />
     </section>
   );
 }
@@ -210,11 +200,11 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-4">
         <p className="text-xs font-semibold tracking-[0.16em] text-emerald-400">FIRST RUN / ADMIN SETUP</p>
-        <h1 className="max-w-2xl text-4xl leading-[1.08] font-semibold tracking-tight text-balance sm:text-5xl">
-          Bring your monitoring workspace online.
+        <h1 className="max-w-2xl text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
+          Create the workspace administrator.
         </h1>
         <p className="max-w-xl text-base leading-7 text-zinc-400 sm:text-lg">
-          Create the first administrator, then use one focused workspace for monitors, evidence, delivery, and public status pages.
+          Set up the first account, then add monitors, delivery channels, and other workspace members.
         </p>
       </div>
       {error ? <FormError message={error} /> : null}
@@ -223,7 +213,6 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
           {ready ? (
             <>
               Continue setup
-              <ArrowRight data-icon="inline-end" />
             </>
           ) : (
             <>
@@ -241,12 +230,10 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
 function ProductStepList() {
   return (
     <div className="grid gap-5 border-y border-white/10 py-1 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
-      {productSteps.map((item) => (
+      {productSteps.map((item, index) => (
         <div key={item.title} className="py-4 sm:px-5 sm:first:pl-0 sm:last:pr-0">
-          <div className="mb-3 flex size-8 items-center justify-center rounded-md border border-white/10 bg-[#101114]">
-            <item.icon className="size-4 text-emerald-300" />
-          </div>
-          <h2 className="text-sm font-semibold">{item.title}</h2>
+          <p className="font-mono text-[11px] text-zinc-600">0{index + 1}</p>
+          <h2 className="mt-2 text-sm font-semibold">{item.title}</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
         </div>
       ))}
@@ -254,88 +241,28 @@ function ProductStepList() {
   );
 }
 
-function MonitoringPreview() {
-  return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101114] p-4 shadow-2xl shadow-black/20 sm:p-5">
-      <PreviewHeader />
-      <div className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <MonitorSampleList />
-        <VerificationTimeline />
-      </div>
-    </div>
-  );
-}
-
-function PreviewHeader() {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm font-semibold">Monitor verification preview</p>
-        <p className="mt-1 text-sm text-muted-foreground">Recent checks and their verification state.</p>
-      </div>
-      <Badge variant="outline" className="border-emerald-400/25 bg-emerald-400/10 text-emerald-200">
-        Workspace ready
-      </Badge>
-    </div>
-  );
-}
-
-function MonitorSampleList() {
-  return (
-    <div className="divide-y divide-white/10 rounded-lg border border-white/10 bg-[#0d0e11] px-4">
-      <MonitorSample url="https://api.example.com/health" detail="HTTP 200 - 184ms" tone="up" />
-      <MonitorSample url="https://portal.example.com" detail="HTTP 200 - 1.2s" tone="up" />
-      <MonitorSample url="db.example.net:5432" detail="Verification in progress" tone="pending" />
-    </div>
-  );
-}
-
-function MonitorSample({ url, detail, tone }: { url: string; detail: string; tone: "up" | "pending" }) {
-  return (
-    <div className="flex items-center gap-3 py-4">
-      <span className={cn("size-2.5 shrink-0 rounded-full", tone === "up" ? "bg-emerald-400" : "bg-amber-300 animate-pulse")} />
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{url}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function VerificationTimeline() {
-  return (
-    <div className="flex flex-col justify-between gap-5 rounded-lg border border-white/10 bg-[#0d0e11] p-4">
-      <div>
-        <p className="text-sm font-semibold">Verified notification</p>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">A single timeout waits for confirmation before it becomes an outage alert.</p>
-      </div>
-      <div className="grid gap-3">
-        <TimelineRow label="Request timeout" meta="50s limit reached" tone="amber" />
-        <TimelineRow label="Verification retry" meta="checking again" tone="blue" />
-        <TimelineRow label="Service recovered" meta="no down alert sent" tone="emerald" />
-      </div>
-      <div className="rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-3 text-sm text-emerald-100">
-        Online but slow is reported separately from confirmed down.
-      </div>
-    </div>
-  );
-}
-
-function TimelineRow({ label, meta, tone }: { label: string; meta: string; tone: "amber" | "blue" | "emerald" }) {
-  const toneClass = {
-    amber: "bg-amber-300",
-    blue: "bg-blue-400",
-    emerald: "bg-emerald-400",
-  }[tone];
+function SetupOverview() {
+  const steps = [
+    "Create the first administrator account.",
+    "Add members, companies, and monitor targets.",
+    "Configure delivery channels and start the worker.",
+  ];
 
   return (
-      <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#101114] px-3 py-3">
-      <span className={cn("size-2.5 rounded-full", toneClass)} />
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{label}</p>
-        <p className="truncate text-xs text-muted-foreground">{meta}</p>
+    <aside className="border-y border-white/10 py-5">
+      <p className="text-sm font-semibold">What happens next</p>
+      <ol className="mt-4 divide-y divide-white/10">
+        {steps.map((step, index) => (
+          <li key={step} className="grid grid-cols-[28px_1fr] gap-3 py-3">
+            <span className="font-mono text-[11px] text-zinc-600">0{index + 1}</span>
+            <p className="text-sm leading-6 text-zinc-400">{step}</p>
+          </li>
+        ))}
+      </ol>
+      <div className="mt-4 border-l-2 border-emerald-400 pl-3 text-xs leading-5 text-zinc-500">
+        Account creation is local to this workspace.
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -382,33 +309,24 @@ function AdminSetupStep({
 
 function SetupPanel({ onBack }: { onBack: () => void }) {
   return (
-    <Card className="border-white/10 bg-[#111215] shadow-2xl shadow-black/20">
-      <CardHeader>
-        <CardTitle className="text-xl tracking-tight">Workspace access</CardTitle>
-        <CardDescription>The first account becomes the administrator. Additional accounts are created by an admin.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
+    <aside className="border-y border-white/10 py-5">
+      <h2 className="text-lg font-semibold tracking-tight">Workspace access</h2>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        The first account becomes the administrator. Additional accounts are created by an admin.
+      </p>
+      <dl className="mt-5 divide-y divide-white/10 border-t border-white/10">
         {setupItems.map((item) => (
-          <div key={item.label} className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-[#0d0e11] px-3 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-[#101114]">
-                <item.icon className="size-4 text-muted-foreground" />
-              </div>
-              <p className="truncate text-sm font-medium">{item.label}</p>
-            </div>
-            <p className="shrink-0 text-sm text-muted-foreground">{item.value}</p>
+          <div key={item.label} className="flex items-center justify-between gap-4 py-3">
+            <dt className="text-sm text-muted-foreground">{item.label}</dt>
+            <dd className="text-sm font-medium">{item.value}</dd>
           </div>
         ))}
-        <div className="mt-1 flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-200">
-          <CheckCircle2 className="size-4 shrink-0" />
-          <span>Ready for administrator details</span>
-        </div>
-        <Button type="button" variant="ghost" onClick={onBack} className="mt-2 justify-start text-muted-foreground hover:bg-white/5 hover:text-foreground">
-          <ArrowLeft data-icon="inline-start" />
-          Back to overview
-        </Button>
-      </CardContent>
-    </Card>
+      </dl>
+      <Button type="button" variant="ghost" onClick={onBack} className="mt-4 justify-start px-0 text-muted-foreground hover:bg-transparent hover:text-foreground">
+        <ArrowLeft data-icon="inline-start" />
+        Back to overview
+      </Button>
+    </aside>
   );
 }
 
@@ -434,19 +352,13 @@ function AdminFormCard({
   onTogglePassword: () => void;
 }) {
   return (
-    <Card className="border-white/10 bg-[#111215] shadow-2xl shadow-black/20">
-      <CardHeader className="gap-3 border-b border-white/10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-2xl tracking-tight">Create administrator</CardTitle>
-            <CardDescription>Use your own email or username. The role will be admin automatically.</CardDescription>
-          </div>
-          <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-            Admin role
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-6">
+    <section className="border-y border-white/10 py-6">
+      <div className="mb-6 border-b border-white/10 pb-5">
+        <h2 className="text-2xl font-semibold tracking-tight">Create administrator</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Use your own email or username. This first account receives administrator access.
+        </p>
+      </div>
         <AdminForm
           busy={busy}
           error={error}
@@ -458,8 +370,7 @@ function AdminFormCard({
           onToggleConfirmPassword={onToggleConfirmPassword}
           onTogglePassword={onTogglePassword}
         />
-      </CardContent>
-    </Card>
+    </section>
   );
 }
 
@@ -502,7 +413,6 @@ function AdminForm({
           ) : (
             <>
               Create administrator
-              <ArrowRight data-icon="inline-end" />
             </>
           )}
         </Button>
@@ -604,7 +514,7 @@ function clearPasswordFields(form: HTMLFormElement | null) {
 
 function FormError({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
+    <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive-foreground">
       {message}
     </div>
   );

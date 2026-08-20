@@ -5,12 +5,11 @@ import {
   useMemo,
   useState,
   type Dispatch,
-  type ElementType,
   type FormEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { Building2, CheckSquare, Pencil, Plus, Search, SearchX, Server, Square, Trash2, Undo2, Users } from "lucide-react";
+import { CheckSquare, Pencil, Plus, Search, SearchX, Square, Trash2, Undo2 } from "lucide-react";
 import { CompanyMonitorsPanel } from "@/components/companies/company-monitors-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -174,7 +173,7 @@ export default function CompaniesPage() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Companies</h1>
@@ -194,10 +193,10 @@ export default function CompaniesPage() {
         </div>
       </header>
 
-      {error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div> : null}
+      {error ? <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">{error}</div> : null}
 
       {pendingRestores.length > 0 ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+        <div className="flex flex-col gap-3 border-l-2 border-emerald-500 px-4 py-2 sm:flex-row sm:items-center sm:justify-between" role="status">
           <div>
             <p className="text-sm font-medium">{pendingRestores.flatMap((item) => item.ids).length} compan{pendingRestores.flatMap((item) => item.ids).length === 1 ? "y" : "ies"} deleted</p>
             <p className="mt-1 text-xs text-muted-foreground">Company assignments remain recoverable for 60 seconds.</p>
@@ -208,14 +207,14 @@ export default function CompaniesPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <StatCard label="Total Companies" value={String(totals.companies)} sub="Registered organizations" icon={Building2} tone="neutral" />
-        <StatCard label="Active Companies" value={String(totals.active)} sub="Available for monitor assignment" icon={Users} tone="green" />
-        <StatCard label="Assigned Monitors" value={String(totals.monitors)} sub="Endpoints mapped to companies" icon={Server} tone="red" />
-      </div>
+      <dl className="grid border-y md:grid-cols-3 md:divide-x">
+        <StatItem label="Total companies" value={String(totals.companies)} sub="Registered organizations" />
+        <StatItem label="Active companies" value={String(totals.active)} sub="Available for assignment" tone="positive" />
+        <StatItem label="Assigned monitors" value={String(totals.monitors)} sub="Endpoints mapped to companies" />
+      </dl>
 
       {selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 border-l-2 border-emerald-500 px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} compan{selectedIds.size === 1 ? "y" : "ies"} selected</p>
             <p className="text-xs text-muted-foreground">Apply the same action across the selected organizations.</p>
@@ -271,14 +270,9 @@ export default function CompaniesPage() {
                     </button>
                   </TableCell>
                   <TableCell className="pl-1">
-                    <div className="flex items-start gap-3">
-                      <div className="rounded-lg border bg-muted/30 p-3">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-medium">{company.name}</p>
-                        <p className="max-w-md text-xs leading-5 text-muted-foreground">{company.description || "No description yet."}</p>
-                      </div>
+                    <div className="space-y-1">
+                      <p className="font-medium">{company.name}</p>
+                      <p className="max-w-md text-xs leading-5 text-muted-foreground">{company.description || "No description yet."}</p>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -390,8 +384,14 @@ function CompanyDialog({
   );
 }
 
-function StatCard({ label, value, sub, icon: Icon, tone }: { label: string; value: string; sub: string; icon: ElementType; tone: "neutral" | "green" | "red" }) {
-  return <Card className="overflow-hidden"><CardContent className={`border-l-2 px-4 py-3 ${tone === "green" ? "border-l-emerald-500" : tone === "red" ? "border-l-red-500" : "border-l-slate-400"}`}><div className="flex items-start justify-between gap-3"><div className="space-y-1"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="text-xl font-semibold tracking-tight">{value}</p><p className="text-xs text-muted-foreground">{sub}</p></div><div className="rounded-lg bg-muted/70 p-2.5"><Icon className="h-4 w-4" /></div></div></CardContent></Card>;
+function StatItem({ label, value, sub, tone = "neutral" }: { label: string; value: string; sub: string; tone?: "neutral" | "positive" }) {
+  return (
+    <div className="border-b px-4 py-4 last:border-b-0 md:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className={cn("mt-2 text-2xl font-semibold tracking-tight", tone === "positive" && "text-emerald-600 dark:text-emerald-400")}>{value}</dd>
+      <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+    </div>
+  );
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

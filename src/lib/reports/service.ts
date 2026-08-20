@@ -990,7 +990,7 @@ function buildHealthStatus(score: number) {
   return "Critical";
 }
 
-function buildReportMessage(report: GeneratedReport, options: ReportDeliveryOptions) {
+export function buildReportMessage(report: GeneratedReport, options: ReportDeliveryOptions) {
   const subjectPrefix =
     report.template === "executive"
       ? `[${report.workspaceName} Executive Report]`
@@ -1045,26 +1045,41 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
   const generatedAt = new Date(report.generatedAt).toLocaleString();
   const periodStartedAt = new Date(report.periodStartedAt).toLocaleString();
   const periodEndedAt = new Date(report.periodEndedAt).toLocaleString();
+  const healthTheme = getEmailHealthTheme(report.summary.healthStatus);
+  const brandInitial = report.workspaceName.trim().charAt(0).toUpperCase() || "R";
 
   return `
-    <div style="margin:0;padding:0;background:#eef2f7;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(
+      `${report.title}: ${report.summary.healthScore}/100 health, ${report.summary.uptimePct.toFixed(2)}% uptime.`
+    )}</div>
+    <div style="margin:0;padding:0;background:#e8eef6;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef2f7;">
         <tr>
-          <td align="center" style="padding:28px 12px;">
-            <table role="presentation" width="760" cellpadding="0" cellspacing="0" style="width:760px;max-width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #dbe3ef;border-radius:16px;overflow:hidden;">
+          <td align="center" style="padding:32px 12px;">
+            <table role="presentation" width="760" cellpadding="0" cellspacing="0" style="width:760px;max-width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #cfd9e8;border-radius:18px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
               <tr>
-                <td style="padding:26px;background:#0f172a;color:#ffffff;">
+                <td style="padding:28px;background:linear-gradient(135deg,#0f172a 0%,#172554 58%,#1e3a8a 100%);color:#ffffff;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
                       <td style="padding:0;vertical-align:top;">
-                        <div style="font-size:13px;font-weight:700;color:#93c5fd;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.workspaceName)}</div>
+                        <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                          <tr>
+                            <td style="padding:0 10px 0 0;vertical-align:middle;">
+                              <div style="width:34px;height:34px;border-radius:10px;background:#2563eb;color:#ffffff;font-size:16px;font-weight:800;line-height:34px;text-align:center;">${escapeHtml(brandInitial)}</div>
+                            </td>
+                            <td style="padding:0;vertical-align:middle;">
+                              <div style="font-size:14px;font-weight:700;color:#dbeafe;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.workspaceName)}</div>
+                              <div style="margin-top:2px;font-size:11px;color:#93c5fd;">Reliability intelligence</div>
+                            </td>
+                          </tr>
+                        </table>
                       </td>
                       <td align="right" style="padding:0;vertical-align:top;">
-                        <span style="display:inline-block;padding:5px 9px;border:1px solid #3b82f6;border-radius:999px;color:#bfdbfe;font-size:11px;font-weight:700;">${escapeHtml(report.periodLabel)}</span>
+                        <span style="display:inline-block;padding:6px 10px;border:1px solid #3b82f6;border-radius:999px;background:rgba(37,99,235,0.16);color:#dbeafe;font-size:11px;font-weight:700;">${escapeHtml(report.periodLabel)}</span>
                       </td>
                     </tr>
                   </table>
-                  <h1 style="margin:12px 0 8px;font-size:25px;line-height:1.25;">${escapeHtml(report.title)}</h1>
+                  <h1 style="margin:22px 0 8px;font-size:27px;line-height:1.2;letter-spacing:-0.3px;">${escapeHtml(report.title)}</h1>
                   <div style="font-size:14px;line-height:1.6;color:#cbd5e1;">${escapeHtml(report.templateLabel)} / ${escapeHtml(scopeLabel)}</div>
                   <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#e2e8f0;">${escapeHtml(introLine)}</p>
                 </td>
@@ -1076,11 +1091,12 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
                   </div>
                 </td>
               </tr>
+              ${renderEmailHealthBanner(report, healthTheme)}
               <tr>
                 <td style="padding:20px 24px 8px;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
-                      ${renderEmailMetric("Health score", `${report.summary.healthScore}/100`, report.summary.healthStatus)}
+                      ${renderEmailMetric("Health score", `${report.summary.healthScore}/100`, report.summary.healthStatus, healthTheme)}
                       ${renderEmailMetric("Uptime", `${report.summary.uptimePct.toFixed(2)}%`, "Availability for this period")}
                       ${renderEmailMetric("P95 latency", `${report.summary.p95LatencyMs}ms`, `${report.summary.averageLatencyMs}ms average`)}
                     </tr>
@@ -1096,9 +1112,17 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
               ${renderReportEmailDetailSections(report, options)}
               <tr>
                 <td style="padding:18px 24px 24px;">
-                  <div style="border-top:1px solid #e2e8f0;padding-top:16px;color:#64748b;font-size:12px;line-height:1.6;">
-                    ${escapeHtml(buildAttachmentSummary())}<br />Generated at ${escapeHtml(generatedAt)}.
-                  </div>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-top:1px solid #e2e8f0;">
+                    <tr>
+                      <td style="padding:16px 0 0;color:#64748b;font-size:12px;line-height:1.6;">
+                        Prepared for ${escapeHtml(scopeLabel)} by <strong style="color:#334155;">${escapeHtml(report.workspaceName)}</strong><br />
+                        Generated at ${escapeHtml(generatedAt)}.
+                      </td>
+                      <td align="right" style="padding:16px 0 0;vertical-align:top;">
+                        <span style="display:inline-block;padding:6px 9px;border-radius:8px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;">${escapeHtml(buildAttachmentSummary())}</span>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
             </table>
@@ -1242,16 +1266,68 @@ async function buildReportAttachmentSafely(request: ReportAttachmentRequest) {
   }
 }
 
-function renderEmailMetric(label: string, value: string, detail: string) {
+type EmailHealthTheme = {
+  background: string;
+  border: string;
+  foreground: string;
+  softForeground: string;
+};
+
+function renderEmailMetric(
+  label: string,
+  value: string,
+  detail: string,
+  theme?: EmailHealthTheme
+) {
+  const background = theme?.background ?? "#ffffff";
+  const border = theme?.border ?? "#e2e8f0";
+  const foreground = theme?.foreground ?? "#0f172a";
+
   return `
     <td width="33.33%" style="padding:0 6px 12px;vertical-align:top;">
-      <div style="border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#ffffff;">
+      <div style="border:1px solid ${border};border-radius:14px;padding:14px;background:${background};">
         <div style="font-size:12px;font-weight:700;color:#64748b;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(label)}</div>
-        <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;color:#0f172a;">${escapeHtml(value)}</div>
+        <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;color:${foreground};">${escapeHtml(value)}</div>
         <div style="margin-top:4px;font-size:12px;line-height:1.5;color:#64748b;">${escapeHtml(detail)}</div>
       </div>
     </td>
   `;
+}
+
+function renderEmailHealthBanner(report: GeneratedReport, theme: EmailHealthTheme) {
+  const message = report.summary.currentlyDown > 0
+    ? `${report.summary.currentlyDown} URL${report.summary.currentlyDown === 1 ? " is" : "s are"} currently down and requires attention.`
+    : "All monitored URLs are currently responding; review the period metrics below for trends.";
+
+  return `
+    <tr>
+      <td style="padding:16px 24px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${theme.border};border-radius:14px;background:${theme.background};">
+          <tr>
+            <td style="padding:14px 16px;">
+              <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${theme.foreground};">${escapeHtml(report.summary.healthStatus)} health</div>
+              <div style="margin-top:4px;font-size:13px;line-height:1.55;color:${theme.softForeground};">${escapeHtml(message)}</div>
+            </td>
+            <td align="right" style="padding:14px 16px;vertical-align:middle;">
+              <span style="font-size:24px;font-weight:800;color:${theme.foreground};">${report.summary.healthScore}</span><span style="font-size:12px;font-weight:700;color:${theme.softForeground};">/100</span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  `;
+}
+
+function getEmailHealthTheme(status: string): EmailHealthTheme {
+  if (status === "Excellent" || status === "Stable") {
+    return { background: "#ecfdf5", border: "#a7f3d0", foreground: "#047857", softForeground: "#065f46" };
+  }
+
+  if (status === "Watch") {
+    return { background: "#fffbeb", border: "#fde68a", foreground: "#b45309", softForeground: "#92400e" };
+  }
+
+  return { background: "#fff1f2", border: "#fecdd3", foreground: "#be123c", softForeground: "#9f1239" };
 }
 
 function renderEmailSnapshotSection(report: GeneratedReport, scopeLabel: string, generatedAt: string) {

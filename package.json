@@ -1,6 +1,6 @@
 {
   "name": "sentrovia",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Sentrovia is a verification-aware monitoring platform for HTTP, TCP, and PostgreSQL uptime checks.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
@@ -29,6 +29,8 @@
     "db:push": "drizzle-kit push",
     "db:push:bootstrap": "drizzle-kit push --force",
     "db:sync": "node scripts/sync-database-schema.mjs",
+    "db:repair": "node scripts/repair-database.mjs",
+    "db:repair:dry-run": "node scripts/repair-database.mjs --dry-run",
     "db:manual": "node scripts/apply-manual-migrations.mjs",
     "db:manual:baseline": "node scripts/apply-manual-migrations.mjs --baseline"
   },

@@ -1,39 +1,26 @@
 import Link from "next/link";
-import {
-  Activity,
-  BellRing,
-  Database,
-  FileText,
-  Globe2,
-  ServerCog,
-  Settings2,
-  ShieldCheck,
-} from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { SentroviaMark } from "@/components/brand/sentrovia-mark";
 
 const linkButtonClassName =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
 const ghostLinkClassName =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
 
 const capabilities = [
   {
-    icon: Activity,
     title: "Service monitoring",
     description: "HTTP, keyword, JSON, TCP, ping, PostgreSQL, and heartbeat checks share one scheduling model.",
   },
   {
-    icon: ShieldCheck,
     title: "Failure verification",
     description: "A first failure enters verification. Down notifications are sent only after the configured attempts fail.",
   },
   {
-    icon: BellRing,
     title: "Notification delivery",
     description: "Email, Telegram, Discord, and webhook outcomes are recorded so failed deliveries remain visible.",
   },
   {
-    icon: FileText,
     title: "HTML reports",
     description: "Manual and scheduled reports summarize availability, latency, and failures for a workspace or company.",
   },
@@ -41,17 +28,14 @@ const capabilities = [
 
 const runtime = [
   {
-    icon: Globe2,
     title: "Web application",
     description: "Stores monitor configuration, members, settings, reports, and public status page preferences.",
   },
   {
-    icon: ServerCog,
     title: "Worker",
     description: "Claims due monitors, performs checks, verifies failures, and dispatches notifications and scheduled reports.",
   },
   {
-    icon: Database,
     title: "PostgreSQL",
     description: "Keeps configuration and runtime history durable across browser refreshes, restarts, and updates.",
   },
@@ -77,7 +61,7 @@ const monitorTypes = [
 
 export default function AboutPage() {
   return (
-    <div className="flex w-full flex-col gap-8 animate-in fade-in duration-200">
+    <div className="flex w-full flex-col gap-8">
       <header className="flex flex-col gap-5 border-b pb-7 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex items-start gap-4">
           <SentroviaMark className="size-11 rounded-lg border bg-card text-lg" />
@@ -101,8 +85,7 @@ export default function AboutPage() {
         <div className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
           {capabilities.map((item) => (
             <div key={item.title} className="py-5 xl:px-5 xl:first:pl-0 xl:last:pr-0">
-              <item.icon className="size-4 text-muted-foreground" />
-              <h3 className="mt-3 text-sm font-medium">{item.title}</h3>
+              <h3 className="text-sm font-medium">{item.title}</h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
             </div>
           ))}
@@ -114,13 +97,10 @@ export default function AboutPage() {
           <h2 id="runtime-title" className="text-base font-semibold">Runtime architecture</h2>
           <p className="mt-1 text-sm text-muted-foreground">Three services share responsibility without hiding state in the browser.</p>
         </div>
-        <div className="grid gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-3">
+        <div className="grid border-y lg:grid-cols-3 lg:divide-x">
           {runtime.map((item) => (
-            <div key={item.title} className="bg-card p-5">
-              <div className="flex items-center gap-2">
-                <item.icon className="size-4 text-primary" />
-                <h3 className="text-sm font-medium">{item.title}</h3>
-              </div>
+            <div key={item.title} className="p-5 first:pl-0 last:pr-0">
+              <h3 className="text-sm font-medium">{item.title}</h3>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.description}</p>
             </div>
           ))}

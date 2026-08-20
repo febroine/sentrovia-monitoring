@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, ChevronDown, ChevronUp, Save, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { DateField, SuggestionField } from "@/components/logs/log-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,52 +59,20 @@ export function LogsFiltersPanel({
     .filter((monitor) => matchesQuery(monitor.name, filters.monitorQuery))
     .slice(0, 8);
 
-  const matchedCompany = getMatchedCompany(filters.companyQuery, options.companies);
-  const scopedMonitors = options.monitors.filter((monitor) =>
-    belongsToActiveCompany(monitor.companyId, activeCompanyIds)
-  );
   const activeFilterChips = buildActiveFilterChips(filters);
 
   return (
     <Card className="border-border/80">
       <CardHeader className={`${filtersOpen ? "border-b" : ""} bg-muted/10 pb-4`}>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <SlidersHorizontal className="h-4 w-4 text-sky-500" />
-                Filters
-              </CardTitle>
-              <CardDescription>
-                Narrow the stream with company, monitor, severity, status code, and date controls.
-              </CardDescription>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <FilterMiniStat
-                label="Active filters"
-                value={String(activeFilterChips.length)}
-                helper={activeFilterChips.length > 0 ? "Custom scope applied" : "Showing the full stream"}
-                accent="before:bg-sky-500"
-              />
-              <FilterMiniStat
-                label="Saved views"
-                value={String(presets.length)}
-                helper={presets.length > 0 ? "Reusable DB-backed presets" : "Save a preset after filtering"}
-                accent="before:bg-violet-500"
-              />
-              <FilterMiniStat
-                label="Company scope"
-                value={matchedCompany?.name ?? "All companies"}
-                helper={matchedCompany ? `${scopedMonitors.length} monitors in scope` : "No company narrowed yet"}
-                accent="before:bg-emerald-500"
-              />
-              <FilterMiniStat
-                label="Date range"
-                value={describeDateRange(filters)}
-                helper="Use quick presets or the calendar picker"
-                accent="before:bg-amber-500"
-              />
-            </div>
+          <div className="space-y-1">
+            <CardTitle className="text-base">Filters</CardTitle>
+            <CardDescription>
+              Narrow the stream by company, monitor, severity, status code, or date.
+            </CardDescription>
+            <p className="pt-1 text-xs text-muted-foreground">
+              {activeFilterChips.length} active · {presets.length} saved
+            </p>
           </div>
 
           <Button variant="outline" size="sm" onClick={onToggleOpen}>
@@ -116,7 +84,7 @@ export function LogsFiltersPanel({
 
       {filtersOpen ? (
         <CardContent className="space-y-5 pt-5">
-          <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+          <div className="border-b pb-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Saved filters and quick ranges</p>
@@ -133,7 +101,6 @@ export function LogsFiltersPanel({
                     size="sm"
                     onClick={() => applyQuickDateRange(preset.days, onUpdateFilter)}
                   >
-                    <CalendarClock className="mr-2 h-3.5 w-3.5" />
                     {preset.label}
                   </Button>
                 ))}
@@ -156,7 +123,7 @@ export function LogsFiltersPanel({
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <div className="space-y-4 rounded-xl border border-border/70 bg-background/60 p-4">
+            <div className="space-y-4 border-y py-4">
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_160px]">
                 <Select value={filters.level} onValueChange={(value) => onUpdateFilter("level", String(value))}>
                   <SelectTrigger>
@@ -201,7 +168,7 @@ export function LogsFiltersPanel({
               </div>
             </div>
 
-            <div className="space-y-4 rounded-xl border border-border/70 bg-muted/15 p-4">
+            <div className="space-y-4 border-y py-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Time window</p>
                 <p className="text-xs text-muted-foreground">
@@ -231,7 +198,7 @@ function ActiveFiltersRow({
 }) {
   if (chips.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border/70 bg-muted/10 px-4 py-3">
+      <div className="border-l-2 border-border px-4 py-2">
         <p className="text-sm font-medium">No active filters</p>
         <p className="text-xs text-muted-foreground">
           Open scope, all levels, and the full event timeline are currently visible.
@@ -263,28 +230,6 @@ function ActiveFiltersRow({
           </Badge>
         ))}
       </div>
-    </div>
-  );
-}
-
-function FilterMiniStat({
-  label,
-  value,
-  helper,
-  accent,
-}: {
-  label: string;
-  value: string;
-  helper: string;
-  accent: string;
-}) {
-  return (
-    <div
-      className={`relative overflow-hidden rounded-xl border border-border/70 bg-background/75 px-4 py-3 before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-full ${accent}`}
-    >
-      <p className="pl-3 text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="pl-3 pt-2 text-sm font-semibold text-foreground">{value}</p>
-      <p className="pl-3 pt-1 text-xs text-muted-foreground">{helper}</p>
     </div>
   );
 }
@@ -336,7 +281,6 @@ function FilterPresetRow({
           </SelectContent>
         </Select>
         <Button variant="outline" onClick={onSavePreset} disabled={!presetName.trim()}>
-          <Save className="mr-2 h-4 w-4" />
           Save filter
         </Button>
       </div>
@@ -388,11 +332,6 @@ function getActiveCompanyIds(
   return exactMatches.length > 0 ? new Set(exactMatches.map((company) => company.id)) : null;
 }
 
-function getMatchedCompany(query: string, companies: Array<{ id: string; name: string }>) {
-  const normalizedQuery = query.trim().toLowerCase();
-  return companies.find((company) => company.name.toLowerCase() === normalizedQuery) ?? null;
-}
-
 function buildActiveFilterChips(filters: LogFilters) {
   return [
     filters.level !== "all" ? { key: "level", label: "Level", value: filters.level } : null,
@@ -410,22 +349,6 @@ function getDefaultValue(key: keyof LogFilters) {
   }
 
   return "";
-}
-
-function describeDateRange(filters: LogFilters) {
-  if (filters.from && filters.to) {
-    return `${filters.from} -> ${filters.to}`;
-  }
-
-  if (filters.from) {
-    return `From ${filters.from}`;
-  }
-
-  if (filters.to) {
-    return `Until ${filters.to}`;
-  }
-
-  return "All time";
 }
 
 function applyQuickDateRange(

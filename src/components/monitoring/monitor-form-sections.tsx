@@ -85,7 +85,7 @@ export function GeneralMonitorSettings({
   return (
     <div className="space-y-4">
       {isBulkEditMode ? (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+        <div className="border-l-2 border-amber-500 px-4 py-2">
           <p className="text-sm font-medium text-foreground">Bulk edit keeps each monitor target intact.</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             Monitor type, name, company, URL or host, and monitor-specific keyword, JSON, heartbeat, or database fields
@@ -111,11 +111,9 @@ export function GeneralMonitorSettings({
           </Field>
 
           {selectedMonitorType ? (
-            <div className="rounded-lg border border-border/80 bg-muted/10 px-4 py-3">
+            <div className="border-y py-3">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 rounded-md border border-border/70 bg-background p-2">
-                  <selectedMonitorType.icon className="size-4 text-primary" />
-                </div>
+                <selectedMonitorType.icon className="mt-0.5 size-4 shrink-0 text-primary" />
                 <div>
                   <p className="text-sm font-medium">{getMonitorTypeLabel(selectedMonitorType.value)}</p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedMonitorType.description}</p>
@@ -124,7 +122,7 @@ export function GeneralMonitorSettings({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Monitor name">
               <Input value={values.name} onChange={(event) => onFieldChange("name", event.target.value)} required />
             </Field>
@@ -178,7 +176,7 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isKeywordMonitor ? (
-            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
+            <div className="space-y-4 border-y py-4">
               <Field label="Keyword or phrase">
                 <Input
                   value={values.keywordQuery}
@@ -197,8 +195,8 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isJsonMonitor ? (
-            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 border-y py-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="JSON path">
                   <Input
                     value={values.jsonPath}
@@ -243,7 +241,7 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isPortMonitor ? (
-            <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
               <Field label="Host">
                 <Input
                   value={values.portHost}
@@ -266,8 +264,8 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isHeartbeatMonitor ? (
-            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
-              <div className="rounded-lg border border-border/80 bg-background px-4 py-3 text-xs leading-6 text-muted-foreground">
+            <div className="space-y-4 border-y py-4">
+              <div className="border-l-2 border-border px-4 py-2 text-xs leading-6 text-muted-foreground">
                 Save the monitor once to generate its dedicated heartbeat endpoint. Your cron job can then call that
                 endpoint with `GET` or `POST` on every successful run.
               </div>
@@ -281,8 +279,8 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isPostgresMonitor ? (
-            <div className="space-y-4 rounded-lg border border-border/80 bg-muted/10 p-4">
-              <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4">
+            <div className="space-y-4 border-y py-4">
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
                 <Field label="Database host">
                   <Input
                     value={values.databaseHost}
@@ -303,7 +301,7 @@ export function GeneralMonitorSettings({
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Database name">
                   <Input
                     value={values.databaseName}
@@ -355,7 +353,7 @@ export function GeneralMonitorSettings({
       </Field>
 
       {!isBulkEditMode ? (
-        <div className="rounded-lg border border-border px-3 py-3">
+        <div className="border-y py-3">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium">Active monitor</p>
@@ -385,7 +383,7 @@ export function CheckMonitorSettings({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Check interval">
           <div className="flex gap-2">
             <Input
@@ -454,7 +452,7 @@ export function CheckMonitorSettings({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Consecutive failures required">
           <Input
             type="number"
@@ -489,7 +487,7 @@ export function CheckMonitorSettings({
 
       {isHttpMonitor || isAssertionMonitor ? (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="HTTP method">
               <Select value={values.method} onValueChange={(value) => onFieldChange("method", value as HttpMethod)}>
                 <SelectTrigger>
@@ -518,7 +516,7 @@ export function CheckMonitorSettings({
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Max redirects">
               <Input
                 type="number"
@@ -583,12 +581,12 @@ export function CheckMonitorSettings({
           />
         </div>
       ) : isHeartbeatMonitor ? (
-        <div className="rounded-lg border border-border/80 bg-muted/10 px-4 py-3 text-xs leading-5 text-muted-foreground">
+        <div className="border-l-2 border-border px-4 py-2 text-xs leading-5 text-muted-foreground">
           Heartbeat monitors stay healthy only while your cron or background job keeps calling the generated heartbeat endpoint
           within the configured interval.
         </div>
       ) : (
-        <div className="rounded-lg border border-border/80 bg-muted/10 px-4 py-3 text-xs leading-5 text-muted-foreground">
+        <div className="border-l-2 border-border px-4 py-2 text-xs leading-5 text-muted-foreground">
           {isPostgresMonitor
             ? "PostgreSQL monitors open a database session and run a lightweight SELECT 1 check. HTTP-specific options stay disabled for this monitor type."
             : isPingMonitor
@@ -668,13 +666,13 @@ function HeartbeatEndpointTools({
           Copy endpoint
         </Button>
       </div>
-      <div className="space-y-2 rounded-lg border border-border/80 bg-background px-4 py-3">
+      <div className="space-y-2 border-y py-3">
         <p className="text-xs font-medium text-foreground">Example curl</p>
         <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-muted-foreground">
           {curlSnippet}
         </pre>
       </div>
-      <div className="space-y-2 rounded-lg border border-border/80 bg-background px-4 py-3">
+      <div className="space-y-2 border-y py-3">
         <p className="text-xs font-medium text-foreground">Example cron</p>
         <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-muted-foreground">
           {cronSnippet}

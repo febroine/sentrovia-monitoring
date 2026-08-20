@@ -1,19 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { ArrowRight } from "lucide-react";
-import dashboardScreenshot from "../../../docs/screenshots/dashboard.png";
 import { SentroviaMark } from "@/components/brand/sentrovia-mark";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type AuthShellTone = "primary" | "emerald";
@@ -24,23 +13,14 @@ type AuthShowcaseCard = {
   description: string;
 };
 
-const toneClasses: Record<
-  AuthShellTone,
-  {
-    accentLine: string;
-    buttonLink: string;
-    icon: string;
-  }
-> = {
+const toneClasses: Record<AuthShellTone, { accent: string; link: string }> = {
   primary: {
-    accentLine: "bg-primary",
-    buttonLink: "text-primary hover:text-primary/80",
-    icon: "text-primary",
+    accent: "bg-indigo-400",
+    link: "text-indigo-300 hover:text-indigo-200",
   },
   emerald: {
-    accentLine: "bg-emerald-500",
-    buttonLink: "text-emerald-300 hover:text-emerald-200",
-    icon: "text-emerald-500",
+    accent: "bg-emerald-400",
+    link: "text-emerald-300 hover:text-emerald-200",
   },
 };
 
@@ -70,124 +50,155 @@ export function AuthShell({
   const palette = toneClasses[tone];
 
   return (
-    <div className="min-h-screen bg-[#090a0c] text-foreground">
-      <div className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_460px]">
-        <section className="hidden min-h-screen border-r border-white/10 bg-[#0b0c0f] lg:flex">
-          <div className="flex w-full flex-col px-10 py-9 xl:px-16">
-            <header className="flex items-center gap-3">
-              <SentroviaMark className="size-9 rounded-md border border-emerald-400/30 bg-emerald-400/10 text-sm text-emerald-300" />
-              <div>
-                <p className="text-sm font-semibold tracking-tight">Sentrovia</p>
-                <p className="text-xs text-muted-foreground">Monitoring workspace</p>
-              </div>
-            </header>
+    <main className="min-h-screen bg-[#090a0c] text-foreground">
+      <div className="grid min-h-screen lg:grid-cols-[minmax(0,1.12fr)_minmax(420px,0.88fr)]">
+        <ProductContext
+          accentClassName={palette.accent}
+          heroTitle={heroTitle}
+          heroDescription={heroDescription}
+          showcaseCards={showcaseCards}
+        />
 
-            <div className="my-auto py-14">
-              <div className="max-w-3xl">
-                <p className="mb-4 text-xs font-semibold tracking-[0.16em] text-emerald-400">OPERATIONAL VISIBILITY</p>
-                <h1 className="max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight text-balance xl:text-5xl">
-                  {heroTitle}
-                </h1>
-                <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-400">
-                  {heroDescription}
+        <section className="flex min-h-screen border-white/10 bg-[#0d0e11] px-5 py-6 sm:px-10 lg:border-l lg:px-12 xl:px-16">
+          <div className="mx-auto flex w-full max-w-[420px] flex-col">
+            <MobileBrand />
+            <div className="my-auto py-12">
+              <div className="mb-9 border-b border-white/10 pb-7">
+                <p className="mb-3 text-[11px] font-semibold tracking-[0.18em] text-zinc-500 uppercase">
+                  Workspace access
                 </p>
+                <h2 className="text-2xl font-semibold tracking-tight text-zinc-100">
+                  {formTitle}
+                </h2>
+                <p className="mt-3 max-w-sm text-sm leading-6 text-zinc-400">{formDescription}</p>
               </div>
 
-              <div className="mt-10 overflow-hidden rounded-xl border border-white/10 bg-[#101114] shadow-2xl shadow-black/20">
-                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full bg-emerald-400" />
-                    <span className="text-xs font-medium text-zinc-300">Live workspace</span>
-                  </div>
-                  <span className="text-[11px] text-zinc-500">Dashboard</span>
-                </div>
-                <div className="relative aspect-[16/8] overflow-hidden bg-[#090a0c]">
-                  <Image
-                    src={dashboardScreenshot}
-                    alt="Sentrovia dashboard showing monitor and worker health"
-                    fill
-                    priority
-                    sizes="(min-width: 1280px) 62vw, 55vw"
-                    className="object-cover object-top"
-                  />
-                </div>
-                <div className="grid grid-cols-3 divide-x divide-white/10 border-t border-white/10">
-                  <AuthMetric value="Verified" label="outages" />
-                  <AuthMetric value="Live" label="delivery state" />
-                  <AuthMetric value="One view" label="for operations" />
-                </div>
-              </div>
+              {children}
 
-              <div className="mt-7 grid gap-3 md:grid-cols-3">
-                {showcaseCards.map((item) => (
-                  <div key={item.title} className="border-t border-white/10 pt-3">
-                    <div className="flex items-center gap-2">
-                      <item.icon className={cn("size-4", palette.icon)} />
-                      <p className="text-sm font-medium text-zinc-200">{item.title}</p>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-zinc-500">{item.description}</p>
-                  </div>
-                ))}
-              </div>
+              <AuthFooter
+                prompt={footerPrompt}
+                href={footerHref}
+                label={footerLabel}
+                linkClassName={palette.link}
+              />
             </div>
 
-            <p className="text-xs text-zinc-600">Built for teams that need evidence before escalation.</p>
+            <p className="pb-2 text-center text-[11px] tracking-wide text-zinc-600">
+              Private workspace · Admin-managed access
+            </p>
           </div>
         </section>
+      </div>
+    </main>
+  );
+}
 
-        <section className="flex min-h-screen items-center justify-center bg-[#0d0e11] px-4 py-8 sm:px-8 lg:px-12">
-          <div className="w-full max-w-[390px]">
-            <div className="mb-8 flex items-center gap-3 lg:hidden">
-              <SentroviaMark className="size-9 rounded-md border border-emerald-400/30 bg-emerald-400/10 text-sm text-emerald-300" />
-              <div>
-                <p className="text-sm font-semibold">Sentrovia</p>
-                <p className="text-xs text-muted-foreground">Monitoring workspace</p>
-              </div>
-            </div>
+function ProductContext({
+  accentClassName,
+  heroTitle,
+  heroDescription,
+  showcaseCards,
+}: {
+  accentClassName: string;
+  heroTitle: string;
+  heroDescription: string;
+  showcaseCards: AuthShowcaseCard[];
+}) {
+  return (
+    <section className="relative hidden min-h-screen overflow-hidden bg-[#090a0c] lg:flex">
+      <div className="absolute inset-y-0 right-0 w-px bg-white/5" />
+      <div className="flex w-full flex-col px-10 py-9 xl:px-16 2xl:px-24">
+        <Brand />
 
-            <Card className="relative overflow-hidden border-white/10 bg-[#111215] shadow-2xl shadow-black/20">
-              <div className={cn("absolute inset-x-0 top-0 h-0.5", palette.accentLine)} />
-              <CardHeader className="gap-3 px-6 pb-5 pt-7 sm:px-7">
-                <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-zinc-500">
-                  <span className="size-1.5 rounded-full bg-emerald-400" />
-                  WORKSPACE ACCESS
-                </div>
-                <div className="flex flex-col gap-2">
-                  <CardTitle className="text-2xl tracking-tight">{formTitle}</CardTitle>
-                  <CardDescription className="leading-6 text-zinc-400">{formDescription}</CardDescription>
-                </div>
-              </CardHeader>
+        <div className="my-auto max-w-3xl py-12">
+          <span className={cn("mb-6 block h-0.5 w-10", accentClassName)} />
+          <h1 className="max-w-2xl text-3xl leading-tight font-semibold tracking-tight text-balance xl:text-4xl">
+            {heroTitle}
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400 xl:text-base xl:leading-7">
+            {heroDescription}
+          </p>
 
-              <CardContent className="px-6 pb-7 sm:px-7">{children}</CardContent>
-
-              {footerPrompt && footerHref && footerLabel ? (
-                <CardFooter className="flex-col items-stretch gap-4 border-t border-white/10 bg-[#0d0e11] px-6 py-5 sm:px-7">
-                  <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-muted-foreground">{footerPrompt}</p>
-                    <Link
-                      href={footerHref}
-                      className={cn("inline-flex items-center gap-2 font-medium transition-colors", palette.buttonLink)}
-                    >
-                      {footerLabel}
-                      <ArrowRight className="size-4" />
-                    </Link>
-                  </div>
-                </CardFooter>
-              ) : null}
-            </Card>
-            <p className="mt-5 text-center text-xs text-zinc-600">Private workspace · Admin-managed access</p>
+          <div className="mt-10 border-y border-white/10">
+            {showcaseCards.map((item, index) => (
+              <ProductFact key={item.title} index={index} item={item} />
+            ))}
           </div>
-        </section>
+        </div>
+
+        <div className="flex items-center justify-between gap-6 border-t border-white/10 pt-5 text-[11px] tracking-wide text-zinc-600">
+          <span>CHECK → VERIFY → NOTIFY</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProductFact({
+  index,
+  item,
+}: {
+  index: number;
+  item: AuthShowcaseCard;
+}) {
+  return (
+    <div className="grid grid-cols-[36px_minmax(0,1fr)] items-start gap-4 border-b border-white/10 py-4 last:border-b-0">
+      <span className="pt-0.5 font-mono text-[11px] text-zinc-600">0{index + 1}</span>
+      <div className="grid gap-1.5 xl:grid-cols-[150px_minmax(0,1fr)] xl:gap-6">
+        <div className="flex items-center">
+          <h2 className="text-sm font-medium text-zinc-200">{item.title}</h2>
+        </div>
+        <p className="text-sm leading-6 text-zinc-500">{item.description}</p>
       </div>
     </div>
   );
 }
 
-function AuthMetric({ value, label }: { value: string; label: string }) {
+function Brand() {
   return (
-    <div className="px-4 py-3 first:pl-4">
-      <p className="text-sm font-medium text-zinc-200">{value}</p>
-      <p className="mt-1 text-[11px] text-zinc-500">{label}</p>
+    <header className="flex items-center gap-3">
+      <SentroviaMark className="size-9 border border-white/15 bg-white/[0.035] text-sm text-zinc-100" />
+      <div>
+        <p className="text-sm font-semibold tracking-tight">Sentrovia</p>
+        <p className="text-xs text-zinc-600">Operations monitoring</p>
+      </div>
+    </header>
+  );
+}
+
+function MobileBrand() {
+  return (
+    <div className="flex items-center gap-3 lg:hidden">
+      <SentroviaMark className="size-9 border border-white/15 bg-white/[0.035] text-sm text-zinc-100" />
+      <div>
+        <p className="text-sm font-semibold">Sentrovia</p>
+        <p className="text-xs text-zinc-600">Operations monitoring</p>
+      </div>
+    </div>
+  );
+}
+
+function AuthFooter({
+  prompt,
+  href,
+  label,
+  linkClassName,
+}: {
+  prompt?: string;
+  href?: string;
+  label?: string;
+  linkClassName: string;
+}) {
+  if (!prompt || !href || !label) {
+    return null;
+  }
+
+  return (
+    <div className="mt-8 flex items-center justify-between gap-4 border-t border-white/10 pt-6 text-sm">
+      <p className="text-zinc-500">{prompt}</p>
+      <Link href={href} className={cn("inline-flex items-center gap-2 font-medium transition-colors", linkClassName)}>
+        {label}
+      </Link>
     </div>
   );
 }

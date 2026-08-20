@@ -268,19 +268,19 @@ function ExpandedRow({
                   {log.detailSummary ?? "No additional context available."}
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <dl className="grid border-y md:grid-cols-2 xl:grid-cols-3 xl:divide-x">
                 {log.detailItems.map((item) => (
                   <div
                     key={`${log.id}-${item.label}`}
-                    className="rounded-lg border border-l-2 border-l-sky-500 bg-background px-3 py-3"
+                    className="border-b px-3 py-3 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0"
                   >
-                    <p className="text-xs font-medium text-muted-foreground">
+                    <dt className="text-xs font-medium text-muted-foreground">
                       {item.label}
-                    </p>
-                    <p className="mt-2 break-all text-sm font-medium">{item.value}</p>
+                    </dt>
+                    <dd className="mt-2 break-all text-sm font-medium">{item.value}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
             </div>
           </TableCell>
         </TableRow>

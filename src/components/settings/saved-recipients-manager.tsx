@@ -40,7 +40,7 @@ export function SavedRecipientsManager({
   }
 
   return (
-    <div className="rounded-xl border bg-muted/20 p-5">
+    <div className="border-y py-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-medium">Saved notification recipients</p>

@@ -108,7 +108,7 @@ export function NotificationMonitorSettings({
       )}
 
       {(values.notificationPref === "telegram" || values.notificationPref === "both") && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Bot token">
             <Input value={values.telegramBotToken} onChange={(event) => onFieldChange("telegramBotToken", event.target.value)} />
           </Field>
@@ -139,7 +139,7 @@ export function TemplateMonitorSettings({
 }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-muted/15 p-3">
+      <div className="border-y py-3">
         <p className="text-sm font-medium">Template variables</p>
         <p className="mt-1 text-xs text-muted-foreground">
           Leave monitor-level templates blank to use the workspace templates from Settings.
@@ -252,10 +252,10 @@ export function NotificationTemplatePreview({
         </Button>
       </div>
 
-      {message ? <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{message}</p> : null}
+      {message ? <p className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive">{message}</p> : null}
 
       {decision ? (
-        <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${decision.wouldNotify ? "border-emerald-300/70 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-amber-300/70 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20"}`}>
+        <div className={`flex items-start gap-3 border-l-2 px-4 py-2 ${decision.wouldNotify ? "border-emerald-500" : "border-amber-500"}`}>
           {decision.wouldNotify ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" /> : <Ban className="mt-0.5 size-4 shrink-0 text-amber-600" />}
           <div>
             <p className="text-sm font-medium">{decision.wouldNotify ? "Notification eligible" : "Notification suppressed"}</p>

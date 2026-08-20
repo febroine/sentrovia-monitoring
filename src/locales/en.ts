@@ -23,7 +23,6 @@ export const en = {
   nav: {
     dashboard: "Dashboard",
     monitors: "Monitors",
-    statusCodes: "Status Codes",
     companies: "Companies",
     members: "Members",
     logs: "Event Logs",
@@ -450,30 +449,6 @@ export const en = {
       message: "Message/Event Details",
       context: "Context (IP)"
     }
-  },
-  statusCodes: {
-    title: "Status Codes",
-    desc: "Breakdown of HTTP status codes encountered in your monitors.",
-    chart: {
-      distributionTitle: "Class Distribution",
-      distributionDesc: "Distribution by endpoint responses",
-      recentErrors: "Recent Errors (4xx / 5xx)"
-    },
-    tableBox: {
-      title: "All Status Code Details",
-      desc: "Global breakdown over all time",
-      code: "HTTP Code",
-      descCell: "Description",
-      occurrences: "Occurrences",
-      status: "Status"
-    },
-    classes: {
-      success: "2xx Success",
-      redirect: "3xx Redirect",
-      clientError: "4xx Client Error",
-      serverError: "5xx Server Error"
-    },
-    searchPlaceholder: "Search by code or description..."
   }
 };
 

@@ -2,19 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  BarChart3,
   ChevronDown,
-  Copy,
   Download,
-  PlayCircle,
   Search,
   Send,
-  Sparkles,
-  Trash2,
-  UsersRound,
-  WandSparkles,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -118,25 +110,21 @@ const TEMPLATE_OPTIONS: Array<{
   value: ReportTemplateVariant;
   label: string;
   detail: string;
-  icon: typeof Sparkles;
 }> = [
   {
     value: "operations",
     label: "Operations",
     detail: "Detailed runtime language for operators and support teams.",
-    icon: BarChart3,
   },
   {
     value: "executive",
     label: "Executive",
     detail: "Condensed summary focused on uptime, risk, and leadership visibility.",
-    icon: Sparkles,
   },
   {
     value: "client",
     label: "Client",
     detail: "Customer-friendly wording that keeps technical noise low.",
-    icon: UsersRound,
   },
 ];
 
@@ -490,7 +478,7 @@ export default function ReportsPageClient() {
   const scheduleNeedsCompany = scheduleDraft.scope === "company" && !scheduleDraft.companyId;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Reports</h1>
@@ -498,31 +486,26 @@ export default function ReportsPageClient() {
             Preview HTML reports, schedule recurring delivery, and review existing report plans.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 md:justify-end">
-          <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">
-            HTML only
-          </Badge>
-          <Badge variant="outline" className="border-border/70 text-muted-foreground">
-            Next: {activeSchedules[0] ? new Date(activeSchedules[0].nextRunAt).toLocaleString() : "No active schedule"}
-          </Badge>
-        </div>
+        <p className="text-sm text-muted-foreground md:text-right">
+          Next delivery: {activeSchedules[0] ? new Date(activeSchedules[0].nextRunAt).toLocaleString() : "No active schedule"}
+        </p>
       </header>
 
       {message ? (
         <div
           role={message.tone === "error" ? "alert" : "status"}
           className={cn(
-            "rounded-lg border px-4 py-3 text-sm",
-            message.tone === "error" && "border-destructive/30 bg-destructive/5 text-destructive",
-            message.tone === "success" && "border-emerald-500/25 bg-emerald-500/5",
-            message.tone === "info" && "border-border/70 bg-muted/20"
+            "border-l-2 px-4 py-2 text-sm",
+            message.tone === "error" && "border-destructive text-destructive",
+            message.tone === "success" && "border-emerald-500",
+            message.tone === "info" && "border-border"
           )}
         >
           {message.text}
         </div>
       ) : null}
 
-      <div className="inline-flex w-full rounded-lg border bg-muted/30 p-1 sm:w-auto">
+      <div className="inline-flex w-full rounded-md border bg-muted/30 p-1 sm:w-auto">
         <ReportModeButton active={activeTab === "preview"} title="Preview" onClick={() => setActiveTab("preview")} />
         <ReportModeButton active={activeTab === "schedules"} title="Schedules" onClick={() => setActiveTab("schedules")} />
       </div>
@@ -612,6 +595,9 @@ export default function ReportsPageClient() {
               <ReportOptionsPanel
                 template={previewDraft.template}
                 draft={previewDraft}
+                subjectTitle={buildScheduleName(previewDraft.scope, previewDraft.cadence, previewDraft.companyId, companies)}
+                subjectScope={resolveDraftScopeLabel(previewDraft, companies)}
+                subjectPeriod={resolveDraftPeriodLabel(previewDraft.cadence)}
                 onTemplateChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
                 onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
               />
@@ -649,8 +635,8 @@ export default function ReportsPageClient() {
             />
           ) : (
             <BuilderEmptyState
-              title="Preview studio is ready"
-              description="Pick a scope, cadence, and template, then generate a preview to inspect the final report before it goes out."
+              title="No report preview yet"
+              description="Choose the report settings, then generate a preview before sending it."
               actionLabel="Use weekly workspace preset"
               onAction={() => applyPreviewPreset("global", "weekly", "operations")}
             />
@@ -743,7 +729,7 @@ export default function ReportsPageClient() {
                   />
                 </Field>
 
-                <div className="rounded-lg border bg-muted/15 p-4">
+                <div className="border-y py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium">Auto-send</p>
@@ -759,6 +745,9 @@ export default function ReportsPageClient() {
               <ReportOptionsPanel
                 template={scheduleDraft.template}
                 draft={scheduleDraft}
+                subjectTitle={buildScheduleName(scheduleDraft.scope, scheduleDraft.cadence, scheduleDraft.companyId, companies)}
+                subjectScope={resolveDraftScopeLabel(scheduleDraft, companies)}
+                subjectPeriod={resolveDraftPeriodLabel(scheduleDraft.cadence)}
                 onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
                 onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
               />
@@ -773,37 +762,6 @@ export default function ReportsPageClient() {
               </div>
 
               <RecipientHint count={scheduleRecipients.length} />
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border-emerald-500/15">
-            <CardHeader className="border-b bg-emerald-500/5 pb-4">
-              <CardTitle className="text-base">Active schedules</CardTitle>
-              <CardDescription>Enabled reports that the worker will pick up automatically.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-4">
-              {activeSchedules.length === 0 ? (
-                <BuilderEmptyState
-                  title="No active report schedule"
-                  description="Enable a schedule below or create one from the report builder."
-                />
-              ) : (
-                activeSchedules.slice(0, 6).map((schedule) => (
-                  <div key={schedule.id} className="rounded-lg border border-border/70 bg-background/80 px-4 py-3">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">{schedule.name}</p>
-                        <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                          {getCadenceLabel(schedule.cadence)} / {schedule.reportBrandName || "Profile organization"} / {schedule.recipientEmails.join(", ")}
-                        </p>
-                      </div>
-                      <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">
-                        Next {new Date(schedule.nextRunAt).toLocaleString()}
-                      </Badge>
-                    </div>
-                  </div>
-                ))
-              )}
             </CardContent>
           </Card>
 
@@ -909,7 +867,7 @@ function ReportModeButton({
       className={cn(
         "flex-1 rounded-md px-4 py-2 text-center text-sm font-medium transition-colors sm:flex-none",
         active
-          ? "bg-background text-foreground shadow-sm"
+          ? "bg-background text-foreground"
           : "text-muted-foreground hover:text-foreground"
       )}
     >
@@ -921,28 +879,41 @@ function ReportModeButton({
 function ReportOptionsPanel({
   template,
   draft,
+  subjectTitle,
+  subjectScope,
+  subjectPeriod,
   onTemplateChange,
   onChange,
 }: {
   template: ReportTemplateVariant;
   draft: ReportDeliveryDraft;
+  subjectTitle: string;
+  subjectScope: string;
+  subjectPeriod: string;
   onTemplateChange: (template: ReportTemplateVariant) => void;
   onChange: (patch: Partial<ReportDeliveryDraft>) => void;
 }) {
   return (
-    <details className="group rounded-lg border border-border/70 bg-muted/10">
+    <details open className="group border-y border-border/70">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <span>
           <span className="block text-sm font-medium">Report options</span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
-            Template, detail level, included sections, and email copy
+            Template, report brand, email subject, included sections, and email copy
           </span>
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       <div className="space-y-5 border-t border-border/70 px-4 py-4">
         <TemplateStrip value={template} onChange={onTemplateChange} />
-        <ReportDeliveryComposer template={template} draft={draft} onChange={onChange} />
+        <ReportDeliveryComposer
+          template={template}
+          draft={draft}
+          subjectTitle={subjectTitle}
+          subjectScope={subjectScope}
+          subjectPeriod={subjectPeriod}
+          onChange={onChange}
+        />
       </div>
     </details>
   );
@@ -956,9 +927,8 @@ function TemplateStrip({
   onChange: (template: ReportTemplateVariant) => void;
 }) {
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
+    <div className="grid border-y lg:grid-cols-3 lg:divide-x">
       {TEMPLATE_OPTIONS.map((template) => {
-        const Icon = template.icon;
         const active = template.value === value;
 
         return (
@@ -967,20 +937,15 @@ function TemplateStrip({
             type="button"
             onClick={() => onChange(template.value)}
             className={cn(
-              "rounded-lg border px-4 py-4 text-left transition-colors",
+              "border-b px-4 py-3 text-left transition-colors last:border-b-0 lg:border-b-0",
               active
-                ? "border-primary/30 bg-primary/5"
-                : "border-border/70 bg-background hover:border-border hover:bg-muted/10"
+                ? "bg-primary/5"
+                : "hover:bg-muted/20"
             )}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold">{template.label}</p>
-                <p className="text-xs leading-5 text-muted-foreground">{template.detail}</p>
-              </div>
-              <div className="rounded-md border border-border/70 bg-background/80 p-2">
-                <Icon className="h-4 w-4 text-muted-foreground" />
-              </div>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">{template.label}</p>
+              <p className="text-xs leading-5 text-muted-foreground">{template.detail}</p>
             </div>
           </button>
         );
@@ -1002,14 +967,27 @@ type ReportDeliveryDraft = Pick<
 function ReportDeliveryComposer({
   template,
   draft,
+  subjectTitle,
+  subjectScope,
+  subjectPeriod,
   onChange,
 }: {
   template: ReportTemplateVariant;
   draft: ReportDeliveryDraft;
+  subjectTitle: string;
+  subjectScope: string;
+  subjectPeriod: string;
   onChange: (patch: Partial<ReportDeliveryDraft>) => void;
 }) {
   const reportTypeLabel = template === "executive" ? "Executive Report" : template === "client" ? "Client Report" : "Operations Report";
   const reportBrand = draft.reportBrandName.trim() || "Sentrovia";
+  const subjectPreview = buildDraftSubjectPreview(draft.emailSubjectTemplate, {
+    brand: reportBrand,
+    reportTypeLabel,
+    title: subjectTitle,
+    scope: subjectScope,
+    period: subjectPeriod,
+  });
 
   return (
     <div>
@@ -1032,9 +1010,9 @@ function ReportDeliveryComposer({
               </SelectContent>
             </Select>
           </Field>
-          <div className="grid gap-2">
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
-              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">HTML only</p>
+          <div className="divide-y border-y">
+            <div className="border-l-2 border-border px-3 py-1">
+              <p className="text-xs font-semibold">HTML delivery</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Scheduled and manual deliveries include one browser-ready HTML report.
               </p>
@@ -1052,14 +1030,14 @@ function ReportDeliveryComposer({
           </div>
         </div>
         <div className="space-y-4">
-          <Field label="Report brand">
+          <Field label="Brand / sender name">
             <Input
               value={draft.reportBrandName}
               onChange={(event) => onChange({ reportBrandName: event.target.value })}
-              placeholder="Sentrovia"
+              placeholder="Your organization"
             />
             <p className="text-xs leading-5 text-muted-foreground">
-              Changes the brand in the default subject prefix. Preview: [{reportBrand} {reportTypeLabel}]
+              Replaces Sentrovia in the email header, attached report, and default subject prefix.
             </p>
           </Field>
           <Field label="Email subject template">
@@ -1072,6 +1050,12 @@ function ReportDeliveryComposer({
               Leave blank to use the default subject. Add a template to replace the complete subject, including the report prefix.
             </p>
           </Field>
+          <div className="border-l-2 border-sky-500 px-4 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+              Email subject preview
+            </p>
+            <p className="mt-1 break-words text-sm font-medium text-foreground">{subjectPreview}</p>
+          </div>
           <TemplateEditor
             label="Email intro template"
             hint="Tokens: {title}, {brand}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {failure_rate}, {failures}, {down_now}, {p95_latency}"
@@ -1085,6 +1069,37 @@ function ReportDeliveryComposer({
   );
 }
 
+function buildDraftSubjectPreview(
+  template: string,
+  input: { brand: string; reportTypeLabel: string; title: string; scope: string; period: string }
+) {
+  const fallback = `[${input.brand} ${input.reportTypeLabel}] ${input.title}`;
+  if (!template.trim()) {
+    return fallback;
+  }
+
+  const replacements: Record<string, string> = {
+    "{brand}": input.brand,
+    "{workspace}": input.brand,
+    "{title}": input.title,
+    "{template}": input.reportTypeLabel,
+    "{scope}": input.scope,
+    "{period}": input.period,
+    "{health_score}": "98",
+    "{health_status}": "Excellent",
+    "{uptime}": "99.95%",
+    "{failure_rate}": "0.05%",
+    "{failures}": "1",
+    "{down_now}": "0",
+    "{p95_latency}": "240ms",
+  };
+
+  return Object.entries(replacements).reduce(
+    (subject, [token, value]) => subject.replaceAll(token, value),
+    template.trim()
+  );
+}
+
 function CompactToggle({
   label,
   checked,
@@ -1095,7 +1110,7 @@ function CompactToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/80 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 px-1 py-2">
       <span className="text-xs font-medium">{label}</span>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
@@ -1114,11 +1129,7 @@ function BuilderEmptyState({
   onAction?: () => void;
 }) {
   return (
-    <Card className="overflow-hidden border-dashed border-border/70 bg-muted/10">
-      <CardContent className="flex flex-col items-start gap-4 px-5 py-6">
-        <div className="rounded-md border border-border/70 bg-background/80 p-3">
-          <WandSparkles className="h-5 w-5 text-muted-foreground" />
-        </div>
+    <div className="flex flex-col items-start gap-3 border-y px-1 py-5">
         <div className="space-y-1">
           <p className="text-base font-semibold">{title}</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
@@ -1128,21 +1139,21 @@ function BuilderEmptyState({
             {actionLabel}
           </Button>
         ) : null}
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 
 function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
   return (
-    <Card className="overflow-hidden border-border/70 bg-background/60">
-      <CardHeader className="border-b border-border/60 pb-3">
-        <CardTitle className="text-base">Latest delivery result</CardTitle>
-        <CardDescription>
-          Manual send feedback for the last report dispatch from this page.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 pt-4 md:grid-cols-4">
+    <section className="border-y py-4">
+      <div className="pb-3">
+        <h2 className="text-base font-medium">Latest delivery result</h2>
+        <p className="text-sm text-muted-foreground">
+          Result from the most recent manual send.
+        </p>
+      </div>
+      <div>
+        <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
         <DetailBlock label="Status" value={delivery.status} />
         <DetailBlock label="Report" value={delivery.reportTitle} />
         <DetailBlock
@@ -1150,14 +1161,15 @@ function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
           value={delivery.deliveredAt ? new Date(delivery.deliveredAt).toLocaleString() : "Waiting for timestamp"}
         />
         <DetailBlock label="Recipients" value={delivery.recipients.join(", ") || "No recipients"} />
-      </CardContent>
-    </Card>
+        </dl>
+      </div>
+    </section>
   );
 }
 
 function InfoTile({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 px-4 py-3">
+    <div className="border-l-2 border-border px-4 py-2">
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
     </div>
@@ -1199,57 +1211,48 @@ function ScheduleCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-muted/5 p-4">
+    <div className="border-y py-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className="text-base font-medium">{schedule.name}</p>
             <StatusBadge schedule={schedule} />
-            <Badge variant="outline" className="border-border/70 text-muted-foreground">
-              {schedule.scope === "company" ? schedule.companyName ?? "Company" : "Global workspace"}
-            </Badge>
-            <Badge variant="outline" className="border-border/70 text-muted-foreground">
-              {getCadenceLabel(schedule.cadence)}
-            </Badge>
-            <Badge variant="outline" className="border-border/70 text-muted-foreground">
-              {schedule.template}
-            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {schedule.scope === "company" ? schedule.companyName ?? "Company" : "Global workspace"} / {getCadenceLabel(schedule.cadence)} / {schedule.template}
+            </span>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <dl className="grid border-y sm:grid-cols-2 xl:grid-cols-6 xl:divide-x">
             <DetailBlock label="Next run" value={new Date(schedule.nextRunAt).toLocaleString()} />
             <DetailBlock label="Last delivery" value={schedule.lastDeliveredAt ? new Date(schedule.lastDeliveredAt).toLocaleString() : "No delivery yet"} />
             <DetailBlock label="Delivery status" value={getScheduleDeliveryStatusLabel(schedule)} />
             <DetailBlock label="Recipients" value={schedule.recipientEmails.join(", ") || "No recipients"} />
             <DetailBlock label="Brand" value={schedule.reportBrandName || "Profile organization"} />
             <DetailBlock label="Package" value={buildSchedulePackageLabel(schedule)} />
-          </div>
+          </dl>
 
           {schedule.lastErrorMessage ? (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
               {schedule.lastErrorMessage}
             </div>
           ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2 xl:max-w-[320px] xl:justify-end">
-          <div className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2">
+          <div className="flex items-center gap-3 px-1 py-1">
             <span className="text-xs text-muted-foreground">Active</span>
             <Switch checked={schedule.isActive} onCheckedChange={onToggle} />
           </div>
-          <Button variant="outline" onClick={onSendNow} disabled={saving}>
-            <PlayCircle className="mr-2 h-4 w-4" />
+          <Button onClick={onSendNow} disabled={saving}>
             Send now
           </Button>
-          <Button variant="outline" onClick={onEdit} disabled={saving}>
+          <Button variant="ghost" onClick={onEdit} disabled={saving}>
             Load into builder
           </Button>
-          <Button variant="outline" onClick={onDuplicate} disabled={saving}>
-            <Copy className="mr-2 h-4 w-4" />
+          <Button variant="ghost" onClick={onDuplicate} disabled={saving}>
             Duplicate
           </Button>
-          <Button variant="destructive" onClick={onDelete} disabled={saving}>
-            <Trash2 className="mr-2 h-4 w-4" />
+          <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={onDelete} disabled={saving}>
             Delete
           </Button>
         </div>
@@ -1260,29 +1263,29 @@ function ScheduleCard({
 
 function StatusBadge({ schedule }: { schedule: ReportScheduleRecord }) {
   if (!schedule.isActive) {
-    return <Badge variant="outline" className="border-slate-500/25 text-slate-600 dark:text-slate-300">Paused</Badge>;
+    return <span className="text-xs font-medium text-slate-500 dark:text-slate-300">Paused</span>;
   }
 
   if (schedule.lastStatus === "failed") {
-    return <Badge variant="outline" className="border-rose-500/25 text-rose-600 dark:text-rose-300">Failed</Badge>;
+    return <span className="text-xs font-medium text-rose-600 dark:text-rose-300">Failed</span>;
   }
 
   if (schedule.lastStatus === "running") {
-    return <Badge variant="outline" className="border-amber-500/25 text-amber-600 dark:text-amber-300">Sending</Badge>;
+    return <span className="text-xs font-medium text-amber-600 dark:text-amber-300">Sending</span>;
   }
 
   if (schedule.lastStatus === "delivered") {
-    return <Badge variant="outline" className="border-emerald-500/25 text-emerald-600 dark:text-emerald-300">Delivered</Badge>;
+    return <span className="text-xs font-medium text-emerald-600 dark:text-emerald-300">Delivered</span>;
   }
 
-  return <Badge variant="outline" className="border-sky-500/25 text-sky-600 dark:text-sky-300">Ready</Badge>;
+  return <span className="text-xs font-medium text-sky-600 dark:text-sky-300">Ready</span>;
 }
 
 function DetailBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-muted/10 px-4 py-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm leading-6 [overflow-wrap:anywhere]">{value}</p>
+    <div className="border-b px-3 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-sm leading-5 [overflow-wrap:anywhere]">{value}</dd>
     </div>
   );
 }
@@ -1298,7 +1301,7 @@ function ReportPreviewPanel({
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-hidden border-violet-500/15">
+      <Card>
         <CardHeader className="border-b bg-muted/20">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -1307,13 +1310,8 @@ function ReportPreviewPanel({
                 {report.periodLabel} / Generated {new Date(report.generatedAt).toLocaleString()}
               </CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-border/70 bg-background/80">
-                {report.templateLabel}
-              </Badge>
-              <Badge variant="outline" className="border-border/70 bg-background/80">
-                {report.workspaceName}
-              </Badge>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs text-muted-foreground">{report.templateLabel} / {report.workspaceName}</span>
               <Button variant="outline" size="sm" onClick={onExportHtml}>
                 <Download className="mr-2 h-4 w-4" />
                 Download HTML
@@ -1322,7 +1320,7 @@ function ReportPreviewPanel({
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
             <PreviewMetric label="Health" value={`${report.summary.healthScore}/100`} detail={report.summary.healthStatus} />
             <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} />
             <PreviewMetric label="Uptime" value={`${report.summary.uptimePct.toFixed(2)}%`} />
@@ -1330,30 +1328,30 @@ function ReportPreviewPanel({
             <PreviewMetric label="Failures" value={String(report.summary.failureEvents)} />
             <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failures" />
             <PreviewMetric label="Failure rate" value={`${report.summary.failureRatePct.toFixed(2)}%`} />
-          </div>
+          </dl>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <dl className="grid border-y md:grid-cols-3 md:divide-x">
             <StateChip tone="emerald" label="Up now" value={String(report.summary.currentlyUp)} />
             <StateChip tone="rose" label="Down now" value={String(report.summary.currentlyDown)} />
             <StateChip tone="amber" label="Pending now" value={String(report.summary.currentlyPending)} />
-          </div>
+          </dl>
 
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border-sky-500/15">
-        <CardHeader className="border-b bg-sky-500/5">
-          <CardTitle className="text-base">Report findings</CardTitle>
-          <CardDescription>Items derived from status, failure frequency, and latency in this period.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 pt-4 md:grid-cols-2">
+      <section className="border-y py-4">
+        <div>
+          <h3 className="text-base font-medium">Report findings</h3>
+          <p className="text-sm text-muted-foreground">Derived from status, failure frequency, and latency.</p>
+        </div>
+        <div className="divide-y pt-3">
           {report.recommendations.map((item, index) => (
-            <div key={`${item}-${index}`} className="rounded-lg border border-border/70 bg-background/80 px-4 py-3">
+            <div key={`${item}-${index}`} className="py-3 first:pt-0 last:pb-0">
               <p className="text-sm leading-6">{item}</p>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <Card className="overflow-hidden border-border/70">
@@ -1361,12 +1359,12 @@ function ReportPreviewPanel({
             <CardTitle className="text-base">Top failing monitors</CardTitle>
             <CardDescription>Highest failure counts for the selected period.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 pt-4">
+          <CardContent className="divide-y pt-4">
             {report.failingMonitors.length === 0 ? (
               <p className="text-sm text-muted-foreground">No failures during the selected period.</p>
             ) : (
               report.failingMonitors.map((monitor) => (
-                <div key={monitor.monitorId} className="rounded-lg border border-border/70 bg-background/80 p-4">
+                <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -1390,12 +1388,12 @@ function ReportPreviewPanel({
             <CardTitle className="text-base">Latency watchlist</CardTitle>
             <CardDescription>Services with the highest average latency in the report window.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 pt-4">
+          <CardContent className="divide-y pt-4">
             {report.slowMonitors.length === 0 ? (
               <p className="text-sm text-muted-foreground">No latency samples for this period.</p>
             ) : (
               report.slowMonitors.map((monitor) => (
-                <div key={monitor.monitorId} className="rounded-lg border border-border/70 bg-background/80 p-4">
+                <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -1410,17 +1408,17 @@ function ReportPreviewPanel({
         </Card>
       </div>
 
-      <Card className="overflow-hidden border-border/70">
-        <CardHeader className="border-b bg-muted/10">
-          <CardTitle className="text-base">Recent failure events</CardTitle>
-          <CardDescription>Latest failure signals included in the emailed report.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-4">
+      <section className="border-y py-4">
+        <div>
+          <h3 className="text-base font-medium">Recent failure events</h3>
+          <p className="text-sm text-muted-foreground">Latest failures included in the report.</p>
+        </div>
+        <div className="divide-y pt-3">
           {report.recentFailures.length === 0 ? (
             <p className="text-sm text-muted-foreground">No failure events during the selected period.</p>
           ) : (
             report.recentFailures.map((event) => (
-              <div key={`${event.monitorId}-${event.createdAt}`} className="rounded-lg border border-border/70 bg-background/80 p-4">
+              <div key={`${event.monitorId}-${event.createdAt}`} className="py-4 first:pt-0 last:pb-0">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-sm font-medium [overflow-wrap:anywhere]">{event.url}</p>
@@ -1436,17 +1434,17 @@ function ReportPreviewPanel({
 
             ))
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card className="overflow-hidden border-border/70">
-        <CardHeader className="border-b bg-muted/10">
-          <CardTitle>Monitor breakdown</CardTitle>
-          <CardDescription>Ranked by failures first, then average latency.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-4">
+      <section className="border-y py-4">
+        <div>
+          <h3 className="text-base font-medium">Monitor breakdown</h3>
+          <p className="text-sm text-muted-foreground">Ranked by failures, then average latency.</p>
+        </div>
+        <div className="divide-y pt-3">
           {report.monitorBreakdown.map((monitor) => (
-            <div key={monitor.monitorId} className="rounded-lg border border-border/70 bg-background/80 p-4">
+            <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -1460,26 +1458,26 @@ function ReportPreviewPanel({
                     <p className="mt-2 text-xs leading-5 text-destructive">{monitor.lastErrorMessage}</p>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <Badge variant="outline" className="border-border/70">Uptime {monitor.uptimePct.toFixed(2)}%</Badge>
-                  <Badge variant="outline" className="border-border/70">Avg latency {monitor.averageLatencyMs}ms</Badge>
-                  <Badge variant="outline" className="border-border/70">P95 {monitor.p95LatencyMs}ms</Badge>
-                  <Badge variant="outline" className="border-border/70">Last checked {monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : "N/A"}</Badge>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>Uptime {monitor.uptimePct.toFixed(2)}%</span>
+                  <span>Avg latency {monitor.averageLatencyMs}ms</span>
+                  <span>P95 {monitor.p95LatencyMs}ms</span>
+                  <span>Last checked {monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : "N/A"}</span>
                 </div>
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
 
 function PreviewMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-muted/10 px-4 py-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+    <div className="border-b px-4 py-3 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-2 text-xl font-semibold tracking-tight">{value}</dd>
       {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
     </div>
   );
@@ -1495,16 +1493,9 @@ function StateChip({
   value: string;
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-lg border px-4 py-3",
-        tone === "emerald" && "border-emerald-500/25 bg-emerald-500/10",
-        tone === "rose" && "border-rose-500/25 bg-rose-500/10",
-        tone === "amber" && "border-amber-500/25 bg-amber-500/10"
-      )}
-    >
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-2 text-lg font-semibold">{value}</p>
+    <div className="border-b px-4 py-3 last:border-b-0 md:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className={cn("mt-2 text-lg font-semibold", tone === "emerald" && "text-emerald-500", tone === "rose" && "text-rose-500", tone === "amber" && "text-amber-500")}>{value}</dd>
     </div>
   );
 }
@@ -1549,6 +1540,25 @@ function buildScheduleName(scope: ReportScope, cadence: ReportCadence, companyId
 
   const company = companies.find((item) => item.id === companyId);
   return company ? `${cadenceLabel} ${company.name} Report` : `${cadenceLabel} Company Report`;
+}
+
+function resolveDraftScopeLabel(
+  draft: Pick<DraftReport, "scope" | "companyId">,
+  companies: CompanyRecord[]
+) {
+  if (draft.scope !== "company") {
+    return "Workspace";
+  }
+
+  return companies.find((company) => company.id === draft.companyId)?.name ?? "Company";
+}
+
+function resolveDraftPeriodLabel(cadence: ReportCadence) {
+  if (cadence === "weekly") {
+    return "Last 7 days";
+  }
+
+  return cadence === "monthly" ? "Last 30 days" : "All time";
 }
 
 function getCadenceLabel(cadence: ReportCadence) {

@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
-  ArrowRight,
   BellRing,
   Database,
   Eye,
@@ -101,27 +100,27 @@ export default function LoginPage() {
   return (
     <AuthShell
       tone="primary"
-      heroTitle="Monitor health, outages, and notification delivery."
-      heroDescription="Sentrovia keeps service checks, verification history, alerts, and reports in one place."
+      heroTitle="Monitor failures with a clear audit trail."
+      heroDescription="Review checks, verification attempts, and notification outcomes in one workspace."
       showcaseCards={[
         {
           icon: TimerReset,
-          title: "Verified outages",
-          description: "Transient failures are rechecked before an outage notification is sent.",
+          title: "Failure verification",
+          description: "Transient errors are checked again before an incident reaches your team.",
         },
         {
           icon: BellRing,
-          title: "Delivery history",
-          description: "Inspect email, Telegram, Discord, and webhook delivery outcomes.",
+          title: "Delivery evidence",
+          description: "Email, Telegram, Discord, and webhook outcomes remain visible after the alert.",
         },
         {
           icon: Database,
-          title: "Company views",
-          description: "Organize monitors and reports around the teams or companies you operate.",
+          title: "Clear ownership",
+          description: "Monitors and reports stay organized around the companies your team operates.",
         },
       ]}
-      formTitle="Sign in to Sentrovia"
-      formDescription="Use your email address or username and password."
+      formTitle="Welcome back"
+      formDescription="Sign in with your workspace email or username."
     >
       <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit}>
         <FieldBlock label="Email or Username" htmlFor="identifier">
@@ -187,7 +186,6 @@ export default function LoginPage() {
           ) : (
             <>
               Sign in
-              <ArrowRight data-icon="inline-end" />
             </>
           )}
         </Button>

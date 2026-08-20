@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const manifestPath = resolve(projectRoot, "scripts", "retired-project-paths.json");
+const installerPath = resolve(projectRoot, "scripts", "install-windows-nssm.ps1");
 
 function normalizePath(value) {
   return value.trim().replaceAll("\\", "/");
@@ -59,5 +60,18 @@ describe("Windows NSSM update cleanup", () => {
     );
 
     expect(unsafePaths).toEqual([]);
+  });
+});
+
+describe("Windows NSSM worker recovery", () => {
+  it("applies automatic restart settings to new and existing services", () => {
+    const installer = readFileSync(installerPath, "utf8");
+
+    expect(installer).toContain('Set-NssmOption $Name "Start" @("SERVICE_AUTO_START")');
+    expect(installer).toContain('Set-NssmOption $Name "AppExit" @("Default", "Restart")');
+    expect(installer).toContain('Set-NssmOption $Name "AppRestartDelay" @(5000)');
+    expect(installer).toMatch(
+      /foreach \(\$Name in \$ServiceNames\) \{\s+Set-NssmServiceRecovery -Name \$Name\s+\}/,
+    );
   });
 });

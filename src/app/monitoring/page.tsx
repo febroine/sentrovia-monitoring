@@ -433,13 +433,13 @@ export default function MonitoringPage() {
       </section>
 
       {error ? (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
       {pendingBulkAction ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+        <div className="flex flex-col gap-3 border-l-2 border-amber-500 px-4 py-2 sm:flex-row sm:items-center sm:justify-between" role="status">
           <div className="min-w-0">
             <p className="text-sm font-medium">{pendingBulkAction.title}</p>
             <p className="mt-1 text-xs text-muted-foreground">{pendingBulkAction.detail} Running in {bulkActionSeconds}s. Keep this page open during the countdown.</p>
@@ -451,7 +451,7 @@ export default function MonitoringPage() {
       ) : null}
 
       {pendingRestores.length > 0 ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+        <div className="flex flex-col gap-3 border-l-2 border-emerald-500 px-4 py-2 sm:flex-row sm:items-center sm:justify-between" role="status">
           <div>
             <p className="text-sm font-medium">{pendingRestores.flatMap((item) => item.ids).length} monitor{pendingRestores.flatMap((item) => item.ids).length === 1 ? "" : "s"} deleted</p>
             <p className="mt-1 text-xs text-muted-foreground">Related records remain recoverable for 60 seconds.</p>
@@ -517,7 +517,7 @@ export default function MonitoringPage() {
       </div>
 
       {selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-primary/20 border-r-2 border-r-primary/45 bg-primary/10 px-4 py-2.5 shadow-[inset_-10px_0_18px_-18px_rgba(99,102,241,0.75)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">{selectedIds.size} monitor selected</span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)} disabled={Boolean(pendingBulkAction)}>
@@ -554,7 +554,7 @@ export default function MonitoringPage() {
       />
 
       {totalPages > 1 ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-border/70 bg-muted/10 px-4 py-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 border-y py-3 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages} · {pageSize} rows</p>
           <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
             <Button
@@ -654,7 +654,7 @@ export default function MonitoringPage() {
               fields stay unchanged.
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          <div className="border-l-2 border-border px-3 py-2 text-xs text-muted-foreground">
             Impact: {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}. Identity fields and targets remain unchanged. The operation waits 10 seconds before it is applied.
           </div>
           {selectedIds.size > 0 ? (
@@ -680,11 +680,11 @@ export default function MonitoringPage() {
               This permanently removes the selected monitor{deleteTargets.length === 1 ? "" : "s"} and related monitoring history after a 10-second undo window.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+          <div className="space-y-3 border-l-2 border-destructive px-4 py-2">
             <p className="text-sm font-medium text-destructive">Are you sure you want to continue?</p>
-            <div className="space-y-2">
+            <div className="divide-y border-y">
               {deleteTargets.slice(0, 5).map((monitor) => (
-                <div key={monitor.id} className="rounded-lg border border-border/70 bg-background/80 px-3 py-2">
+                <div key={monitor.id} className="py-2">
                   <p className="text-sm font-medium text-foreground">{monitor.name}</p>
                   <p className="truncate text-xs text-muted-foreground">{monitor.url}</p>
                 </div>

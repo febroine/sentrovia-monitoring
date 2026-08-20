@@ -275,7 +275,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
           />
         }
       >
-        <div className="rounded-xl border bg-muted/20 p-4">
+        <div className="border-y py-4">
           <p className="text-sm font-medium">Available template tokens</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             You can use these variables in email subject, email body, and Telegram templates.
@@ -376,7 +376,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
         />
       }
     >
-      <div className="rounded-lg border bg-muted/15 p-4">
+      <div className="border-l-2 border-border px-4 py-2">
         <p className="text-sm font-medium">Override behavior</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           These values fill the gaps when a monitor is created manually or imported from CSV. If a monitor defines its
@@ -385,7 +385,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-lg border bg-muted/15 p-5">
+        <div className="border-y py-4">
           <div className="space-y-1">
             <p className="text-sm font-medium">Scheduling and execution</p>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -438,7 +438,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
           </div>
         </div>
 
-        <div className="rounded-lg border bg-muted/15 p-5">
+        <div className="border-y py-4">
           <div className="space-y-1">
             <p className="text-sm font-medium">HTTP request defaults</p>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -929,22 +929,22 @@ export function UpdateAssistantTab() {
       icon={DownloadCloud}
       iconClassName="text-emerald-600 dark:text-emerald-300"
     >
-      {message ? <div className="rounded-lg border px-4 py-3 text-sm">{message}</div> : null}
-      <div className="grid gap-3 md:grid-cols-3">
+      {message ? <div className="border-l-2 border-border px-4 py-2 text-sm">{message}</div> : null}
+      <dl className="grid border-y md:grid-cols-3 md:divide-x">
         <UpdateMetric label="Installed" value={update?.currentVersion ?? "-"} />
         <UpdateMetric label="Latest" value={update?.latestVersion ?? "-"} />
         <UpdateMetric label="Status" value={resolveUpdateStatusLabel(update, loading)} />
-      </div>
+      </dl>
       <UpdateStatusBanner update={update} loading={loading} />
       {update?.backupReminder ? (
-        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+        <div className="border-l-2 border-amber-500 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
           {update.backupReminder}
         </div>
       ) : null}
       <ReleaseNotes update={update} />
       {update?.status === "unconfigured" ? <RepositoryHint /> : null}
       {hasGuidance ? (
-        <div className="space-y-3 rounded-xl border bg-muted/15 p-4">
+        <div className="space-y-3 border-y py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-medium">Host-side update commands</p>
@@ -972,7 +972,7 @@ export function UpdateAssistantTab() {
             href={update.releaseUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             <ExternalLink className="h-4 w-4" />
             Open Release
@@ -995,7 +995,7 @@ function UpdateStatusBanner({ update, loading }: { update: UpdateStatus | null; 
       : "border-emerald-500/25 bg-emerald-500/10 text-emerald-100";
 
   return (
-    <div className={`rounded-xl border px-4 py-3 text-sm ${className}`}>
+    <div className={`border-l-2 px-4 py-2 text-sm ${className}`}>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="font-medium">{label}</p>
         {update?.checkedAt ? <p className="text-xs opacity-80">Checked {formatDate(update.checkedAt)}</p> : null}
@@ -1007,13 +1007,13 @@ function UpdateStatusBanner({ update, loading }: { update: UpdateStatus | null; 
 
 function ReleaseNotes({ update }: { update: UpdateStatus | null }) {
   return (
-    <div className="rounded-xl border bg-muted/15 p-4 text-sm">
+    <div className="border-y py-4 text-sm">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="font-medium">{update?.releaseName ?? update?.message ?? "Release information is not available yet."}</p>
           {update?.publishedAt ? <p className="mt-1 text-xs text-muted-foreground">Published {formatDate(update.publishedAt)}</p> : null}
         </div>
-        {update?.repository ? <Badge variant="outline">{update.repository}</Badge> : null}
+        {update?.repository ? <span className="text-xs text-muted-foreground">{update.repository}</span> : null}
       </div>
       {update?.notes ? <p className="mt-3 whitespace-pre-wrap text-muted-foreground">{update.notes}</p> : null}
     </div>
@@ -1028,7 +1028,7 @@ function ProfileSelector({
   onChange: (value: UpdateInstallProfile) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border bg-background p-1">
+    <div className="inline-flex rounded-md border bg-background p-1">
       <ProfileButton active={value === "docker"} onClick={() => onChange("docker")}>
         Docker Compose
       </ProfileButton>
@@ -1067,7 +1067,7 @@ function CommandBlock({
   onCopy: () => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-background">
+    <div className="overflow-hidden rounded-md border bg-background">
       <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <Terminal className="mt-0.5 h-4 w-4 text-muted-foreground" />
@@ -1087,7 +1087,7 @@ function CommandBlock({
 
 function RepositoryHint() {
   return (
-    <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
+    <div className="border-l-2 border-amber-500 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-300">
       Repository metadata is missing. Set `APP_UPDATE_REPO=owner/repository` or keep the GitHub repository field in `package.json`, then restart the app.
     </div>
   );
@@ -1126,9 +1126,9 @@ function resolveProfileDescription(profile: UpdateInstallProfile) {
 
 function UpdateMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border p-4">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-2 text-lg font-semibold">{value}</p>
+    <div className="border-b px-4 py-4 last:border-b-0 md:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-2 text-lg font-semibold">{value}</dd>
     </div>
   );
 }
@@ -1216,12 +1216,8 @@ function SectionCard({
     <Card>
       <CardHeader className="border-b bg-muted/20 px-6 py-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-4">
-            {Icon ? (
-              <div className="rounded-lg border border-border/70 bg-background/80 p-2.5 shadow-sm">
-                <Icon className={iconClassName ?? "text-primary"} />
-              </div>
-            ) : null}
+          <div className="flex items-start gap-3">
+            {Icon ? <Icon className={`mt-0.5 size-4 shrink-0 ${iconClassName ?? "text-primary"}`} /> : null}
             <div className="space-y-1">
               <CardTitle className="text-base">{title}</CardTitle>
               <CardDescription>{description}</CardDescription>
@@ -1265,7 +1261,7 @@ function ToggleRow({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border bg-card px-5 py-4">
+    <div className="flex items-center justify-between gap-4 border-y py-4">
       <div>
         <p className="text-sm font-medium">{label}</p>
         <p className="mt-1 text-xs text-muted-foreground">{description}</p>
@@ -1287,7 +1283,7 @@ function ToggleCard({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="rounded-xl border bg-muted/20 p-5">
+    <div className="border-y py-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium">{label}</p>
