@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Settings2 } from "lucide-react";
-import { SentroviaMark } from "@/components/brand/sentrovia-mark";
+import packageJson from "../../../package.json";
 
 const linkButtonClassName =
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
@@ -44,7 +44,7 @@ const runtime = [
 const operatingRules = [
   "Timeouts remain availability failures, but they are verified before an outage is confirmed.",
   "A successful response above the slow threshold stays up and can produce a separate latency notification.",
-  "If the worker host loses internet access, probes continue without recording host-side failures while outbound delivery waits for connectivity.",
+  "If every connectivity canary is unreachable, the worker pauses monitor checks, webhook retries, and scheduled reports without changing monitor states.",
   "Monitor-level notification language and templates override workspace defaults only for that monitor.",
   "Public status pages publish active monitors from the selected company, or the full workspace when no company is selected.",
 ];
@@ -59,18 +59,22 @@ const monitorTypes = [
   ["Heartbeat", "Expected calls from scheduled or background jobs"],
 ] as const;
 
+const projectDetails = [
+  ["Version", packageJson.version],
+  ["License", "MIT"],
+  ["Runtime", `Node.js ${packageJson.engines.node}`],
+  ["Source", "github.com/febroine/sentrovia-monitoring"],
+] as const;
+
 export default function AboutPage() {
   return (
     <div className="flex w-full flex-col gap-8">
       <header className="flex flex-col gap-5 border-b pb-7 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex items-start gap-4">
-          <SentroviaMark className="size-11 rounded-lg border bg-card text-lg" />
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">About Sentrovia</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Self-hosted monitoring for teams that need verifiable outages, clear delivery history, and company-level reporting.
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">About Sentrovia</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            Self-hosted monitoring for teams that need verifiable outages, clear delivery history, and company-level reporting.
+          </p>
         </div>
         <div className="flex gap-2">
           <Link href="/help" className={linkButtonClassName}>Open help</Link>
@@ -134,6 +138,32 @@ export default function AboutPage() {
           </dl>
         </section>
       </div>
+
+      <section aria-labelledby="project-title">
+        <div className="mb-4">
+          <h2 id="project-title" className="text-base font-semibold">Project information</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Details for the version currently running.</p>
+        </div>
+        <dl className="grid border-y sm:grid-cols-2 xl:grid-cols-4 xl:divide-x">
+          {projectDetails.map(([label, value]) => (
+            <div key={label} className="py-4 xl:px-5 xl:first:pl-0 xl:last:pr-0">
+              <dt className="text-sm text-muted-foreground">{label}</dt>
+              <dd className="mt-1 break-words text-sm font-medium">
+                {label === "Source" ? (
+                  <a
+                    href="https://github.com/febroine/sentrovia-monitoring"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline-offset-4 hover:underline"
+                  >
+                    {value}
+                  </a>
+                ) : value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       <footer className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">

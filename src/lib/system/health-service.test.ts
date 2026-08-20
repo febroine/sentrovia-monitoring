@@ -71,6 +71,23 @@ describe("buildSystemHealthAlarms", () => {
       detail: "Monitoring is paused while all canaries are unavailable.",
     }]);
   });
+
+  it("describes every paused worker phase when no connectivity detail is stored", () => {
+    const alarms = buildSystemHealthAlarms({
+      workerDesiredState: "running",
+      workerHealthy: true,
+      heartbeatAgeMs: 1_000,
+      connectivityStatus: "offline",
+      connectivityMessage: null,
+      delayedMonitorCount: 1,
+      failedDeliveryCount: 0,
+      queuedDeliveryCount: 0,
+    });
+
+    expect(alarms[0]?.detail).toBe(
+      "Monitor checks, webhook retries, and scheduled reports are paused without changing monitor states."
+    );
+  });
 });
 
 describe("isSystemMonitorDelayed", () => {

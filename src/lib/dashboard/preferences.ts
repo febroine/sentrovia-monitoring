@@ -59,3 +59,16 @@ export function parseDashboardWidgets(value: unknown) {
     return null;
   }
 }
+
+export function orderDashboardWidgetOptions(
+  widgets: readonly DashboardWidgetId[],
+  isAdmin: boolean
+) {
+  const availableWidgets = DASHBOARD_WIDGET_IDS.filter(
+    (widget) => isAdmin || widget !== "system"
+  );
+  const enabledWidgets = widgets.filter((widget) => availableWidgets.includes(widget));
+  const disabledWidgets = availableWidgets.filter((widget) => !enabledWidgets.includes(widget));
+
+  return [...enabledWidgets, ...disabledWidgets];
+}

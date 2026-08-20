@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertAdminDemotionLeavesAdministrator,
   assertAdminDeletionLeavesAdministrator,
   filterSelfMemberIds,
 } from "@/lib/members/service";
@@ -19,6 +20,16 @@ describe("member service", () => {
 
   it("rejects deletion of the final admin", () => {
     expect(() => assertAdminDeletionLeavesAdministrator(1, 1)).toThrow(
+      "At least one admin account must remain."
+    );
+  });
+
+  it("allows an admin demotion when another admin remains", () => {
+    expect(() => assertAdminDemotionLeavesAdministrator(2)).not.toThrow();
+  });
+
+  it("rejects demotion of the final admin", () => {
+    expect(() => assertAdminDemotionLeavesAdministrator(1)).toThrow(
       "At least one admin account must remain."
     );
   });

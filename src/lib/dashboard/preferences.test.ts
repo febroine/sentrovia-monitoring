@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DASHBOARD_PREFERENCES,
   normalizeDashboardPreferences,
+  orderDashboardWidgetOptions,
   parseDashboardWidgets,
 } from "@/lib/dashboard/preferences";
 
@@ -19,5 +20,34 @@ describe("dashboard preferences", () => {
       DEFAULT_DASHBOARD_PREFERENCES
     );
     expect(parseDashboardWidgets("not-json")).toBeNull();
+  });
+
+  it("shows enabled widget controls in their saved order", () => {
+    expect(orderDashboardWidgetOptions([
+      "recent-events",
+      "summary",
+      "monitor-focus",
+    ], true)).toEqual([
+      "recent-events",
+      "summary",
+      "monitor-focus",
+      "system",
+      "company-health",
+      "delivery",
+    ]);
+  });
+
+  it("keeps admin-only widgets out of member customization", () => {
+    expect(orderDashboardWidgetOptions([
+      "system",
+      "delivery",
+      "summary",
+    ], false)).toEqual([
+      "delivery",
+      "summary",
+      "monitor-focus",
+      "company-health",
+      "recent-events",
+    ]);
   });
 });

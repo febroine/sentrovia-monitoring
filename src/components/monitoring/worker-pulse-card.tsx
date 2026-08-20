@@ -85,7 +85,7 @@ export function WorkerPulseCard() {
         {connectivityOffline ? (
           <div className="mt-3 flex items-center gap-2 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
             <WifiOff className="h-3.5 w-3.5" />
-            {worker.connectivityMessage ?? "Internet connectivity is unavailable. Probes continue without recording host-side failures; outbound deliveries are paused."}
+            {worker.connectivityMessage ?? "Internet connectivity is unavailable. Monitor checks, webhook retries, and scheduled reports are paused without changing monitor states."}
           </div>
         ) : null}
       </CardContent>

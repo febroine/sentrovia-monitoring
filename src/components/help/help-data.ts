@@ -21,11 +21,11 @@ export type HelpCategory = {
 };
 
 export const quickNotes = [
-  "If monitors look stale, open Worker Insights first and check heartbeat, backlog, and recent errors.",
+  "If monitors look stale, check Monitoring > Worker Pulse and Dashboard > System Health before changing monitor settings.",
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
   "If a hostname has no DNS record yet, you can still save it; the worker records a DNS failure until it resolves.",
   "If a timeout alert feels noisy, check whether it was a confirmed timeout outage or a slow-but-online latency warning.",
-  "If every monitor appears stale at once, check Dashboard System Health for worker heartbeat, backlog, and host connectivity before changing monitor settings.",
+  "If every monitor becomes stale together, check worker heartbeat and host connectivity; an offline connectivity guard pauses due work without changing monitor states.",
   "If a new release is available, use Settings > Updates for host-side commands instead of expecting the browser to update the app.",
 ];
 
@@ -95,7 +95,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Why might a due monitor not run immediately?",
         answer:
-          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. When all configured internet canaries are unreachable, probes still run, but host-side connectivity failures do not change monitor status. Outbound deliveries resume automatically when connectivity returns.",
+          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. The worker also pauses monitor claims, webhook retries, and scheduled report delivery when every configured internet canary is unreachable. It leaves monitor states unchanged and resumes due work automatically after connectivity returns.",
       },
       {
         question: "Does changing a monitor affect future checks immediately?",
@@ -106,15 +106,15 @@ export const helpCategories: HelpCategory[] = [
   },
   {
     value: "worker",
-    label: "Worker Insights",
+    label: "Worker health",
     icon: Radar,
     accent: "text-sky-600 dark:text-sky-300",
-    summary: "How the worker runs, what the observability dashboard means, and how to read pressure correctly.",
+    summary: "How to confirm that checks are running and distinguish process, queue, and connectivity problems.",
     faqs: [
       {
-        question: "What does Worker Insights show?",
+        question: "Where can I check worker health?",
         answer:
-          "It shows backlog pressure, checks per hour, failures per day, the latest cycle duration, recent cycles, failing monitors, and recent worker-level errors. It is intended to explain worker quality, not just whether the process exists.",
+          "Dashboard > System Health summarizes worker, connectivity, due queue, and delivery alarms. Administrators also see Worker Pulse on Monitoring, including heartbeat age, last cycle, process ID, due backlog, cycle duration, current state, and the latest status message.",
       },
       {
         question: "What is due backlog?",
@@ -122,9 +122,9 @@ export const helpCategories: HelpCategory[] = [
           "Due backlog is the number of checks waiting to be claimed by the worker. A growing backlog usually means the worker is under-sized, blocked by errors, or temporarily behind the workspace load.",
       },
       {
-        question: "What does checks per hour mean?",
+        question: "What does Worker Pulse status mean?",
         answer:
-          "It is a short operational throughput metric derived from recent worker activity. It helps you judge whether the worker is keeping up with the monitoring load over time.",
+          "Running means the worker is reporting a current heartbeat and processing or waiting for work. Standby means a process exists but checks are not currently running. Offline means no live process is detected. Connectivity degraded means the worker process is alive, but due work is paused because every configured canary is unreachable.",
       },
       {
         question: "Why is heartbeat important if the UI is still open?",
@@ -132,19 +132,19 @@ export const helpCategories: HelpCategory[] = [
           "Because the browser does not execute checks. Heartbeat is a persisted signal from the real worker process, so it is the trustworthy indicator of whether monitoring is actually alive.",
       },
       {
-        question: "What does recent cycles represent?",
+        question: "What happens while host connectivity is unavailable?",
         answer:
-          "Each recent cycle row shows how many monitors completed, how long the cycle took, how much backlog existed at the start, and how many results were up, pending, or down.",
+          "The worker keeps its heartbeat alive but does not claim or run due monitors. Webhook retries and scheduled report delivery are paused as well. Existing monitor and outage states stay unchanged, so a host-side network failure cannot create a workspace-wide false outage.",
       },
       {
-        question: "What should I do when recent worker errors appear?",
+        question: "What should I do when the worker is stale or offline?",
         answer:
-          "Start with the System Health card on Dashboard, then inspect recent errors, due backlog, and failing monitors together. If the worker is offline or stale, restart it and confirm the database schema and runtime env are current.",
+          "Check Dashboard > System Health first. In Docker, confirm the worker container is running and using the same database and environment as the web service. In a Windows/NSSM install, confirm the worker service is running. After a restart, verify that heartbeat age falls and the due backlog begins to clear.",
       },
       {
-        question: "Why was Slow Monitors removed from this dashboard?",
+        question: "Does the browser run monitor checks?",
         answer:
-          "The worker dashboard is now focused on execution pressure and failure visibility. Latency still exists in monitor views and reports, but the dedicated worker surface prioritizes backlog, reliability, and scheduler health.",
+          "No. The browser only reads and changes persisted configuration. The separate worker process claims due monitors, performs checks, verifies failures, sends notifications, retries webhooks, and delivers scheduled reports.",
       },
     ],
   },
@@ -158,7 +158,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Which delivery channels exist right now?",
         answer:
-          "Sentrovia currently supports email, Telegram, Discord webhook, and generic webhooks. Slack controls are no longer part of the active product surface.",
+          "Sentrovia supports email and Telegram monitor notifications, plus workspace-level Discord and generic webhook channels. Delivery attempts are recorded per channel so one failing destination does not hide the outcome of another.",
       },
       {
         question: "Can notifications be sent in Turkish?",
@@ -212,7 +212,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What can the Reports page generate?",
         answer:
-          "Every report covers the rolling previous 7 days. You can send one immediately or schedule weekly or monthly delivery for the whole workspace or a single company.",
+          "Every report covers the rolling previous 7 days ending when it is generated. You can preview or email one immediately, or schedule weekly or monthly email delivery for the whole workspace or a single company. Monthly changes the send cadence, not the seven-day reporting window.",
       },
       {
         question: "What is the difference between Preview Studio and Schedule Manager?",
@@ -230,6 +230,11 @@ export const helpCategories: HelpCategory[] = [
           "Scheduled and manual report delivery sends one browser-ready HTML attachment.",
       },
       {
+        question: "Can I change the report name and email subject?",
+        answer:
+          "Yes. In Reports, open report customization to set the brand or sender name and a complete email subject template. The brand is used in the email header, attached HTML report, and default subject prefix. Subject templates support the tokens listed beside the field, and the preview shows the resolved subject before sending.",
+      },
+      {
         question: "Why is there no status-code table or checks count in the report?",
         answer:
           "The current report focuses on operator decisions rather than raw counters. Status-code tables and check-count labels were removed to keep the report easier to read, while failure details and latency context remain visible.",
@@ -242,7 +247,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "How are scheduled reports delivered?",
         answer:
-          "Scheduled reports are picked up by the worker during its loop. Active schedules whose next run time is due are rendered and sent through email delivery to the configured recipient list.",
+          "The worker claims active schedules whose next run time is due, renders the rolling seven-day report, and emails it to the configured recipient list. Scheduled report delivery pauses while the worker connectivity guard is offline and resumes after connectivity returns.",
       },
       {
         question: "Can I pause or delete a schedule later?",
@@ -269,6 +274,11 @@ export const helpCategories: HelpCategory[] = [
           "The first boot starts with onboarding. The first user enters their own email, username, and password, then Sentrovia creates that account with admin privileges. After setup, future access uses login and admins manage accounts from the Members page.",
       },
       {
+        question: "What if an existing workspace has no admin?",
+        answer:
+          "Onboarding stays closed once any account exists. From the server, run npm run auth:recover-admin -- --identifier followed by an existing account email or username. In Docker, prefix that command with docker compose exec web. Recovery only works when no admin exists, promotes an existing account, and closes that account's old sessions.",
+      },
+      {
         question: "Do I need to create every environment value manually?",
         answer:
           "No. Docker installers create a private .env with strong stable secrets, while the Windows/NSSM installer creates .env.local. On later updates, installers preserve database credentials and application secrets, then append only missing non-secret runtime defaults such as MONITOR_ALLOW_PRIVATE_TARGETS. Explicit values are never overwritten.",
@@ -276,12 +286,12 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Can I tell if the worker is truly alive?",
         answer:
-          "Yes. Dashboard System Health and Monitoring show worker heartbeat age, last cycle time, process state, host connectivity, backlog, and recent worker errors. Connectivity loss is shown separately from a stopped process because probes continue while host-side failures are suppressed.",
+          "Yes. Dashboard > System Health shows process, connectivity, queue, and delivery health. Administrators can use Monitoring > Worker Pulse for heartbeat age, last cycle time, process ID, backlog, cycle duration, and the current worker message. A current heartbeat proves that the worker process, rather than the browser, is alive.",
       },
       {
         question: "How does Sentrovia avoid mass false alerts when the server loses internet access?",
         answer:
-          "The worker probes multiple independent HTTP or HTTPS canaries before each cycle. If none responds, monitor probes still run, but host-side connectivity failures do not change monitor or outage state; outbound delivery waits for connectivity. Any canary response, including a non-success HTTP status, proves network reachability. Restricted environments can override WORKER_CONNECTIVITY_TARGETS with reliable endpoints reachable from that host.",
+          "Before claiming due work, the worker probes multiple independent HTTP or HTTPS canaries. If none responds, it pauses monitor checks, webhook retries, and scheduled report delivery without changing monitor or outage state. Any HTTP response, including a non-success status, proves reachability. Restricted environments can set WORKER_CONNECTIVITY_TARGETS to reliable endpoints reachable from that host.",
       },
       {
         question: "What happens if the worker container restarts?",
