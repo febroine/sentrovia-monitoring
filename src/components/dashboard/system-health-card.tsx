@@ -203,7 +203,7 @@ function metricToneClass(tone: "healthy" | "warning" | "critical" | "neutral") {
 
 function formatConnectivityStatus(status: SystemHealthResponse["worker"]["connectivityStatus"]) {
   if (status === "online") return "Online";
-  if (status === "offline") return "Paused";
+  if (status === "offline") return "Unavailable";
   if (status === "disabled") return "Not checked";
   return "Waiting";
 }

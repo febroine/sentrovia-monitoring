@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible Sentrovia problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Sentrovia. Remove credentials, tokens, cookies, private URLs, customer data, and database contents before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Sentrovia version
+      description: Use the release tag, image tag, or commit SHA.
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker Compose
+        - Windows with NSSM
+        - Manual Node.js services
+        - Local development
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe what happened and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Create a monitor with...
+        2. Run the worker...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Add relevant logs, screenshots, browser details, or container status. Redact all sensitive values.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed secrets, private addresses, and customer data.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

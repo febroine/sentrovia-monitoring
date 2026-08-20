@@ -35,4 +35,19 @@ describe("monitor checker dispatch", () => {
 
     expect(calculateNextCheckAt(monitor, checkedAt, completedAt)).toEqual(completedAt);
   });
+
+  it("schedules heartbeat checks at the interval and grace deadline", () => {
+    const monitor = {
+      monitorType: "heartbeat",
+      heartbeatLastReceivedAt: new Date("2026-05-08T07:00:00.000Z"),
+      intervalValue: 5,
+      intervalUnit: "dk",
+      timeout: 60_000,
+    } as Monitor;
+    const checkedAt = new Date("2026-05-08T07:05:00.000Z");
+
+    expect(calculateNextCheckAt(monitor, checkedAt)).toEqual(
+      new Date("2026-05-08T07:06:00.001Z")
+    );
+  });
 });

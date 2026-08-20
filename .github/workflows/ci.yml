@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  workflow_call:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Test, lint, typecheck, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_URL: http://localhost:3000
+      AUTH_SECRET: 7fba94f410b741aab935de3bc2b683642ba7a0de99484292af271afce0dbda27
+      APP_ENCRYPTION_SECRET: 2753237075824ec8a62d72aefcedbdad69bf27e42e84475a83cd808022233644
+      DATABASE_URL: postgresql://sentrovia:sentrovia@localhost:5432/sentrovia_ci
+      DISABLE_EMBEDDED_WORKER_SPAWN: "true"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run TypeScript checks
+        run: npm run typecheck
+
+      - name: Build production application
+        run: npm run build

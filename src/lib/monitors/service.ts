@@ -356,6 +356,7 @@ export async function deleteMonitors(userId: string, ids: string[]) {
 
 export async function restoreMonitors(userId: string, ids: string[], now = new Date()) {
   const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
+  const nextCheckTimestamp = now.toISOString();
   return db
     .update(monitors)
     .set({
@@ -363,7 +364,7 @@ export async function restoreMonitors(userId: string, ids: string[], now = new D
       deletedAt: null,
       isActive: sql`coalesce(${monitors.deletedWasActive}, false)`,
       deletedWasActive: null,
-      nextCheckAt: sql`case when coalesce(${monitors.deletedWasActive}, false) then ${now} else null end`,
+      nextCheckAt: sql`case when coalesce(${monitors.deletedWasActive}, false) then (${nextCheckTimestamp})::timestamptz else null end`,
       updatedAt: now,
     })
     .where(
@@ -610,7 +611,11 @@ export async function countDueMonitors(now: Date) {
   return rows.length;
 }
 
-export function calculateMonitorLeaseMs(rows: Array<{ timeout: number; verificationMode?: boolean }>) {
+export function calculateMonitorLeaseMs(
+  rows: Array<{ timeout: number; verificationMode?: boolean }>,
+  concurrencyLimit = env.workerConcurrency
+) {
+  const concurrency = Math.max(1, concurrencyLimit);
   const maximumCheckBudgetMs = rows.reduce(
     (maximum, row) => {
       const timeoutMs = Math.max(0, row.timeout);
@@ -621,7 +626,10 @@ export function calculateMonitorLeaseMs(rows: Array<{ timeout: number; verificat
     },
     0
   );
-  return Math.max(MONITOR_LEASE_MS, maximumCheckBudgetMs + MONITOR_LEASE_SAFETY_MS);
+  const processingWaves = Math.max(1, Math.ceil(rows.length / concurrency));
+  const batchProcessingBudgetMs = maximumCheckBudgetMs * processingWaves;
+
+  return Math.max(MONITOR_LEASE_MS, batchProcessingBudgetMs + MONITOR_LEASE_SAFETY_MS);
 }
 
 export async function isMonitorActive(monitorId: string) {
@@ -653,6 +661,7 @@ export async function recordMonitorResult(
   },
   expectedLeaseToken?: string | null
 ) {
+  const extendedLeaseTimestamp = new Date(Date.now() + MONITOR_LEASE_MS).toISOString();
   const [monitor] = await db
     .update(monitors)
     .set({
@@ -661,7 +670,7 @@ export async function recordMonitorResult(
         ? {
             leaseExpiresAt: sql`greatest(
               coalesce(${monitors.leaseExpiresAt}, now()),
-              ${new Date(Date.now() + MONITOR_LEASE_MS)}
+              (${extendedLeaseTimestamp})::timestamptz
             )`,
           }
         : {}),
@@ -690,12 +699,13 @@ export async function renewMonitorLease(
   }
 
   const leaseDurationMs = calculateMonitorLeaseMs([monitor]);
+  const extendedLeaseTimestamp = new Date(Date.now() + leaseDurationMs).toISOString();
   const [updated] = await db
     .update(monitors)
     .set({
       leaseExpiresAt: sql`greatest(
         coalesce(${monitors.leaseExpiresAt}, now()),
-        ${new Date(Date.now() + leaseDurationMs)}
+        (${extendedLeaseTimestamp})::timestamptz
       )`,
       updatedAt: new Date(),
     })

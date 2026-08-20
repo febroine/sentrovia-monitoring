@@ -1,7 +1,7 @@
 {
   "name": "sentrovia",
-  "version": "0.2.0",
-  "description": "Sentrovia is a verification-aware monitoring platform for HTTP, TCP, and PostgreSQL uptime checks.",
+  "version": "0.3.0",
+  "description": "Self-hosted uptime monitoring that verifies outages before alerting, with HTTP, TCP, Ping, PostgreSQL, evidence, and Windows deployment.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
   "bugs": {
@@ -20,6 +20,7 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "docker:web": "node scripts/bootstrap-runtime.mjs web",
     "docker:worker": "node scripts/bootstrap-runtime.mjs worker",
     "worker:dev": "tsx watch src/worker/runner.ts",
@@ -36,14 +37,14 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
-    "@next/env": "^16.2.10",
+    "@next/env": "^16.3.1",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "jose": "^6.2.2",
     "lucide-react": "^1.7.0",
-    "next": "^16.2.10",
+    "next": "^16.3.1",
     "nodemailer": "9.0.3",
     "playwright": "^1.60.0",
     "postgres": "^3.4.9",
@@ -65,20 +66,24 @@
     "drizzle-kit": "^0.31.10",
     "esbuild": "0.28.1",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.2.10",
-    "postcss": "8.5.16",
+    "eslint-config-next": "^16.3.1",
+    "postcss": "8.5.26",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "postcss": "8.5.16"
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    },
+    "nanoid": "3.3.18",
+    "postcss": "8.5.26",
+    "sharp": "0.35.3"
   },
   "allowScripts": {
-    "esbuild@0.18.20": true,
     "esbuild@0.25.12": true,
     "esbuild@0.28.1": true,
-    "sharp@0.34.5": true,
+    "sharp@0.35.3": true,
     "unrs-resolver@1.11.1": true
   }
 }

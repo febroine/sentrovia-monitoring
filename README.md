@@ -1,11 +1,12 @@
 # SENTROVIA
 
 <p align="center">
-  <strong>Verification-aware monitoring for internal teams.</strong><br>
-  Fewer false alarms. Better evidence. A calmer operations console.
+  <strong>Self-hosted uptime monitoring that verifies outages before alerting you.</strong><br>
+  HTTP, TCP, Ping, PostgreSQL, JSON, keyword, and heartbeat checks with screenshot evidence, reliable alert delivery, and Windows-friendly deployment.
 </p>
 
 <p align="center">
+  <a href="https://github.com/febroine/sentrovia-monitoring/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/febroine/sentrovia-monitoring/ci.yml?branch=main&style=flat-square&label=CI" /></a>
   <a href="https://github.com/febroine/sentrovia-monitoring/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/febroine/sentrovia-monitoring?style=flat-square&label=release" /></a>
   <a href="https://github.com/febroine/sentrovia-monitoring/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/febroine/sentrovia-monitoring?style=flat-square" /></a>
   <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" />
@@ -13,19 +14,54 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="Sentrovia dashboard" width="100%">
+  <a href="docs/screenshots/demo.gif">Product walkthrough</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-failure-verification-works">Verification flow</a> ·
+  <a href="SECURITY.md">Security</a>
 </p>
 
-<p align="center"><sub>Monitor services, confirm failures, and understand what happened from one focused workspace.</sub></p>
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="Sentrovia dashboard, monitoring, companies, reports, and delivery walkthrough" width="100%">
+</p>
+
+<p align="center"><sub>A short product walkthrough using synthetic example data. Monitor services, confirm failures, and understand what happened from one focused workspace.</sub></p>
 
 ## Why Sentrovia?
 
-- [x] Verify outages before alerting
-- [x] Keep screenshot evidence for confirmed HTTP-style failures
-- [x] Monitor HTTP, TCP, ping, PostgreSQL, JSON, keyword, and heartbeat targets
-- [x] Deliver notifications through Telegram, Discord, email, and webhooks
-- [x] Publish workspace or company-scoped public status pages
-- [x] Run with Docker Compose or Windows services through NSSM
+- [x] Confirms failures before sending DOWN alerts
+- [x] Detects when the monitoring server itself loses internet access
+- [x] Captures evidence after confirmed HTTP-style failures
+- [x] Keeps delivery retries and notification outcomes auditable
+- [x] Monitors HTTP, TCP, Ping, PostgreSQL, JSON, keyword, and heartbeat targets
+- [x] Runs with Docker Compose or as native Windows services through NSSM
+
+## How Failure Verification Works
+
+Sentrovia avoids turning one unlucky timeout into an incident.
+
+```mermaid
+flowchart LR
+    A["Worker checks target"] --> B{"Did it fail?"}
+    B -- "No" --> C["Store healthy result"]
+    B -- "Yes" --> D["Enter verification mode"]
+    D --> E["Recheck every minute"]
+    E --> F{"Threshold reached?"}
+    F -- "No" --> E
+    F -- "Yes" --> G["Final confirmation with larger timeout"]
+    G --> H{"Still failing?"}
+    H -- "No" --> C
+    H -- "Yes" --> I["Confirm outage"]
+    I --> J["Record diagnostics and timeline"]
+    J --> K["Send notifications with optional screenshot"]
+```
+
+Down alerts are tied to confirmed state transitions, not a single failed request.
+
+### Internet outage guard
+
+Before claiming monitor work, the worker checks several independent public canaries. If every canary is unreachable, Sentrovia pauses monitor checks, webhook retries, and scheduled report delivery without changing monitor states or sending outage notifications. Work resumes automatically after any canary responds.
+
+The defaults avoid treating one blocked provider as a server-wide outage. Restricted networks can set `WORKER_CONNECTIVITY_TARGETS` to a comma-separated list of at least two reliable HTTP or HTTPS endpoints available from the worker host. The guard can be tuned with `WORKER_CONNECTIVITY_TIMEOUT_MS`; disabling it with `WORKER_CONNECTIVITY_CHECK_ENABLED=false` removes this false-positive protection.
 
 ## Quick Start
 
@@ -63,7 +99,7 @@ Every version tag also publishes an image to GitHub Container Registry:
 docker pull ghcr.io/febroine/sentrovia-monitoring:latest
 ```
 
-Versioned images are available as `ghcr.io/febroine/sentrovia-monitoring:0.1.2` and follow-up release tags. Set the GHCR package visibility to **Public** after the first publish if anonymous pulls are required. The image still requires the same runtime environment and PostgreSQL configuration described below.
+Versioned images are published as `:<major>.<minor>` and `:<major>.<minor>.<patch>` alongside `:latest`. Every image requires the same runtime environment and PostgreSQL configuration described below.
 
 ## Screenshots
 
@@ -294,34 +330,6 @@ npm run db:sync
 
 </details>
 
-## How Failure Verification Works
-
-Sentrovia avoids noisy first-failure alerts.
-
-```mermaid
-flowchart LR
-    A["Worker checks target"] --> B{"Did it fail?"}
-    B -- "No" --> C["Store healthy result"]
-    B -- "Yes" --> D["Enter verification mode"]
-    D --> E["Recheck every minute"]
-    E --> F{"Threshold reached?"}
-    F -- "No" --> E
-    F -- "Yes" --> G["Final confirmation with larger timeout"]
-    G --> H{"Still failing?"}
-    H -- "No" --> C
-    H -- "Yes" --> I["Confirm outage"]
-    I --> J["Record diagnostics and timeline"]
-    J --> K["Send notifications with optional screenshot"]
-```
-
-That means down alerts are tied to confirmed state transitions, not one unlucky timeout.
-
-### Internet outage guard
-
-Before claiming monitor work, the worker checks several independent public canaries. If every canary is unreachable, Sentrovia pauses monitor checks, webhook retries, and scheduled report delivery without changing monitor states or sending outage notifications. Work resumes automatically after any canary responds.
-
-The defaults are designed to avoid treating one blocked provider as a server-wide outage. Restricted networks can set `WORKER_CONNECTIVITY_TARGETS` to a comma-separated list of at least two reliable HTTP or HTTPS endpoints available from the worker host. The guard can be tuned with `WORKER_CONNECTIVITY_TIMEOUT_MS`; disabling it with `WORKER_CONNECTIVITY_CHECK_ENABLED=false` removes this false-positive protection.
-
 ## Timeout and Slow Response Rules
 
 Sentrovia separates availability failures from degraded latency:
@@ -384,7 +392,7 @@ Reports are designed for people who need a readable operational summary, not a s
 
 Sentrovia currently sends HTML reports only:
 
-- Weekly, monthly, and all-time scopes
+- A rolling last-7-days reporting window for every manual and scheduled report
 - Workspace-wide or company-scoped reports
 - Manual preview and scheduled delivery
 - URL-first tables, readable failure details, and service snapshots
@@ -408,6 +416,12 @@ Public status pages can be workspace-wide or limited to one company in **Setting
 - Docker Compose
 - NSSM
 
+## Contributing and Security
+
+Focused bug fixes, tests, and documentation improvements are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+Report suspected vulnerabilities privately by following [SECURITY.md](SECURITY.md). Never include credentials, private monitor targets, customer data, or database contents in a public issue.
+
 ## Project Status
 
 Sentrovia is usable today as an internal monitoring and operations console.
@@ -417,8 +431,8 @@ The strongest use case is an internal team that wants verified alerts, screensho
 Possible next improvements:
 
 - Signed release builds
-- Demo video or GIF
-- Hosted demo instance
+- Hosted read-only demo instance
+- Published, reproducible scale benchmarks
 - More granular role-based access controls
 - Escalation policies
 - Multi-region workers

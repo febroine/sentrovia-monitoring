@@ -4,6 +4,7 @@ import {
   buildReportMessage,
   normalizeReportStatus,
   resolveReportPeriod,
+  resolveReportTitle,
   scheduleNextRunAfter,
 } from "@/lib/reports/service";
 import type { GeneratedReport } from "@/lib/reports/types";
@@ -30,24 +31,35 @@ describe("scheduleNextRunAfter", () => {
 
     expect(nextRun.toISOString()).toBe("2027-02-28T08:00:00.000Z");
   });
+
+  it("keeps an end-of-month schedule anchored after February", () => {
+    const nextRun = scheduleNextRunAfter(
+      new Date("2027-01-31T08:00:00.000Z"),
+      "monthly",
+      new Date("2027-03-01T08:00:00.000Z")
+    );
+
+    expect(nextRun.toISOString()).toBe("2027-03-31T08:00:00.000Z");
+  });
 });
 
 describe("resolveReportPeriod", () => {
   const now = new Date("2026-08-14T12:00:00.000Z");
 
-  it("uses a rolling seven-day window for weekly reports", () => {
-    const period = resolveReportPeriod("weekly", now);
+  it("always uses a rolling seven-day window", () => {
+    const period = resolveReportPeriod(now);
 
     expect(period.startedAt.toISOString()).toBe("2026-08-07T12:00:00.000Z");
     expect(period.endedAt).toBe(now);
     expect(period.label).toBe("Last 7 days");
   });
+});
 
-  it("uses a rolling thirty-day window for monthly reports", () => {
-    const period = resolveReportPeriod("monthly", now);
-
-    expect(period.startedAt.toISOString()).toBe("2026-07-15T12:00:00.000Z");
-    expect(period.label).toBe("Last 30 days");
+describe("resolveReportTitle", () => {
+  it("does not label a rolling seven-day report as monthly or all-time", () => {
+    expect(resolveReportTitle("weekly", "global", null)).toBe("Weekly Workspace Report");
+    expect(resolveReportTitle("monthly", "global", null)).toBe("7-Day Workspace Report");
+    expect(resolveReportTitle("all_time", "company", "Payments")).toBe("7-Day Payments Report");
   });
 });
 

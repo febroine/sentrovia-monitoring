@@ -359,7 +359,7 @@ export function GeneralMonitorSettings({
               <p className="text-sm font-medium">Active monitor</p>
               <p className="text-xs text-muted-foreground">Worker will only check monitors that are marked active.</p>
             </div>
-            <Switch checked={values.isActive} onCheckedChange={(checked) => onFieldChange("isActive", checked)} />
+            <Switch aria-label="Active monitor" checked={values.isActive} onCheckedChange={(checked) => onFieldChange("isActive", checked)} />
           </div>
         </div>
       ) : null}
@@ -437,7 +437,7 @@ export function CheckMonitorSettings({
               Responses above this value stay online but are marked degraded. Keep it below the hard failure timeout.
             </p>
           </Field>
-          <div className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
+          <div className="flex items-start justify-between gap-3 border-y py-3">
             <div>
               <p className="text-sm font-medium">Slow response notifications</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -445,6 +445,7 @@ export function CheckMonitorSettings({
               </p>
             </div>
             <Switch
+              aria-label="Slow response notifications"
               checked={values.slowResponseAlertsEnabled}
               onCheckedChange={(checked) => onFieldChange("slowResponseAlertsEnabled", checked)}
             />
@@ -560,7 +561,7 @@ export function CheckMonitorSettings({
       </p>
 
       {isHttpMonitor || isAssertionMonitor ? (
-        <div className="space-y-2">
+        <div className="divide-y border-y">
           <CheckRow
             label="Check SSL expiry"
             description="Send a daily warning during the final 30 days before certificate expiry."
@@ -619,7 +620,7 @@ function CheckRow({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-start gap-3 rounded-md border border-border px-3 py-2 text-sm">
+    <label className="flex items-start gap-3 py-3 text-sm">
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 accent-primary" />
       <span className="flex-1">
         <span className="block">{label}</span>

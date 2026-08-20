@@ -1,6 +1,7 @@
-import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, workerCycleMetrics } from "@/lib/db/schema";
+import { isMonitorCheckStale } from "@/lib/monitors/health";
 import type {
   SiteStatus,
   WorkerObservability,
@@ -16,26 +17,22 @@ const RANGE_CONFIG: Record<
     lookbackMs: number;
     bucketCount: number;
     bucketMs: number;
-    staleThresholdMs: number;
   }
 > = {
   "1h": {
     lookbackMs: HOUR_MS,
     bucketCount: 6,
     bucketMs: 10 * 60 * 1000,
-    staleThresholdMs: 20 * 60 * 1000,
   },
   "24h": {
     lookbackMs: DAY_MS,
     bucketCount: 8,
     bucketMs: 3 * HOUR_MS,
-    staleThresholdMs: 2 * HOUR_MS,
   },
   "7d": {
     lookbackMs: 7 * DAY_MS,
     bucketCount: 7,
     bucketMs: DAY_MS,
-    staleThresholdMs: 12 * HOUR_MS,
   },
 };
 const RECENT_CYCLE_LIMIT = 18;
@@ -97,6 +94,8 @@ export async function getWorkerObservability(
     monitorRows,
     checksInRange,
     failureEvents,
+    checkCountRows,
+    failureCountRows,
     recentCycleRows,
     recentCycleErrors,
   ] = await Promise.all([
@@ -119,6 +118,9 @@ export async function getWorkerObservability(
         status: monitors.status,
         lastCheckedAt: monitors.lastCheckedAt,
         nextCheckAt: monitors.nextCheckAt,
+        intervalValue: monitors.intervalValue,
+        intervalUnit: monitors.intervalUnit,
+        timeout: monitors.timeout,
       })
       .from(monitors)
       .where(and(eq(monitors.userId, userId), eq(monitors.isActive, true), isNull(monitors.deletedAt)))
@@ -151,6 +153,20 @@ export async function getWorkerObservability(
       )
       .orderBy(desc(monitorEvents.createdAt))
       .limit(limits.checks),
+    db
+      .select({ total: count() })
+      .from(monitorChecks)
+      .where(and(eq(monitorChecks.userId, userId), gte(monitorChecks.createdAt, rangeStart))),
+    db
+      .select({ total: count() })
+      .from(monitorEvents)
+      .where(
+        and(
+          eq(monitorEvents.userId, userId),
+          eq(monitorEvents.eventType, "failure"),
+          gte(monitorEvents.createdAt, rangeStart)
+        )
+      ),
     db
       .select()
       .from(workerCycleMetrics)
@@ -247,9 +263,7 @@ export async function getWorkerObservability(
       const minutesSinceLastCheck = monitor.lastCheckedAt
         ? Math.floor((now.getTime() - monitor.lastCheckedAt.getTime()) / 60_000)
         : null;
-      const stale =
-        monitor.lastCheckedAt === null ||
-        now.getTime() - monitor.lastCheckedAt.getTime() >= config.staleThresholdMs;
+      const stale = isObservedMonitorStale(monitor, now);
 
       return {
         monitorId: monitor.id,
@@ -275,8 +289,8 @@ export async function getWorkerObservability(
     range,
     summary: {
       dueBacklog: dueRows.length,
-      checksInRange: checksInRange.length,
-      failuresInRange: failureEvents.length,
+      checksInRange: checkCountRows[0]?.total ?? 0,
+      failuresInRange: failureCountRows[0]?.total ?? 0,
       averageLatencyMsInRange: averageValue(
         checksInRange
           .map((check) => check.latencyMs)
@@ -459,6 +473,19 @@ function formatFailureReason(reason: string | null) {
   return reason
     .replaceAll("_", " ")
     .replace(/\b\w/g, (value) => toEnglishUppercase(value));
+}
+
+export function isObservedMonitorStale(
+  monitor: {
+    lastCheckedAt: Date | null;
+    nextCheckAt: Date | null;
+    intervalValue: number;
+    intervalUnit: string;
+    timeout: number;
+  },
+  now: Date
+) {
+  return isMonitorCheckStale({ ...monitor, now });
 }
 
 export function getLatestDate(values: Date[]) {

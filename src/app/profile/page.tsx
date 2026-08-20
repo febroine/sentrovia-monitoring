@@ -47,8 +47,7 @@ function ProfileHeader({ profile }: { profile: SettingsPayload["profile"] }) {
   return (
     <header className="flex flex-col gap-6 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="text-xs font-medium text-muted-foreground">Account</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Profile</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
         <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
           Manage the identity and contact details used across your workspace.
         </p>

@@ -222,7 +222,14 @@ export function MonitorTable({
                 <TableCell><div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="size-3" />{formatLastChecked(monitor.lastCheckedAt)}</div></TableCell>
                 <TableCell>{monitor.uptime}</TableCell>
                 <TableCell onClick={(event) => event.stopPropagation()}>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onEdit(monitor)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    aria-label={`Edit ${monitor.name}`}
+                    title="Edit monitor"
+                    onClick={() => onEdit(monitor)}
+                  >
                     <Settings2 className="size-3.5 text-muted-foreground" />
                   </Button>
                 </TableCell>

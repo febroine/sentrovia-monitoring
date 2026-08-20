@@ -26,6 +26,7 @@ const REPORT_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const DUE_REPORT_BATCH_SIZE = 5;
 const DEFAULT_REPORT_TEMPLATE: ReportTemplateVariant = "operations";
 const REPORT_DAY_MS = 24 * 60 * 60 * 1000;
+const REPORT_WINDOW_DAYS = 7;
 type ReportCheckAggregate = {
   monitorId: string;
   totalChecks: number;
@@ -270,7 +271,7 @@ export async function generateReportPreview(
 ): Promise<GeneratedReport> {
   const scoped = await loadScopedReportData(userId, input, now);
   const workspaceName = await resolveReportBrandName(userId, input.reportBrandName);
-  const period = resolveReportPeriod(input.cadence, now);
+  const period = resolveReportPeriod(now);
   const template = input.template ?? DEFAULT_REPORT_TEMPLATE;
   const checksByMonitor = new Map(scoped.checkAggregates.map((item) => [item.monitorId, item]));
   const failuresByMonitor = new Map(scoped.failureAggregates.map((item) => [item.monitorId, item]));
@@ -301,7 +302,7 @@ export async function generateReportPreview(
   });
 
   return {
-    title: buildReportTitle(input.cadence, input.scope, scoped.companyName),
+    title: resolveReportTitle(input.cadence, input.scope, scoped.companyName),
     scope: input.scope,
     cadence: input.cadence,
     template,
@@ -486,7 +487,7 @@ export function assertReportScheduleCompanyAvailable(scope: string, companyName:
 }
 
 async function loadScopedReportData(userId: string, input: ReportPreviewInput, now: Date) {
-  const period = resolveReportPeriod(input.cadence, now);
+  const period = resolveReportPeriod(now);
   const company =
     input.scope === "company" && input.companyId
       ? await getCompanyById(userId, input.companyId)
@@ -682,41 +683,21 @@ function emptyReportMetrics() {
   };
 }
 
-export function resolveReportPeriod(cadence: ReportCadence, now: Date) {
-  if (cadence === "weekly") {
-    return {
-      startedAt: new Date(now.getTime() - 7 * REPORT_DAY_MS),
-      endedAt: now,
-      label: "Last 7 days",
-    };
-  }
-
-  if (cadence === "all_time") {
-    return { startedAt: new Date("1970-01-01T00:00:00.000Z"), endedAt: now, label: "All time" };
-  }
-
+export function resolveReportPeriod(now: Date) {
   return {
-    startedAt: new Date(now.getTime() - 30 * REPORT_DAY_MS),
+    startedAt: new Date(now.getTime() - REPORT_WINDOW_DAYS * REPORT_DAY_MS),
     endedAt: now,
-    label: "Last 30 days",
+    label: "Last 7 days",
   };
 }
 
-function buildReportTitle(cadence: ReportCadence, scope: ReportPreviewInput["scope"], companyName: string | null) {
-  const cadenceLabel = resolveCadenceLabel(cadence);
+export function resolveReportTitle(
+  cadence: ReportCadence,
+  scope: ReportPreviewInput["scope"],
+  companyName: string | null
+) {
+  const cadenceLabel = cadence === "weekly" ? "Weekly" : "7-Day";
   return scope === "company" ? `${cadenceLabel} ${companyName ?? "Company"} Report` : `${cadenceLabel} Workspace Report`;
-}
-
-function resolveCadenceLabel(cadence: ReportCadence) {
-  if (cadence === "weekly") {
-    return "Weekly";
-  }
-
-  if (cadence === "monthly") {
-    return "Monthly";
-  }
-
-  return "All-time";
 }
 
 function buildSlowMonitorSummary(
@@ -1648,6 +1629,12 @@ async function completeClaimedReportSchedule(
 
 function advanceOneMonthClamped(value: Date) {
   const dayOfMonth = value.getDate();
+  const lastDayOfCurrentMonth = new Date(
+    value.getFullYear(),
+    value.getMonth() + 1,
+    0
+  ).getDate();
+  const staysAtMonthEnd = dayOfMonth === lastDayOfCurrentMonth;
   value.setDate(1);
   value.setMonth(value.getMonth() + 1);
   const lastDayOfTargetMonth = new Date(
@@ -1655,7 +1642,7 @@ function advanceOneMonthClamped(value: Date) {
     value.getMonth() + 1,
     0
   ).getDate();
-  value.setDate(Math.min(dayOfMonth, lastDayOfTargetMonth));
+  value.setDate(staysAtMonthEnd ? lastDayOfTargetMonth : Math.min(dayOfMonth, lastDayOfTargetMonth));
 }
 
 async function completeManualReportSchedule(

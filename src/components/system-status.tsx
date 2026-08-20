@@ -19,7 +19,7 @@ const HEARTBEAT_STALE_MS = 180_000;
 const REFRESH_INTERVAL_MS = 10_000;
 
 export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boolean }) {
-  const { worker, commandLoading, error, loadWorker, toggleWorker } = useWorkerStore();
+  const { worker, loading, commandLoading, error, loadWorker, toggleWorker } = useWorkerStore();
   const [systemData, setSystemData] = useState<SystemData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -86,7 +86,15 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
                       : "border-border text-muted-foreground"
                 )}
               >
-                {connectivityOffline ? "Monitoring paused" : workerActive ? "Running" : desiredRunning ? "Starting" : "Idle"}
+                {loading
+                  ? "Loading"
+                  : connectivityOffline
+                    ? "Connectivity degraded"
+                    : workerActive
+                      ? "Running"
+                      : desiredRunning
+                        ? "Starting"
+                        : "Idle"}
               </Badge>
             </div>
             <CardDescription>
@@ -120,7 +128,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
         {connectivityOffline ? (
           <InlineAlert
             tone="danger"
-            message={worker?.connectivityMessage ?? "Internet connectivity is unavailable. Monitor checks and outbound tasks are paused."}
+            message={worker?.connectivityMessage ?? "Internet connectivity is unavailable. Probes continue without recording host-side failures; outbound deliveries are paused."}
           />
         ) : null}
 
@@ -372,7 +380,7 @@ function truncateValue(value: string, maxLength: number) {
 
 function formatConnectivityStatus(status: "unknown" | "online" | "offline" | "disabled" | undefined) {
   if (status === "online") return "Online";
-  if (status === "offline") return "Monitoring paused";
+  if (status === "offline") return "Unavailable";
   if (status === "disabled") return "Not checked";
   return "Waiting";
 }

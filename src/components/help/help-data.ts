@@ -25,7 +25,7 @@ export const quickNotes = [
   "If a notification did not arrive, inspect Delivery before changing monitor settings.",
   "If a hostname has no DNS record yet, you can still save it; the worker records a DNS failure until it resolves.",
   "If a timeout alert feels noisy, check whether it was a confirmed timeout outage or a slow-but-online latency warning.",
-  "If every monitor appears stale at once, check the Dashboard System Health card for an internet outage pause before changing monitor settings.",
+  "If every monitor appears stale at once, check Dashboard System Health for worker heartbeat, backlog, and host connectivity before changing monitor settings.",
   "If a new release is available, use Settings > Updates for host-side commands instead of expecting the browser to update the app.",
 ];
 
@@ -95,7 +95,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Why might a due monitor not run immediately?",
         answer:
-          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. The worker also pauses due work when all configured internet canaries are unreachable, preventing a server-side connection loss from turning every monitor into a false outage. The Dashboard System Health card shows this state and work resumes automatically.",
+          "If many checks become due together, batch size and concurrency control can delay a monitor briefly. When all configured internet canaries are unreachable, probes still run, but host-side connectivity failures do not change monitor status. Outbound deliveries resume automatically when connectivity returns.",
       },
       {
         question: "Does changing a monitor affect future checks immediately?",
@@ -212,7 +212,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What can the Reports page generate?",
         answer:
-          "You can generate weekly or monthly reports for the whole workspace or for a single company. The same page previews summaries, sends reports immediately, and manages recurring schedules.",
+          "Every report covers the rolling previous 7 days. You can send one immediately or schedule weekly or monthly delivery for the whole workspace or a single company.",
       },
       {
         question: "What is the difference between Preview Studio and Schedule Manager?",
@@ -276,12 +276,12 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Can I tell if the worker is truly alive?",
         answer:
-          "Yes. The Dashboard System Health card and Monitoring surface show worker heartbeat age, last cycle time, process state, internet connectivity, backlog, and recent worker errors. A live worker can be intentionally paused by the internet outage guard, which is shown separately from a stopped process.",
+          "Yes. Dashboard System Health and Monitoring show worker heartbeat age, last cycle time, process state, host connectivity, backlog, and recent worker errors. Connectivity loss is shown separately from a stopped process because probes continue while host-side failures are suppressed.",
       },
       {
         question: "How does Sentrovia avoid mass false alerts when the server loses internet access?",
         answer:
-          "The worker probes multiple independent HTTP or HTTPS canaries before monitoring. If none responds, it keeps monitor and outage state unchanged, pauses checks and outbound tasks, and retries on the next worker poll. Any response, including a non-success HTTP status, proves network reachability. Restricted environments can override WORKER_CONNECTIVITY_TARGETS with reliable endpoints reachable from that host.",
+          "The worker probes multiple independent HTTP or HTTPS canaries before each cycle. If none responds, monitor probes still run, but host-side connectivity failures do not change monitor or outage state; outbound delivery waits for connectivity. Any canary response, including a non-success HTTP status, proves network reachability. Restricted environments can override WORKER_CONNECTIVITY_TARGETS with reliable endpoints reachable from that host.",
       },
       {
         question: "What happens if the worker container restarts?",

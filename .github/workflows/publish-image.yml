@@ -14,17 +14,35 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: quality
     runs-on: ubuntu-latest
 
     steps:
-      - name: Create GitHub Release
+      - name: Ensure GitHub Release exists
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "Sentrovia $RELEASE_TAG"
+        run: |
+          set -euo pipefail
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub Release $RELEASE_TAG already exists; keeping the existing release."
+            exit 0
+          fi
+
+          if gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "Sentrovia $RELEASE_TAG"; then
+            exit 0
+          fi
+
+          echo "Release creation raced with another process; verifying the final state."
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
 
   publish:
+    needs: quality
     runs-on: ubuntu-latest
 
     steps:

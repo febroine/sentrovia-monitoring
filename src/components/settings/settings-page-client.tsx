@@ -15,13 +15,13 @@ import { useSettingsStore } from "@/stores/use-settings-store";
 
 type TabId = "notifications" | "monitoring" | "publicStatus" | "appearance" | "data" | "updates";
 
-const tabs: Array<{ id: TabId; label: string; icon: ElementType; tone: string; adminOnly?: boolean }> = [
-  { id: "notifications", label: "Notifications", icon: Bell, tone: "text-emerald-600 dark:text-emerald-400" },
-  { id: "monitoring", label: "Monitoring", icon: Globe, tone: "text-sky-600 dark:text-sky-400" },
-  { id: "publicStatus", label: "Public Status", icon: RadioTower, tone: "text-rose-600 dark:text-rose-400" },
-  { id: "appearance", label: "Appearance", icon: Palette, tone: "text-violet-600 dark:text-violet-400" },
-  { id: "data", label: "Data", icon: Database, tone: "text-amber-600 dark:text-amber-400" },
-  { id: "updates", label: "Updates", icon: DownloadCloud, tone: "text-emerald-600 dark:text-emerald-400", adminOnly: true },
+const tabs: Array<{ id: TabId; label: string; icon: ElementType; adminOnly?: boolean }> = [
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "monitoring", label: "Monitoring", icon: Globe },
+  { id: "publicStatus", label: "Public status", icon: RadioTower },
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "data", label: "Data", icon: Database },
+  { id: "updates", label: "Updates", icon: DownloadCloud, adminOnly: true },
 ];
 
 export default function SettingsPageClient() {
@@ -58,7 +58,7 @@ export default function SettingsPageClient() {
           {visibleTabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} className="h-auto shrink-0 justify-start rounded-md px-2.5 py-2 text-left md:w-full">
               <span className="flex min-w-0 items-center gap-2.5">
-                <tab.icon className={`size-4 shrink-0 ${tab.tone}`} />
+                <tab.icon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="block min-w-0 truncate text-sm font-medium">{tab.label}</span>
               </span>
             </TabsTrigger>

@@ -7,6 +7,7 @@ import {
   FileCode2,
   FileSpreadsheet,
   Plus,
+  RefreshCw,
   Search,
   Tags,
   Trash2,
@@ -78,6 +79,7 @@ export default function MonitoringPage() {
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [editingMonitor, setEditingMonitor] = useState<MonitorRecord | null>(null);
@@ -410,24 +412,22 @@ export default function MonitoringPage() {
         </div>
 
         <div className="flex flex-wrap gap-2 xl:justify-end">
-          <a href="/templates/monitors-template.csv" download className={buttonVariants({ variant: "outline" })}>
-            <FileSpreadsheet className="mr-2 size-4" />
-            Sample CSV
-          </a>
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <FileSpreadsheet className="mr-2 size-4" />
-            Import CSV
+          <Button variant="outline" onClick={() => setToolsOpen(true)}>
+            Tools
           </Button>
-          <Button variant="outline" onClick={() => setConfigOpen(true)}>
-            <FileCode2 className="mr-2 size-4" />
-            Monitoring as Code
-          </Button>
-          <Button variant="outline" onClick={() => void refreshMonitoring()} disabled={loading}>
-            {loading ? "Refreshing..." : "Refresh"}
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Refresh monitors"
+            title="Refresh monitors"
+            onClick={() => void refreshMonitoring()}
+            disabled={loading}
+          >
+            <RefreshCw className={loading ? "animate-spin" : ""} />
           </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 size-4" />
-            Add Monitor
+            Add monitor
           </Button>
         </div>
       </section>
@@ -561,6 +561,7 @@ export default function MonitoringPage() {
               variant="outline"
               size="sm"
               className="h-8 w-8 p-0"
+              aria-label="Previous monitor page"
               disabled={currentPage === 1}
               onClick={() => setPage((current) => current - 1)}
             >
@@ -581,6 +582,7 @@ export default function MonitoringPage() {
               variant="outline"
               size="sm"
               className="h-8 w-8 p-0"
+              aria-label="Next monitor page"
               disabled={currentPage === totalPages}
               onClick={() => setPage((current) => current + 1)}
             >
@@ -606,11 +608,52 @@ export default function MonitoringPage() {
         </div>
       ) : null}
 
+      <Dialog open={toolsOpen} onOpenChange={setToolsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Monitor tools</DialogTitle>
+            <DialogDescription>Import monitors or manage configuration files.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <a
+              href="/templates/monitors-template.csv"
+              download
+              className={buttonVariants({ variant: "outline", className: "w-full justify-start" })}
+            >
+              <FileSpreadsheet className="mr-2 size-4" />
+              Download sample CSV
+            </a>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setToolsOpen(false);
+                setImportOpen(true);
+              }}
+            >
+              <FileSpreadsheet className="mr-2 size-4" />
+              Import CSV
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setToolsOpen(false);
+                setConfigOpen(true);
+              }}
+            >
+              <FileCode2 className="mr-2 size-4" />
+              Monitoring as code
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Create monitor</DialogTitle>
-            <DialogDescription>Store a site URL and all monitoring settings in PostgreSQL.</DialogDescription>
+            <DialogDescription>Configure the target, check behavior, and alert routing.</DialogDescription>
           </DialogHeader>
           <MonitorForm
             initialValue={defaultForm}
@@ -628,7 +671,7 @@ export default function MonitoringPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Monitor settings</DialogTitle>
-            <DialogDescription>Update the stored site URL, checks, alerts, and templates.</DialogDescription>
+            <DialogDescription>Change the target, check behavior, alerts, and templates.</DialogDescription>
           </DialogHeader>
           {editingMonitor ? (
             <MonitorForm
