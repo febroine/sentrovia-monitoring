@@ -402,7 +402,7 @@ export default function MonitoringPage() {
   }
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-200">
+    <div className="min-w-0 space-y-5 animate-in fade-in duration-200">
       <section className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="space-y-1">
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Monitoring</h1>

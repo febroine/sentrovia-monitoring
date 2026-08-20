@@ -91,7 +91,7 @@ export function MonitorTable({
   onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border">
       <Table>
         <TableHeader>
           <TableRow className="bg-surface-high hover:bg-surface-high">

@@ -91,13 +91,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       />
       <div
         className={cn(
-          'relative flex min-h-screen flex-1 flex-col pb-20 md:pb-0',
+          'relative flex min-h-screen min-w-0 flex-1 flex-col pb-20 md:pb-0',
           appearance.compactDensity ? 'md:ml-56' : 'md:ml-60'
         )}
       >
         <main
           className={cn(
-            'mx-auto w-full max-w-[1600px] flex-1 overflow-x-hidden',
+            'mx-auto w-full min-w-0 max-w-[1600px] flex-1 overflow-x-hidden',
             appearance.compactDensity ? 'p-4 md:p-6' : 'p-5 md:p-8'
           )}
         >
