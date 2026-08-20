@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Download, ScanSearch, Upload, Vault } from "lucide-react";
+import { AlertTriangle, Download, ScanSearch, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -95,19 +94,7 @@ export function BackupRestorePanel({
   }
 
   return (
-    <Card>
-      <CardHeader className="border-b bg-muted/20 px-6 py-5">
-        <div className="flex items-start gap-3">
-          <Vault className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300" />
-          <div className="space-y-1">
-            <CardTitle className="text-base">Backup and Restore</CardTitle>
-            <CardDescription>
-              Export or restore workspace configuration. Secrets and operational history are not included.
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5 p-6 md:p-7">
+    <div className="space-y-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="flex flex-col gap-4 md:flex-row md:items-end">
             <div className="w-40 space-y-2">
@@ -164,8 +151,7 @@ export function BackupRestorePanel({
           {preview ? <Upload data-icon="inline-start" /> : <ScanSearch data-icon="inline-start" />}
           {restoring ? (preview ? "Restoring..." : "Analyzing...") : (preview ? "Confirm and restore" : "Analyze backup")}
         </Button>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 

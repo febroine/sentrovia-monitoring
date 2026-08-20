@@ -160,6 +160,44 @@ describe("delivery service", () => {
     expect(mocks.sendMail).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps report attachments when a failed email is retried", async () => {
+    const event = {
+      ...buildFailedEmailEvent(),
+      kind: "report",
+      payloadJson: JSON.stringify({
+        to: "reports@example.com",
+        subject: "Weekly report",
+        textBody: "Report",
+        htmlBody: "<p>Report</p>",
+        attachments: [{
+          filename: "weekly-report.html",
+          contentType: "text/html; charset=utf-8",
+          content: "<html>Report</html>",
+          encoding: "utf8",
+        }],
+      }),
+    };
+    const limit = vi.fn().mockResolvedValue([event]);
+    mocks.db.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({ limit })),
+      })),
+    });
+    mocks.getSmtpSettings.mockResolvedValue(buildSmtpSettings());
+    mocks.updateReturning
+      .mockResolvedValueOnce([{ ...event, status: "processing", attempts: 0, claimToken: "claim-1" }])
+      .mockResolvedValueOnce([{ ...event, status: "delivered", attempts: 1 }]);
+
+    await retryDeliveryEvent("user-1", event.id);
+
+    expect(mocks.sendMail).toHaveBeenCalledWith(expect.objectContaining({
+      attachments: [expect.objectContaining({
+        filename: "weekly-report.html",
+        content: "<html>Report</html>",
+      })],
+    }));
+  });
+
   it("limits delivery failure response bodies before storing them", async () => {
     const response = new Response("abcdef");
 

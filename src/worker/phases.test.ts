@@ -34,7 +34,7 @@ describe("worker phase connectivity guard", () => {
     vi.mocked(ensureWorkerConnectivity).mockResolvedValue(online);
   });
 
-  it("pauses monitor and outbound work when the host starts offline", async () => {
+  it("still runs offline-capable monitors while pausing outbound work", async () => {
     vi.mocked(ensureWorkerConnectivity).mockResolvedValueOnce(offline);
 
     await expect(runWorkerPhases(async () => true)).resolves.toEqual({
@@ -43,15 +43,13 @@ describe("worker phase connectivity guard", () => {
     });
 
     expect(runRetentionCleanup).toHaveBeenCalledOnce();
-    expect(runMonitoringCycle).not.toHaveBeenCalled();
+    expect(runMonitoringCycle).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
 
-  it("stops outbound work when connectivity is lost during monitor checks", async () => {
-    vi.mocked(ensureWorkerConnectivity)
-      .mockResolvedValueOnce(online)
-      .mockResolvedValueOnce(offline);
+  it("stops outbound work when connectivity is unavailable after monitor checks", async () => {
+    vi.mocked(ensureWorkerConnectivity).mockResolvedValueOnce(offline);
 
     await expect(runWorkerPhases(async () => true)).resolves.toMatchObject({
       status: "connectivity-paused",

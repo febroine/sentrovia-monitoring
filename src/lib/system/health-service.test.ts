@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildSystemHealthAlarms } from "@/lib/system/health-service";
+import {
+  buildSystemHealthAlarms,
+  isSystemMonitorDelayed,
+} from "@/lib/system/health-service";
 
 describe("buildSystemHealthAlarms", () => {
   it("returns no alarms for a healthy idle system", () => {
@@ -67,5 +70,20 @@ describe("buildSystemHealthAlarms", () => {
       title: "Internet connectivity is unavailable",
       detail: "Monitoring is paused while all canaries are unavailable.",
     }]);
+  });
+});
+
+describe("isSystemMonitorDelayed", () => {
+  it("does not report a delay while a long-running check is within its timeout grace", () => {
+    const monitor = {
+      lastCheckedAt: new Date("2026-08-20T11:58:00.000Z"),
+      nextCheckAt: new Date("2026-08-20T11:59:00.000Z"),
+      intervalValue: 1,
+      intervalUnit: "minutes" as const,
+      timeout: 120_000,
+    };
+
+    expect(isSystemMonitorDelayed(monitor, new Date("2026-08-20T12:00:30.000Z"))).toBe(false);
+    expect(isSystemMonitorDelayed(monitor, new Date("2026-08-20T12:01:00.001Z"))).toBe(true);
   });
 });

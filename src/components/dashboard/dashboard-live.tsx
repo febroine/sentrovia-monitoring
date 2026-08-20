@@ -396,13 +396,13 @@ function PanelPager({
 
   return (
     <div className="flex items-center gap-1.5">
-      <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
+      <Button variant="outline" size="icon-sm" aria-label="Previous page" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
         <ChevronLeft className="h-3.5 w-3.5" />
       </Button>
       <span className="min-w-14 text-center text-[11px] text-muted-foreground">
         {page} / {totalPages}
       </span>
-      <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page + 1)} disabled={page === totalPages}>
+      <Button variant="outline" size="icon-sm" aria-label="Next page" onClick={() => onPageChange(page + 1)} disabled={page === totalPages}>
         <ChevronRight className="h-3.5 w-3.5" />
       </Button>
     </div>

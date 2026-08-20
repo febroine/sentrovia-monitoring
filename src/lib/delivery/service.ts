@@ -335,6 +335,7 @@ export async function sendEmailDelivery(input: {
     textBody: input.textBody,
     htmlBody: input.htmlBody,
     to: destination,
+    attachments: serializeEmailAttachments(input.attachments),
   }, input.monitorId);
 
   if (!smtp || !smtp.fromEmail || !destination) {
@@ -870,6 +871,7 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
   const subject = readPayloadString(payload, "subject");
   const textBody = readPayloadString(payload, "textBody");
   const htmlBody = readPayloadString(payload, "htmlBody") || `<p>${escapeHtml(textBody)}</p>`;
+  const attachments = deserializeEmailAttachments(payload.attachments);
 
   if (!smtp || !smtp.fromEmail || !destination || !subject || !textBody) {
     return markDeliveryFailed(
@@ -893,7 +895,14 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
       greetingTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
       socketTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
     });
-    await transporter.sendMail({ from: smtp.fromEmail, to: destination, subject, text: textBody, html: htmlBody });
+    await transporter.sendMail({
+      from: smtp.fromEmail,
+      to: destination,
+      subject,
+      text: textBody,
+      html: htmlBody,
+      attachments,
+    });
     return markDeliveryDelivered(event.id, 250, event.attempts + 1, event.claimToken);
   } catch (error) {
     return isRetryableDeliveryError(error)
@@ -1198,6 +1207,69 @@ function postTelegramMessage(botToken: string, chatId: string, body: string) {
       disable_web_page_preview: false,
     }),
   });
+}
+
+type StoredEmailAttachment = {
+  filename?: string;
+  contentType?: string;
+  contentDisposition?: "attachment" | "inline";
+  cid?: string;
+  content: string;
+  encoding: "utf8" | "base64";
+};
+
+function serializeEmailAttachments(attachments: Mail.Attachment[] | undefined) {
+  if (!attachments?.length) {
+    return undefined;
+  }
+
+  return attachments.flatMap((attachment): StoredEmailAttachment[] => {
+    const content = attachment.content;
+    if (typeof content !== "string" && !Buffer.isBuffer(content)) {
+      return [];
+    }
+
+    return [{
+      filename: typeof attachment.filename === "string" ? attachment.filename : undefined,
+      contentType: attachment.contentType,
+      contentDisposition: attachment.contentDisposition === "inline" ? "inline" : "attachment",
+      cid: typeof attachment.cid === "string" ? attachment.cid : undefined,
+      content: Buffer.isBuffer(content) ? content.toString("base64") : content,
+      encoding: Buffer.isBuffer(content) ? "base64" : "utf8",
+    }];
+  });
+}
+
+function deserializeEmailAttachments(value: unknown): Mail.Attachment[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const attachments = value.flatMap((item): Mail.Attachment[] => {
+    if (!isStoredEmailAttachment(item)) {
+      return [];
+    }
+
+    return [{
+      filename: typeof item.filename === "string" ? item.filename : undefined,
+      contentType: typeof item.contentType === "string" ? item.contentType : undefined,
+      contentDisposition: item.contentDisposition === "inline" ? "inline" : "attachment",
+      cid: typeof item.cid === "string" ? item.cid : undefined,
+      content: item.encoding === "base64" ? Buffer.from(item.content, "base64") : item.content,
+    }];
+  });
+
+  return attachments.length > 0 ? attachments : undefined;
+}
+
+function isStoredEmailAttachment(value: unknown): value is StoredEmailAttachment {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<StoredEmailAttachment>;
+  return typeof candidate.content === "string"
+    && (candidate.encoding === "utf8" || candidate.encoding === "base64");
 }
 
 async function readTelegramResponseFailure(response: Response) {

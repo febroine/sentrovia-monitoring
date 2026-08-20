@@ -9,8 +9,16 @@ const SOFT_DELETE_GRACE_MS = 60_000;
 const WORKER_STATE_ID = "primary";
 
 export async function runRetentionCleanup(now = new Date()) {
+  const queryTimestamp = now.toISOString();
+
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${RETENTION_LOCK_KEY})`);
+    const [lock] = await tx.execute(
+      sql<{ acquired: boolean }>`select pg_try_advisory_xact_lock(${RETENTION_LOCK_KEY}) as acquired`
+    );
+    if (!lock?.acquired) {
+      return { ran: false };
+    }
+
     const [state] = await tx
       .select({ lastRetentionCleanupAt: workerState.lastRetentionCleanupAt })
       .from(workerState)
@@ -25,14 +33,14 @@ export async function runRetentionCleanup(now = new Date()) {
 
     await tx.execute(sql`
       delete from monitor_checks as record
-      where record.created_at < ${now} - make_interval(days => coalesce(
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
         (select settings.data_retention_days from user_settings as settings where settings.user_id = record.user_id),
         ${DEFAULT_SETTINGS.data.retentionDays}
       ))
     `);
     await tx.execute(sql`
       delete from monitor_events as record
-      where record.created_at < ${now} - make_interval(days => coalesce(
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
         (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
         ${DEFAULT_SETTINGS.data.eventRetentionDays}
       ))
@@ -47,14 +55,14 @@ export async function runRetentionCleanup(now = new Date()) {
     `);
     await tx.execute(sql`
       delete from monitor_diagnostics as record
-      where record.created_at < ${now} - make_interval(days => coalesce(
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
         (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
         ${DEFAULT_SETTINGS.data.eventRetentionDays}
       ))
     `);
     await tx.execute(sql`
       delete from outage_events as record
-      where record.created_at < ${now} - make_interval(days => coalesce(
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
         (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
         ${DEFAULT_SETTINGS.data.eventRetentionDays}
       ))
@@ -62,7 +70,7 @@ export async function runRetentionCleanup(now = new Date()) {
     await tx.execute(sql`
       delete from monitor_outages as record
       where record.status = 'resolved'
-        and coalesce(record.resolved_at, record.updated_at) < ${now} - make_interval(days => coalesce(
+        and coalesce(record.resolved_at, record.updated_at) < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
           (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
           ${DEFAULT_SETTINGS.data.eventRetentionDays}
         ))
@@ -70,14 +78,14 @@ export async function runRetentionCleanup(now = new Date()) {
     await tx.execute(sql`
       delete from delivery_events as record
       where record.status in ('delivered', 'failed')
-        and record.created_at < ${now} - make_interval(days => coalesce(
+        and record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
           (select settings.delivery_retention_days from user_settings as settings where settings.user_id = record.user_id),
           ${DEFAULT_SETTINGS.data.deliveryRetentionDays}
         ))
     `);
     await tx.execute(sql`
       delete from worker_cycle_metrics
-      where created_at < ${now} - make_interval(
+      where created_at < (${queryTimestamp})::timestamptz - make_interval(
         days => greatest(coalesce((select max(data_retention_days) from user_settings), 90), 7)
       )
     `);
@@ -95,53 +103,54 @@ export function shouldRunRetentionCleanup(lastRunAt: Date | null, now: Date) {
 }
 
 async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db.transaction>[0]>[0], now: Date) {
-  const cutoff = getSoftDeleteCutoff(now);
+  const cutoffTimestamp = getSoftDeleteCutoff(now).toISOString();
+  const queryTimestamp = now.toISOString();
 
   await executor.execute(sql`
     with expired_companies as (
       select id from companies
       where deleted_at is not null
-        and deleted_at < ${cutoff}
+        and deleted_at < (${cutoffTimestamp})::timestamptz
     )
     update user_settings
     set public_status_enabled = false,
         public_status_company_id = null,
-        updated_at = ${now}
+        updated_at = (${queryTimestamp})::timestamptz
     where public_status_company_id in (select id from expired_companies)
   `);
   await executor.execute(sql`
     with expired_companies as (
       select id from companies
       where deleted_at is not null
-        and deleted_at < ${cutoff}
+        and deleted_at < (${cutoffTimestamp})::timestamptz
     )
     update report_schedules
     set company_id = null,
         is_active = false,
         last_status = 'error',
         last_error_message = 'The assigned company was deleted.',
-        updated_at = ${now}
+        updated_at = (${queryTimestamp})::timestamptz
     where company_id in (select id from expired_companies)
   `);
   await executor.execute(sql`
     with expired_companies as (
       select id from companies
       where deleted_at is not null
-        and deleted_at < ${cutoff}
+        and deleted_at < (${cutoffTimestamp})::timestamptz
     )
     update monitors
-    set company_id = null, company = null, updated_at = ${now}
+    set company_id = null, company = null, updated_at = (${queryTimestamp})::timestamptz
     where company_id in (select id from expired_companies)
   `);
   await executor.execute(sql`
     delete from companies
     where deleted_at is not null
-      and deleted_at < ${cutoff}
+      and deleted_at < (${cutoffTimestamp})::timestamptz
   `);
   await executor.execute(sql`
     delete from monitors
     where deleted_at is not null
-      and deleted_at < ${cutoff}
+      and deleted_at < (${cutoffTimestamp})::timestamptz
   `);
 }
 

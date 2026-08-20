@@ -2,6 +2,7 @@ import { and, desc, eq, gte, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, monitors } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { isMonitorCheckStale } from "@/lib/monitors/health";
 import { getWorkerState } from "@/lib/monitors/service";
 import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
@@ -9,7 +10,6 @@ import { isPidAlive } from "@/lib/worker/process";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
 const DAY_MS = 24 * 60 * 60_000;
-const MIN_DELAY_GRACE_MS = 60_000;
 const RECENT_FAILURE_LIMIT = 12;
 const DELAYED_MONITOR_LIMIT = 12;
 const NON_NOTIFICATION_KINDS = ["report", "test"];
@@ -150,16 +150,16 @@ function toDelayedMonitor(
   monitor: typeof monitors.$inferSelect,
   now: Date
 ) {
-  const dueAt = monitor.nextCheckAt ?? monitor.createdAt;
-  const graceMs = Math.max(
-    intervalToMs(monitor.intervalValue, monitor.intervalUnit),
-    MIN_DELAY_GRACE_MS
-  );
-  const delayMs = now.getTime() - dueAt.getTime();
-
-  if (delayMs <= graceMs) {
+  if (!isSystemMonitorDelayed(monitor, now)) {
     return null;
   }
+
+  const intervalMs = intervalToMs(monitor.intervalValue, monitor.intervalUnit);
+  const dueAt = monitor.nextCheckAt
+    ?? (monitor.lastCheckedAt
+      ? new Date(monitor.lastCheckedAt.getTime() + intervalMs)
+      : monitor.createdAt);
+  const delayMs = now.getTime() - dueAt.getTime();
 
   return {
     id: monitor.id,
@@ -169,6 +169,23 @@ function toDelayedMonitor(
     delayMs,
     verificationMode: monitor.verificationMode,
   };
+}
+
+export function isSystemMonitorDelayed(
+  monitor: Pick<
+    typeof monitors.$inferSelect,
+    "lastCheckedAt" | "nextCheckAt" | "intervalValue" | "intervalUnit" | "timeout"
+  >,
+  now: Date
+) {
+  return isMonitorCheckStale({
+    lastCheckedAt: monitor.lastCheckedAt,
+    nextCheckAt: monitor.nextCheckAt,
+    intervalValue: monitor.intervalValue,
+    intervalUnit: monitor.intervalUnit,
+    timeout: monitor.timeout,
+    now,
+  });
 }
 
 export function buildSystemHealthAlarms(input: {
@@ -203,7 +220,7 @@ export function buildSystemHealthAlarms(input: {
       severity: "critical",
       title: "Internet connectivity is unavailable",
       detail: input.connectivityMessage
-        ?? "Monitor checks and outbound worker tasks are paused until connectivity returns.",
+        ?? "Outbound deliveries are paused. Monitor probes continue without recording host-side connectivity failures.",
     });
   }
 

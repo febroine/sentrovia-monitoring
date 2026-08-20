@@ -20,6 +20,12 @@ describe("monitor due selection", () => {
     expect(calculateMonitorLeaseMs([{ timeout: 60_000, verificationMode: true }])).toBe(360_000);
   });
 
+  it("keeps queued monitors leased across every concurrency wave", () => {
+    const monitors = Array.from({ length: 9 }, () => ({ timeout: 120_000 }));
+
+    expect(calculateMonitorLeaseMs(monitors, 2)).toBe(720_000);
+  });
+
   it("prioritizes verification checks before normal due monitors within the batch", () => {
     const selected = selectDueMonitorsForCycle(
       [

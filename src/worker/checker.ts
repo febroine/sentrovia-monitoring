@@ -8,6 +8,7 @@ import { checkPostgresMonitor } from "@/worker/check-postgres";
 import type { CheckResult } from "@/worker/types";
 
 const VERIFICATION_INTERVAL_MS = 60_000;
+const HEARTBEAT_DEADLINE_OFFSET_MS = 1;
 
 export async function checkMonitor(monitor: Monitor): Promise<CheckResult> {
   const checkedAt = new Date();
@@ -43,6 +44,15 @@ export async function checkMonitor(monitor: Monitor): Promise<CheckResult> {
 }
 
 export function calculateNextCheckAt(monitor: Monitor, checkedAt: Date, completedAt = checkedAt) {
+  if (monitor.monitorType === "heartbeat" && monitor.heartbeatLastReceivedAt) {
+    const heartbeatDeadline = monitor.heartbeatLastReceivedAt.getTime()
+      + intervalToMs(monitor.intervalValue, monitor.intervalUnit)
+      + Math.max(0, monitor.timeout)
+      + HEARTBEAT_DEADLINE_OFFSET_MS;
+
+    return new Date(Math.max(heartbeatDeadline, completedAt.getTime()));
+  }
+
   return new Date(Math.max(
     checkedAt.getTime() + intervalToMs(monitor.intervalValue, monitor.intervalUnit),
     completedAt.getTime()

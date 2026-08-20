@@ -100,10 +100,9 @@ const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
   reportBrandName: "",
 };
 
-const CADENCE_OPTIONS: Array<{ value: ReportCadence; label: string }> = [
+const CADENCE_OPTIONS: Array<{ value: Exclude<ReportCadence, "all_time">; label: string }> = [
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
-  { value: "all_time", label: "All time" },
 ];
 
 const TEMPLATE_OPTIONS: Array<{
@@ -429,15 +428,11 @@ export default function ReportsPageClient() {
     }
   }
 
-  function applyPreviewPreset(
-    scope: ReportScope,
-    cadence: ReportCadence,
-    template: ReportTemplateVariant
-  ) {
+  function applyPreviewPreset(scope: ReportScope, template: ReportTemplateVariant) {
     setPreviewDraft((current) => ({
       ...current,
       scope,
-      cadence,
+      cadence: "weekly",
       template,
       companyId: scope === "global" ? "" : current.companyId,
     }));
@@ -448,7 +443,7 @@ export default function ReportsPageClient() {
     setScheduleDraft({
       name: schedule.name,
       scope: schedule.scope,
-      cadence: schedule.cadence,
+      cadence: normalizeCadence(schedule.cadence),
       template: schedule.template,
       companyId: schedule.companyId ?? "",
       recipients: schedule.recipientEmails.join(", "),
@@ -543,25 +538,7 @@ export default function ReportsPageClient() {
                   </Select>
                 </Field>
 
-                <Field label="Cadence">
-                  <Select
-                    value={previewDraft.cadence}
-                    onValueChange={(value) =>
-                      setPreviewDraft((current) => ({ ...current, cadence: value as ReportCadence }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CADENCE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
+                <InfoTile title="Period" detail="Every report uses the rolling last 7 days." />
 
                 {previewDraft.scope === "company" ? (
                   <Field label="Company">
@@ -595,20 +572,20 @@ export default function ReportsPageClient() {
               <ReportOptionsPanel
                 template={previewDraft.template}
                 draft={previewDraft}
-                subjectTitle={buildScheduleName(previewDraft.scope, previewDraft.cadence, previewDraft.companyId, companies)}
+                subjectTitle={buildDraftReportTitle(previewDraft.scope, previewDraft.cadence, previewDraft.companyId, companies)}
                 subjectScope={resolveDraftScopeLabel(previewDraft, companies)}
-                subjectPeriod={resolveDraftPeriodLabel(previewDraft.cadence)}
+                subjectPeriod={resolveDraftPeriodLabel()}
                 onTemplateChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
                 onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
               />
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => void generatePreview()} disabled={saving || previewNeedsCompany}>
-                  {saving ? "Generating..." : "Generate Preview"}
+                  {saving ? "Generating..." : "Generate preview"}
                 </Button>
                 <Button variant="outline" onClick={() => void sendPreviewNow()} disabled={saving || previewNeedsCompany || previewRecipients.length === 0}>
                   <Send className="mr-2 h-4 w-4" />
-                  Send Now
+                  Send now
                 </Button>
                 <Button
                   variant="ghost"
@@ -638,7 +615,7 @@ export default function ReportsPageClient() {
               title="No report preview yet"
               description="Choose the report settings, then generate a preview before sending it."
               actionLabel="Use weekly workspace preset"
-              onAction={() => applyPreviewPreset("global", "weekly", "operations")}
+              onAction={() => applyPreviewPreset("global", "operations")}
             />
           )}
             </>
@@ -737,7 +714,7 @@ export default function ReportsPageClient() {
                         Pause the schedule now if you want to stage it before production use.
                       </p>
                     </div>
-                    <Switch checked={scheduleDraft.isActive} onCheckedChange={(value) => setScheduleDraft((current) => ({ ...current, isActive: value }))} />
+                    <Switch aria-label="Auto-send report" checked={scheduleDraft.isActive} onCheckedChange={(value) => setScheduleDraft((current) => ({ ...current, isActive: value }))} />
                   </div>
                 </div>
               </div>
@@ -745,16 +722,16 @@ export default function ReportsPageClient() {
               <ReportOptionsPanel
                 template={scheduleDraft.template}
                 draft={scheduleDraft}
-                subjectTitle={buildScheduleName(scheduleDraft.scope, scheduleDraft.cadence, scheduleDraft.companyId, companies)}
+                subjectTitle={buildDraftReportTitle(scheduleDraft.scope, scheduleDraft.cadence, scheduleDraft.companyId, companies)}
                 subjectScope={resolveDraftScopeLabel(scheduleDraft, companies)}
-                subjectPeriod={resolveDraftPeriodLabel(scheduleDraft.cadence)}
+                subjectPeriod={resolveDraftPeriodLabel()}
                 onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
                 onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
               />
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => void createSchedule()} disabled={saving || scheduleNeedsCompany || scheduleRecipients.length === 0}>
-                  {saving ? "Creating..." : "Create Schedule"}
+                  {saving ? "Creating..." : "Create schedule"}
                 </Button>
                 <Button variant="ghost" onClick={() => setScheduleDraft(EMPTY_SCHEDULE_DRAFT)} disabled={saving}>
                   Reset
@@ -800,7 +777,7 @@ export default function ReportsPageClient() {
               ) : filteredSchedules.length === 0 ? (
                 <BuilderEmptyState
                   title="No schedules match this view"
-                  description="Adjust your filters or create a new recurring report from the builder on the left."
+                  description="Adjust your filters or create a new recurring report from the builder above."
                 />
               ) : (
                 filteredSchedules.map((schedule) => (
@@ -1051,7 +1028,7 @@ function ReportDeliveryComposer({
             </p>
           </Field>
           <div className="border-l-2 border-sky-500 px-4 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
               Email subject preview
             </p>
             <p className="mt-1 break-words text-sm font-medium text-foreground">{subjectPreview}</p>
@@ -1112,7 +1089,7 @@ function CompactToggle({
   return (
     <div className="flex items-center justify-between gap-3 px-1 py-2">
       <span className="text-xs font-medium">{label}</span>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }
@@ -1241,7 +1218,7 @@ function ScheduleCard({
         <div className="flex flex-wrap gap-2 xl:max-w-[320px] xl:justify-end">
           <div className="flex items-center gap-3 px-1 py-1">
             <span className="text-xs text-muted-foreground">Active</span>
-            <Switch checked={schedule.isActive} onCheckedChange={onToggle} />
+            <Switch aria-label={`${schedule.name} active`} checked={schedule.isActive} onCheckedChange={onToggle} />
           </div>
           <Button onClick={onSendNow} disabled={saving}>
             Send now
@@ -1534,12 +1511,23 @@ function filterSchedules(schedules: ReportScheduleRecord[], query: string, filte
 function buildScheduleName(scope: ReportScope, cadence: ReportCadence, companyId: string, companies: CompanyRecord[]) {
   const cadenceLabel = getCadenceLabel(cadence);
 
+  return buildScopedReportName(scope, companyId, companies, cadenceLabel);
+}
+
+function buildDraftReportTitle(scope: ReportScope, cadence: ReportCadence, companyId: string, companies: CompanyRecord[]) {
+  const periodLabel = cadence === "weekly" ? "Weekly" : "7-Day";
+
+  return buildScopedReportName(scope, companyId, companies, periodLabel);
+}
+
+function buildScopedReportName(scope: ReportScope, companyId: string, companies: CompanyRecord[], prefix: string) {
+
   if (scope !== "company") {
-    return `${cadenceLabel} Workspace Report`;
+    return `${prefix} Workspace Report`;
   }
 
   const company = companies.find((item) => item.id === companyId);
-  return company ? `${cadenceLabel} ${company.name} Report` : `${cadenceLabel} Company Report`;
+  return company ? `${prefix} ${company.name} Report` : `${prefix} Company Report`;
 }
 
 function resolveDraftScopeLabel(
@@ -1553,16 +1541,16 @@ function resolveDraftScopeLabel(
   return companies.find((company) => company.id === draft.companyId)?.name ?? "Company";
 }
 
-function resolveDraftPeriodLabel(cadence: ReportCadence) {
-  if (cadence === "weekly") {
-    return "Last 7 days";
-  }
-
-  return cadence === "monthly" ? "Last 30 days" : "All time";
+function resolveDraftPeriodLabel() {
+  return "Last 7 days";
 }
 
 function getCadenceLabel(cadence: ReportCadence) {
-  return CADENCE_OPTIONS.find((option) => option.value === cadence)?.label ?? "Weekly";
+  return normalizeCadence(cadence) === "weekly" ? "Weekly" : "Monthly";
+}
+
+function normalizeCadence(cadence: ReportCadence): Exclude<ReportCadence, "all_time"> {
+  return cadence === "weekly" ? "weekly" : "monthly";
 }
 
 function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {

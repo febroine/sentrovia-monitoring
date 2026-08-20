@@ -19,11 +19,6 @@ export async function runWorkerPhases(
   }
   if (!(await isRunRequested())) return { status: "stopped" };
 
-  const beforeMonitoring = await ensureWorkerConnectivity();
-  if (!beforeMonitoring.available) {
-    return { status: "connectivity-paused", message: beforeMonitoring.message };
-  }
-
   await runMonitoringCycle();
   if (!(await isRunRequested())) return { status: "stopped" };
 

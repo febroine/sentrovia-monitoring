@@ -150,6 +150,7 @@ export function LogsTable({
             <Button
               variant="outline"
               size="sm"
+              aria-label="Previous page"
               onClick={() => onPageChange(Math.max(1, safePage - 1))}
               disabled={safePage === 1}
             >
@@ -177,6 +178,7 @@ export function LogsTable({
             <Button
               variant="outline"
               size="sm"
+              aria-label="Next page"
               onClick={() => onPageChange(Math.min(totalPages, safePage + 1))}
               disabled={safePage === totalPages}
             >

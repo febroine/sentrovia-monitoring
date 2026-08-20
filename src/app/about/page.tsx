@@ -44,7 +44,7 @@ const runtime = [
 const operatingRules = [
   "Timeouts remain availability failures, but they are verified before an outage is confirmed.",
   "A successful response above the slow threshold stays up and can produce a separate latency notification.",
-  "If the worker host loses internet access, checks and outbound worker tasks pause to avoid false outage alerts.",
+  "If the worker host loses internet access, probes continue without recording host-side failures while outbound delivery waits for connectivity.",
   "Monitor-level notification language and templates override workspace defaults only for that monitor.",
   "Public status pages publish active monitors from the selected company, or the full workspace when no company is selected.",
 ];

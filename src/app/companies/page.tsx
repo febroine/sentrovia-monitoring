@@ -178,7 +178,7 @@ export default function CompaniesPage() {
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Companies</h1>
           <p className="text-sm text-muted-foreground">
-            Organize customer spaces, review assigned sites, and apply bulk actions across multiple organizations.
+            Group monitors by customer or operating unit.
           </p>
         </div>
         <div className="flex w-full flex-col gap-3 sm:flex-row md:w-auto">
@@ -186,9 +186,9 @@ export default function CompaniesPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search companies" className="pl-9" />
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="bg-violet-600 text-white hover:bg-violet-500">
+          <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            Add Company
+            Add company
           </Button>
         </div>
       </header>
@@ -214,7 +214,7 @@ export default function CompaniesPage() {
       </dl>
 
       {selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 border-l-2 border-emerald-500 px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} compan{selectedIds.size === 1 ? "y" : "ies"} selected</p>
             <p className="text-xs text-muted-foreground">Apply the same action across the selected organizations.</p>
@@ -231,14 +231,19 @@ export default function CompaniesPage() {
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/20 pb-4">
           <CardTitle className="text-base">Company Directory</CardTitle>
-          <CardDescription>Click a company row to inspect its assigned monitors in a focused detail panel.</CardDescription>
+          <CardDescription>Select a row to review its assigned monitors.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="bg-background">
                 <TableHead className="w-14 pl-5">
-                  <button type="button" onClick={toggleAllFiltered} className="flex items-center justify-center text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={toggleAllFiltered}
+                    aria-label={allFilteredSelected ? "Clear visible company selection" : "Select all visible companies"}
+                    className="flex items-center justify-center text-muted-foreground"
+                  >
                     {allFilteredSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
                 </TableHead>
@@ -263,10 +268,15 @@ export default function CompaniesPage() {
                 </TableRow>
               ) : null}
               {!loading ? filtered.map((company) => (
-                <TableRow key={company.id} className={cn(selectedIds.has(company.id) && "bg-emerald-500/5", "cursor-pointer")} onClick={() => setDetailCompany(company)}>
+                <TableRow key={company.id} className={cn(selectedIds.has(company.id) && "bg-primary/5", "cursor-pointer")} onClick={() => setDetailCompany(company)}>
                   <TableCell className="pl-5" onClick={(event) => event.stopPropagation()}>
-                    <button type="button" onClick={() => toggleSelect(company.id)} className="flex items-center justify-center text-muted-foreground transition hover:text-foreground">
-                      {selectedIds.has(company.id) ? <CheckSquare className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : <Square className="h-4 w-4" />}
+                    <button
+                      type="button"
+                      onClick={() => toggleSelect(company.id)}
+                      aria-label={selectedIds.has(company.id) ? `Deselect ${company.name}` : `Select ${company.name}`}
+                      className="flex items-center justify-center text-muted-foreground transition hover:text-foreground"
+                    >
+                      {selectedIds.has(company.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                     </button>
                   </TableCell>
                   <TableCell className="pl-1">
@@ -278,14 +288,14 @@ export default function CompaniesPage() {
                   <TableCell>
                     <div className="space-y-1">
                       <p className="font-medium">{company.monitorsCount}</p>
-                      <p className="text-xs text-muted-foreground">{company.activeMonitors} healthy</p>
+                      <p className="text-xs text-muted-foreground">{company.activeMonitors} active</p>
                     </div>
                   </TableCell>
                   <TableCell><Badge variant="outline" className={company.isActive ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400" : "border-destructive/30 text-destructive"}>{company.isActive ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(company.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell className="pr-5" onClick={(event) => event.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
-                      <Button variant="ghost" size="icon-sm" onClick={() => openEdit(company)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Edit ${company.name}`} title="Edit company" onClick={() => openEdit(company)}><Pencil className="h-4 w-4" /></Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -311,7 +321,7 @@ export default function CompaniesPage() {
           <DialogHeader>
             <DialogTitle>{detailCompany?.name ?? "Company Monitors"}</DialogTitle>
             <DialogDescription>
-              Review assigned sites with search and pagination, similar to monitor settings workflows.
+              Search and review monitors assigned to this company.
             </DialogDescription>
           </DialogHeader>
           {detailCompany ? <CompanyMonitorsPanel companyId={detailCompany.id} companyName={detailCompany.name} monitors={companyMonitors(detailCompany.id)} /> : null}

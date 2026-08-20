@@ -199,7 +199,6 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-4">
-        <p className="text-xs font-semibold tracking-[0.16em] text-emerald-400">FIRST RUN / ADMIN SETUP</p>
         <h1 className="max-w-2xl text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
           Create the workspace administrator.
         </h1>

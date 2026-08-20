@@ -26,11 +26,12 @@ const EMPTY_OVERVIEW: DeliveryOverview = {
 
 type MessageResponse = { message?: string };
 type HistoryDeletionRange = "last_7_days" | "last_30_days" | "custom";
+type DeliveryPageMessage = { text: string; tone: "error" | "success" };
 
 export function DeliveryPageClient() {
   const [overview, setOverview] = useState<DeliveryOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<DeliveryPageMessage | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -94,7 +95,7 @@ export function DeliveryPageClient() {
       setWebhookActive(nextOverview.webhook?.isActive ?? true);
       setMessage(null);
     } catch (error) {
-      setMessage(toMessage(error, "Unable to load delivery operations."));
+      setMessage({ text: toMessage(error, "Unable to load delivery operations."), tone: "error" });
     } finally {
       setLoading(false);
     }
@@ -126,9 +127,9 @@ export function DeliveryPageClient() {
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
       setWebhookSecret("");
-      setMessage("Webhook endpoint saved.");
+      setMessage({ text: "Webhook endpoint saved.", tone: "success" });
     } catch (error) {
-      setMessage(toMessage(error, "Unable to save webhook settings."));
+      setMessage({ text: toMessage(error, "Unable to save webhook settings."), tone: "error" });
     } finally {
       setPendingAction(null);
     }
@@ -155,9 +156,9 @@ export function DeliveryPageClient() {
       }
 
       await loadOverview(1);
-      setMessage(`${toTitleCase(channel)} test sent.`);
+      setMessage({ text: `${toTitleCase(channel)} test sent.`, tone: "success" });
     } catch (error) {
-      setMessage(toMessage(error, `Unable to send ${channel} test.`));
+      setMessage({ text: toMessage(error, `Unable to send ${channel} test.`), tone: "error" });
     } finally {
       setPendingAction(null);
     }
@@ -180,9 +181,9 @@ export function DeliveryPageClient() {
       const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
-      setMessage(`Processed ${data?.result?.processed ?? 0} delivery retry item(s).`);
+      setMessage({ text: `Processed ${data?.result?.processed ?? 0} delivery retry item(s).`, tone: "success" });
     } catch (error) {
-      setMessage(toMessage(error, "Unable to retry the delivery queue."));
+      setMessage({ text: toMessage(error, "Unable to retry the delivery queue."), tone: "error" });
     } finally {
       setPendingAction(null);
     }
@@ -202,9 +203,9 @@ export function DeliveryPageClient() {
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
       setSelectedRow(data?.delivery ?? null);
-      setMessage("Delivery retry completed.");
+      setMessage({ text: "Delivery retry completed.", tone: "success" });
     } catch (error) {
-      setMessage(toMessage(error, "Unable to retry this delivery."));
+      setMessage({ text: toMessage(error, "Unable to retry this delivery."), tone: "error" });
     } finally {
       setPendingAction(null);
     }
@@ -234,9 +235,9 @@ export function DeliveryPageClient() {
       setHistoryPage(nextOverview.pagination.page);
       setSelectedRow(null);
       setClearHistoryOpen(false);
-      setMessage(`Deleted ${data?.count ?? 0} completed delivery record(s).`);
+      setMessage({ text: `Deleted ${data?.count ?? 0} completed delivery record(s).`, tone: "success" });
     } catch (error) {
-      setMessage(toMessage(error, "Unable to delete delivery history."));
+      setMessage({ text: toMessage(error, "Unable to delete delivery history."), tone: "error" });
     } finally {
       setPendingAction(null);
     }
@@ -257,7 +258,18 @@ export function DeliveryPageClient() {
         </Button>
       </header>
 
-      {message ? <div className="border-l-2 border-border px-4 py-2 text-sm">{message}</div> : null}
+      {message ? (
+        <div
+          role={message.tone === "error" ? "alert" : "status"}
+          className={
+            message.tone === "error"
+              ? "border-l-2 border-destructive px-4 py-2 text-sm text-destructive"
+              : "border-l-2 border-emerald-500 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-400"
+          }
+        >
+          {message.text}
+        </div>
+      ) : null}
 
       <dl className="grid border-y md:grid-cols-2 xl:grid-cols-5 xl:divide-x">
         {cards.map((card) => (
@@ -294,19 +306,19 @@ export function DeliveryPageClient() {
             <Field label="Secret" id="webhook-secret" value={webhookSecret} onChange={setWebhookSecret} placeholder={overview.webhook?.secretConfigured ? "Secret already configured" : "Optional HMAC shared secret"} />
             <div className="flex items-center justify-between border-y py-3">
               <div>
-                <p className="text-sm font-medium">Webhook Active</p>
+                <p className="text-sm font-medium">Webhook active</p>
                 <p className="text-xs text-muted-foreground">Inactive endpoints stay saved but stop receiving events.</p>
               </div>
-              <Switch checked={webhookActive} onCheckedChange={setWebhookActive} />
+              <Switch aria-label="Webhook active" checked={webhookActive} onCheckedChange={setWebhookActive} />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void saveWebhook()} disabled={!webhookUrl.trim() || pendingAction !== null}>
                 <Webhook className="mr-2 h-4 w-4" />
-                Save Webhook
+                Save webhook
               </Button>
               <Button variant="outline" onClick={() => void sendTest("webhook")} disabled={!webhookUrl.trim() || pendingAction !== null}>
                 <Send className="mr-2 h-4 w-4" />
-                Send Test Webhook
+                Send test webhook
               </Button>
             </div>
           </CardContent>
@@ -319,10 +331,10 @@ export function DeliveryPageClient() {
           </CardHeader>
           <CardContent className="space-y-4 p-5">
             {pendingAction ? <ActionProgress label={pendingAction} /> : null}
-            <Field label="Email Target" id="email-target" value={emailTarget} onChange={setEmailTarget} placeholder="alerts@example.com" />
+            <Field label="Email target" id="email-target" value={emailTarget} onChange={setEmailTarget} placeholder="alerts@example.com" />
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Telegram Bot Token" id="telegram-token" value={telegramBotToken} onChange={setTelegramBotToken} placeholder="123456:ABC..." />
-              <Field label="Telegram Chat ID" id="telegram-chat-id" value={telegramChatId} onChange={setTelegramChatId} placeholder="-1001234567890" />
+              <Field label="Telegram bot token" id="telegram-token" value={telegramBotToken} onChange={setTelegramBotToken} placeholder="123456:ABC..." />
+              <Field label="Telegram chat ID" id="telegram-chat-id" value={telegramChatId} onChange={setTelegramChatId} placeholder="-1001234567890" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="delivery-message">Message</Label>
@@ -330,7 +342,7 @@ export function DeliveryPageClient() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void sendTest("email")} disabled={pendingAction !== null}>
-                Test Email
+                Test email
               </Button>
               <Button variant="outline" onClick={() => void sendTest("telegram")} disabled={pendingAction !== null}>
                 Test Telegram
@@ -358,7 +370,7 @@ export function DeliveryPageClient() {
                 disabled={pendingAction !== null || overview.summary.pendingRetries === 0}
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
-                Retry Queue
+                Retry queue
               </Button>
               <Button
                 variant="outline"
@@ -368,7 +380,7 @@ export function DeliveryPageClient() {
                 disabled={pendingAction !== null || overview.summary.delivered + overview.summary.failed === 0}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                Clear History
+                Clear history
               </Button>
             </div>
           </div>
@@ -401,9 +413,7 @@ export function DeliveryPageClient() {
                 overview.history.map((item) => (
                   <TableRow key={item.id} className="cursor-pointer" onClick={() => setSelectedRow(item)}>
                     <TableCell className="pl-6">
-                      <span className="inline-flex rounded-full border border-border/70 bg-muted/20 px-2.5 py-1 text-xs font-medium">
-                        {toTitleCase(item.channel)}
-                      </span>
+                      <span className="text-sm font-medium">{toTitleCase(item.channel)}</span>
                     </TableCell>
                     <TableCell className="font-medium">{toTitleCase(item.kind)}</TableCell>
                     <TableCell className="max-w-[260px] truncate">{item.destination}</TableCell>
@@ -500,7 +510,7 @@ export function DeliveryPageClient() {
               disabled={pendingAction !== null || !isDeletionRangeReady(historyDeletionRange, customFrom, customTo)}
             >
               <Trash2 className="mr-2 h-4 w-4" />
-              {pendingAction === "delete-history" ? "Deleting..." : "Delete Records"}
+              {pendingAction === "delete-history" ? "Deleting..." : "Delete records"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -509,7 +519,7 @@ export function DeliveryPageClient() {
       <Dialog open={Boolean(selectedRow)} onOpenChange={(open) => !open && setSelectedRow(null)}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Delivery Payload</DialogTitle>
+            <DialogTitle>Delivery payload</DialogTitle>
             <DialogDescription>
               Review the exact delivery context, payload, and transport metadata for this outbound attempt.
             </DialogDescription>
@@ -629,14 +639,9 @@ function channelStatusPresentation(status: DeliveryChannelHealth["status"]) {
 
 function ActionProgress({ label }: { label: string }) {
   return (
-    <div className="border-l-2 border-violet-500 px-3 py-2">
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="font-medium text-violet-700 dark:text-violet-300">{progressLabel(label)}</span>
-        <span className="text-xs text-muted-foreground">Please wait...</span>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-violet-500/10">
-        <div className="h-full w-1/2 animate-pulse rounded-full bg-violet-500" />
-      </div>
+    <div className="flex items-center gap-2 border-l-2 border-primary px-3 py-2 text-sm" role="status">
+      <RefreshCw className="size-4 animate-spin text-primary" />
+      <span className="font-medium">{progressLabel(label)}</span>
     </div>
   );
 }

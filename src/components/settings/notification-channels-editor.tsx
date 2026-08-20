@@ -52,9 +52,10 @@ function ChannelCard({
             Mirror monitor notifications to this channel through a webhook.
           </p>
         </div>
-        <Switch checked={enabled} onCheckedChange={onToggle} />
+        <Switch aria-label={`${title} notifications`} checked={enabled} onCheckedChange={onToggle} />
       </div>
       <Input
+        aria-label={`${title} webhook URL`}
         className="mt-4"
         value={url}
         onChange={(event) => onUrlChange(event.target.value)}

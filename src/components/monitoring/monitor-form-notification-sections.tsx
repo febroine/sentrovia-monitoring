@@ -328,7 +328,7 @@ function CheckRow({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-start gap-3 rounded-md border border-border px-3 py-2 text-sm">
+    <label className="flex items-start gap-3 border-y py-3 text-sm">
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 accent-primary" />
       <span className="flex-1">
         <span className="block">{label}</span>

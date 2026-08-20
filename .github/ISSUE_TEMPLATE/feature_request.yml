@@ -1,0 +1,39 @@
+name: Feature request
+description: Propose a focused improvement to Sentrovia.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the operational problem or workflow gap, not only the desired implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the smallest useful behavior and who benefits from it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include current workarounds or simpler options.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Operational impact
+      description: Note any worker, database, security, notification, compatibility, or deployment implications.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and discussions for similar requests.
+          required: true
+        - label: The request is based on a concrete monitoring or operations workflow.
+          required: true

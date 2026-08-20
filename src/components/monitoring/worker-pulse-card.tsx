@@ -44,7 +44,7 @@ export function WorkerPulseCard() {
                       : "text-muted-foreground"
                 }`}
               >
-                {connectivityOffline ? "Monitoring paused" : worker?.running ? "Running" : worker?.processAlive ? "Standby" : "Offline"}
+                {connectivityOffline ? "Connectivity degraded" : worker?.running ? "Running" : worker?.processAlive ? "Standby" : "Offline"}
               </span>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -85,7 +85,7 @@ export function WorkerPulseCard() {
         {connectivityOffline ? (
           <div className="mt-3 flex items-center gap-2 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
             <WifiOff className="h-3.5 w-3.5" />
-            {worker.connectivityMessage ?? "Internet connectivity is unavailable. Monitor checks and outbound tasks are paused."}
+            {worker.connectivityMessage ?? "Internet connectivity is unavailable. Probes continue without recording host-side failures; outbound deliveries are paused."}
           </div>
         ) : null}
       </CardContent>
