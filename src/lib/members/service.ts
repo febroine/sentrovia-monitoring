@@ -4,7 +4,7 @@ import type { UserRole } from "@/lib/auth/token";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 
-const ADMIN_DELETE_ADVISORY_LOCK_KEY = 63_194_207;
+const ADMIN_MEMBERSHIP_ADVISORY_LOCK_KEY = 63_194_207;
 type MemberSelectExecutor = Pick<typeof db, "select">;
 
 export async function listMembers(currentUserId: string, currentUserRole: UserRole) {
@@ -29,38 +29,63 @@ export async function listMembers(currentUserId: string, currentUserRole: UserRo
 export async function updateMember(
   memberId: string,
   currentUserId: string,
+  currentUserRole: UserRole,
   input: {
     username: string;
     email: string;
+    role?: UserRole;
   }
 ) {
-  const canUpdateMember = await canManageMember(memberId, currentUserId);
-  if (!canUpdateMember) {
+  if (memberId !== currentUserId && currentUserRole !== "admin") {
     return null;
   }
 
-  const [member] = await db
-    .update(users)
-    .set({
-      username: normalizeUsername(input.username),
-      email: input.email.trim(),
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, memberId))
-    .returning({
-      id: users.id,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      email: users.email,
-      department: users.department,
-      role: users.role,
-      username: users.username,
-      organization: users.organization,
-      jobTitle: users.jobTitle,
-      createdAt: users.createdAt,
-    });
+  return db.transaction(async (tx) => {
+    const [existingMember] = await tx
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, memberId))
+      .limit(1);
+    if (!existingMember) {
+      return null;
+    }
 
-  return member ?? null;
+    const nextRole = input.role ?? existingMember.role;
+    if (nextRole !== existingMember.role) {
+      if (currentUserRole !== "admin") {
+        throw new AuthError("Only admins can change workspace roles.", 403);
+      }
+
+      await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_MEMBERSHIP_ADVISORY_LOCK_KEY})`);
+      if (existingMember.role === "admin" && nextRole === "member") {
+        await assertAtLeastOneAdminRemainsAfterDemotion(tx);
+      }
+    }
+
+    const [member] = await tx
+      .update(users)
+      .set({
+        username: normalizeUsername(input.username),
+        email: input.email.trim(),
+        role: nextRole,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, memberId))
+      .returning({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+        department: users.department,
+        role: users.role,
+        username: users.username,
+        organization: users.organization,
+        jobTitle: users.jobTitle,
+        createdAt: users.createdAt,
+      });
+
+    return member ?? null;
+  });
 }
 
 function normalizeUsername(value: string) {
@@ -79,7 +104,7 @@ export async function deleteMembers(currentUserId: string, currentUserRole: User
   }
 
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_DELETE_ADVISORY_LOCK_KEY})`);
+    await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_MEMBERSHIP_ADVISORY_LOCK_KEY})`);
     await assertAtLeastOneAdminRemains(tx, memberIds);
 
     return tx
@@ -108,20 +133,6 @@ function normalizeMemberIds(ids: string[]) {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
-async function canManageMember(memberId: string, currentUserId: string) {
-  if (memberId === currentUserId) {
-    return true;
-  }
-
-  const [currentUser] = await db
-    .select({ role: users.role })
-    .from(users)
-    .where(eq(users.id, currentUserId))
-    .limit(1);
-
-  return currentUser?.role === "admin";
-}
-
 async function assertAtLeastOneAdminRemains(executor: MemberSelectExecutor, idsToDelete: string[]) {
   const [row] = await executor
     .select({ total: count() })
@@ -135,6 +146,21 @@ async function assertAtLeastOneAdminRemains(executor: MemberSelectExecutor, idsT
     .where(and(eq(users.role, "admin"), inArray(users.id, idsToDelete)));
 
   assertAdminDeletionLeavesAdministrator(adminCount, deletedAdmins.length);
+}
+
+async function assertAtLeastOneAdminRemainsAfterDemotion(executor: MemberSelectExecutor) {
+  const [row] = await executor
+    .select({ total: count() })
+    .from(users)
+    .where(eq(users.role, "admin"));
+
+  assertAdminDemotionLeavesAdministrator(row?.total ?? 0);
+}
+
+export function assertAdminDemotionLeavesAdministrator(adminCount: number) {
+  if (adminCount < 2) {
+    throw new AuthError("At least one admin account must remain.", 400);
+  }
 }
 
 export function assertAdminDeletionLeavesAdministrator(adminCount: number, deletedAdminCount: number) {

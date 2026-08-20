@@ -220,7 +220,7 @@ export function buildSystemHealthAlarms(input: {
       severity: "critical",
       title: "Internet connectivity is unavailable",
       detail: input.connectivityMessage
-        ?? "Outbound deliveries are paused. Monitor probes continue without recording host-side connectivity failures.",
+        ?? "Monitor checks, webhook retries, and scheduled reports are paused without changing monitor states.",
     });
   }
 

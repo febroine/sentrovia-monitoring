@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
-  DASHBOARD_WIDGET_IDS,
+  orderDashboardWidgetOptions,
   type DashboardPreferences,
   type DashboardWidgetId,
 } from "@/lib/dashboard/preferences";
@@ -40,6 +40,7 @@ export function DashboardCustomizationPanel({
   onClose: () => void;
 }) {
   const widgets = preferences.widgets.filter((widget) => isAdmin || widget !== "system");
+  const widgetOptions = orderDashboardWidgetOptions(widgets, isAdmin);
 
   function toggleWidget(widget: DashboardWidgetId, enabled: boolean) {
     if (!enabled && widgets.length === 1) {
@@ -80,7 +81,7 @@ export function DashboardCustomizationPanel({
         <div className="space-y-2">
           <Label>Widgets and order</Label>
           <div className="divide-y border-y">
-            {DASHBOARD_WIDGET_IDS.filter((widget) => isAdmin || widget !== "system").map((widget) => {
+            {widgetOptions.map((widget) => {
               const index = widgets.indexOf(widget);
               const enabled = index >= 0;
               return (

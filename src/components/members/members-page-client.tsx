@@ -18,11 +18,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { MemberRecord } from "@/lib/members/types";
 
 type MemberRole = MemberRecord["role"];
 type MemberRoleFilter = "all" | MemberRole;
+type EditMemberForm = { username: string; email: string; role: MemberRole };
 type CreateMemberForm = {
   firstName: string;
   lastName: string;
@@ -33,7 +35,7 @@ type CreateMemberForm = {
   confirmPassword: string;
 };
 
-const EMPTY_EDIT_FORM = { username: "", email: "" };
+const EMPTY_EDIT_FORM: EditMemberForm = { username: "", email: "", role: "member" };
 const EMPTY_CREATE_FORM: CreateMemberForm = {
   firstName: "",
   lastName: "",
@@ -163,9 +165,10 @@ export default function MembersPageClient() {
         throw new Error(data.message ?? "Unable to update the member.");
       }
 
-      setMembers((current) => current.map((member) => (member.id === data.member?.id ? data.member : member)));
       setEditingMember(null);
       setError(null);
+      await loadMembers();
+      router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to update the member.");
     } finally {
@@ -250,6 +253,7 @@ export default function MembersPageClient() {
     setEditForm({
       username: member.username ?? "",
       email: member.email,
+      role: member.role,
     });
   }
 
@@ -468,7 +472,7 @@ export default function MembersPageClient() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit member</DialogTitle>
-            <DialogDescription>Update the username and email address used by this workspace user.</DialogDescription>
+            <DialogDescription>Update account details{isAdmin ? " and workspace access" : ""}.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <Field label="Username">
@@ -477,6 +481,25 @@ export default function MembersPageClient() {
             <Field label="Email">
               <Input type="email" value={editForm.email} onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))} />
             </Field>
+            {isAdmin ? (
+              <Field label="Access">
+                <Select
+                  value={editForm.role}
+                  onValueChange={(value) => {
+                    if (value === "admin" || value === "member") {
+                      setEditForm((current) => ({ ...current, role: value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Admins can manage members and workspace settings. At least one admin must remain.</p>
+              </Field>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMember(null)}>Cancel</Button>

@@ -93,6 +93,20 @@ docker compose up -d --build
 
 Never commit `.env` or `.env.local`; they contain deployment secrets. The detailed migration, security, update, and Windows service documentation is below.
 
+If an existing installation has accounts but no administrator, do not reopen onboarding. Promote one existing account from the server instead:
+
+```bash
+npm run auth:recover-admin -- --identifier admin@example.com
+```
+
+For Docker deployments, run the same protected command inside the web container:
+
+```bash
+docker compose exec web npm run auth:recover-admin -- --identifier admin@example.com
+```
+
+Recovery refuses to run while any admin exists, never creates an account, and closes the recovered account's existing sessions.
+
 Every version tag also publishes an image to GitHub Container Registry:
 
 ```bash

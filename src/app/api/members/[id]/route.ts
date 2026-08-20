@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createSessionToken } from "@/lib/auth/token";
+import { createSessionToken, type UserRole } from "@/lib/auth/token";
 import { applySessionCookie, getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
@@ -22,6 +22,7 @@ const memberUsernameUpdateSchema = z
 const memberUpdateSchema = z.object({
   username: memberUsernameUpdateSchema.default(""),
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  role: z.enum(["admin", "member"]).optional(),
 });
 
 type Params = Promise<{ id: string }>;
@@ -43,8 +44,11 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     if (id !== session.id && session.role !== "admin") {
       return NextResponse.json({ message: "You can only edit your own account." }, { status: 403 });
     }
+    if (parsed.data.role && parsed.data.role !== session.role && session.role !== "admin") {
+      return NextResponse.json({ message: "Only admins can change workspace roles." }, { status: 403 });
+    }
 
-    const member = await updateMember(id, session.id, parsed.data);
+    const member = await updateMember(id, session.id, session.role, parsed.data);
     if (!member) {
       return NextResponse.json({ message: "Member not found." }, { status: 404 });
     }
@@ -60,6 +64,8 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       return response;
     }
 
+    const updatedRole: UserRole = member.role === "admin" ? "admin" : "member";
+
     return applySessionCookie(
       response,
       await createSessionToken(
@@ -69,7 +75,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
           lastName: member.lastName,
           email: member.email,
           department: member.department,
-          role: session.role,
+          role: updatedRole,
         },
         session.sessionVersion
       )

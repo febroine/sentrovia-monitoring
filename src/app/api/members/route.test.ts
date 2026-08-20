@@ -92,7 +92,7 @@ describe("members route", () => {
       lastName: "Two",
       email: "member@example.com",
       department: null,
-      role: "member",
+      role: "admin",
       username: "member.two",
       organization: null,
       jobTitle: null,
@@ -102,14 +102,15 @@ describe("members route", () => {
     const response = await PATCH(
       new Request("https://example.com/api/members/member-2", {
         method: "PATCH",
-        body: JSON.stringify({ email: "Member@Example.COM", username: "Member.Two" }),
+        body: JSON.stringify({ email: "Member@Example.COM", username: "Member.Two", role: "admin" }),
       }) as never,
       { params: Promise.resolve({ id: "member-2" }) }
     );
 
     expect(response.status).toBe(200);
-    expect(updateMember).toHaveBeenCalledWith("member-2", "admin-1", {
+    expect(updateMember).toHaveBeenCalledWith("member-2", "admin-1", "admin", {
       email: "member@example.com",
+      role: "admin",
       username: "member.two",
     });
     expect(applySessionCookie).not.toHaveBeenCalled();
@@ -131,7 +132,7 @@ describe("members route", () => {
       lastName: "User",
       email: "new@example.com",
       department: "Ops",
-      role: "admin",
+      role: "member",
       username: "admin.user",
       organization: null,
       jobTitle: null,
@@ -141,7 +142,7 @@ describe("members route", () => {
     const response = await PATCH(
       new Request("https://example.com/api/members/admin-1", {
         method: "PATCH",
-        body: JSON.stringify({ email: "New@Example.COM", username: "Admin.User" }),
+        body: JSON.stringify({ email: "New@Example.COM", username: "Admin.User", role: "member" }),
       }) as never,
       { params: Promise.resolve({ id: "admin-1" }) }
     );
@@ -154,10 +155,34 @@ describe("members route", () => {
         lastName: "User",
         email: "new@example.com",
         department: "Ops",
-        role: "admin",
+        role: "member",
       },
       7
     );
     expect(applySessionCookie).toHaveBeenCalledWith(response, "next-session-token");
+  });
+
+  it("rejects a member trying to promote their own account", async () => {
+    vi.mocked(updateMember).mockClear();
+    vi.mocked(getSession).mockResolvedValueOnce({
+      id: "member-1",
+      firstName: "Member",
+      lastName: "One",
+      email: "member@example.com",
+      department: null,
+      role: "member",
+      sessionVersion: 1,
+    });
+
+    const response = await PATCH(
+      new Request("https://example.com/api/members/member-1", {
+        method: "PATCH",
+        body: JSON.stringify({ email: "member@example.com", username: "member.one", role: "admin" }),
+      }) as never,
+      { params: Promise.resolve({ id: "member-1" }) }
+    );
+
+    expect(response.status).toBe(403);
+    expect(updateMember).not.toHaveBeenCalled();
   });
 });
