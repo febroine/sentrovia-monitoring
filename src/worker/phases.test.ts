@@ -71,6 +71,40 @@ describe("worker phase connectivity guard", () => {
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
   });
 
+  it("does not start monitor work after a stop request", async () => {
+    await expect(runWorkerPhases(async () => false)).resolves.toEqual({ status: "stopped" });
+
+    expect(ensureWorkerConnectivity).not.toHaveBeenCalled();
+    expect(runMonitoringCycle).not.toHaveBeenCalled();
+    expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
+    expect(runDueReportSchedules).not.toHaveBeenCalled();
+  });
+
+  it("does not start outbound work when stopped after monitor checks", async () => {
+    const isRunRequested = vi.fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await expect(runWorkerPhases(isRunRequested)).resolves.toEqual({ status: "stopped" });
+
+    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
+    expect(runDueReportSchedules).not.toHaveBeenCalled();
+  });
+
+  it("does not run reports when stopped after delivery retries", async () => {
+    const isRunRequested = vi.fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await expect(runWorkerPhases(isRunRequested)).resolves.toEqual({ status: "stopped" });
+
+    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
+    expect(runDueReportSchedules).not.toHaveBeenCalled();
+  });
+
   it("continues monitor checks when retention cleanup fails", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(runRetentionCleanup).mockRejectedValueOnce(new Error("retention unavailable"));

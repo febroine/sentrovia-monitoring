@@ -13,7 +13,7 @@ export default function HelpPage() {
   const isSearching = query.trim().length > 0;
 
   return (
-    <div className="flex w-full flex-col gap-8 animate-in fade-in duration-200">
+    <div className="flex w-full flex-col gap-8">
       <header className="border-b pb-7">
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">Help</h1>
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -37,7 +37,7 @@ export default function HelpPage() {
         <>
           <QuickChecks />
           <Tabs defaultValue={helpCategories[0]?.value} className="flex-col gap-6">
-            <TabsList variant="line" className="w-fit max-w-full justify-start overflow-x-auto rounded-lg border bg-card p-1">
+            <TabsList variant="line" className="w-full max-w-full justify-start overflow-x-auto border-b bg-transparent p-0">
               {helpCategories.map((category) => (
                 <TabsTrigger key={category.value} value={category.value} className="flex-none rounded-md px-3">
                   <category.icon data-icon="inline-start" />
@@ -88,7 +88,7 @@ function HelpSearchResults({ query, matches }: { query: string; matches: HelpMat
       {matches.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">Try a broader term than “{query.trim()}”.</p>
       ) : (
-        <div className="mt-4 divide-y rounded-lg border">
+        <div className="mt-4 divide-y border-y">
           {matches.map((match) => (
             <article key={`${match.category.value}-${match.question}`} className="px-4 py-4 sm:px-5">
               <p className="text-xs font-medium text-muted-foreground">{match.category.label}</p>

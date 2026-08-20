@@ -427,7 +427,6 @@ function Configure-NssmService {
   Set-NssmServiceRuntime -Name $Name -Parameters $Parameters -NodePath $NodePath
   Set-NssmOption $Name "DisplayName" @($DisplayName)
   Set-NssmOption $Name "Description" @($Description)
-  Set-NssmOption $Name "Start" @("SERVICE_AUTO_START")
   Set-NssmOption $Name "AppStdout" @((Join-Path $LogDir "$Name.log"))
   Set-NssmOption $Name "AppStderr" @((Join-Path $LogDir "$Name-error.log"))
   Set-NssmOption $Name "AppRotateFiles" @(1)
@@ -446,6 +445,15 @@ function Set-NssmServiceRuntime {
   Set-NssmOption $Name "AppDirectory" @($ProjectRoot)
   Set-NssmOption $Name "AppParameters" @($Parameters)
   Set-NssmOption $Name "AppEnvironmentExtra" @("NODE_ENV=production", "PLAYWRIGHT_BROWSERS_PATH=$PlaywrightBrowsersPath")
+}
+
+function Set-NssmServiceRecovery {
+  param([string]$Name)
+
+  Set-NssmOption $Name "Start" @("SERVICE_AUTO_START")
+  Set-NssmOption $Name "AppExit" @("Default", "Restart")
+  Set-NssmOption $Name "AppRestartDelay" @(5000)
+  Set-NssmOption $Name "AppThrottle" @(5000)
 }
 
 $OriginalLocation = Get-Location
@@ -527,6 +535,9 @@ if (-not $ExistingInstallation) {
 
 Set-NssmServiceRuntime -Name $ServiceNames[0] -Parameters "scripts\bootstrap-runtime.mjs web" -NodePath $NodePath
 Set-NssmServiceRuntime -Name $ServiceNames[1] -Parameters "scripts\bootstrap-runtime.mjs worker" -NodePath $NodePath
+foreach ($Name in $ServiceNames) {
+  Set-NssmServiceRecovery -Name $Name
+}
 
 Write-Step "Starting services"
 foreach ($Name in $ServiceNames) {

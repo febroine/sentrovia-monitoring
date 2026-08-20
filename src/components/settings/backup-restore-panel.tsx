@@ -97,20 +97,12 @@ export function BackupRestorePanel({
   return (
     <Card>
       <CardHeader className="border-b bg-muted/20 px-6 py-5">
-        <div className="flex items-start gap-4">
-          <div className="rounded-lg border border-border/70 bg-background/80 p-2.5 shadow-sm">
-            <Vault className="h-4 w-4 text-amber-600 dark:text-amber-300" />
-          </div>
+        <div className="flex items-start gap-3">
+          <Vault className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300" />
           <div className="space-y-1">
             <CardTitle className="text-base">Backup and Restore</CardTitle>
             <CardDescription>
-              Export workspace configuration or paste a backup bundle to restore monitors, companies, and settings.
-              Secrets are not exported. Existing matching PostgreSQL and SMTP credentials are preserved when
-              restoring this workspace; a fresh deployment requires those credentials to be entered again.
-              Telegram delivery is disabled in the exported bundle.
-              Restore accepts up to {WORKSPACE_BACKUP_IMPORT_LIMITS.maxBytesLabel},{" "}
-              {WORKSPACE_BACKUP_IMPORT_LIMITS.maxCompanies} companies, and{" "}
-              {WORKSPACE_BACKUP_IMPORT_LIMITS.maxMonitors} monitors.
+              Export or restore workspace configuration. Secrets and operational history are not included.
             </CardDescription>
           </div>
         </div>
@@ -164,7 +156,7 @@ export function BackupRestorePanel({
           />
         </div>
 
-        {message ? <div className="rounded-lg border px-3 py-2 text-sm">{message}</div> : null}
+        {message ? <div className="border-l-2 border-border px-3 py-2 text-sm">{message}</div> : null}
 
         {preview ? <RestoreImpactPreview preview={preview} /> : null}
 
@@ -189,7 +181,7 @@ type RestorePreview = {
 
 function RestoreImpactPreview({ preview }: { preview: RestorePreview }) {
   return (
-    <div className="space-y-3 rounded-lg border border-amber-300/70 bg-amber-50/50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+    <div className="space-y-3 border-l-2 border-amber-500 px-4 py-2">
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
         <div>
@@ -197,12 +189,12 @@ function RestoreImpactPreview({ preview }: { preview: RestorePreview }) {
           <p className="text-xs text-muted-foreground">This operation replaces workspace settings and removes existing check, event, and outage history.</p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-y py-3 text-sm sm:grid-cols-4">
         <ImpactCount label="Current companies" value={preview.current.companies} />
         <ImpactCount label="Incoming companies" value={preview.incoming.companies} />
         <ImpactCount label="Current monitors" value={preview.current.monitors} />
         <ImpactCount label="Incoming monitors" value={preview.incoming.monitors} />
-      </div>
+      </dl>
       {(preview.removedCompanies.length > 0 || preview.removedMonitors.length > 0) ? (
         <p className="text-xs text-muted-foreground">
           Removed by restore: {preview.removedCompanies.length} companies and {preview.removedMonitors.length} monitors.
@@ -218,5 +210,5 @@ function RestoreImpactPreview({ preview }: { preview: RestorePreview }) {
 }
 
 function ImpactCount({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-md border bg-background px-3 py-2"><p className="font-semibold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>;
+  return <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>;
 }

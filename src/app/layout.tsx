@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 
 export const metadata: Metadata = {
   title: 'Sentrovia Uptime Monitoring',
-  description: 'Professional Uptime Monitoring Dashboard',
+  description: 'Self-hosted uptime monitoring and notification operations.',
   applicationName: 'Sentrovia',
   icons: {
     icon: [

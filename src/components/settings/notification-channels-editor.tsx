@@ -44,7 +44,7 @@ function ChannelCard({
   placeholder: string;
 }) {
   return (
-    <div className="rounded-xl border bg-muted/20 p-5">
+    <div className="border-y py-4">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">{title} Channel</p>

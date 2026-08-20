@@ -4,12 +4,11 @@ type WorkerStartupState = {
 
 export function shouldAutoStartWorker(
   state: WorkerStartupState,
-  autoStartEnabled: boolean,
-  previousProcessAlive: boolean
+  autoStartEnabled: boolean
 ) {
   if (!autoStartEnabled || state.desiredState === "running") {
     return false;
   }
 
-  return !previousProcessAlive;
+  return true;
 }

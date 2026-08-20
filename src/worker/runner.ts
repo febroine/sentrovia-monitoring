@@ -1,7 +1,6 @@
 import "@/worker/load-env";
 import { env } from "@/lib/env";
 import { getWorkerState, updateWorkerState } from "@/lib/monitors/service";
-import { isPidAlive } from "@/lib/worker/process";
 import { runWorkerPhases } from "@/worker/phases";
 import { shouldAutoStartWorker } from "@/worker/startup";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
@@ -28,13 +27,9 @@ async function main() {
 async function runWorkerLoop() {
   void runHeartbeatLoop();
   const currentState = await getWorkerState();
-  const previousProcessAlive = currentState.pid !== null
-    && currentState.pid !== process.pid
-    && isPidAlive(currentState.pid);
   const shouldAutoStart = shouldAutoStartWorker(
     currentState,
-    env.workerAutoStart,
-    previousProcessAlive
+    env.workerAutoStart
   );
 
   await updateWorkerState({

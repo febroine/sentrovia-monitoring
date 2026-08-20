@@ -91,19 +91,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       />
       <div
         className={cn(
-          'relative flex min-h-screen flex-1 flex-col pb-16 md:pb-0',
+          'relative flex min-h-screen flex-1 flex-col pb-20 md:pb-0',
           appearance.compactDensity ? 'md:ml-56' : 'md:ml-60'
         )}
       >
         <main
           className={cn(
-            'flex-1 overflow-x-hidden',
+            'mx-auto w-full max-w-[1600px] flex-1 overflow-x-hidden',
             appearance.compactDensity ? 'p-4 md:p-6' : 'p-5 md:p-8'
           )}
         >
           {children}
         </main>
-        <BottomNav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface-low h-14" />
+        <BottomNav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface-low md:hidden" />
       </div>
     </div>
   );

@@ -4,12 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Clock3,
   RefreshCw,
-  Send,
-  ServerCog,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -105,7 +100,7 @@ export function SystemHealthCard() {
               </Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Worker, check queue, connectivity, and notification delivery at a glance.
+              Worker, queue, connectivity, and notification delivery status.
             </p>
           </div>
           <Button
@@ -124,27 +119,26 @@ export function SystemHealthCard() {
 
       <CardContent className="space-y-3 pt-4">
         {error ? (
-          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <div className="border-l-2 border-amber-500 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             {error}
           </div>
         ) : null}
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <HealthMetric icon={ServerCog} label="Worker" value={workerStatus} tone={workerRunning ? "healthy" : "critical"} />
+        <dl className="grid border-y sm:grid-cols-2 lg:grid-cols-4 lg:divide-x">
+          <HealthMetric label="Worker" value={workerStatus} tone={workerRunning ? "healthy" : "critical"} />
           <HealthMetric
-            icon={health?.worker.connectivityStatus === "offline" ? WifiOff : Wifi}
             label="Internet"
             value={connectivityStatus}
             tone={health?.worker.connectivityStatus === "online" ? "healthy" : health?.worker.connectivityStatus === "offline" ? "critical" : "neutral"}
           />
-          <HealthMetric icon={Clock3} label="Due queue" value={health ? String(health.queue.dueBacklog) : "--"} tone={health && health.queue.delayedMonitorCount > 0 ? "warning" : "neutral"} />
-          <HealthMetric icon={Send} label="Failed delivery" value={health ? String(health.delivery.failedLast24Hours) : "--"} tone={health && health.delivery.failedLast24Hours > 0 ? "critical" : "neutral"} />
-        </div>
+          <HealthMetric label="Due queue" value={health ? String(health.queue.dueBacklog) : "--"} tone={health && health.queue.delayedMonitorCount > 0 ? "warning" : "neutral"} />
+          <HealthMetric label="Failed delivery" value={health ? String(health.delivery.failedLast24Hours) : "--"} tone={health && health.delivery.failedLast24Hours > 0 ? "critical" : "neutral"} />
+        </dl>
 
         {loading && !health ? (
           <p className="text-xs text-muted-foreground">Loading health signals...</p>
         ) : visibleAlarms.length > 0 ? (
-          <div className="divide-y divide-border rounded-lg border border-border/70">
+          <div className="divide-y divide-border border-y">
             {visibleAlarms.map((alarm) => (
               <div key={alarm.id} className="flex items-start gap-2.5 px-3 py-2.5">
                 <AlertTriangle className={cn("mt-0.5 size-3.5", alarm.severity === "critical" ? "text-destructive" : "text-amber-500")} />
@@ -161,7 +155,7 @@ export function SystemHealthCard() {
             ) : null}
           </div>
         ) : (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+          <div className="flex items-center gap-2 border-l-2 border-emerald-500 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="size-3.5" />
             No active worker, queue, or delivery alarms.
           </div>
@@ -177,24 +171,15 @@ export function SystemHealthCard() {
   );
 }
 
-function HealthMetric({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof ServerCog;
+function HealthMetric({ label, value, tone }: {
   label: string;
   value: string;
   tone: "healthy" | "warning" | "critical" | "neutral";
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/10 px-3 py-2.5">
-      <div className="flex min-w-0 items-center gap-2">
-        <Icon className={cn("size-3.5 shrink-0", metricToneClass(tone))} />
-        <span className="truncate text-xs text-muted-foreground">{label}</span>
-      </div>
-      <span className={cn("text-xs font-semibold", metricToneClass(tone))}>{value}</span>
+    <div className="flex items-center justify-between gap-2 border-b px-3 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 lg:border-b-0">
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd className={cn("text-xs font-semibold", metricToneClass(tone))}>{value}</dd>
     </div>
   );
 }

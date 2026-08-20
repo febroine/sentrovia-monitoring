@@ -193,7 +193,7 @@ function buildPayload(values: MonitorPayload, tagsText: string): MonitorPayload 
 
 function MonitorTestResultPanel({ result }: { result: MonitorTestResult }) {
   return (
-    <div className={`mt-5 rounded-lg border px-4 py-3 ${result.ok ? "border-emerald-500/25 bg-emerald-500/5" : "border-destructive/25 bg-destructive/5"}`}>
+    <div className={`mt-5 border-l-2 px-4 py-2 ${result.ok ? "border-emerald-500" : "border-destructive"}`}>
       <div className="flex items-start gap-3">
         {result.ok ? (
           <CheckCircle2 className="mt-0.5 size-5 text-emerald-500" />

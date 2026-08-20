@@ -143,7 +143,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
               />
             </div>
 
-            <div className="space-y-4 rounded-lg border border-border/70 bg-muted/10 p-4">
+            <div className="space-y-4 border-y py-4">
               <StatusBar
                 label="CPU"
                 value={systemData?.cpu.usage ?? 0}
@@ -185,7 +185,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
             </div>
           </div>
 
-          <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
+          <div className="border-y py-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-medium">Worker</p>
@@ -193,19 +193,10 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
                   {worker?.statusMessage ?? "Worker status will appear here."}
                 </p>
               </div>
-              <div
-                className={cn(
-                  "rounded-full p-2",
-                  workerActive
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                <Activity className="size-4" />
-              </div>
+              <Activity className={cn("size-4", workerActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")} />
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="mt-4 divide-y border-y">
               <MetricPanel
                 icon={connectivityOffline ? WifiOff : Wifi}
                 label="Internet"
@@ -253,7 +244,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+    <div className="px-1 py-2">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-medium">{value}</p>
     </div>
@@ -270,14 +261,14 @@ function MetricPanel({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-background px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2 text-muted-foreground">
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <div className="text-muted-foreground">
         <div className="flex items-center gap-2">
           <Icon className="size-3.5" />
           <span className="text-xs font-medium">{label}</span>
         </div>
       </div>
-      <p className="mt-1 text-sm font-medium">{value}</p>
+      <p className="text-sm font-medium">{value}</p>
     </div>
   );
 }
@@ -315,7 +306,7 @@ function UptimePanel({
   const osDuration = osSeconds > 0 ? formatDuration(Math.floor(osSeconds)) : "--";
 
   return (
-    <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-3">
+    <div className="border-y py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -350,9 +341,9 @@ function InlineAlert({
   return (
     <div
       className={cn(
-        "rounded-xl border px-3 py-2 text-sm",
-        tone === "danger" && "border-destructive/20 bg-destructive/5 text-destructive",
-        tone === "warning" && "border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+        "border-l-2 px-3 py-2 text-sm",
+        tone === "danger" && "border-destructive text-destructive",
+        tone === "warning" && "border-amber-500 text-amber-700 dark:text-amber-300"
       )}
     >
       {message}

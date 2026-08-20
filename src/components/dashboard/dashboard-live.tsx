@@ -2,14 +2,11 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Activity,
   AlertCircle,
-  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Server,
   SlidersHorizontal,
   XCircle,
 } from "lucide-react";
@@ -17,7 +14,6 @@ import { SystemStatus } from "@/components/system-status";
 import { DashboardCustomizationPanel } from "@/components/dashboard/dashboard-customization-panel";
 import { DashboardMonitorFocus } from "@/components/dashboard/dashboard-monitor-focus";
 import { SystemHealthCard } from "@/components/dashboard/system-health-card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DEFAULT_DASHBOARD_PREFERENCES, type DashboardPreferences, type DashboardWidgetId } from "@/lib/dashboard/preferences";
@@ -118,33 +114,25 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         label: "Total monitors",
         value: String(data.summary.total),
         sub: `${data.summary.active} active / ${data.summary.paused} paused`,
-        icon: Server,
         tone: "text-slate-700 dark:text-slate-100",
-        border: "border-l-slate-400",
       },
       {
         label: "Online",
         value: String(data.summary.online),
         sub: "Healthy endpoints",
-        icon: CheckCircle2,
         tone: "text-emerald-600 dark:text-emerald-400",
-        border: "border-l-emerald-500",
       },
       {
         label: "Offline",
         value: String(data.summary.offline),
         sub: "Need attention",
-        icon: XCircle,
         tone: "text-destructive",
-        border: "border-l-rose-500",
       },
       {
         label: "Average latency",
         value: `${data.summary.avgLatency}ms`,
         sub: `${data.summary.coverage.toFixed(1)}% coverage`,
-        icon: Activity,
         tone: "text-amber-600 dark:text-amber-400",
-        border: "border-l-amber-500",
       },
     ],
     [data]
@@ -172,20 +160,15 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   function renderWidget(widget: DashboardWidgetId): ReactNode {
     if (widget === "summary") {
       return (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
           {cards.map((card) => (
-            <Card key={card.label} className="overflow-hidden">
-              <CardContent className={`border-l-2 p-4 ${card.border}`}>
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
-                  <div className="rounded-lg bg-muted p-2"><card.icon className={`h-4 w-4 ${card.tone}`} /></div>
-                </div>
-                <p className={`text-3xl font-semibold tracking-tight ${card.tone}`}>{card.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
-              </CardContent>
-            </Card>
+            <div key={card.label} className="border-b px-4 py-4 last:border-b-0 xl:border-b-0">
+              <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
+              <dd className={`mt-2 text-2xl font-semibold tracking-tight ${card.tone}`}>{card.value}</dd>
+              <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
+            </div>
           ))}
-        </div>
+        </dl>
       );
     }
 
@@ -208,12 +191,14 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     return (
       <Card>
         <CardHeader className="pb-3"><CardTitle className="text-base">Notification delivery</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <CardContent>
+          <dl className="grid border-y sm:grid-cols-2 lg:grid-cols-5 lg:divide-x">
           <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
           <MetricCard label="Retry Queue" value={String(data.delivery.pendingRetries)} sub="Delivery items waiting for retry" tone="amber" />
           <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Review failed attempts" tone="rose" />
           <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
           <MetricCard label="Dead-lettered" value={String(data.delivery.deadLettered)} sub="Exhausted or permanent failures" tone="rose" />
+          </dl>
         </CardContent>
       </Card>
     );
@@ -225,7 +210,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-            <Badge variant="outline" className="border-sky-500/30 text-sky-600 dark:text-sky-400">Live</Badge>
+            <span className="flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400"><span className="size-1.5 bg-sky-500" />Live</span>
           </div>
           <Button variant="outline" size="sm" onClick={() => { setCustomizationError(null); setCustomizationOpen((open) => !open); }}>
             <SlidersHorizontal className="h-4 w-4" />
@@ -250,25 +235,25 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       ) : null}
 
       {customizationError ? (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
           {customizationError}
         </div>
       ) : null}
 
       {streamError ? (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+        <div className="border-l-2 border-amber-500 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
           {streamError}
         </div>
       ) : null}
 
       {data.warnings.length > 0 ? (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+        <div className="border-l-2 border-amber-500 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
           Some dashboard data is temporarily unavailable: {data.warnings.join(", ")}. Review the server log and database migration status.
         </div>
       ) : null}
 
       {showOutageBanner && data.summary.offline > 0 ? (
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="border-l-2 border-destructive bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {data.summary.offline} monitor currently offline. Verification and delivery history are available below.
         </div>
       ) : null}
@@ -304,32 +289,27 @@ function PanelCompanyHealth({
           <p className="text-sm text-muted-foreground">No monitor groups yet.</p>
         ) : (
           companies.map((company) => (
-            <div key={company.id} className="space-y-2 rounded-xl border border-border/70 bg-muted/10 px-3 py-3">
+            <div key={company.id} className="space-y-2 border-b py-3 last:border-b-0">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-md bg-muted p-1.5">
-                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{company.name}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {company.active} active / {company.paused} paused
-                    </p>
-                  </div>
+                <div>
+                  <p className="text-sm font-medium">{company.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {company.active} active / {company.paused} paused
+                  </p>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs">
                   {company.up > 0 ? (
-                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                    <span className="text-emerald-600 dark:text-emerald-400">
                       {company.up} up
-                    </Badge>
+                    </span>
                   ) : null}
                   {company.down > 0 ? (
-                    <Badge variant="outline" className="border-destructive/30 text-destructive">
+                    <span className="text-destructive">
                       {company.down} down
-                    </Badge>
+                    </span>
                   ) : null}
-                  {company.pending > 0 ? <Badge variant="outline">{company.pending} pending</Badge> : null}
-                  {company.paused > 0 ? <Badge variant="outline">{company.paused} paused</Badge> : null}
+                  {company.pending > 0 ? <span className="text-muted-foreground">{company.pending} pending</span> : null}
+                  {company.paused > 0 ? <span className="text-muted-foreground">{company.paused} paused</span> : null}
                 </div>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -372,7 +352,7 @@ function PanelRecentEvents({
           <p className="text-sm text-muted-foreground">No monitor events recorded yet.</p>
         ) : (
           events.map((event) => (
-            <div key={event.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/70 bg-muted/10 px-3 py-2.5">
+            <div key={event.id} className="flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-2">
                 {event.eventType === "failure" ? (
                   <XCircle className="mt-0.5 h-4 w-4 text-destructive" />
@@ -440,14 +420,6 @@ function MetricCard({
   sub: string;
   tone: "green" | "amber" | "neutral" | "rose";
 }) {
-  const border =
-    tone === "green"
-      ? "border-l-emerald-500"
-      : tone === "amber"
-        ? "border-l-amber-500"
-        : tone === "rose"
-          ? "border-l-rose-500"
-          : "border-l-slate-400";
   const valueTone =
     tone === "green"
       ? "text-emerald-600 dark:text-emerald-400"
@@ -458,9 +430,9 @@ function MetricCard({
           : "";
 
   return (
-    <div className={`rounded-xl border border-l-2 bg-muted/15 px-4 py-3 ${border}`}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-2 text-xl font-semibold tracking-tight ${valueTone}`}>{value}</p>
+    <div className="border-b px-3 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 lg:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className={`mt-2 text-xl font-semibold tracking-tight ${valueTone}`}>{value}</dd>
       <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
     </div>
   );

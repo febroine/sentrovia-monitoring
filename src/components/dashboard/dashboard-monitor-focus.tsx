@@ -1,7 +1,6 @@
 "use client";
 
 import { ExternalLink, Flag, Star } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DashboardData } from "@/lib/dashboard/service";
@@ -30,14 +29,14 @@ export function DashboardMonitorFocus({
             <CardTitle className="text-base">{title}</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Prioritized by criticality, favorites, and outage state.</p>
           </div>
-          <Badge variant="outline">{monitors.length}</Badge>
+          <span className="text-xs tabular-nums text-muted-foreground">{monitors.length} monitors</span>
         </div>
       </CardHeader>
       <CardContent>
         {monitors.length === 0 ? (
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         ) : (
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid border-y md:grid-cols-2 md:divide-x">
             {monitors.map((monitor) => <MonitorFocusRow key={monitor.id} monitor={monitor} pending={pendingId === monitor.id} onFlag={onFlag} />)}
           </div>
         )}
@@ -61,7 +60,7 @@ function MonitorFocusRow({
   const statusClass = isDown ? "text-destructive" : isPending ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400";
 
   return (
-    <div className={`rounded-lg border px-3 py-3 ${isDown ? "border-destructive/40 bg-destructive/[0.04]" : "border-border/70 bg-muted/10"}`}>
+    <div className={`px-3 py-3 ${isDown ? "bg-destructive/[0.04]" : ""}`}>
       <div className="flex items-start gap-3">
         <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${isDown ? "bg-destructive" : isPending ? "bg-amber-500" : "bg-emerald-500"}`} aria-label={statusLabel} />
         <div className="min-w-0 flex-1">

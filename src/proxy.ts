@@ -43,7 +43,6 @@ export const config = {
     "/logs/:path*",
     "/delivery/:path*",
     "/reports/:path*",
-    "/status-codes/:path*",
     "/settings/:path*",
   ],
 };

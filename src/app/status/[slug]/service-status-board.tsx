@@ -40,7 +40,7 @@ export function ServiceStatusBoard({
   );
 
   return (
-    <section className="overflow-hidden rounded-md border border-border bg-card/40">
+    <section>
       <ServiceBoardHeader
         query={query}
         resultCount={filteredServices.length}
@@ -51,7 +51,7 @@ export function ServiceStatusBoard({
       />
 
       {filteredServices.length > 0 ? (
-        <div className="grid gap-3 p-3 xl:grid-cols-2">
+        <div className="grid gap-3 py-3 xl:grid-cols-2">
           {filteredServices.map((service) => (
             <ServicePanel
               key={service.id}
@@ -92,7 +92,7 @@ function ServiceBoardHeader({
   const filters = buildStatusFilters(services);
 
   return (
-    <div className="space-y-4 border-b border-border px-4 py-4 sm:px-5">
+    <div className="space-y-4 border-y border-border py-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Service status</h2>
@@ -160,7 +160,7 @@ function ServicePanel({
   const outageStartedAt = formatStatusDate(service.outageStartedAt, timeDisplaySettings, "None");
 
   return (
-    <article className={cn("flex min-h-56 flex-col rounded-md border border-l-8", meta.panel)}>
+    <article className={cn("flex flex-col rounded-md border border-l-4", meta.panel)}>
       <div className="flex flex-1 flex-col gap-5 p-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -173,7 +173,7 @@ function ServicePanel({
           <p className="mt-3 text-sm text-muted-foreground">Last checked {checkedAt}</p>
         </div>
 
-        <div className={cn("flex min-w-36 shrink-0 items-center justify-center gap-2 rounded-md border px-4 py-3 text-base font-semibold", meta.status)}>
+        <div className={cn("flex min-w-28 shrink-0 items-center gap-2 text-sm font-semibold", meta.status)}>
           <StatusIcon className="h-5 w-5" />
           {meta.label}
         </div>
@@ -261,7 +261,7 @@ function getStatusMeta(status: ServiceStatus) {
       label: "DOWN",
       icon: AlertTriangle,
       panel: "border-rose-500 bg-rose-50/90 dark:bg-rose-950/30",
-      status: "border-rose-500/50 bg-rose-600 text-white dark:bg-rose-500 dark:text-rose-950",
+      status: "text-rose-700 dark:text-rose-300",
       url: "text-rose-800 dark:text-rose-200",
     };
   }
@@ -271,7 +271,7 @@ function getStatusMeta(status: ServiceStatus) {
       label: "DEGRADED",
       icon: Clock3,
       panel: "border-amber-500 bg-amber-50/90 dark:bg-amber-950/30",
-      status: "border-amber-500/50 bg-amber-500 text-amber-950",
+      status: "text-amber-700 dark:text-amber-300",
       url: "text-amber-900 dark:text-amber-100",
     };
   }
@@ -280,7 +280,7 @@ function getStatusMeta(status: ServiceStatus) {
     label: "UP",
     icon: CheckCircle2,
     panel: "border-emerald-500 bg-emerald-50/90 dark:bg-emerald-950/30",
-    status: "border-emerald-500/50 bg-emerald-600 text-white dark:bg-emerald-500 dark:text-emerald-950",
+    status: "text-emerald-700 dark:text-emerald-300",
     url: "text-emerald-800 dark:text-emerald-100",
   };
 }

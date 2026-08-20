@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, type ElementType, type ReactNode } from "react";
-import { Building2, Mail, Phone, ShieldCheck, UserRound } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { ChangePasswordCard } from "@/components/profile/change-password-card";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccountSettingsTab } from "@/components/settings/profile-settings-tab";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { SettingsPayload } from "@/lib/settings/types";
+import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/use-settings-store";
 
 export default function ProfilePage() {
@@ -18,110 +18,110 @@ export default function ProfilePage() {
   }, [loadSettings]);
 
   return (
-    <div className="w-full space-y-6 animate-in fade-in duration-200">
-      <header className="rounded-lg border bg-card p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg border bg-muted/20 p-3 shadow-sm">
-              <UserRound className="h-5 w-5 text-sky-700 dark:text-sky-300" />
-            </div>
-            <div className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                Update account identity, contact details, and organization metadata used across ownership views, notifications, and templates.
-              </p>
-            </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,0.85fr)_minmax(0,0.95fr)] lg:min-w-[560px] lg:max-w-[620px]">
-            <ProfileStat icon={Mail} label="Email" value={settings.profile.email || "Not set"} valueClassName="break-all text-[13px] leading-5" />
-            <ProfileStat icon={Phone} label="Phone" value={settings.profile.phone || "Not set"} />
-            <ProfileStat icon={Building2} label="Organization" value={settings.profile.organization || "Not set"} />
-          </div>
-        </div>
-      </header>
+    <div className="w-full">
+      <ProfileHeader profile={settings.profile} />
 
-      {error ? <Banner tone="error">{error}</Banner> : null}
-      {message ? <Banner tone="success">{message}</Banner> : null}
+      <div className="mt-5 space-y-3">
+        {error ? <Banner tone="error">{error}</Banner> : null}
+        {message ? <Banner tone="success">{message}</Banner> : null}
+      </div>
 
       {loading ? (
-        <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">Loading profile settings...</CardContent>
-        </Card>
+        <div className="mt-8 border-y py-10 text-sm text-muted-foreground">Loading profile settings...</div>
       ) : (
-        <>
-          <Tabs defaultValue="identity" className="flex-col gap-5">
-            <TabsList variant="line" className="w-fit justify-start rounded-lg border bg-card p-2">
-              <TabsTrigger value="identity" className="flex-none rounded-xl px-4">
-                <UserRound data-icon="inline-start" />
-                Identity
-              </TabsTrigger>
-              <TabsTrigger value="security" className="flex-none rounded-xl px-4">
-                <ShieldCheck data-icon="inline-start" />
-                Security
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="identity" className="space-y-4">
-              <AccountSettingsTab settings={settings} updateSetting={updateSetting} />
-              <div className="flex justify-end">
-                <Button onClick={() => void saveSettings()} disabled={saving}>
-                  {saving ? "Saving..." : "Save profile"}
-                </Button>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="security">
-              <ChangePasswordCard />
-            </TabsContent>
-          </Tabs>
-        </>
+        <ProfileTabs
+          settings={settings}
+          saving={saving}
+          onSave={() => void saveSettings()}
+          onUpdate={updateSetting}
+        />
       )}
     </div>
   );
 }
 
-function ProfileStat({
-  icon: Icon,
-  label,
-  value,
-  valueClassName,
-}: {
-  icon: ElementType;
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
+function ProfileHeader({ profile }: { profile: SettingsPayload["profile"] }) {
+  const displayName = [profile.firstName, profile.lastName].filter(Boolean).join(" ") || "Workspace member";
+  const initials = buildInitials(profile.firstName, profile.lastName, profile.username);
+
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="border-l-2 border-l-sky-500 px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className={`mt-2 text-sm font-medium ${valueClassName ?? "truncate"}`}>{value}</p>
-          </div>
-          <div className="rounded-xl bg-muted/50 p-2">
-            <Icon className="h-4 w-4 text-sky-700 dark:text-sky-300" />
-          </div>
+    <header className="flex flex-col gap-6 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-xs font-medium text-muted-foreground">Account</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Profile</h1>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+          Manage the identity and contact details used across your workspace.
+        </p>
+      </div>
+
+      <div className="flex min-w-0 items-center gap-3 sm:max-w-[48%] sm:justify-end">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-md border bg-muted/30 text-sm font-semibold">
+          {initials}
         </div>
-      </CardContent>
-    </Card>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{displayName}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {profile.email || profile.username || "No contact information"}
+          </p>
+        </div>
+      </div>
+    </header>
   );
 }
 
-function Banner({
-  children,
-  tone,
+function ProfileTabs({
+  settings,
+  saving,
+  onSave,
+  onUpdate,
 }: {
-  children: ReactNode;
-  tone: "error" | "success";
+  settings: SettingsPayload;
+  saving: boolean;
+  onSave: () => void;
+  onUpdate: (path: string, value: string | number | boolean | string[]) => void;
 }) {
   return (
+    <Tabs defaultValue="identity" className="mt-6 flex-col gap-0">
+      <TabsList variant="line" className="h-auto w-full justify-start rounded-none border-b bg-transparent p-0">
+        <TabsTrigger value="identity" className="flex-none rounded-none px-1 pb-3 pt-1">
+          Identity
+        </TabsTrigger>
+        <TabsTrigger value="security" className="ml-6 flex-none rounded-none px-1 pb-3 pt-1">
+          Security
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="identity" className="pt-8">
+        <AccountSettingsTab settings={settings} updateSetting={onUpdate} />
+        <div className="mt-6 flex justify-end border-t pt-5">
+          <Button onClick={onSave} disabled={saving} className="min-w-28">
+            {saving ? "Saving..." : "Save profile"}
+          </Button>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="security" className="pt-8">
+        <ChangePasswordCard />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function buildInitials(firstName: string, lastName: string, username: string) {
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.trim();
+  return (initials || username.slice(0, 2) || "S").toUpperCase();
+}
+
+function Banner({ children, tone }: { children: ReactNode; tone: "error" | "success" }) {
+  return (
     <div
-      className={`rounded-lg border px-4 py-3 text-sm ${
+      role="status"
+      className={cn(
+        "border-l-2 px-4 py-3 text-sm",
         tone === "error"
-          ? "border-destructive/20 bg-destructive/5 text-destructive"
-          : "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
-      }`}
+          ? "border-destructive bg-destructive/5 text-destructive"
+          : "border-emerald-500 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
+      )}
     >
       {children}
     </div>

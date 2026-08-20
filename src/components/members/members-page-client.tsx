@@ -4,15 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckSquare,
-  Mail,
   Pencil,
   Plus,
   Search,
   SearchX,
-  ShieldCheck,
   Square,
   Trash2,
-  UsersRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -277,14 +274,12 @@ export default function MembersPageClient() {
   const deleteIncludesCurrentUser = deleteTargets.some((member) => member.id === currentUserId);
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-5">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
-            <Badge variant="outline" className="border-sky-500/30 text-sky-600 dark:text-sky-400">
-              {members.length} total
-            </Badge>
+            <span className="text-xs tabular-nums text-muted-foreground">{members.length} total</span>
           </div>
           <p className="text-sm text-muted-foreground">
             {isAdmin
@@ -298,7 +293,7 @@ export default function MembersPageClient() {
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search members" className="pl-9" />
             </div>
-            <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-muted/20 p-1" aria-label="Filter members by role">
+            <div className="flex w-fit items-center gap-1 rounded-md border border-border/70 bg-muted/20 p-1" aria-label="Filter members by role">
               <RoleFilterButton active={roleFilter === "all"} onClick={() => setRoleFilter("all")}>All</RoleFilterButton>
               <RoleFilterButton active={roleFilter === "admin"} onClick={() => setRoleFilter("admin")}>Admins</RoleFilterButton>
               <RoleFilterButton active={roleFilter === "member"} onClick={() => setRoleFilter("member")}>Members</RoleFilterButton>
@@ -318,16 +313,16 @@ export default function MembersPageClient() {
         </div>
       </header>
 
-      {error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div> : null}
+      {error ? <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">{error}</div> : null}
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <MetricCard label="Visible members" value={String(totals.members)} icon={UsersRound} />
-        <MetricCard label="Admins" value={String(totals.admins)} icon={ShieldCheck} />
-        <MetricCard label="Departments" value={String(totals.departments)} icon={Mail} />
-      </div>
+      <dl className="grid border-y md:grid-cols-3 md:divide-x">
+        <StatItem label="Visible members" value={String(totals.members)} />
+        <StatItem label="Admins" value={String(totals.admins)} />
+        <StatItem label="Departments" value={String(totals.departments)} />
+      </dl>
 
       {selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-sky-500/15 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 border-l-2 border-sky-500 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
             <p className="text-xs text-muted-foreground">
@@ -359,9 +354,7 @@ export default function MembersPageClient() {
                 {isAdmin ? "All members are visible here. New accounts are created by admins." : "Only your own profile is visible here."}
               </CardDescription>
             </div>
-            <Badge variant="outline" className="shrink-0 border-border/70 text-muted-foreground">
-              {filtered.length} shown
-            </Badge>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{filtered.length} shown</span>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -424,8 +417,7 @@ export default function MembersPageClient() {
                           <p className="font-medium">{member.firstName} {member.lastName}</p>
                           {member.id === currentUserId ? <Badge variant="outline" className="h-5 border-sky-500/30 px-1.5 text-[10px] text-sky-600 dark:text-sky-400">You</Badge> : null}
                         </div>
-                        <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                          <Mail className="size-3 shrink-0" />
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           <span className="truncate">{member.email}</span>
                         </p>
                         <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
@@ -502,11 +494,11 @@ export default function MembersPageClient() {
               {deleteIncludesCurrentUser ? " Your current session will be closed immediately after deletion." : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+          <div className="flex flex-col gap-3 border-l-2 border-destructive bg-destructive/5 p-4">
             <p className="text-sm font-medium text-destructive">Please confirm before continuing.</p>
             <div className="flex flex-col gap-2 text-sm text-muted-foreground">
               {deleteTargets.map((member) => (
-                <div key={member.id} className="flex min-w-0 flex-col gap-1 rounded-lg border border-border/70 bg-background/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <div key={member.id} className="flex min-w-0 flex-col gap-1 border-b py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <span className="font-medium text-foreground">
                     {member.firstName} {member.lastName}
                     {member.id === currentUserId ? " (you)" : ""}
@@ -593,29 +585,12 @@ function CreateMemberDialog({
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  icon: typeof UsersRound;
-}) {
+function StatItem({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="border-l-2 border-l-slate-400 px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="text-xl font-semibold tracking-tight">{value}</p>
-          </div>
-          <div className="rounded-xl bg-muted/70 p-2.5">
-            <Icon className="size-4" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="border-b px-4 py-4 last:border-b-0 md:border-b-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-2 text-2xl font-semibold tracking-tight">{value}</dd>
+    </div>
   );
 }
 
@@ -646,7 +621,7 @@ function RoleFilterButton({
       aria-pressed={active}
       onClick={onClick}
       className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+        active ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {children}

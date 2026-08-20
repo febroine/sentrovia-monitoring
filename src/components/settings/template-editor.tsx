@@ -74,7 +74,7 @@ export function TemplateEditor({
         <Label className="text-sm">{label}</Label>
         <p className="text-xs text-muted-foreground">{hint}</p>
       </div>
-      <div className="rounded-xl border bg-card">
+      <div className="overflow-hidden rounded-md border bg-card">
         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-3 py-2">
           <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => wrapSelection("**")}>
             <Bold className="mr-1 h-3.5 w-3.5" />

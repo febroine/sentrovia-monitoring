@@ -235,7 +235,7 @@ export default function LogsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Event Logs</h1>
@@ -286,7 +286,7 @@ export default function LogsPage() {
           value={filters.search}
           onChange={(event) => updateFilter("search", event.target.value)}
           placeholder="Search messages, companies, monitors, RCA summaries, or status context"
-          className="h-11 pl-9"
+          className="h-9 pl-9"
         />
       </div>
 
@@ -307,7 +307,7 @@ export default function LogsPage() {
       />
 
       {selectedIds.size > 0 ? (
-        <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/10 px-4 py-3">
+        <div className="flex items-center justify-between border-l-2 border-primary px-4 py-2">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} log selected</p>
             <p className="text-xs text-muted-foreground">
@@ -359,7 +359,7 @@ export default function LogsPage() {
 
 function AlertBanner({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+    <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
       {message}
     </div>
   );

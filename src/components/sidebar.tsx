@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, Binary, UserRound, UsersRound, BellRing, BarChart3 } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, UserRound, UsersRound, BellRing, BarChart3 } from 'lucide-react';
 import { SentroviaMark } from '@/components/brand/sentrovia-mark';
 import LogoutButton from '@/components/logout-button';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,6 @@ const navItems = [
   { href: '/logs', i18nKey: 'nav.logs', icon: ScrollText },
   { href: '/delivery', i18nKey: 'nav.delivery', icon: BellRing },
   { href: '/reports', i18nKey: 'nav.reports', icon: BarChart3 },
-  { href: '/status-codes', i18nKey: 'nav.statusCodes', icon: Binary },
   { href: '/members', i18nKey: 'nav.members', icon: UsersRound },
   { href: '/settings', i18nKey: 'nav.settings', icon: Settings },
 ];
@@ -40,32 +39,32 @@ const accentClasses: Record<
   }
 > = {
   amber: {
-    activeIcon: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300',
+    activeIcon: 'text-amber-600 dark:text-amber-300',
     activeBar: 'bg-amber-500/95',
     hoverBar: 'group-hover:bg-amber-500/25',
   },
   emerald: {
-    activeIcon: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+    activeIcon: 'text-emerald-600 dark:text-emerald-300',
     activeBar: 'bg-emerald-500/95',
     hoverBar: 'group-hover:bg-emerald-500/25',
   },
   sky: {
-    activeIcon: 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300',
+    activeIcon: 'text-sky-600 dark:text-sky-300',
     activeBar: 'bg-sky-500/95',
     hoverBar: 'group-hover:bg-sky-500/25',
   },
   rose: {
-    activeIcon: 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300',
+    activeIcon: 'text-rose-600 dark:text-rose-300',
     activeBar: 'bg-rose-500/95',
     hoverBar: 'group-hover:bg-rose-500/25',
   },
   violet: {
-    activeIcon: 'border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300',
+    activeIcon: 'text-violet-600 dark:text-violet-300',
     activeBar: 'bg-violet-500/95',
     hoverBar: 'group-hover:bg-violet-500/25',
   },
   slate: {
-    activeIcon: 'border-slate-400/30 bg-slate-400/10 text-slate-500 dark:text-slate-300',
+    activeIcon: 'text-slate-500 dark:text-slate-300',
     activeBar: 'bg-slate-300',
     hoverBar: 'group-hover:bg-slate-400/25',
   },
@@ -117,14 +116,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
       <div className="flex min-h-full flex-col pb-4">
         <div className="mb-8 px-1">
           <div className="flex items-center gap-3">
-            <div
-              className={cn(
-                'flex size-10 shrink-0 items-center justify-center rounded-md border',
-                palette.activeIcon
-              )}
-            >
-              <SentroviaMark className="text-[1rem] font-bold" />
-            </div>
+            <SentroviaMark className={cn("size-8 shrink-0 text-[1rem] font-bold", palette.activeIcon)} />
             <div className="min-w-0">
               <h1 className="truncate text-[1.1rem] font-semibold tracking-tight text-foreground">Sentrovia</h1>
             </div>
@@ -139,26 +131,17 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
                 key={href}
                 href={href}
                 className={cn(
-                  'group flex items-center gap-3 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
+                  'group flex items-center gap-3 rounded-sm px-2.5 py-2 text-sm font-medium transition-colors',
                   isActive
-                    ? 'border-border bg-card text-foreground'
-                    : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                 )}
               >
-                <div
-                  className={cn(
-                    'flex size-8 items-center justify-center rounded-md border transition-colors',
-                    isActive
-                      ? palette.activeIcon
-                      : 'border-border/70 bg-background/90 text-muted-foreground group-hover:text-foreground'
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
+                <Icon className={cn("size-4 shrink-0 transition-colors", isActive ? palette.activeIcon : "text-muted-foreground group-hover:text-foreground")} />
                 <span className="flex-1 truncate">{t(i18nKey)}</span>
                 <span
                   className={cn(
-                    'h-7 w-1.5 rounded-full transition-colors',
+                    'h-5 w-0.5 transition-colors',
                     isActive ? palette.activeBar : cn('bg-transparent', palette.hoverBar)
                   )}
                 />
@@ -179,26 +162,17 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
                   key={href}
                   href={href}
                   className={cn(
-                    'group flex items-center gap-3 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
+                    'group flex items-center gap-3 rounded-sm px-2.5 py-2 text-sm font-medium transition-colors',
                     isActive
-                      ? 'border-border bg-card text-foreground'
-                      : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                   )}
                 >
-                  <div
-                    className={cn(
-                      'flex size-8 items-center justify-center rounded-md border transition-colors',
-                      isActive
-                        ? palette.activeIcon
-                        : 'border-border/70 bg-background/90 text-muted-foreground group-hover:text-foreground'
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
+                  <Icon className={cn("size-4 shrink-0 transition-colors", isActive ? palette.activeIcon : "text-muted-foreground group-hover:text-foreground")} />
                   <span className="flex-1 truncate">{label}</span>
                   <span
                     className={cn(
-                      'h-7 w-1.5 rounded-full transition-colors',
+                      'h-5 w-0.5 transition-colors',
                       isActive ? palette.activeBar : cn('bg-transparent', palette.hoverBar)
                     )}
                   />
@@ -209,7 +183,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
         </div>
 
         <div className="mt-auto pt-6">
-          <LogoutButton className="h-10 w-full justify-start rounded-md border border-border bg-card px-3 text-sm font-medium" />
+          <LogoutButton className="h-9 w-full justify-start px-2.5 text-sm font-medium text-muted-foreground" />
         </div>
       </div>
     </div>
