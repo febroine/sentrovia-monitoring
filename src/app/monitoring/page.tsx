@@ -67,6 +67,7 @@ export default function MonitoringPage() {
     createMonitor,
     updateMonitor,
     updateMonitorActiveState,
+    updateMonitorFlags,
     bulkUpdateMonitors,
     deleteMonitors,
     restoreMonitors,
@@ -95,6 +96,7 @@ export default function MonitoringPage() {
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
   const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
+  const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [pendingBulkAction, setPendingBulkAction] = useState<PendingBulkAction | null>(null);
   const [bulkActionSeconds, setBulkActionSeconds] = useState(0);
@@ -286,6 +288,22 @@ export default function MonitoringPage() {
       }
     } finally {
       setActiveTogglePendingId(null);
+    }
+  }
+
+  async function handleToggleMonitorFlag(
+    monitor: MonitorRecord,
+    field: "isFavorite" | "isCritical"
+  ) {
+    setFlagPendingId(monitor.id);
+
+    try {
+      const flags = field === "isFavorite"
+        ? { isFavorite: !monitor.isFavorite }
+        : { isCritical: !monitor.isCritical };
+      await updateMonitorFlags(monitor.id, flags);
+    } finally {
+      setFlagPendingId(null);
     }
   }
 
@@ -544,11 +562,13 @@ export default function MonitoringPage() {
         historyByMonitor={historyByMonitor}
         selectedIds={selectedIds}
         activeTogglePendingId={activeTogglePendingId}
+        flagPendingId={flagPendingId}
         allPageSelected={allPageSelected}
         somePageSelected={somePageSelected}
         onToggleAll={toggleAll}
         onToggleOne={toggleOne}
         onToggleActive={(monitor) => void handleToggleMonitorActive(monitor)}
+        onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
         onEdit={setEditingMonitor}
         onSelectTimelinePoint={handleSelectTimelinePoint}
       />

@@ -7,6 +7,7 @@ import {
   type SettingsPayload,
 } from "@/lib/settings/types";
 import type { NotificationContext } from "@/worker/types";
+import { renderNotificationEmailHtml } from "@/worker/notification-email";
 
 const LEGACY_DEFAULT_EMAIL_SUBJECTS = new Set([
   ...Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
@@ -104,9 +105,22 @@ export function renderNotificationTemplates(
   return {
     subject: applyTemplate(normalizeTemplate(subjectTemplate), textReplacements),
     textBody: toPlainText(renderedTextBody),
-    htmlBody: toHtml(renderedHtmlSource, {
-      [htmlUrlPlaceholder]: monitorLink,
-      [htmlDashboardPlaceholder]: dashboardLink,
+    htmlBody: renderNotificationEmailHtml({
+      body: renderedHtmlSource,
+      htmlFragments: {
+        [htmlUrlPlaceholder]: monitorLink,
+        [htmlDashboardPlaceholder]: dashboardLink,
+      },
+      organization,
+      monitorName: context.monitor.name,
+      monitorTarget: displayTarget,
+      eventState,
+      checkedAt: localTime,
+      status: `${statusCode} · ${statusLabel}`,
+      latency: context.result.latencyMs === null ? "N/A" : `${context.result.latencyMs} ms`,
+      dashboardUrl: buildAppRouteUrl(appUrl, "/monitoring"),
+      language,
+      tone: resolveEmailTone(context),
     }),
     telegramBody: toPlainText(applyTemplate(telegramTemplate, textReplacements)),
   };
@@ -523,23 +537,10 @@ function normalizeHttpHref(value: string) {
   }
 }
 
-function toHtml(text: string, htmlFragments: Record<string, string>) {
-  const escaped = escapeHtml(text);
-  const linked = Object.entries(htmlFragments).reduce(
-    (result, [token, value]) => result.replaceAll(escapeHtml(token), value),
-    escaped
-  );
-
-  return linked
-    .split("\n")
-    .map((line) => {
-      if (line.trim().length === 0) {
-        return "<br />";
-      }
-
-      return `<p>${applyInlineFormatting(line)}</p>`;
-    })
-    .join("");
+function resolveEmailTone(context: NotificationContext) {
+  if (context.kind === "recovery") return "healthy" as const;
+  if (context.kind === "latency" || context.kind === "ssl-expiry") return "warning" as const;
+  return "critical" as const;
 }
 
 function normalizeTemplate(template: string) {
@@ -552,12 +553,6 @@ function normalizeForComparison(template: string | null) {
 
 function toPlainText(text: string) {
   return text.replaceAll("**", "").replaceAll("_", "");
-}
-
-function applyInlineFormatting(text: string) {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/_(.+?)_/g, "<em>$1</em>");
 }
 
 function getDomain(url: string) {

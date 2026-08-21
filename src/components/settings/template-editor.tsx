@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Bold, Italic, Link2, Pilcrow } from "lucide-react";
+import { Bold, Heading3, Italic, Link2, List, Rows3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,17 +11,18 @@ interface TemplateEditorProps {
   hint: string;
   value: string;
   rows?: number;
+  reportLayoutTools?: boolean;
   onChange: (value: string) => void;
 }
 
 const URL_TOKEN = "{url_link}";
-const LINE_BREAK = "\n";
 
 export function TemplateEditor({
   label,
   hint,
   value,
   rows = 8,
+  reportLayoutTools = false,
   onChange,
 }: TemplateEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -88,10 +89,22 @@ export function TemplateEditor({
             <Link2 className="mr-1 h-3.5 w-3.5" />
             URL token
           </Button>
-          <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor(LINE_BREAK)}>
-            <Pilcrow className="mr-1 h-3.5 w-3.5" />
-            Line break
-          </Button>
+          {reportLayoutTools ? (
+            <>
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor("\nLabel: value")}>
+                <Rows3 className="mr-1 h-3.5 w-3.5" />
+                Detail row
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor("\n## Section heading\n")}>
+                <Heading3 className="mr-1 h-3.5 w-3.5" />
+                Section
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor("\n- List item")}>
+                <List className="mr-1 h-3.5 w-3.5" />
+                List item
+              </Button>
+            </>
+          ) : null}
         </div>
         <Textarea
           ref={textareaRef}

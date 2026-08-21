@@ -13,6 +13,7 @@ interface MonitoringState {
   createMonitor: (payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitor: (id: string, payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitorActiveState: (id: string, isActive: boolean) => Promise<MonitorRecord | null>;
+  updateMonitorFlags: (id: string, flags: { isFavorite?: boolean; isCritical?: boolean }) => Promise<MonitorRecord | null>;
   bulkUpdateMonitors: (ids: string[], payload: MonitorPayload) => Promise<MonitorRecord[]>;
   deleteMonitors: (ids: string[]) => Promise<SoftDeleteResult | null>;
   restoreMonitors: (ids: string[]) => Promise<MonitorRecord[]>;
@@ -142,6 +143,37 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: message,
       });
+      showToast(message, "error");
+      return null;
+    }
+  },
+  updateMonitorFlags: async (id, flags) => {
+    set({ saving: true });
+
+    try {
+      const response = await fetch(`/api/monitors/${id}/flags`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(flags),
+      });
+      const data = await readJsonOrNull<{ message?: string; monitor?: MonitorRecord }>(response);
+
+      if (!response.ok || !data?.monitor) {
+        throw new Error(data?.message ?? "Unable to update monitor focus flags.");
+      }
+
+      const monitor = data.monitor;
+      set((state) => ({
+        monitors: state.monitors.map((item) => (item.id === id ? monitor : item)),
+        saving: false,
+        error: null,
+      }));
+      showToast("Monitor focus flags updated.", "success");
+
+      return monitor;
+    } catch (error) {
+      const message = getErrorMessage(error, "Unable to update monitor focus flags.");
+      set({ saving: false, error: message });
       showToast(message, "error");
       return null;
     }

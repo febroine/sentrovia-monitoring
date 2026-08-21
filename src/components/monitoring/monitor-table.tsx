@@ -1,4 +1,4 @@
-import { CheckCircle2, CheckSquare, Clock, Globe, Mail, Power, SearchX, Send, Settings2, Square, XCircle } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Power, SearchX, Send, Settings2, Square, Star, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MonitorHistoryStrip } from "@/components/monitoring/monitor-history-strip";
@@ -57,10 +57,15 @@ function StatusBadge({
 }
 
 function NotificationBadge({ pref }: { pref: NotificationPref }) {
-  if (pref === "email") return <div className="flex items-center gap-1 text-xs text-muted-foreground"><Mail className="size-3" />Email</div>;
-  if (pref === "telegram") return <div className="flex items-center gap-1 text-xs text-muted-foreground"><Send className="size-3" />Telegram</div>;
-  if (pref === "both") return <div className="flex items-center gap-1 text-xs text-muted-foreground"><Mail className="size-3" />Email + Telegram</div>;
-  return <div className="text-xs text-muted-foreground">None</div>;
+  const label = pref === "both" ? "Email + Telegram" : pref === "none" ? "None" : pref === "email" ? "Email" : "Telegram";
+
+  return (
+    <div className="flex items-center gap-1 text-muted-foreground" title={label} aria-label={label}>
+      {pref === "email" || pref === "both" ? <Mail className="size-3.5" /> : null}
+      {pref === "telegram" || pref === "both" ? <Send className="size-3.5" /> : null}
+      {pref === "none" ? <span className="text-[10px]">--</span> : null}
+    </div>
+  );
 }
 
 export function MonitorTable({
@@ -69,11 +74,13 @@ export function MonitorTable({
   historyByMonitor,
   selectedIds,
   activeTogglePendingId,
+  flagPendingId,
   allPageSelected,
   somePageSelected,
   onToggleAll,
   onToggleOne,
   onToggleActive,
+  onToggleFlag,
   onEdit,
   onSelectTimelinePoint,
 }: {
@@ -82,37 +89,55 @@ export function MonitorTable({
   historyByMonitor: Record<string, MonitorHistoryPoint[]>;
   selectedIds: Set<string>;
   activeTogglePendingId: string | null;
+  flagPendingId: string | null;
   allPageSelected: boolean;
   somePageSelected: boolean;
   onToggleAll: () => void;
   onToggleOne: (id: string) => void;
   onToggleActive: (monitor: MonitorRecord) => void;
+  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
   onEdit: (monitor: MonitorRecord) => void;
   onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
 }) {
   return (
     <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border">
-      <Table>
+      <Table className="min-w-0 table-fixed text-[11px] xl:text-xs [&_th]:overflow-hidden [&_th]:text-ellipsis">
+        <colgroup>
+          <col className="w-[3%]" />
+          <col className="w-[11%]" />
+          <col className="w-[16%]" />
+          <col className="w-[7%]" />
+          <col className="w-[10%]" />
+          <col className="w-[4%]" />
+          <col className="w-[4%]" />
+          <col className="w-[5%]" />
+          <col className="w-[5%]" />
+          <col className="w-[5%]" />
+          <col className="w-[7%]" />
+          <col className="w-[7%]" />
+          <col className="w-[4%]" />
+          <col className="w-[12%]" />
+        </colgroup>
         <TableHeader>
           <TableRow className="bg-surface-high hover:bg-surface-high">
-            <TableHead className="w-10 pl-4">
+            <TableHead className="px-1 pl-2">
               <button type="button" onClick={onToggleAll} className="flex items-center justify-center text-muted-foreground hover:text-foreground" aria-label="Select all">
                 {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
               </button>
             </TableHead>
-            <TableHead className="w-[160px]">Name</TableHead>
-            <TableHead>Target</TableHead>
-            <TableHead className="w-[150px]">Tags</TableHead>
-            <TableHead className="w-[110px]">Status</TableHead>
-            <TableHead className="w-[80px]">Active</TableHead>
-            <TableHead className="w-[90px]">Response</TableHead>
-            <TableHead className="w-[90px]">Latency</TableHead>
-            <TableHead className="w-[120px]">Notification</TableHead>
-            <TableHead className="w-[96px]">Company</TableHead>
-            <TableHead className="w-[96px]">Timeline</TableHead>
-            <TableHead className="w-[110px]">Last check</TableHead>
-            <TableHead className="w-[80px]">Uptime</TableHead>
-            <TableHead className="w-[50px]" />
+            <TableHead className="px-1.5">Name</TableHead>
+            <TableHead className="px-1">Target</TableHead>
+            <TableHead className="px-1">Tags</TableHead>
+            <TableHead className="px-1">Status</TableHead>
+            <TableHead className="px-1">Active</TableHead>
+            <TableHead className="px-1">HTTP</TableHead>
+            <TableHead className="px-1">Latency</TableHead>
+            <TableHead className="px-1">Notify</TableHead>
+            <TableHead className="px-1" title="Company">Co.</TableHead>
+            <TableHead className="px-1">Timeline</TableHead>
+            <TableHead className="px-1">Last check</TableHead>
+            <TableHead className="px-1">Uptime</TableHead>
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -133,41 +158,40 @@ export function MonitorTable({
           ) : (
             monitors.map((monitor) => (
               <TableRow key={monitor.id} className={selectedIds.has(monitor.id) ? "bg-primary/5" : ""} onClick={() => onEdit(monitor)}>
-                <TableCell className="pl-4" onClick={(event) => event.stopPropagation()}>
+                <TableCell className="px-1 pl-2" onClick={(event) => event.stopPropagation()}>
                   <button type="button" onClick={(event) => { event.stopPropagation(); onToggleOne(monitor.id); }} className="flex items-center justify-center text-muted-foreground hover:text-foreground" aria-label="Select row">
                     {selectedIds.has(monitor.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
+                <TableCell className="overflow-hidden px-1.5">
+                  <div className="flex min-w-0 items-center gap-1.5" title={`${monitor.name} · ${getMonitorTypeLabel(monitor.monitorType)}`}>
                     <span className={`size-1.5 rounded-full ${monitor.status === "up" ? "bg-emerald-500" : monitor.status === "down" ? "bg-destructive" : "bg-muted-foreground"}`} />
-                    <div className="space-y-1">
-                      <span className="font-medium">{monitor.name}</span>
-                      <p className="text-xs font-medium text-muted-foreground">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{monitor.name}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
                         {getMonitorTypeLabel(monitor.monitorType)}
                       </p>
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Globe className="size-3" />
-                    <span className="max-w-[210px] truncate font-mono">{getMonitorTargetDisplay(monitor)}</span>
+                <TableCell className="overflow-hidden px-1.5">
+                  <div className="flex min-w-0 items-center gap-1 text-muted-foreground" title={getMonitorTargetDisplay(monitor)}>
+                    <Globe className="size-3 shrink-0" />
+                    <span className="min-w-0 truncate font-mono">{getMonitorTargetDisplay(monitor)}</span>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="overflow-hidden px-1.5">
                   {monitor.tags.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {monitor.tags.map((tag) => (
-                        <span key={tag} className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{tag}</span>
-                      ))}
+                    <div className="flex min-w-0 items-center gap-1" title={monitor.tags.join(", ")}>
+                      <span className="min-w-0 truncate rounded border border-border bg-muted px-1 py-0.5 text-[9px] text-muted-foreground">{monitor.tags[0]}</span>
+                      {monitor.tags.length > 1 ? <span className="shrink-0 text-[9px] text-muted-foreground">+{monitor.tags.length - 1}</span> : null}
                     </div>
                   ) : (
                     <span className="text-xs text-muted-foreground">--</span>
                   )}
                 </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
+                <TableCell className="overflow-hidden px-1">
+                  <div className="truncate" title={getStatusDescription(monitor)}>
                     <StatusBadge
                       status={monitor.status}
                       code={monitor.statusCode}
@@ -177,18 +201,10 @@ export function MonitorTable({
                       threshold={Math.max(1, monitor.retries)}
                       slow={isSlowMonitor(monitor)}
                     />
-                    {monitor.isActive && monitor.verificationMode ? (
-                      <p className="text-[11px] text-muted-foreground">Pending confirmation</p>
-                    ) : monitor.isActive && isSlowMonitor(monitor) ? (
-                      <p className="text-[11px] text-muted-foreground">Online but above threshold</p>
-                    ) : null}
                   </div>
                 </TableCell>
-                <TableCell onClick={(event) => event.stopPropagation()}>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${monitor.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
-                      {monitor.isActive ? "On" : "Off"}
-                    </span>
+                <TableCell className="px-1" onClick={(event) => event.stopPropagation()}>
+                  <div className="flex items-center">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -202,36 +218,56 @@ export function MonitorTable({
                     </Button>
                   </div>
                 </TableCell>
-                <TableCell>{monitor.statusCode ?? "--"}</TableCell>
-                <TableCell>
-                  <div className="space-y-0.5">
-                    <span>{monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"}</span>
-                    {monitor.slowResponseThresholdMs ? (
-                      <p className="text-[10px] text-muted-foreground">Limit {monitor.slowResponseThresholdMs}ms</p>
-                    ) : null}
-                  </div>
+                <TableCell className="px-1.5">{monitor.statusCode ?? "--"}</TableCell>
+                <TableCell className="px-1.5" title={monitor.slowResponseThresholdMs ? `Alert threshold: ${monitor.slowResponseThresholdMs}ms` : undefined}>
+                  {monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"}
                 </TableCell>
-                <TableCell><NotificationBadge pref={monitor.notificationPref} /></TableCell>
-                <TableCell>{monitor.company ?? "--"}</TableCell>
-                <TableCell>
+                <TableCell className="px-1.5"><NotificationBadge pref={monitor.notificationPref} /></TableCell>
+                <TableCell className="overflow-hidden px-1.5"><span className="block truncate" title={monitor.company ?? undefined}>{monitor.company ?? "--"}</span></TableCell>
+                <TableCell className="px-1.5">
                   <MonitorHistoryStrip
                     points={historyByMonitor[monitor.id] ?? []}
                     onSelect={(point) => onSelectTimelinePoint(monitor, point)}
+                    compact
                   />
                 </TableCell>
-                <TableCell><div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="size-3" />{formatLastChecked(monitor.lastCheckedAt)}</div></TableCell>
-                <TableCell>{monitor.uptime}</TableCell>
-                <TableCell onClick={(event) => event.stopPropagation()}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    aria-label={`Edit ${monitor.name}`}
-                    title="Edit monitor"
-                    onClick={() => onEdit(monitor)}
-                  >
-                    <Settings2 className="size-3.5 text-muted-foreground" />
-                  </Button>
+                <TableCell className="overflow-hidden px-1.5"><span className="block truncate text-muted-foreground" title={formatLastChecked(monitor.lastCheckedAt)}>{formatLastChecked(monitor.lastCheckedAt)}</span></TableCell>
+                <TableCell className="px-1.5">{monitor.uptime}</TableCell>
+                <TableCell className="px-0.5" onClick={(event) => event.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={flagPendingId === monitor.id}
+                      aria-label={monitor.isFavorite ? `Remove ${monitor.name} from favorites` : `Add ${monitor.name} to favorites`}
+                      title={monitor.isFavorite ? "Remove favorite" : "Add favorite"}
+                      onClick={() => onToggleFlag(monitor, "isFavorite")}
+                    >
+                      <Star className={`size-3.5 ${monitor.isFavorite ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={flagPendingId === monitor.id}
+                      aria-label={monitor.isCritical ? `Remove critical flag from ${monitor.name}` : `Mark ${monitor.name} as critical`}
+                      title={monitor.isCritical ? "Remove critical flag" : "Mark critical"}
+                      onClick={() => onToggleFlag(monitor, "isCritical")}
+                    >
+                      <Flag className={`size-3.5 ${monitor.isCritical ? "fill-rose-500 text-rose-500" : "text-muted-foreground"}`} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      aria-label={`Edit ${monitor.name}`}
+                      title="Edit monitor"
+                      onClick={() => onEdit(monitor)}
+                    >
+                      <Settings2 className="size-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))
@@ -249,4 +285,13 @@ function isSlowMonitor(monitor: MonitorRecord) {
     typeof monitor.slowResponseThresholdMs === "number" &&
     monitor.latencyMs > monitor.slowResponseThresholdMs
   );
+}
+
+function getStatusDescription(monitor: MonitorRecord) {
+  if (!monitor.isActive) return "Paused";
+  if (monitor.verificationMode) return `Verification pending · ${monitor.verificationFailureCount}/${Math.max(1, monitor.retries)}`;
+  if (isSlowMonitor(monitor)) return "Online but above the configured latency threshold";
+  if (monitor.status === "up") return "Online";
+  if (monitor.status === "down") return monitor.statusCode ? `Offline · HTTP ${monitor.statusCode}` : "Offline";
+  return "Pending first check";
 }

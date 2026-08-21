@@ -122,4 +122,44 @@ describe("dashboard service", () => {
 
     expect(monitors.map((monitor) => monitor.id)).toEqual(["critical", "favorite", "down"]);
   });
+
+  it("keeps every active monitor in the focus list", () => {
+    const monitors = Array.from({ length: 20 }, (_, index) => buildFocusMonitor(`monitor-${index}`));
+
+    expect(buildDashboardMonitorFocus(monitors, "all")).toHaveLength(20);
+  });
+
+  it("applies favorite and critical focus filters", () => {
+    const monitors = [
+      buildFocusMonitor("standard"),
+      buildFocusMonitor("favorite", { isFavorite: true }),
+      buildFocusMonitor("critical", { isCritical: true }),
+      buildFocusMonitor("both", { isFavorite: true, isCritical: true }),
+    ];
+
+    expect(buildDashboardMonitorFocus(monitors, "favorites").map((monitor) => monitor.id)).toEqual(["both", "favorite"]);
+    expect(buildDashboardMonitorFocus(monitors, "critical").map((monitor) => monitor.id)).toEqual(["both", "critical"]);
+  });
 });
+
+function buildFocusMonitor(
+  id: string,
+  overrides: Partial<{ isFavorite: boolean; isCritical: boolean }> = {}
+) {
+  return {
+    id,
+    name: id,
+    monitorType: "http",
+    url: `https://${id}.example.com`,
+    companyId: null,
+    company: null,
+    isActive: true,
+    isFavorite: false,
+    isCritical: false,
+    status: "up",
+    statusCode: 200,
+    latencyMs: 100,
+    lastCheckedAt: null,
+    ...overrides,
+  };
+}

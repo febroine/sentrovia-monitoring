@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertReportScheduleCompanyAvailable,
   buildReportMessage,
+  calculateReportSummaryMetrics,
   normalizeReportStatus,
   resolveReportPeriod,
   resolveReportTitle,
@@ -63,6 +64,46 @@ describe("resolveReportTitle", () => {
   });
 });
 
+describe("report summary metrics", () => {
+  it("does not penalize the same failed checks through uptime and failure rate", () => {
+    const summary = calculateReportSummaryMetrics({
+      totalChecks: 100,
+      upChecks: 99,
+      downChecks: 1,
+      latencySamples: 100,
+      averageLatencyMs: 120,
+      p95LatencyMs: 240,
+      currentlyDown: 0,
+    });
+
+    expect(summary.uptimePct).toBe(99);
+    expect(summary.failureRatePct).toBe(1);
+    expect(summary.healthScore).toBe(99);
+    expect(summary.healthStatus).toBe("Excellent");
+  });
+
+  it("marks periods without completed checks as unavailable instead of healthy", () => {
+    const summary = calculateReportSummaryMetrics({
+      totalChecks: 0,
+      upChecks: 0,
+      downChecks: 0,
+      latencySamples: 0,
+      averageLatencyMs: 0,
+      p95LatencyMs: 0,
+      currentlyDown: 0,
+    });
+
+    expect(summary).toMatchObject({
+      hasCompletedChecks: false,
+      hasLatencySamples: false,
+      healthScore: 0,
+      healthStatus: "No data",
+      uptimePct: 0,
+      failureRatePct: 0,
+    });
+  });
+});
+
 describe("report schedule company availability", () => {
   it("rejects company schedules whose company was deleted", () => {
     expect(() => assertReportScheduleCompanyAvailable("company", null)).toThrow(
@@ -91,6 +132,9 @@ describe("report email branding", () => {
     expect(message.htmlBody).toContain("Excellent health");
     expect(message.htmlBody).toContain("Prepared for Workspace by");
     expect(message.htmlBody).not.toContain("Sentrovia");
+    expect(message.htmlBody).toContain('name="color-scheme" content="light"');
+    expect(message.htmlBody).toContain("[data-ogsc]");
+    expect(message.htmlBody).toContain('bgcolor="#ffffff"');
   });
 
   it("replaces the complete email subject with the user's template", () => {
@@ -131,6 +175,8 @@ function buildReport(): GeneratedReport {
       upChecks: 999,
       downChecks: 1,
       pendingChecks: 0,
+      hasCompletedChecks: true,
+      hasLatencySamples: true,
       uptimePct: 99.95,
       averageLatencyMs: 120,
       p95LatencyMs: 240,

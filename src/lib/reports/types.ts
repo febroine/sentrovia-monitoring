@@ -71,6 +71,8 @@ export interface GeneratedReport {
     upChecks: number;
     downChecks: number;
     pendingChecks: number;
+    hasCompletedChecks: boolean;
+    hasLatencySamples: boolean;
     uptimePct: number;
     averageLatencyMs: number;
     p95LatencyMs: number;

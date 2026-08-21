@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ElementType } from "react";
-import { Activity, Clock3, HardDrive, LoaderCircle, Play, RefreshCw, Square, Wifi, WifiOff } from "lucide-react";
+import { Activity, HardDrive, LoaderCircle, Play, RefreshCw, Square, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,6 @@ import { useWorkerStore } from "@/stores/use-worker-store";
 interface SystemData {
   cpu: { usage: number; model: string; cores: number };
   memory: { total: number; used: number; free: number; usagePct: number };
-  uptime: { process: number; os: number };
   system: { platform: string; arch: string; hostname: string; nodeVersion: string };
 }
 
@@ -170,26 +169,6 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
                     : "Waiting for telemetry"
                 }
               />
-              <UptimePanel
-                processSeconds={systemData?.uptime.process ?? 0}
-                osSeconds={systemData?.uptime.os ?? 0}
-                arch={systemData?.system.arch ?? "--"}
-              />
-
-              <div className="grid gap-3 pt-1 sm:grid-cols-3">
-                <Metric
-                  label="CPU Profile"
-                  value={systemData ? truncateValue(systemData.cpu.model, 18) : "--"}
-                />
-                <Metric
-                  label="Platform"
-                  value={systemData ? `${systemData.system.platform} / ${systemData.system.arch}` : "--"}
-                />
-                <Metric
-                  label="OS Uptime"
-                  value={systemData ? formatDuration(Math.floor(systemData.uptime.os)) : "--"}
-                />
-              </div>
             </div>
           </div>
 
@@ -301,44 +280,6 @@ function StatusBar({ label, value, detail }: { label: string; value: number; det
   );
 }
 
-function UptimePanel({
-  processSeconds,
-  osSeconds,
-  arch,
-}: {
-  processSeconds: number;
-  osSeconds: number;
-  arch: string;
-}) {
-  const processDuration = processSeconds > 0 ? formatDuration(Math.floor(processSeconds)) : "--";
-  const osDuration = osSeconds > 0 ? formatDuration(Math.floor(osSeconds)) : "--";
-
-  return (
-    <div className="border-y py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Clock3 className="size-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Process uptime</span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Runtime age for the current app process, not a health percentage.
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-lg font-semibold tabular-nums">{processDuration}</p>
-          <p className="text-xs text-muted-foreground">{arch}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <Metric label="App Runtime" value={processDuration} />
-        <Metric label="Host Runtime" value={osDuration} />
-      </div>
-    </div>
-  );
-}
-
 function InlineAlert({
   tone,
   message,
@@ -368,14 +309,6 @@ function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3_600);
   const minutes = Math.floor((seconds % 3_600) / 60);
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-}
-
-function truncateValue(value: string, maxLength: number) {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength)}...`;
 }
 
 function formatConnectivityStatus(status: "unknown" | "online" | "offline" | "disabled" | undefined) {

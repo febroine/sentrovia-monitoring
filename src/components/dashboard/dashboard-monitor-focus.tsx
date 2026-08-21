@@ -27,7 +27,7 @@ export function DashboardMonitorFocus({
         <div className="flex items-center justify-between gap-3">
           <div>
             <CardTitle className="text-base">{title}</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Prioritized by criticality, favorites, and outage state.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Critical and favorite monitors appear first; use Customize to narrow this list.</p>
           </div>
           <span className="text-xs tabular-nums text-muted-foreground">{monitors.length} monitors</span>
         </div>

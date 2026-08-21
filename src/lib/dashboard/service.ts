@@ -328,7 +328,6 @@ export function buildDashboardMonitorFocus(rows: DashboardMonitorRow[], focus: D
 
   return filtered
     .sort(compareDashboardMonitors)
-    .slice(0, 12)
     .map((monitor) => ({
       id: monitor.id,
       name: monitor.name,

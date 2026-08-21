@@ -8,6 +8,13 @@ import { companies, monitorChecks, monitorEvents, monitors, reportSchedules } fr
 import { sendEmailDelivery } from "@/lib/delivery/service";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
+import {
+  formatReportAverageLatency,
+  formatReportFailureRate,
+  formatReportHealthScore,
+  formatReportP95Latency,
+  formatReportUptime,
+} from "@/lib/reports/metrics";
 import { getSettings } from "@/lib/settings/service";
 import type {
   GeneratedReport,
@@ -37,6 +44,7 @@ type ReportCheckAggregate = {
   averageLatencyMs: number;
   p95LatencyMs: number;
 };
+type ReportCheckSummary = Omit<ReportCheckAggregate, "monitorId">;
 type ReportFailureAggregate = {
   monitorId: string;
   failures: number;
@@ -278,24 +286,26 @@ export async function generateReportPreview(
   const slowMonitors = buildSlowMonitorSummary(scoped.monitorRows, checksByMonitor);
   const failingMonitors = buildFailingMonitorSummary(scoped.monitorRows, failuresByMonitor);
   const monitorBreakdown = buildMonitorBreakdown(scoped.monitorRows, checksByMonitor, failuresByMonitor);
-  const { totalChecks, upChecks, downChecks, pendingChecks, averageLatencyMs, p95LatencyMs } = scoped.checkSummary;
-  const uptimePct = totalChecks > 0 ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 100;
-  const failureRatePct = totalChecks > 0 ? roundToTwoDecimals((downChecks / totalChecks) * 100) : 0;
-  const impactedMonitors = failingMonitors.length;
-  const healthScore = buildHealthScore({
-    uptimePct,
-    failureRatePct,
+  const { totalChecks, upChecks, downChecks, pendingChecks, latencySamples, averageLatencyMs, p95LatencyMs } = scoped.checkSummary;
+  const reportMetrics = calculateReportSummaryMetrics({
+    totalChecks,
+    upChecks,
+    downChecks,
+    latencySamples,
+    averageLatencyMs,
     p95LatencyMs,
     currentlyDown: scoped.monitorRows.filter((monitor) => monitor.status === "down").length,
   });
+  const impactedMonitors = failingMonitors.length;
+  const currentlyDown = scoped.monitorRows.filter((monitor) => monitor.status === "down").length;
   const recentFailures = buildRecentFailures(scoped.recentFailureEvents, scoped.monitorRows);
   const recommendations = buildRecommendations({
     summary: {
-      currentlyDown: scoped.monitorRows.filter((monitor) => monitor.status === "down").length,
+      currentlyDown,
       failureEvents: scoped.failureSummary.total,
       impactedMonitors,
-      p95LatencyMs,
-      failureRatePct,
+      p95LatencyMs: reportMetrics.p95LatencyMs,
+      failureRatePct: reportMetrics.failureRatePct,
     },
     failingMonitors,
     slowMonitors,
@@ -324,14 +334,16 @@ export async function generateReportPreview(
       upChecks,
       downChecks,
       pendingChecks,
-      uptimePct,
+      hasCompletedChecks: reportMetrics.hasCompletedChecks,
+      hasLatencySamples: reportMetrics.hasLatencySamples,
+      uptimePct: reportMetrics.uptimePct,
       averageLatencyMs,
       p95LatencyMs,
       failureEvents: scoped.failureSummary.total,
       impactedMonitors,
-      failureRatePct,
-      healthScore,
-      healthStatus: buildHealthStatus(healthScore),
+      failureRatePct: reportMetrics.failureRatePct,
+      healthScore: reportMetrics.healthScore,
+      healthStatus: reportMetrics.healthStatus,
     },
     recommendations,
     statusCodes: scoped.statusCodes,
@@ -585,6 +597,7 @@ async function loadReportMetrics(
           upChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'up')::integer`,
           downChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'down')::integer`,
           pendingChecks: sql<number>`count(*) filter (where ${monitorChecks.status} not in ('up', 'down'))::integer`,
+          latencySamples: sql<number>`count(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
           averageLatencyMs: sql<number>`coalesce(round(avg(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
           p95LatencyMs: sql<number>`coalesce(round(percentile_cont(0.95) within group (order by ${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
         })
@@ -649,12 +662,13 @@ function toCheckAggregate(row: Record<keyof ReportCheckAggregate, unknown>): Rep
   };
 }
 
-function toCheckSummary(row: Omit<Record<keyof ReportCheckAggregate, unknown>, "monitorId" | "latencySamples">) {
+function toCheckSummary(row: Record<keyof ReportCheckSummary, unknown>): ReportCheckSummary {
   return {
     totalChecks: Number(row.totalChecks),
     upChecks: Number(row.upChecks),
     downChecks: Number(row.downChecks),
     pendingChecks: Number(row.pendingChecks),
+    latencySamples: Number(row.latencySamples),
     averageLatencyMs: Number(row.averageLatencyMs),
     p95LatencyMs: Number(row.p95LatencyMs),
   };
@@ -669,7 +683,7 @@ function toFailureAggregate(row: Record<keyof ReportFailureAggregate, unknown>):
 }
 
 function emptyCheckSummary() {
-  return { totalChecks: 0, upChecks: 0, downChecks: 0, pendingChecks: 0, averageLatencyMs: 0, p95LatencyMs: 0 };
+  return { totalChecks: 0, upChecks: 0, downChecks: 0, pendingChecks: 0, latencySamples: 0, averageLatencyMs: 0, p95LatencyMs: 0 };
 }
 
 function emptyReportMetrics() {
@@ -937,25 +951,63 @@ function formatFailureDetail({
   return rawDetail;
 }
 
+export function calculateReportSummaryMetrics({
+  totalChecks,
+  upChecks,
+  downChecks,
+  latencySamples,
+  averageLatencyMs,
+  p95LatencyMs,
+  currentlyDown,
+}: {
+  totalChecks: number;
+  upChecks: number;
+  downChecks: number;
+  latencySamples: number;
+  averageLatencyMs: number;
+  p95LatencyMs: number;
+  currentlyDown: number;
+}) {
+  const hasCompletedChecks = totalChecks > 0;
+  const hasLatencySamples = latencySamples > 0;
+  const resolvedUptimePct = hasCompletedChecks ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 0;
+  const failureRatePct = hasCompletedChecks ? roundToTwoDecimals((downChecks / totalChecks) * 100) : 0;
+  const healthScore = hasCompletedChecks
+    ? buildHealthScore({ uptimePct: resolvedUptimePct, p95LatencyMs, currentlyDown })
+    : 0;
+
+  return {
+    hasCompletedChecks,
+    hasLatencySamples,
+    uptimePct: resolvedUptimePct,
+    averageLatencyMs,
+    p95LatencyMs,
+    failureRatePct,
+    healthScore,
+    healthStatus: buildHealthStatus(healthScore, hasCompletedChecks),
+  };
+}
+
 function buildHealthScore({
   uptimePct,
-  failureRatePct,
   p95LatencyMs,
   currentlyDown,
 }: {
   uptimePct: number;
-  failureRatePct: number;
   p95LatencyMs: number;
   currentlyDown: number;
 }) {
   const latencyPenalty = Math.min(12, Math.floor(p95LatencyMs / 500));
   const downPenalty = currentlyDown * 8;
-  const failurePenalty = Math.min(30, Math.round(failureRatePct * 2));
 
-  return Math.max(0, Math.min(100, Math.round(uptimePct - latencyPenalty - downPenalty - failurePenalty)));
+  return Math.max(0, Math.min(100, Math.round(uptimePct - latencyPenalty - downPenalty)));
 }
 
-function buildHealthStatus(score: number) {
+function buildHealthStatus(score: number, hasCompletedChecks: boolean) {
+  if (!hasCompletedChecks) {
+    return "No data";
+  }
+
   if (score >= 95) {
     return "Excellent";
   }
@@ -993,16 +1045,16 @@ export function buildReportMessage(report: GeneratedReport, options: ReportDeliv
     intro,
     `${report.periodLabel} (${new Date(report.periodStartedAt).toLocaleString()} - ${new Date(report.periodEndedAt).toLocaleString()})`,
     "",
-    `Health score: ${report.summary.healthScore}/100 (${report.summary.healthStatus})`,
+    `Health score: ${formatReportHealthScore(report.summary)} (${report.summary.healthStatus})`,
     `URLs tracked: ${report.summary.monitorCount}`,
     `Currently up: ${report.summary.currentlyUp}`,
     `Currently down: ${report.summary.currentlyDown}`,
     `Currently pending: ${report.summary.currentlyPending}`,
-    `Uptime: ${report.summary.uptimePct.toFixed(2)}%`,
-    `Average latency: ${report.summary.averageLatencyMs}ms`,
-    `P95 latency: ${report.summary.p95LatencyMs}ms`,
+    `Uptime: ${formatReportUptime(report.summary)}`,
+    `Average latency: ${formatReportAverageLatency(report.summary)}`,
+    `P95 latency: ${formatReportP95Latency(report.summary)}`,
     `Failure events: ${report.summary.failureEvents}`,
-    `Failure rate: ${report.summary.failureRatePct.toFixed(2)}%`,
+    `Failure rate: ${formatReportFailureRate(report.summary)}`,
     `Impacted URLs: ${report.summary.impactedMonitors}`,
     "",
     "What needs attention:",
@@ -1030,16 +1082,41 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
   const brandInitial = report.workspaceName.trim().charAt(0).toUpperCase() || "R";
 
   return `
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="light" />
+        <meta name="supported-color-schemes" content="light" />
+        <style>
+          :root { color-scheme: light; supported-color-schemes: light; }
+          @media (prefers-color-scheme: dark) {
+            .sentrovia-email-body { background-color: #eef2f7 !important; }
+            .sentrovia-email-surface { background-color: #ffffff !important; }
+            .sentrovia-email-text { color: #0f172a !important; }
+            .sentrovia-email-muted { color: #475569 !important; }
+          }
+          [data-ogsc] .sentrovia-email-body { background-color: #eef2f7 !important; }
+          [data-ogsc] .sentrovia-email-surface { background-color: #ffffff !important; }
+          [data-ogsc] .sentrovia-email-text { color: #0f172a !important; }
+          [data-ogsc] .sentrovia-email-muted { color: #475569 !important; }
+        </style>
+      </head>
+      <body class="sentrovia-email-body" style="margin:0;padding:0;background-color:#eef2f7;color:#0f172a;font-family:Arial,Helvetica,sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(
-      `${report.title}: ${report.summary.healthScore}/100 health, ${report.summary.uptimePct.toFixed(2)}% uptime.`
+      `${report.title}: ${formatReportHealthScore(report.summary)} health, ${formatReportUptime(report.summary)} uptime.`
     )}</div>
-    <div style="margin:0;padding:0;background:#e8eef6;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef2f7;">
+    <div class="sentrovia-email-body" style="margin:0;padding:0;background-color:#eef2f7;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#eef2f7" style="border-collapse:collapse;background-color:#eef2f7;">
         <tr>
           <td align="center" style="padding:32px 12px;">
-            <table role="presentation" width="760" cellpadding="0" cellspacing="0" style="width:760px;max-width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #cfd9e8;border-radius:18px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
+            <table role="presentation" width="760" cellpadding="0" cellspacing="0" class="sentrovia-email-surface" bgcolor="#ffffff" style="width:760px;max-width:100%;border-collapse:collapse;background-color:#ffffff;border:1px solid #cbd5e1;">
               <tr>
-                <td style="padding:28px;background:linear-gradient(135deg,#0f172a 0%,#172554 58%,#1e3a8a 100%);color:#ffffff;">
+                <td height="4" bgcolor="#2563eb" style="height:4px;line-height:4px;font-size:4px;background-color:#2563eb;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td class="sentrovia-email-surface" bgcolor="#ffffff" style="padding:28px;background-color:#ffffff;color:#0f172a;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
                       <td style="padding:0;vertical-align:top;">
@@ -1049,25 +1126,25 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
                               <div style="width:34px;height:34px;border-radius:10px;background:#2563eb;color:#ffffff;font-size:16px;font-weight:800;line-height:34px;text-align:center;">${escapeHtml(brandInitial)}</div>
                             </td>
                             <td style="padding:0;vertical-align:middle;">
-                              <div style="font-size:14px;font-weight:700;color:#dbeafe;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.workspaceName)}</div>
-                              <div style="margin-top:2px;font-size:11px;color:#93c5fd;">Reliability intelligence</div>
+                              <div class="sentrovia-email-text" style="font-size:14px;font-weight:700;color:#0f172a;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.workspaceName)}</div>
+                              <div class="sentrovia-email-muted" style="margin-top:2px;font-size:11px;color:#475569;">Reliability intelligence</div>
                             </td>
                           </tr>
                         </table>
                       </td>
                       <td align="right" style="padding:0;vertical-align:top;">
-                        <span style="display:inline-block;padding:6px 10px;border:1px solid #3b82f6;border-radius:999px;background:rgba(37,99,235,0.16);color:#dbeafe;font-size:11px;font-weight:700;">${escapeHtml(report.periodLabel)}</span>
+                        <span style="display:inline-block;padding:6px 10px;border:1px solid #93c5fd;background-color:#eff6ff;color:#1e3a8a;font-size:11px;font-weight:700;">${escapeHtml(report.periodLabel)}</span>
                       </td>
                     </tr>
                   </table>
-                  <h1 style="margin:22px 0 8px;font-size:27px;line-height:1.2;letter-spacing:-0.3px;">${escapeHtml(report.title)}</h1>
-                  <div style="font-size:14px;line-height:1.6;color:#cbd5e1;">${escapeHtml(report.templateLabel)} / ${escapeHtml(scopeLabel)}</div>
-                  <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#e2e8f0;">${escapeHtml(introLine)}</p>
+                  <h1 class="sentrovia-email-text" style="margin:22px 0 8px;font-size:27px;line-height:1.2;letter-spacing:-0.3px;color:#0f172a;">${escapeHtml(report.title)}</h1>
+                  <div class="sentrovia-email-muted" style="font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(report.templateLabel)} / ${escapeHtml(scopeLabel)}</div>
+                  <p class="sentrovia-email-text" style="margin:14px 0 0;font-size:14px;line-height:1.7;color:#334155;">${escapeHtml(introLine)}</p>
                 </td>
               </tr>
               <tr>
                 <td style="padding:14px 24px 2px;">
-                  <div style="border-left:3px solid #2563eb;background:#eff6ff;padding:11px 13px;color:#1e3a8a;font-size:12px;line-height:1.6;">
+                  <div class="sentrovia-email-text" style="border-left:3px solid #2563eb;background-color:#f8fafc;padding:11px 13px;color:#1e3a8a;font-size:12px;line-height:1.6;">
                     <strong>Reporting window:</strong> ${escapeHtml(periodStartedAt)} - ${escapeHtml(periodEndedAt)}
                   </div>
                 </td>
@@ -1077,14 +1154,14 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
                 <td style="padding:20px 24px 8px;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
-                      ${renderEmailMetric("Health score", `${report.summary.healthScore}/100`, report.summary.healthStatus, healthTheme)}
-                      ${renderEmailMetric("Uptime", `${report.summary.uptimePct.toFixed(2)}%`, "Availability for this period")}
-                      ${renderEmailMetric("P95 latency", `${report.summary.p95LatencyMs}ms`, `${report.summary.averageLatencyMs}ms average`)}
+                      ${renderEmailMetric("Health score", formatReportHealthScore(report.summary), report.summary.healthStatus, healthTheme)}
+                      ${renderEmailMetric("Uptime", formatReportUptime(report.summary), report.summary.hasCompletedChecks ? "Availability for this period" : "No completed checks in this period")}
+                      ${renderEmailMetric("P95 latency", formatReportP95Latency(report.summary), report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} average` : "No latency samples in this period")}
                     </tr>
                     <tr>
                       ${renderEmailMetric("Down now", String(report.summary.currentlyDown), `${report.summary.currentlyUp} up, ${report.summary.currentlyPending} pending`)}
-                      ${renderEmailMetric("Failures", String(report.summary.failureEvents), `${report.summary.impactedMonitors} impacted URLs`)}
-                      ${renderEmailMetric("Failure rate", `${report.summary.failureRatePct.toFixed(2)}%`, "Share of unavailable results")}
+                      ${renderEmailMetric("Failure events", String(report.summary.failureEvents), `${report.summary.impactedMonitors} impacted URLs`)}
+                      ${renderEmailMetric("Failure rate", formatReportFailureRate(report.summary), report.summary.hasCompletedChecks ? "Share of completed checks that were down" : "No completed checks in this period")}
                     </tr>
                   </table>
                 </td>
@@ -1095,12 +1172,12 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
                 <td style="padding:18px 24px 24px;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-top:1px solid #e2e8f0;">
                     <tr>
-                      <td style="padding:16px 0 0;color:#64748b;font-size:12px;line-height:1.6;">
-                        Prepared for ${escapeHtml(scopeLabel)} by <strong style="color:#334155;">${escapeHtml(report.workspaceName)}</strong><br />
+                      <td class="sentrovia-email-muted" style="padding:16px 0 0;color:#475569;font-size:12px;line-height:1.6;">
+                        Prepared for ${escapeHtml(scopeLabel)} by <strong class="sentrovia-email-text" style="color:#0f172a;">${escapeHtml(report.workspaceName)}</strong><br />
                         Generated at ${escapeHtml(generatedAt)}.
                       </td>
                       <td align="right" style="padding:16px 0 0;vertical-align:top;">
-                        <span style="display:inline-block;padding:6px 9px;border-radius:8px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;">${escapeHtml(buildAttachmentSummary())}</span>
+                        <span class="sentrovia-email-muted" style="display:inline-block;padding:6px 9px;background-color:#f1f5f9;color:#475569;font-size:11px;font-weight:700;">${escapeHtml(buildAttachmentSummary())}</span>
                       </td>
                     </tr>
                   </table>
@@ -1111,6 +1188,8 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
         </tr>
       </table>
     </div>
+      </body>
+    </html>
   `;
 }
 
@@ -1248,10 +1327,8 @@ async function buildReportAttachmentSafely(request: ReportAttachmentRequest) {
 }
 
 type EmailHealthTheme = {
-  background: string;
   border: string;
   foreground: string;
-  softForeground: string;
 };
 
 function renderEmailMetric(
@@ -1260,37 +1337,39 @@ function renderEmailMetric(
   detail: string,
   theme?: EmailHealthTheme
 ) {
-  const background = theme?.background ?? "#ffffff";
+  const background = "#ffffff";
   const border = theme?.border ?? "#e2e8f0";
   const foreground = theme?.foreground ?? "#0f172a";
 
   return `
     <td width="33.33%" style="padding:0 6px 12px;vertical-align:top;">
-      <div style="border:1px solid ${border};border-radius:14px;padding:14px;background:${background};">
-        <div style="font-size:12px;font-weight:700;color:#64748b;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(label)}</div>
+      <div class="sentrovia-email-surface" style="border:1px solid ${border};padding:14px;background-color:${background};">
+        <div class="sentrovia-email-muted" style="font-size:12px;font-weight:700;color:#475569;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(label)}</div>
         <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;color:${foreground};">${escapeHtml(value)}</div>
-        <div style="margin-top:4px;font-size:12px;line-height:1.5;color:#64748b;">${escapeHtml(detail)}</div>
+        <div class="sentrovia-email-muted" style="margin-top:4px;font-size:12px;line-height:1.5;color:#475569;">${escapeHtml(detail)}</div>
       </div>
     </td>
   `;
 }
 
 function renderEmailHealthBanner(report: GeneratedReport, theme: EmailHealthTheme) {
-  const message = report.summary.currentlyDown > 0
+  const message = !report.summary.hasCompletedChecks
+    ? "No completed checks were recorded in this report window. Health, uptime, and failure rate are unavailable."
+    : report.summary.currentlyDown > 0
     ? `${report.summary.currentlyDown} URL${report.summary.currentlyDown === 1 ? " is" : "s are"} currently down and requires attention.`
     : "All monitored URLs are currently responding; review the period metrics below for trends.";
 
   return `
     <tr>
       <td style="padding:16px 24px 0;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${theme.border};border-radius:14px;background:${theme.background};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="sentrovia-email-surface" bgcolor="#ffffff" style="border-collapse:collapse;border:1px solid ${theme.border};background-color:#ffffff;">
           <tr>
             <td style="padding:14px 16px;">
               <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${theme.foreground};">${escapeHtml(report.summary.healthStatus)} health</div>
-              <div style="margin-top:4px;font-size:13px;line-height:1.55;color:${theme.softForeground};">${escapeHtml(message)}</div>
+              <div class="sentrovia-email-text" style="margin-top:4px;font-size:13px;line-height:1.55;color:#334155;">${escapeHtml(message)}</div>
             </td>
             <td align="right" style="padding:14px 16px;vertical-align:middle;">
-              <span style="font-size:24px;font-weight:800;color:${theme.foreground};">${report.summary.healthScore}</span><span style="font-size:12px;font-weight:700;color:${theme.softForeground};">/100</span>
+              <span style="font-size:24px;font-weight:800;color:${theme.foreground};">${escapeHtml(formatReportHealthScore(report.summary))}</span>
             </td>
           </tr>
         </table>
@@ -1300,15 +1379,19 @@ function renderEmailHealthBanner(report: GeneratedReport, theme: EmailHealthThem
 }
 
 function getEmailHealthTheme(status: string): EmailHealthTheme {
+  if (status === "No data") {
+    return { border: "#cbd5e1", foreground: "#475569" };
+  }
+
   if (status === "Excellent" || status === "Stable") {
-    return { background: "#ecfdf5", border: "#a7f3d0", foreground: "#047857", softForeground: "#065f46" };
+    return { border: "#a7f3d0", foreground: "#047857" };
   }
 
   if (status === "Watch") {
-    return { background: "#fffbeb", border: "#fde68a", foreground: "#b45309", softForeground: "#92400e" };
+    return { border: "#fde68a", foreground: "#b45309" };
   }
 
-  return { background: "#fff1f2", border: "#fecdd3", foreground: "#be123c", softForeground: "#9f1239" };
+  return { border: "#fecdd3", foreground: "#be123c" };
 }
 
 function renderEmailSnapshotSection(report: GeneratedReport, scopeLabel: string, generatedAt: string) {
@@ -1337,13 +1420,13 @@ function renderEmailListSection(title: string, items: string[]) {
   return `
     <tr>
       <td style="padding:12px 24px;">
-        <h2 style="margin:0 0 10px;font-size:16px;color:#0f172a;">${escapeHtml(title)}</h2>
+        <h2 class="sentrovia-email-text" style="margin:0 0 10px;font-size:16px;color:#0f172a;">${escapeHtml(title)}</h2>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           ${safeItems
             .map(
               (item) => `
                 <tr>
-                  <td style="padding:9px 0;border-top:1px solid #e2e8f0;font-size:13px;line-height:1.6;color:#334155;">${escapeHtml(item)}</td>
+                  <td class="sentrovia-email-text" style="padding:9px 0;border-top:1px solid #e2e8f0;font-size:13px;line-height:1.6;color:#334155;">${escapeHtml(item)}</td>
                 </tr>
               `
             )
@@ -1360,11 +1443,11 @@ function renderEmailTableSection(title: string, headers: string[], rows: string[
   return `
     <tr>
       <td style="padding:12px 24px;">
-        <h2 style="margin:0 0 10px;font-size:16px;color:#0f172a;">${escapeHtml(title)}</h2>
-        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <h2 class="sentrovia-email-text" style="margin:0 0 10px;font-size:16px;color:#0f172a;">${escapeHtml(title)}</h2>
+        <table width="100%" cellpadding="0" cellspacing="0" class="sentrovia-email-surface" bgcolor="#ffffff" style="border-collapse:collapse;border:1px solid #e2e8f0;background-color:#ffffff;">
           <thead>
             <tr>
-              ${headers.map((header) => `<th align="left" style="padding:10px 12px;background:#f1f5f9;color:#475569;font-size:12px;font-weight:700;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(header)}</th>`).join("")}
+              ${headers.map((header) => `<th align="left" class="sentrovia-email-muted" bgcolor="#f1f5f9" style="padding:10px 12px;background-color:#f1f5f9;color:#475569;font-size:12px;font-weight:700;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(header)}</th>`).join("")}
             </tr>
           </thead>
           <tbody>
@@ -1372,7 +1455,7 @@ function renderEmailTableSection(title: string, headers: string[], rows: string[
               .map(
                 (row) => `
                   <tr>
-                    ${row.map((cell) => `<td style="padding:10px 12px;border-top:1px solid #e2e8f0;font-size:13px;line-height:1.5;color:#334155;">${escapeHtml(cell)}</td>`).join("")}
+                    ${row.map((cell) => `<td class="sentrovia-email-text" style="padding:10px 12px;border-top:1px solid #e2e8f0;font-size:13px;line-height:1.5;color:#334155;">${escapeHtml(cell)}</td>`).join("")}
                   </tr>
                 `
               )
@@ -1731,13 +1814,13 @@ function renderReportTemplate(template: string | null, report: GeneratedReport) 
     "{scope}": report.scope === "company" ? report.companyName ?? "Company" : "Workspace",
     "{period}": report.periodLabel,
     "{template}": report.templateLabel,
-    "{health_score}": String(report.summary.healthScore),
+    "{health_score}": formatReportHealthScore(report.summary),
     "{health_status}": report.summary.healthStatus,
-    "{uptime}": `${report.summary.uptimePct.toFixed(2)}%`,
-    "{failure_rate}": `${report.summary.failureRatePct.toFixed(2)}%`,
+    "{uptime}": formatReportUptime(report.summary),
+    "{failure_rate}": formatReportFailureRate(report.summary),
     "{failures}": String(report.summary.failureEvents),
     "{down_now}": String(report.summary.currentlyDown),
-    "{p95_latency}": `${report.summary.p95LatencyMs}ms`,
+    "{p95_latency}": formatReportP95Latency(report.summary),
     "{generated_at}": new Date(report.generatedAt).toLocaleString(),
   };
 

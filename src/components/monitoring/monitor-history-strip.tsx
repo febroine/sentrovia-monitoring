@@ -5,16 +5,20 @@ import { cn } from "@/lib/utils";
 export function MonitorHistoryStrip({
   points,
   onSelect,
+  compact = false,
 }: {
   points: MonitorHistoryPoint[];
   onSelect?: (point: MonitorHistoryPoint) => void;
+  compact?: boolean;
 }) {
   if (points.length === 0) {
-    return <p className="text-xs text-muted-foreground">No recent checks yet.</p>;
+    return compact
+      ? <p className="text-[10px] text-muted-foreground" title="No recent checks yet">--</p>
+      : <p className="text-xs text-muted-foreground">No recent checks yet.</p>;
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className={cn("flex items-center", compact ? "gap-0.5" : "gap-1")}>
       {points.map((point) => (
         <button
           type="button"
@@ -25,7 +29,8 @@ export function MonitorHistoryStrip({
             onSelect?.(point);
           }}
           className={cn(
-            "h-2.5 w-5 rounded-full transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+            "transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+            compact ? "h-2.5 min-w-0 flex-1 rounded-[2px]" : "h-2.5 w-5 rounded-full",
             point.status === "up"
               ? "bg-emerald-500/85"
               : point.status === "pending"
