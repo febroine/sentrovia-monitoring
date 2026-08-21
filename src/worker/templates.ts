@@ -119,7 +119,6 @@ export function renderNotificationTemplates(
       checkedAt: localTime,
       status: `${statusCode} · ${statusLabel}`,
       latency: context.result.latencyMs === null ? "N/A" : `${context.result.latencyMs} ms`,
-      dashboardUrl: buildAppRouteUrl(appUrl, "/monitoring"),
       language,
       tone: resolveEmailTone(context),
     }),

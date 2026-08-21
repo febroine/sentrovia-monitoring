@@ -1,4 +1,5 @@
 import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Power, SearchX, Send, Settings2, Square, Star, XCircle } from "lucide-react";
+import type { KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MonitorHistoryStrip } from "@/components/monitoring/monitor-history-strip";
@@ -100,7 +101,8 @@ export function MonitorTable({
   onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
 }) {
   return (
-    <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border">
+    <>
+      <div className="hidden min-w-0 max-w-full overflow-hidden rounded-lg border border-border md:block">
       <Table className="min-w-0 table-fixed text-[11px] xl:text-xs [&_th]:overflow-hidden [&_th]:text-ellipsis">
         <colgroup>
           <col className="w-[3%]" />
@@ -274,6 +276,195 @@ export function MonitorTable({
           )}
         </TableBody>
       </Table>
+      </div>
+      <MobileMonitorList
+      monitors={monitors}
+      loading={loading}
+      historyByMonitor={historyByMonitor}
+      selectedIds={selectedIds}
+      activeTogglePendingId={activeTogglePendingId}
+      flagPendingId={flagPendingId}
+      allPageSelected={allPageSelected}
+      somePageSelected={somePageSelected}
+      onToggleAll={onToggleAll}
+      onToggleOne={onToggleOne}
+      onToggleActive={onToggleActive}
+      onToggleFlag={onToggleFlag}
+      onEdit={onEdit}
+      onSelectTimelinePoint={onSelectTimelinePoint}
+      />
+    </>
+  );
+}
+
+function MobileMonitorList({
+  monitors,
+  loading,
+  historyByMonitor,
+  selectedIds,
+  activeTogglePendingId,
+  flagPendingId,
+  allPageSelected,
+  somePageSelected,
+  onToggleAll,
+  onToggleOne,
+  onToggleActive,
+  onToggleFlag,
+  onEdit,
+  onSelectTimelinePoint,
+}: {
+  monitors: MonitorRecord[];
+  loading: boolean;
+  historyByMonitor: Record<string, MonitorHistoryPoint[]>;
+  selectedIds: Set<string>;
+  activeTogglePendingId: string | null;
+  flagPendingId: string | null;
+  allPageSelected: boolean;
+  somePageSelected: boolean;
+  onToggleAll: () => void;
+  onToggleOne: (id: string) => void;
+  onToggleActive: (monitor: MonitorRecord) => void;
+  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
+  onEdit: (monitor: MonitorRecord) => void;
+  onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
+}) {
+  if (loading) {
+    return <div className="rounded-lg border border-border px-4 py-10 text-center text-sm text-muted-foreground md:hidden">Loading monitors...</div>;
+  }
+
+  if (monitors.length === 0) {
+    return (
+      <div className="md:hidden">
+        <EmptyState
+          icon={SearchX}
+          title="No monitors found"
+          description="Adjust the filters or add a monitor to start collecting uptime checks."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 md:hidden">
+      <div className="flex items-center justify-between border-b pb-2">
+        <button type="button" onClick={onToggleAll} className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground">
+          {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
+          Select page
+        </button>
+        <span className="text-xs text-muted-foreground">Tap a monitor to edit</span>
+      </div>
+      {monitors.map((monitor) => (
+        <MobileMonitorCard
+          key={monitor.id}
+          monitor={monitor}
+          history={historyByMonitor[monitor.id] ?? []}
+          selected={selectedIds.has(monitor.id)}
+          activePending={activeTogglePendingId === monitor.id}
+          flagPending={flagPendingId === monitor.id}
+          onToggleOne={onToggleOne}
+          onToggleActive={onToggleActive}
+          onToggleFlag={onToggleFlag}
+          onEdit={onEdit}
+          onSelectTimelinePoint={onSelectTimelinePoint}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MobileMonitorCard({
+  monitor,
+  history,
+  selected,
+  activePending,
+  flagPending,
+  onToggleOne,
+  onToggleActive,
+  onToggleFlag,
+  onEdit,
+  onSelectTimelinePoint,
+}: {
+  monitor: MonitorRecord;
+  history: MonitorHistoryPoint[];
+  selected: boolean;
+  activePending: boolean;
+  flagPending: boolean;
+  onToggleOne: (id: string) => void;
+  onToggleActive: (monitor: MonitorRecord) => void;
+  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
+  onEdit: (monitor: MonitorRecord) => void;
+  onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
+}) {
+  function openOnEnter(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onEdit(monitor);
+    }
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onEdit(monitor)}
+      onKeyDown={openOnEnter}
+      className={`rounded-lg border p-4 ${selected ? "border-primary/50 bg-primary/5" : "border-border bg-background"}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-medium">{monitor.name}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{getMonitorTypeLabel(monitor.monitorType)}</p>
+        </div>
+        <div onClick={(event) => event.stopPropagation()}>
+          <StatusBadge
+            status={monitor.status}
+            code={monitor.statusCode}
+            isActive={monitor.isActive}
+            verificationMode={monitor.verificationMode}
+            verificationFailureCount={monitor.verificationFailureCount}
+            threshold={Math.max(1, monitor.retries)}
+            slow={isSlowMonitor(monitor)}
+          />
+        </div>
+      </div>
+      <p className="mt-3 break-all text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
+      <div className="mt-3 grid grid-cols-3 gap-2 border-y py-3 text-xs">
+        <MobileMetric label="HTTP" value={monitor.statusCode ? String(monitor.statusCode) : "--"} />
+        <MobileMetric label="Latency" value={monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"} />
+        <MobileMetric label="Uptime" value={monitor.uptime} />
+      </div>
+      <div className="mt-3" onClick={(event) => event.stopPropagation()}>
+        <MonitorHistoryStrip points={history} onSelect={(point) => onSelectTimelinePoint(monitor, point)} compact />
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
+        <button type="button" onClick={() => onToggleOne(monitor.id)} className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground">
+          {selected ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
+          Select
+        </button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={activePending} aria-label={monitor.isActive ? `Disable ${monitor.name}` : `Enable ${monitor.name}`} onClick={() => onToggleActive(monitor)}>
+            <Power className={`size-4 ${monitor.isActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={flagPending} aria-label={monitor.isFavorite ? `Remove ${monitor.name} from favorites` : `Add ${monitor.name} to favorites`} onClick={() => onToggleFlag(monitor, "isFavorite")}>
+            <Star className={`size-4 ${monitor.isFavorite ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={flagPending} aria-label={monitor.isCritical ? `Remove critical flag from ${monitor.name}` : `Mark ${monitor.name} as critical`} onClick={() => onToggleFlag(monitor, "isCritical")}>
+            <Flag className={`size-4 ${monitor.isCritical ? "fill-rose-500 text-rose-500" : "text-muted-foreground"}`} />
+          </Button>
+          <Button variant="outline" size="sm" className="h-10 px-3" onClick={() => onEdit(monitor)}>
+            Edit
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 font-medium">{value}</p>
     </div>
   );
 }
