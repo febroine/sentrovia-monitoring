@@ -57,7 +57,7 @@ describe("notification templates", () => {
       "https://sentrovia.example.com"
     );
 
-    expect(rendered.htmlBody).toContain("#059669");
+    expect(rendered.htmlBody).toContain("#047857");
     expect(rendered.htmlBody).toContain("UP");
   });
 
