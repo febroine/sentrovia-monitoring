@@ -94,6 +94,8 @@ const USER_SETTINGS_COLUMN_MAP = {
   smtpInsecureSkipVerify: "smtp_insecure_skip_verify",
   discordWebhookUrl: "discord_webhook_url",
   discordEnabled: "discord_enabled",
+  notificationEmailBrandName: "notification_email_brand_name",
+  notificationEmailFooterText: "notification_email_footer_text",
   defaultEmailSubjectTemplate: "default_email_subject_template",
   defaultEmailBodyTemplate: "default_email_body_template",
   defaultTelegramTemplate: "default_telegram_template",
@@ -278,6 +280,9 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       ),
       discordWebhookUrl: stringOrEmpty(settings?.discordWebhookUrl),
       discordEnabled: booleanOrDefault(settings?.discordEnabled, DEFAULT_SETTINGS.notifications.discordEnabled),
+      notificationEmailBrandName: stringOrEmpty(settings?.notificationEmailBrandName)
+        || DEFAULT_SETTINGS.notifications.notificationEmailBrandName,
+      notificationEmailFooterText: stringOrEmpty(settings?.notificationEmailFooterText),
       defaultEmailSubjectTemplate: resolveWorkspaceTemplate(
         settings?.defaultEmailSubjectTemplate,
         notificationTemplates.defaultEmailSubjectTemplate,
@@ -624,6 +629,8 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     smtpInsecureSkipVerify: input.notifications.smtpInsecureSkipVerify,
     discordWebhookUrl: emptyToNull(input.notifications.discordWebhookUrl),
     discordEnabled: input.notifications.discordEnabled,
+    notificationEmailBrandName: emptyToNull(input.notifications.notificationEmailBrandName),
+    notificationEmailFooterText: emptyToNull(input.notifications.notificationEmailFooterText),
     defaultEmailSubjectTemplate: emptyToNull(input.notifications.defaultEmailSubjectTemplate),
     defaultEmailBodyTemplate: emptyToNull(input.notifications.defaultEmailBodyTemplate),
     defaultTelegramTemplate: emptyToNull(input.notifications.defaultTelegramTemplate),

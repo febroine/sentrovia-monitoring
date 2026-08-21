@@ -69,6 +69,8 @@ const settingsObjectSchema = z.object({
     smtpInsecureSkipVerify: z.boolean(),
     discordWebhookUrl: optionalString(500),
     discordEnabled: z.boolean(),
+    notificationEmailBrandName: optionalString(160),
+    notificationEmailFooterText: optionalString(240),
     defaultEmailSubjectTemplate: optionalString(500),
     defaultEmailBodyTemplate: optionalString(4000),
     defaultTelegramTemplate: optionalString(4000),

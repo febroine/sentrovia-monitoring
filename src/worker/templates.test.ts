@@ -45,6 +45,25 @@ describe("notification templates", () => {
     expect(rendered.textBody).toContain("Owner: Platform team");
   });
 
+  it("uses the configurable notification brand and footer without merging signature text into detail rows", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({ emailBody: "Status: Investigating\nIHLAS HOLDING - Bilgi Güvenliği ve Kalite Direktörlüğü" }),
+      {
+        ...DEFAULT_SETTINGS,
+        notifications: {
+          ...DEFAULT_SETTINGS.notifications,
+          notificationEmailBrandName: "IHLAS HOLDING",
+          notificationEmailFooterText: "İhlas altyapı izleme bildirimi",
+        },
+      },
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).toContain(">IHLAS HOLDING</td>");
+    expect(rendered.htmlBody).toContain("İhlas altyapı izleme bildirimi");
+    expect(rendered.htmlBody).toContain("margin:16px 0 12px");
+  });
+
   it("uses a healthy report treatment for recovery emails", () => {
     const context = buildContext();
     const rendered = renderNotificationTemplates(

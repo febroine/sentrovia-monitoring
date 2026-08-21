@@ -39,7 +39,14 @@ export async function buildFailureScreenshotAttachment(
 
   try {
     return await withScreenshotDeadline(async () => {
-      await assertScreenshotTargetAllowed(monitor);
+      try {
+        await assertScreenshotTargetAllowed(monitor);
+      } catch (error) {
+        if (isUnresolvedHostnameError(error)) {
+          return withScreenshotSlot(() => captureUnavailableScreenshotAttachment(monitor, capturedAt));
+        }
+        throw error;
+      }
       return withScreenshotSlot(() => captureScreenshotAttachment(monitor, capturedAt));
     });
   } catch (error) {
@@ -253,6 +260,25 @@ function acquireScreenshotSlot() {
   });
 }
 
+async function captureUnavailableScreenshotAttachment(monitor: Monitor, capturedAt: Date) {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({
+    args: CHROMIUM_HEADLESS_ARGS,
+    headless: true,
+    timeout: SCREENSHOT_TIMEOUT_MS,
+  });
+
+  try {
+    const context = await browser.newContext({ viewport: SCREENSHOT_VIEWPORT });
+    const page = await context.newPage();
+    await page.setContent(renderUnavailableTargetPage(monitor), { waitUntil: "domcontentloaded" });
+    const content = await capturePageScreenshot(monitor, page);
+    return content ? buildScreenshotAttachment(monitor, capturedAt, content) : null;
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
+}
+
 function releaseScreenshotSlot() {
   activeScreenshots = Math.max(0, activeScreenshots - 1);
   const next = screenshotQueue.shift();
@@ -335,4 +361,27 @@ function slugify(value: string) {
 
 function toScreenshotErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown screenshot error.";
+}
+
+function isUnresolvedHostnameError(error: unknown) {
+  const code = error instanceof Error && "code" in error ? String(error.code) : "";
+  return code === "ENOTFOUND" || code === "EAI_AGAIN";
+}
+
+function renderUnavailableTargetPage(monitor: Monitor) {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    body{margin:0;background:#f8fafc;color:#0f172a;font-family:Arial,Helvetica,sans-serif}
+    main{margin:72px auto;max-width:760px;border-top:4px solid #b91c1c;background:#fff;padding:40px}
+    h1{margin:0 0 12px;font-size:26px}.target{color:#475569;overflow-wrap:anywhere}
+    .status{margin:28px 0 16px;color:#991b1b;font-size:13px;font-weight:700;letter-spacing:.06em}
+    p{font-size:16px;line-height:1.6}
+  </style></head><body><main><div class="status">SCREENSHOT UNAVAILABLE</div><h1>${escapeHtml(monitor.name)}</h1><p class="target">${escapeHtml(monitor.url)}</p><p>The worker could not resolve this hostname, so no remote page was loaded.</p></main></body></html>`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }

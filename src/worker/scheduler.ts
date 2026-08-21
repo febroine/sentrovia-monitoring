@@ -659,19 +659,6 @@ async function buildAlertEmailAttachments(
   monitor: Monitor,
   result: Awaited<ReturnType<typeof checkMonitor>>
 ) {
-  if (!isScreenshotEvidenceStable(result)) {
-    await appendMonitorEvent({
-      monitorId: monitor.id,
-      userId: monitor.userId,
-      eventType: "screenshot-skipped",
-      status: monitor.status,
-      statusCode: monitor.statusCode,
-      latencyMs: monitor.latencyMs,
-      message: "Failure screenshot skipped because the check did not receive a stable HTTP response.",
-    });
-    return undefined;
-  }
-
   let skippedReason: string | null = null;
   const screenshot = await buildFailureScreenshotAttachment(monitor, result.checkedAt, (reason) => {
     skippedReason = reason;
@@ -690,16 +677,6 @@ async function buildAlertEmailAttachments(
   }
 
   return screenshot ? [screenshot] : undefined;
-}
-
-function isScreenshotEvidenceStable(result: Awaited<ReturnType<typeof checkMonitor>>) {
-  if (result.ok) {
-    return true;
-  }
-
-  return result.failureReason === "http_status"
-    || result.failureReason === "assertion"
-    || result.failureReason === "redirect";
 }
 
 async function recordFailureDiagnostics(monitor: Monitor) {

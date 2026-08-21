@@ -40,6 +40,8 @@ const NOTIFICATION_SECTION_KEYS: Partial<Record<SettingsSaveSection, Notificatio
   ],
   "additional-notification-channels": ["discordWebhookUrl", "discordEnabled"],
   "notification-templates": [
+    "notificationEmailBrandName",
+    "notificationEmailFooterText",
     "defaultEmailSubjectTemplate",
     "defaultEmailBodyTemplate",
     "defaultTelegramTemplate",
