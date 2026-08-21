@@ -19,6 +19,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CompanyRecord } from "@/lib/companies/types";
 import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
+import {
+  formatReportAverageLatency,
+  formatReportFailureRate,
+  formatReportHealthScore,
+  formatReportP95Latency,
+  formatReportUptime,
+} from "@/lib/reports/metrics";
 import { showToast, type ToastTone } from "@/lib/client-toast";
 import type {
   GeneratedReport,
@@ -1298,13 +1305,13 @@ function ReportPreviewPanel({
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
           <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
-            <PreviewMetric label="Health" value={`${report.summary.healthScore}/100`} detail={report.summary.healthStatus} />
+            <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} />
             <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} />
-            <PreviewMetric label="Uptime" value={`${report.summary.uptimePct.toFixed(2)}%`} />
-            <PreviewMetric label="P95 latency" value={`${report.summary.p95LatencyMs}ms`} detail={`${report.summary.averageLatencyMs}ms avg`} />
-            <PreviewMetric label="Failures" value={String(report.summary.failureEvents)} />
-            <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failures" />
-            <PreviewMetric label="Failure rate" value={`${report.summary.failureRatePct.toFixed(2)}%`} />
+            <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} />
+            <PreviewMetric label="P95 latency" value={formatReportP95Latency(report.summary)} detail={report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} avg` : "no latency samples"} />
+            <PreviewMetric label="Failure events" value={String(report.summary.failureEvents)} detail="confirmed down checks" />
+            <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failure events" />
+            <PreviewMetric label="Failure rate" value={formatReportFailureRate(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} />
           </dl>
 
           <dl className="grid border-y md:grid-cols-3 md:divide-x">

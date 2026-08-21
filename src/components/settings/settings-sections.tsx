@@ -260,7 +260,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         <div className="border-y py-4">
           <p className="text-sm font-medium">Available template tokens</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            You can use these variables in email subject, email body, and Telegram templates.
+            Tokens are replaced at delivery time. In email bodies, “Label: value” becomes a report row, “## Heading” starts a section, and “- Item” creates a list entry. Any other sentence remains a regular paragraph.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {TEMPLATE_TOKENS.map((token) => (
@@ -278,7 +278,8 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         </Field>
         <TemplateEditor
           label="Default email body"
-          hint="Use the quick tools for bold, italic, line breaks, and the clickable URL token. Bold and italic styling is rendered in HTML emails."
+          hint="The email adds a responsive report header automatically. Use detail rows for operational facts and regular sentences for notes; custom content remains readable without HTML."
+          reportLayoutTools
           value={settings.notifications.defaultEmailBodyTemplate}
           onChange={(value) => updateSetting("notifications.defaultEmailBodyTemplate", value)}
         />
@@ -300,7 +301,8 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         </Field>
         <TemplateEditor
           label="Recovery (UP) email body"
-          hint="This template is used only for UP/recovery notifications."
+          hint="Used only for recovery notifications. The report header automatically switches to the healthy color treatment."
+          reportLayoutTools
           value={settings.notifications.recoveryEmailBodyTemplate}
           onChange={(value) => updateSetting("notifications.recoveryEmailBodyTemplate", value)}
         />
@@ -324,7 +326,8 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         </Field>
         <TemplateEditor
           label="Prolonged downtime email body"
-          hint="This template is used only for reminder messages while a monitor remains down past the configured interval."
+          hint="Used for reminders while a monitor remains down. Detail rows, section headings, lists, and free-form notes share the same report layout."
+          reportLayoutTools
           value={settings.notifications.prolongedDowntimeEmailBodyTemplate}
           onChange={(value) => updateSetting("notifications.prolongedDowntimeEmailBodyTemplate", value)}
         />

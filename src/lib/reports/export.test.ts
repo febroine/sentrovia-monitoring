@@ -49,6 +49,8 @@ function buildSampleReport(): GeneratedReport {
       upChecks: 18,
       downChecks: 2,
       pendingChecks: 0,
+      hasCompletedChecks: true,
+      hasLatencySamples: true,
       uptimePct: 90,
       averageLatencyMs: 210,
       p95LatencyMs: 640,

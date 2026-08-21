@@ -1,4 +1,11 @@
 import type { GeneratedReport } from "@/lib/reports/types";
+import {
+  formatReportAverageLatency,
+  formatReportFailureRate,
+  formatReportHealthScore,
+  formatReportP95Latency,
+  formatReportUptime,
+} from "@/lib/reports/metrics";
 
 const EMPTY_REPORT_VALUE = "--";
 
@@ -192,12 +199,12 @@ export function buildPrintableReportHtml(
             </section>
 
             <section class="stats">
-              <article class="stat emphasis"><div class="stat-label">Health</div><div class="stat-value">${report.summary.healthScore}/100</div><div class="stat-note">${escapeHtml(report.summary.healthStatus)}</div></article>
+              <article class="stat emphasis"><div class="stat-label">Health</div><div class="stat-value">${escapeHtml(formatReportHealthScore(report.summary))}</div><div class="stat-note">${escapeHtml(report.summary.healthStatus)}</div></article>
               <article class="stat"><div class="stat-label">URLs tracked</div><div class="stat-value">${report.summary.monitorCount}</div><div class="stat-note">${report.summary.currentlyDown} down now</div></article>
-              <article class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${report.summary.uptimePct.toFixed(2)}%</div><div class="stat-note">Availability for this period</div></article>
-              <article class="stat"><div class="stat-label">P95 latency</div><div class="stat-value">${report.summary.p95LatencyMs}ms</div><div class="stat-note">${report.summary.averageLatencyMs}ms average</div></article>
-              <article class="stat"><div class="stat-label">Failures</div><div class="stat-value">${report.summary.failureEvents}</div><div class="stat-note">${report.summary.impactedMonitors} impacted URLs</div></article>
-              <article class="stat"><div class="stat-label">Failure rate</div><div class="stat-value">${report.summary.failureRatePct.toFixed(2)}%</div><div class="stat-note">Share of unavailable results</div></article>
+              <article class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${escapeHtml(formatReportUptime(report.summary))}</div><div class="stat-note">${report.summary.hasCompletedChecks ? "Availability for this period" : "No completed checks in this period"}</div></article>
+              <article class="stat"><div class="stat-label">P95 latency</div><div class="stat-value">${escapeHtml(formatReportP95Latency(report.summary))}</div><div class="stat-note">${report.summary.hasLatencySamples ? `${escapeHtml(formatReportAverageLatency(report.summary))} average` : "No latency samples in this period"}</div></article>
+              <article class="stat"><div class="stat-label">Failure events</div><div class="stat-value">${report.summary.failureEvents}</div><div class="stat-note">${report.summary.impactedMonitors} impacted URLs</div></article>
+              <article class="stat"><div class="stat-label">Failure rate</div><div class="stat-value">${escapeHtml(formatReportFailureRate(report.summary))}</div><div class="stat-note">${report.summary.hasCompletedChecks ? "Share of completed checks that were down" : "No completed checks in this period"}</div></article>
               <article class="stat"><div class="stat-label">Up now</div><div class="stat-value">${report.summary.currentlyUp}</div><div class="stat-note">Currently healthy URLs</div></article>
               <article class="stat"><div class="stat-label">Pending now</div><div class="stat-value">${report.summary.currentlyPending}</div><div class="stat-note">Awaiting confirmation</div></article>
             </section>

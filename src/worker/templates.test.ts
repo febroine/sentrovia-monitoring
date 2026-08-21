@@ -13,6 +13,52 @@ describe("notification templates", () => {
     );
 
     expect(rendered.htmlBody).toContain('href="https://api.example.com/health"');
+    expect(rendered.htmlBody).toContain("Sentrovia monitoring notification");
+    expect(rendered.htmlBody).toContain("API");
+  });
+
+  it("does not let markdown formatting corrupt links containing underscores", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({ url: "https://api.example.com/health_check_now" }),
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).toContain('href="https://api.example.com/health_check_now"');
+  });
+
+  it("renders custom template content as report rows, sections, lists, and notes", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({
+        emailBody: "Owner: Platform team\n## Next steps\n- Check the upstream service\nCustom note for the on-call team.",
+      }),
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).toContain(">Owner</td>");
+    expect(rendered.htmlBody).toContain(">Platform team</td>");
+    expect(rendered.htmlBody).toContain("<h2");
+    expect(rendered.htmlBody).toContain("Next steps</h2>");
+    expect(rendered.htmlBody).toContain("&bull;&nbsp; Check the upstream service");
+    expect(rendered.htmlBody).toContain("Custom note for the on-call team.");
+    expect(rendered.textBody).toContain("Owner: Platform team");
+  });
+
+  it("uses a healthy report treatment for recovery emails", () => {
+    const context = buildContext();
+    const rendered = renderNotificationTemplates(
+      {
+        ...context,
+        kind: "recovery",
+        result: { ...context.result, ok: true, status: "up", statusCode: 200 },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).toContain("#059669");
+    expect(rendered.htmlBody).toContain("UP");
   });
 
   it("does not render non-http monitor URLs as clickable email links", () => {
@@ -97,6 +143,8 @@ describe("notification templates", () => {
     expect(rendered.textBody).toContain("Monit");
     expect(rendered.textBody).toContain("Durum:");
     expect(rendered.textBody).toContain("Servis HTTP 500 döndürdü.");
+    expect(rendered.htmlBody).toContain("Kontrol zamanı");
+    expect(rendered.htmlBody).toContain("Sentrovia izleme bildirimi");
     expect(rendered.telegramBody).toContain("Detay: Servis HTTP 500 döndürdü.");
   });
 
