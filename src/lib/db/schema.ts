@@ -72,6 +72,8 @@ export const userSettings = pgTable(
     slackEnabled: boolean("slack_enabled").default(false).notNull(),
     discordWebhookUrl: varchar("discord_webhook_url", { length: 500 }),
     discordEnabled: boolean("discord_enabled").default(false).notNull(),
+    notificationEmailBrandName: varchar("notification_email_brand_name", { length: 160 }),
+    notificationEmailFooterText: varchar("notification_email_footer_text", { length: 240 }),
     defaultEmailSubjectTemplate: text("default_email_subject_template"),
     defaultEmailBodyTemplate: text("default_email_body_template"),
     defaultTelegramTemplate: text("default_telegram_template"),

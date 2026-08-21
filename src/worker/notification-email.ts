@@ -1,7 +1,8 @@
 interface NotificationEmailInput {
   body: string;
   htmlFragments: Record<string, string>;
-  organization: string;
+  brandName: string;
+  footerText: string;
   monitorName: string;
   monitorTarget: string;
   eventState: string;
@@ -14,7 +15,7 @@ interface NotificationEmailInput {
 }
 
 const TONES = {
-  critical: { accent: "#c2410c", soft: "#fff7ed", text: "#9a3412" },
+  critical: { accent: "#b91c1c", soft: "#fef2f2", text: "#991b1b" },
   healthy: { accent: "#047857", soft: "#ecfdf5", text: "#065f46" },
   warning: { accent: "#a16207", soft: "#fefce8", text: "#854d0e" },
 } as const;
@@ -42,7 +43,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
         <tr><td style="padding:20px 28px 16px;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
             <tr>
-              <td style="font-size:13px;font-weight:700;color:#475569;letter-spacing:.04em;">${escapeHtml(input.organization)}</td>
+              <td style="font-size:13px;font-weight:700;color:#475569;letter-spacing:.04em;">${escapeHtml(input.brandName)}</td>
               <td align="right"><span style="display:inline-block;padding:5px 9px;background:${tone.soft};color:${tone.text};font-size:11px;font-weight:700;line-height:1;letter-spacing:.04em;">${escapeHtml(input.eventState)}</span></td>
             </tr>
           </table>
@@ -56,7 +57,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
           ${content}
         </td></tr>
         <tr><td bgcolor="#f8fafc" style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:15px 28px;font-size:12px;line-height:1.5;color:#64748b;">
-          ${copy.footer}${dashboardLink ? ` &nbsp;·&nbsp; ${dashboardLink}` : ""}
+          ${escapeHtml(input.footerText || copy.footer)}${dashboardLink ? ` &nbsp;·&nbsp; ${dashboardLink}` : ""}
         </td></tr>
       </table>
     </td></tr>
@@ -110,11 +111,13 @@ function renderTemplateContent(body: string, htmlFragments: Record<string, strin
   const lines = protectedContent.body.split("\n");
   const blocks: string[] = [];
   let detailRows: string[] = [];
+  let renderedDetails = false;
 
   const flushDetails = () => {
     if (detailRows.length === 0) return;
     blocks.push(`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">${detailRows.join("")}</table>`);
     detailRows = [];
+    renderedDetails = true;
   };
 
   for (const rawLine of lines) {
@@ -139,7 +142,8 @@ function renderTemplateContent(body: string, htmlFragments: Record<string, strin
       continue;
     }
 
-    blocks.push(`<p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#334155;">${applyInlineFormatting(line)}</p>`);
+    const topMargin = renderedDetails ? "16px" : "0";
+    blocks.push(`<p style="margin:${topMargin} 0 12px;font-size:14px;line-height:1.65;color:#334155;">${applyInlineFormatting(line)}</p>`);
   }
 
   flushDetails();

@@ -33,6 +33,8 @@ export interface SettingsPayload {
     smtpInsecureSkipVerify: boolean;
     discordWebhookUrl: string;
     discordEnabled: boolean;
+    notificationEmailBrandName: string;
+    notificationEmailFooterText: string;
     defaultEmailSubjectTemplate: string;
     defaultEmailBodyTemplate: string;
     defaultTelegramTemplate: string;
@@ -168,6 +170,8 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     smtpInsecureSkipVerify: true,
     discordWebhookUrl: "",
     discordEnabled: false,
+    notificationEmailBrandName: "Sentrovia Monitoring",
+    notificationEmailFooterText: "",
     ...DEFAULT_NOTIFICATION_TEMPLATES,
     statusCodeAlertCodes: "500,502,503,504",
     savedEmailRecipients: [],

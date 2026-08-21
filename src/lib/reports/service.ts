@@ -1079,7 +1079,6 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
   const periodStartedAt = new Date(report.periodStartedAt).toLocaleString();
   const periodEndedAt = new Date(report.periodEndedAt).toLocaleString();
   const healthTheme = getEmailHealthTheme(report.summary.healthStatus);
-  const brandInitial = report.workspaceName.trim().charAt(0).toUpperCase() || "R";
 
   return `
     <!doctype html>
@@ -1120,20 +1119,11 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
                       <td style="padding:0;vertical-align:top;">
-                        <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-                          <tr>
-                            <td style="padding:0 10px 0 0;vertical-align:middle;">
-                              <div style="width:34px;height:34px;border-radius:10px;background:#2563eb;color:#ffffff;font-size:16px;font-weight:800;line-height:34px;text-align:center;">${escapeHtml(brandInitial)}</div>
-                            </td>
-                            <td style="padding:0;vertical-align:middle;">
-                              <div class="sentrovia-email-text" style="font-size:14px;font-weight:700;color:#0f172a;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.workspaceName)}</div>
-                              <div class="sentrovia-email-muted" style="margin-top:2px;font-size:11px;color:#475569;">Reliability intelligence</div>
-                            </td>
-                          </tr>
-                        </table>
+                        <div class="sentrovia-email-text" style="font-size:14px;font-weight:700;color:#0f172a;-webkit-locale:'en';font-feature-settings:'locl' 0;">${escapeHtml(report.workspaceName)}</div>
+                        <div class="sentrovia-email-muted" style="margin-top:2px;font-size:11px;color:#475569;">Reliability intelligence</div>
                       </td>
                       <td align="right" style="padding:0;vertical-align:top;">
-                        <span style="display:inline-block;padding:6px 10px;border:1px solid #93c5fd;background-color:#eff6ff;color:#1e3a8a;font-size:11px;font-weight:700;">${escapeHtml(report.periodLabel)}</span>
+                        <div class="sentrovia-email-muted" style="padding-top:2px;font-size:12px;font-weight:700;color:#475569;white-space:nowrap;">${escapeHtml(report.periodLabel)}</div>
                       </td>
                     </tr>
                   </table>

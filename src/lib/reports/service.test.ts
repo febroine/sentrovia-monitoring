@@ -129,6 +129,8 @@ describe("report email branding", () => {
     expect(message.subject).toBe("[Acme Reliability Operations Report] Weekly Workspace Report");
     expect(message.htmlBody).toContain("Acme Reliability");
     expect(message.htmlBody).toContain("Reliability intelligence");
+    expect(message.htmlBody).toContain('white-space:nowrap;">Last 7 days</div>');
+    expect(message.htmlBody).not.toContain('width:34px;height:34px');
     expect(message.htmlBody).toContain("Excellent health");
     expect(message.htmlBody).toContain("Prepared for Workspace by");
     expect(message.htmlBody).not.toContain("Sentrovia");

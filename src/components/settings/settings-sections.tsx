@@ -270,6 +270,21 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             ))}
           </div>
         </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Email brand name" hint="Shown at the upper-left of every notification email.">
+            <Input
+              value={settings.notifications.notificationEmailBrandName}
+              onChange={(event) => updateSetting("notifications.notificationEmailBrandName", event.target.value)}
+            />
+          </Field>
+          <Field label="Email footer text" hint="Shown before the monitoring link. Leave blank to use the notification language default.">
+            <Input
+              value={settings.notifications.notificationEmailFooterText}
+              onChange={(event) => updateSetting("notifications.notificationEmailFooterText", event.target.value)}
+              placeholder="Sentrovia monitoring notification"
+            />
+          </Field>
+        </div>
         <Field label="Default email subject" hint="Available tokens: {domain}, {url}, {status_code}, {status_label}, {failure_reason}, {event_state}, {rca_summary}">
           <Input
             value={settings.notifications.defaultEmailSubjectTemplate}
