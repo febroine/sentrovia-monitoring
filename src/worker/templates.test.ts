@@ -14,6 +14,7 @@ describe("notification templates", () => {
 
     expect(rendered.htmlBody).toContain('href="https://api.example.com/health"');
     expect(rendered.htmlBody).toContain("Sentrovia monitoring notification");
+    expect(rendered.htmlBody).not.toContain("Open monitoring");
     expect(rendered.htmlBody).toContain("API");
   });
 

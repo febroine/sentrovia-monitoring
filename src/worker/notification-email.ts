@@ -9,7 +9,6 @@ interface NotificationEmailInput {
   checkedAt: string;
   status: string;
   latency: string;
-  dashboardUrl: string | null;
   language: "en" | "tr";
   tone: "critical" | "healthy" | "warning";
 }
@@ -24,10 +23,6 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
   const tone = TONES[input.tone];
   const copy = getEmailCopy(input.language);
   const content = renderTemplateContent(input.body, input.htmlFragments);
-  const dashboardLink = input.dashboardUrl
-    ? `<a href="${escapeHtml(input.dashboardUrl)}" style="color:#475569;text-decoration:underline;">${copy.openMonitoring}</a>`
-    : "";
-
   return `<!doctype html>
 <html lang="${input.language}">
 <head>
@@ -57,7 +52,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
           ${content}
         </td></tr>
         <tr><td bgcolor="#f8fafc" style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:15px 28px;font-size:12px;line-height:1.5;color:#64748b;">
-          ${escapeHtml(input.footerText || copy.footer)}${dashboardLink ? ` &nbsp;·&nbsp; ${dashboardLink}` : ""}
+          ${escapeHtml(input.footerText || copy.footer)}
         </td></tr>
       </table>
     </td></tr>
@@ -92,7 +87,6 @@ function getEmailCopy(language: "en" | "tr") {
       checked: "Kontrol zamanı",
       status: "Durum",
       response: "Yanıt süresi",
-      openMonitoring: "Monitörleri aç",
       footer: "Sentrovia izleme bildirimi",
     };
   }
@@ -101,7 +95,6 @@ function getEmailCopy(language: "en" | "tr") {
     checked: "Checked",
     status: "Status",
     response: "Response",
-    openMonitoring: "Open monitoring",
     footer: "Sentrovia monitoring notification",
   };
 }
