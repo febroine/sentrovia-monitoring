@@ -15,7 +15,7 @@ export async function checkMonitor(
   options: { allowPrivateTargets?: boolean } = {}
 ): Promise<CheckResult> {
   const checkedAt = new Date();
-  const allowPrivateTargets = options.allowPrivateTargets;
+  const allowPrivateTargets = options.allowPrivateTargets === true;
 
   try {
     if (monitor.monitorType === "port") {

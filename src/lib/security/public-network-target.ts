@@ -156,7 +156,8 @@ export function isNonPublicIpAddress(address: string) {
 }
 
 export function normalizeNetworkHostname(hostname: string) {
-  return stripIpv6Brackets(hostname.trim().toLowerCase()).replace(/\.+$/, "");
+  const normalized = stripIpv6Brackets(hostname.trim().toLowerCase()).replace(/\.+$/, "");
+  return normalizeIpAddress(normalized);
 }
 
 function isBlockedNetworkHostname(hostname: string) {
@@ -278,7 +279,7 @@ function isServerLocalIpv4(address: string) {
 }
 
 function isNonPublicIpv6(address: string) {
-  const normalized = stripIpv6Brackets(address.toLowerCase());
+  const normalized = normalizeIpAddress(address);
   const mappedIpv4 = parseIpv4MappedIpv6(normalized);
   if (mappedIpv4) {
     return isNonPublicIpv4(mappedIpv4);
@@ -287,6 +288,10 @@ function isNonPublicIpv6(address: string) {
   return (
     normalized === "::" ||
     normalized === "::1" ||
+    normalized.startsWith("::") ||
+    normalized.startsWith("64:ff9b:") ||
+    normalized.startsWith("100:") ||
+    normalized.startsWith("2001:db8:") ||
     normalized.startsWith("fc") ||
     normalized.startsWith("fd") ||
     normalized.startsWith("fec") ||
@@ -302,7 +307,7 @@ function isNonPublicIpv6(address: string) {
 }
 
 function isServerLocalIpv6(address: string) {
-  const normalized = stripIpv6Brackets(address.toLowerCase());
+  const normalized = normalizeIpAddress(address);
   const mappedIpv4 = parseIpv4MappedIpv6(normalized);
   if (mappedIpv4) {
     return isServerLocalIpv4(mappedIpv4);
@@ -317,6 +322,19 @@ function isServerLocalIpv6(address: string) {
     normalized.startsWith("feb") ||
     normalized.startsWith("ff")
   );
+}
+
+function normalizeIpAddress(address: string) {
+  const normalized = stripIpv6Brackets(address.trim().toLowerCase());
+  if (isIP(normalized) !== 6) {
+    return normalized;
+  }
+
+  try {
+    return stripIpv6Brackets(new URL(`http://[${normalized}]/`).hostname.toLowerCase());
+  } catch {
+    return normalized;
+  }
 }
 
 function parseIpv4MappedIpv6(address: string) {

@@ -340,12 +340,19 @@ export function GeneralMonitorSettings({
                 onChange={(checked) => onFieldChange("databaseSsl", checked)}
               />
               {values.databaseSsl ? (
-                <CheckRow
-                  label="Verify the database certificate"
-                  description="Keep enabled unless the database uses a private, self-signed certificate."
-                  checked={values.databaseTlsVerify}
-                  onChange={(checked) => onFieldChange("databaseTlsVerify", checked)}
-                />
+                <div>
+                  <CheckRow
+                    label="Verify the database certificate"
+                    description="Keep enabled unless the database uses a private, self-signed certificate."
+                    checked={values.databaseTlsVerify}
+                    onChange={(checked) => onFieldChange("databaseTlsVerify", checked)}
+                  />
+                  {!values.databaseTlsVerify ? (
+                    <p className="pb-2 text-xs text-amber-700 dark:text-amber-300">
+                      Certificate identity is not verified. Use this compatibility option only for a trusted private database.
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}

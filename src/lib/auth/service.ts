@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { count, eq, or, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
+import { runBoundedAuthWork } from "@/lib/auth/rate-limit";
 import { recordAuditEventSafely } from "@/lib/audit/service";
 import type { ChangePasswordInput, LoginInput, MemberCreateInput, OnboardingInput } from "@/lib/auth/schemas";
 import { createSessionToken, type SessionUser, type UserRole } from "@/lib/auth/token";
@@ -95,7 +96,10 @@ export async function isOnboardingRequired(executor: Pick<typeof db, "select"> =
 
 export async function createInitialAdmin(input: OnboardingInput) {
   ensureAuthRuntimeReady();
-  const passwordHash = await bcrypt.hash(input.password, 12);
+  if (!(await isOnboardingRequired())) {
+    throw new AuthError("Workspace onboarding is already complete.", 409);
+  }
+  const passwordHash = await runBoundedAuthWork(() => bcrypt.hash(input.password, 12));
 
   const createdUser = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ONBOARDING_ADVISORY_LOCK_KEY})`);
@@ -115,7 +119,7 @@ export async function createInitialAdmin(input: OnboardingInput) {
 
 export async function createMember(input: MemberCreateInput) {
   ensureAuthRuntimeReady();
-  const passwordHash = await bcrypt.hash(input.password, 12);
+  const passwordHash = await runBoundedAuthWork(() => bcrypt.hash(input.password, 12));
   const createdUser = await db.transaction((tx) =>
     createUserWithPasswordHash(input, "member", passwordHash, tx)
   );
@@ -186,11 +190,11 @@ export async function loginUser(input: LoginInput) {
     .then((rows) => rows[0] as AuthLoginRecord | undefined);
 
   if (!user) {
-    await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
+    await runBoundedAuthWork(() => bcrypt.compare(input.password, DUMMY_PASSWORD_HASH));
     throw new AuthError("Invalid email, username, or password.", 401);
   }
 
-  const isPasswordValid = await bcrypt.compare(input.password, user.passwordHash);
+  const isPasswordValid = await runBoundedAuthWork(() => bcrypt.compare(input.password, user.passwordHash));
 
   if (!isPasswordValid) {
     await recordAuditEventSafely({
@@ -226,19 +230,23 @@ export async function changeUserPassword(userId: string, input: ChangePasswordIn
     throw new AuthError("Account not found.", 404);
   }
 
-  const isCurrentPasswordValid = await bcrypt.compare(input.currentPassword, user.passwordHash);
+  const isCurrentPasswordValid = await runBoundedAuthWork(() =>
+    bcrypt.compare(input.currentPassword, user.passwordHash)
+  );
 
   if (!isCurrentPasswordValid) {
     throw new AuthError("Current password is incorrect.", 401);
   }
 
-  const isSamePassword = await bcrypt.compare(input.newPassword, user.passwordHash);
+  const isSamePassword = await runBoundedAuthWork(() =>
+    bcrypt.compare(input.newPassword, user.passwordHash)
+  );
 
   if (isSamePassword) {
     throw new AuthError("Choose a new password that is different from the current one.", 400);
   }
 
-  const passwordHash = await bcrypt.hash(input.newPassword, 12);
+  const passwordHash = await runBoundedAuthWork(() => bcrypt.hash(input.newPassword, 12));
 
   const [updatedUser] = await db
     .update(users)

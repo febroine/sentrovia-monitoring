@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Monitor } from "@/lib/db/schema";
-import { env } from "@/lib/env";
 import { parsePingMonitorTarget } from "@/lib/monitors/targets";
 import {
   resolveMonitorNetworkTargetWithTimeout,
@@ -15,7 +14,7 @@ const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the curren
 
 export async function checkPingMonitor(
   monitor: Monitor,
-  allowPrivateTargets = env.monitorAllowPrivateTargets
+  allowPrivateTargets = false
 ): Promise<CheckResult> {
   const checkedAt = new Date();
 

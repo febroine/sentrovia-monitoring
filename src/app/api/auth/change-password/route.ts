@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     identifier = session.email;
-    assertAuthRateLimit(request, "change-password", identifier);
+    await assertAuthRateLimit(request, "change-password", identifier);
 
     const body = await readJsonBody(request, AUTH_JSON_BODY_LIMIT_BYTES);
     const parsed = changePasswordSchema.safeParse(body);
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await changeUserPassword(session.id, parsed.data);
-    clearAuthFailures(request, "change-password", identifier);
+    await clearAuthFailures(request, "change-password", identifier);
 
     const response = NextResponse.json({
       message: "Password updated successfully.",
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       error instanceof AuthError ? error : toAuthError(error, "Unable to change your password right now.");
 
     if (shouldRecordFailure(authError.status)) {
-      recordAuthFailure(request, "change-password", identifier);
+      await recordAuthFailure(request, "change-password", identifier);
     }
 
     return applyAuthResponseHeaders(

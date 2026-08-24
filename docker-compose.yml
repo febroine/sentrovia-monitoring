@@ -1,7 +1,7 @@
 x-app-build: &app-build
   context: .
   dockerfile_inline: |
-    FROM node:20-bookworm-slim
+    FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
 
     WORKDIR /app
 
@@ -28,7 +28,7 @@ x-app-build: &app-build
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -61,6 +61,7 @@ services:
       APP_UPDATE_REPO: ${APP_UPDATE_REPO:-}
       AUTH_SECRET: ${AUTH_SECRET:?Run the Docker installer to create .env}
       AUTH_TRUST_PROXY_HEADERS: ${AUTH_TRUST_PROXY_HEADERS:-false}
+      AUTH_TRUSTED_PROXY_COUNT: ${AUTH_TRUSTED_PROXY_COUNT:-1}
       AUTH_SESSION_ID: ${AUTH_SESSION_ID:-default-session}
       APP_ENCRYPTION_SECRET: ${APP_ENCRYPTION_SECRET:?Run the Docker installer to create .env}
       MONITOR_ALLOW_PRIVATE_TARGETS: ${MONITOR_ALLOW_PRIVATE_TARGETS:-true}

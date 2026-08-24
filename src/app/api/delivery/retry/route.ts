@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { getDeliveryOverview, retryDeliveryEvent, retryDeliveryQueue } from "@/lib/delivery/service";
+import { assertSameOriginMutation } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,7 @@ const eventIdSchema = z.string().trim().min(1).max(128);
 
 export async function POST(request: NextRequest) {
   try {
+    assertSameOriginMutation(request);
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

@@ -25,7 +25,7 @@ function assertJsonContentType(request: Request) {
   }
 }
 
-function assertSameOriginMutation(request: Request) {
+export function assertSameOriginMutation(request: Request) {
   if (request.headers.get("sec-fetch-site") === "cross-site") {
     throw new AuthError("Cross-site requests are not allowed.", 403);
   }

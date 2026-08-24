@@ -31,6 +31,9 @@ describe("public network target safety", () => {
     "fec0::1",
     "ff02::1",
     "::ffff:127.0.0.1",
+    "0:0:0:0:0:ffff:7f00:1",
+    "0:0:0:0:0:ffff:a00:1",
+    "64:ff9b::7f00:1",
   ])("classifies %s as non-public", (address) => {
     expect(isNonPublicIpAddress(address)).toBe(true);
   });
@@ -49,7 +52,13 @@ describe("public network target safety", () => {
     }
   );
 
-  it.each(["localhost", "127.0.0.1", "169.254.169.254", "metadata.google.internal"])(
+  it.each([
+    "localhost",
+    "127.0.0.1",
+    "169.254.169.254",
+    "0:0:0:0:0:ffff:7f00:1",
+    "metadata.google.internal",
+  ])(
     "still blocks server-local monitor target %s when private targets are enabled",
     (hostname) => {
       expect(isMonitorNetworkHostnameLiteralAllowed(hostname, true)).toBe(false);

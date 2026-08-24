@@ -16,6 +16,11 @@ export const manualMigrations = pgTable("sentrovia_manual_migrations", {
   appliedAt: timestamp("applied_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const securityMigrations = pgTable("sentrovia_security_migrations", {
+  id: text("id").primaryKey(),
+  completedAt: timestamp("completed_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const users = pgTable(
   "users",
   {
@@ -48,9 +53,7 @@ export const auditEvents = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }),
     actorLabel: varchar("actor_label", { length: 255 }).notNull(),
     entityType: varchar("entity_type", { length: 32 }).notNull(),
@@ -64,6 +67,19 @@ export const auditEvents = pgTable(
     index("audit_events_user_created_idx").on(table.userId, table.createdAt),
     index("audit_events_actor_created_idx").on(table.actorUserId, table.createdAt),
   ]
+);
+
+export const authRateLimits = pgTable(
+  "auth_rate_limits",
+  {
+    rateKey: varchar("rate_key", { length: 64 }).primaryKey(),
+    action: varchar("action", { length: 32 }).notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+    blockedUntil: timestamp("blocked_until", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("auth_rate_limits_updated_idx").on(table.updatedAt)]
 );
 
 export const userSettings = pgTable(

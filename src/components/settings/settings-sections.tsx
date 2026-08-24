@@ -223,7 +223,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
           />
           <ToggleCard
             label="Insecure skip verify"
-            description="Skip certificate verification when your mail server requires it."
+            description="Disables mail server identity verification. Use only for a trusted private server with a self-signed certificate."
             checked={settings.notifications.smtpInsecureSkipVerify}
             onChange={(checked) => updateSetting("notifications.smtpInsecureSkipVerify", checked)}
           />

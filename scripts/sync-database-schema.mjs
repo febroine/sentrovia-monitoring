@@ -14,6 +14,8 @@ const SCHEMA_LOCK_HELD_ENV = "SENTROVIA_SCHEMA_LOCK_HELD";
 const PROJECT_ROOT = process.cwd();
 const MANUAL_MIGRATION_SCRIPT = path.join(PROJECT_ROOT, "scripts", "apply-manual-migrations.mjs");
 const DRIZZLE_KIT_CLI = path.join(PROJECT_ROOT, "node_modules", "drizzle-kit", "bin.cjs");
+const TSX_CLI = path.join(PROJECT_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+const SECRET_MIGRATION_SCRIPT = path.join(PROJECT_ROOT, "scripts", "migrate-legacy-secrets.ts");
 
 export function resolveSchemaSteps(tablePresence) {
   const states = CORE_TABLES.map((table) => Boolean(tablePresence[table]));
@@ -51,6 +53,7 @@ async function main() {
     for (const step of steps) {
       await runSchemaStep(step);
     }
+    await runCommand(process.execPath, [TSX_CLI, SECRET_MIGRATION_SCRIPT], "secure data migration");
   } finally {
     if (lockAcquired) {
       await releaseSchemaLock(sql);
@@ -137,6 +140,24 @@ function runSchemaStep(step) {
         return;
       }
       reject(new Error(`${step} failed with exit code ${code ?? "unknown"}.`));
+    });
+    child.on("error", reject);
+  });
+}
+
+function runCommand(command, args, label) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      env: process.env,
+      shell: false,
+      stdio: "inherit",
+    });
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${label} failed with exit code ${code ?? "unknown"}.`));
     });
     child.on("error", reject);
   });
