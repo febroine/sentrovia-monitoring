@@ -7,6 +7,7 @@ import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { deleteMonitors, SOFT_DELETE_UNDO_MS, updateMonitor } from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { getSettings } from "@/lib/settings/service";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,17 @@ export async function PATCH(request: NextRequest, context: MonitorRouteContext) 
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });
     }
 
+    await recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "monitor",
+      entityId: monitor.id,
+      entityLabel: monitor.name,
+      action: "monitor.updated",
+      summary: `${monitor.monitorType} monitor configuration was updated.`,
+    });
+
     return NextResponse.json({ monitor: serializeMonitor(monitor) });
   } catch (error) {
     const authError = toAuthError(error, "Unable to update monitor right now.");
@@ -66,6 +78,17 @@ export async function DELETE(_request: NextRequest, context: MonitorRouteContext
     if (deleted.length === 0) {
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });
     }
+
+    await recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "monitor",
+      entityId: id,
+      entityLabel: id,
+      action: "monitor.deleted",
+      summary: "Monitor was moved to recently deleted items.",
+    });
 
     const deletedAt = deleted[0]?.deletedAt;
     return NextResponse.json({

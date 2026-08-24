@@ -339,6 +339,14 @@ export function GeneralMonitorSettings({
                 checked={values.databaseSsl}
                 onChange={(checked) => onFieldChange("databaseSsl", checked)}
               />
+              {values.databaseSsl ? (
+                <CheckRow
+                  label="Verify the database certificate"
+                  description="Keep enabled unless the database uses a private, self-signed certificate."
+                  checked={values.databaseTlsVerify}
+                  onChange={(checked) => onFieldChange("databaseTlsVerify", checked)}
+                />
+              ) : null}
             </div>
           ) : null}
         </>
@@ -353,13 +361,24 @@ export function GeneralMonitorSettings({
       </Field>
 
       {!isBulkEditMode ? (
-        <div className="border-y py-3">
-          <div className="flex items-center justify-between gap-4">
+        <div className="divide-y border-y">
+          <div className="flex items-center justify-between gap-4 py-3">
             <div>
               <p className="text-sm font-medium">Active monitor</p>
               <p className="text-xs text-muted-foreground">Worker will only check monitors that are marked active.</p>
             </div>
             <Switch aria-label="Active monitor" checked={values.isActive} onCheckedChange={(checked) => onFieldChange("isActive", checked)} />
+          </div>
+          <div className="flex items-center justify-between gap-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Public status page</p>
+              <p className="text-xs text-muted-foreground">Include this monitor when public status is enabled.</p>
+            </div>
+            <Switch
+              aria-label="Publish on public status page"
+              checked={values.publishOnStatusPage}
+              onCheckedChange={(checked) => onFieldChange("publishOnStatusPage", checked)}
+            />
           </div>
         </div>
       ) : null}

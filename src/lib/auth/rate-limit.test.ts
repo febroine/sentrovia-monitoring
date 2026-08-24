@@ -8,10 +8,10 @@ describe("auth rate limiting", () => {
     delete process.env.AUTH_TRUST_PROXY_HEADERS;
   });
 
-  it("blocks repeated login failures for the same identifier even when forwarded IP changes", () => {
+  it("uses a higher short-lived threshold for identifier-only login failures", () => {
     const email = "rate-limit-login@example.com";
 
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
       const request = buildRequest(`203.0.113.${attempt + 1}`);
       assertAuthRateLimit(request, "login", email);
       recordAuthFailure(request, "login", email);
@@ -22,10 +22,10 @@ describe("auth rate limiting", () => {
     ).toThrow(AuthError);
   });
 
-  it("blocks repeated onboarding failures for the same identifier even when forwarded IP changes", () => {
+  it("uses a higher short-lived threshold for identifier-only onboarding failures", () => {
     const email = "rate-limit-onboarding@example.com";
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 25; attempt += 1) {
       const request = buildRequest(`198.51.100.${attempt + 1}`);
       assertAuthRateLimit(request, "onboarding", email);
       recordAuthFailure(request, "onboarding", email);
@@ -48,7 +48,7 @@ describe("auth rate limiting", () => {
     }
 
     const freshEmail = "fresh-login@example.com";
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
       recordAuthFailure(buildRequest("203.0.113.250"), "login", freshEmail);
     }
 

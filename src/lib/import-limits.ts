@@ -17,3 +17,5 @@ export const MONITOR_CSV_IMPORT_LIMITS = {
   maxRequestBytes: 2_000_000,
   maxRows: 500,
 };
+
+export const MAX_MONITORS_PER_USER = 10_000;

@@ -42,6 +42,7 @@ describe("members route", () => {
       new Request("https://example.com/api/members", {
         method: "DELETE",
         body: JSON.stringify({ ids: ["member-2"] }),
+        headers: { "content-type": "application/json" },
       }) as never
     );
     const body = (await response.json()) as { ids: string[]; signedOut: boolean };
@@ -66,6 +67,7 @@ describe("members route", () => {
       new Request("https://example.com/api/members/member-2", {
         method: "PATCH",
         body: JSON.stringify({ email: "member@example.com", username: "bad name!" }),
+        headers: { "content-type": "application/json" },
       }) as never,
       { params: Promise.resolve({ id: "member-2" }) }
     );
@@ -103,6 +105,7 @@ describe("members route", () => {
       new Request("https://example.com/api/members/member-2", {
         method: "PATCH",
         body: JSON.stringify({ email: "Member@Example.COM", username: "Member.Two", role: "admin" }),
+        headers: { "content-type": "application/json" },
       }) as never,
       { params: Promise.resolve({ id: "member-2" }) }
     );
@@ -143,6 +146,7 @@ describe("members route", () => {
       new Request("https://example.com/api/members/admin-1", {
         method: "PATCH",
         body: JSON.stringify({ email: "New@Example.COM", username: "Admin.User", role: "member" }),
+        headers: { "content-type": "application/json" },
       }) as never,
       { params: Promise.resolve({ id: "admin-1" }) }
     );
@@ -178,6 +182,7 @@ describe("members route", () => {
       new Request("https://example.com/api/members/member-1", {
         method: "PATCH",
         body: JSON.stringify({ email: "member@example.com", username: "member.one", role: "admin" }),
+        headers: { "content-type": "application/json" },
       }) as never,
       { params: Promise.resolve({ id: "member-1" }) }
     );

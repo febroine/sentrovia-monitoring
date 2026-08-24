@@ -34,6 +34,8 @@ const RATE_LIMITS: Record<AuthAction, RateLimitRule> = {
 };
 
 const MAX_RATE_LIMIT_ENTRIES = 10_000;
+const IDENTIFIER_ONLY_ATTEMPT_MULTIPLIER = 5;
+const IDENTIFIER_ONLY_BLOCK_MS = 60_000;
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
 export function assertAuthRateLimit(
@@ -48,7 +50,8 @@ export function assertAuthRateLimit(
   cleanupRateLimitStore(now);
 
   for (const key of keys) {
-    const entry = getActiveEntry(key, rule, now);
+    const scopedRule = resolveRuleForKey(key, action, rule);
+    const entry = getActiveEntry(key, scopedRule, now);
     if (entry.blockedUntil > now) {
       throw new AuthError("Too many authentication attempts. Please wait a few minutes and try again.", 429);
     }
@@ -67,9 +70,10 @@ export function recordAuthFailure(
   cleanupRateLimitStore(now);
 
   for (const key of keys) {
-    const current = getActiveEntry(key, rule, now);
+    const scopedRule = resolveRuleForKey(key, action, rule);
+    const current = getActiveEntry(key, scopedRule, now);
     const attempts = current.attempts + 1;
-    const blockedUntil = attempts >= rule.maxAttempts ? now + rule.blockMs : 0;
+    const blockedUntil = attempts >= scopedRule.maxAttempts ? now + scopedRule.blockMs : 0;
 
     rateLimitStore.set(key, {
       attempts,
@@ -79,6 +83,18 @@ export function recordAuthFailure(
   }
 
   pruneRateLimitStoreToMaxSize();
+}
+
+function resolveRuleForKey(key: string, action: AuthAction, rule: RateLimitRule): RateLimitRule {
+  if (!key.startsWith(`${action}:id:`)) {
+    return rule;
+  }
+
+  return {
+    ...rule,
+    maxAttempts: rule.maxAttempts * IDENTIFIER_ONLY_ATTEMPT_MULTIPLIER,
+    blockMs: IDENTIFIER_ONLY_BLOCK_MS,
+  };
 }
 
 export function clearAuthFailures(

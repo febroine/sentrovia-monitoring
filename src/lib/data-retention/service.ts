@@ -84,6 +84,13 @@ export async function runRetentionCleanup(now = new Date()) {
         ))
     `);
     await tx.execute(sql`
+      delete from audit_events as record
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
+        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
+        ${DEFAULT_SETTINGS.data.eventRetentionDays}
+      ))
+    `);
+    await tx.execute(sql`
       delete from worker_cycle_metrics
       where created_at < (${queryTimestamp})::timestamptz - make_interval(
         days => greatest(coalesce((select max(data_retention_days) from user_settings), 90), 7)

@@ -1,10 +1,9 @@
-import dns from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import tls from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
-import { env } from "@/lib/env";
+import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 import {
   parsePingMonitorTarget,
   parsePortMonitorTarget,
@@ -15,7 +14,11 @@ import {
   isCustomExpectedStatusCode,
   isExpectedHttpStatusCode,
 } from "@/lib/monitors/status-codes";
-import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
+import {
+  createPinnedLookup,
+  resolveMonitorNetworkTargetWithTimeout,
+  type ResolvedNetworkTarget,
+} from "@/lib/security/public-network-target";
 import type {
   DiagnosticFailureCategory,
   DiagnosticPhase,
@@ -56,11 +59,12 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
     });
   }
 
-  await assertMonitorNetworkTargetWithTimeout(target.host, {
-    allowPrivateTargets: env.monitorAllowPrivateTargets,
+  const allowPrivateTargets = await resolvePrivateTargetAccess(monitor);
+  const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(target.host, {
+    allowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
   }, getRemainingTimeout(deadlineAt));
-  const dnsResult = await checkDns(target.host, getRemainingTimeout(deadlineAt));
+  const dnsResult = buildDnsResult(resolvedTarget);
   if (dnsResult.status === "failed") {
     return buildDiagnosticResult({
       createdAt,
@@ -76,7 +80,7 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
 
   const targetWithPort = target.port ? { ...target, port: target.port } : null;
   const tcpResult = targetWithPort
-    ? await checkTcp(targetWithPort, getRemainingTimeout(deadlineAt))
+    ? await checkTcp(targetWithPort, resolvedTarget, getRemainingTimeout(deadlineAt))
     : skippedStep();
   if (tcpResult.status === "failed") {
     return buildDiagnosticResult({
@@ -93,7 +97,7 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
   }
 
   const tlsResult = target.protocol === "https:" && targetWithPort
-    ? await checkTls(targetWithPort, monitor, getRemainingTimeout(deadlineAt))
+    ? await checkTls(targetWithPort, resolvedTarget, monitor, getRemainingTimeout(deadlineAt))
     : skippedStep();
   if (tlsResult.status === "failed") {
     return buildDiagnosticResult({
@@ -113,7 +117,15 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
   let httpResult: Awaited<ReturnType<typeof checkHttp>> | null = null;
   try {
     httpResult = target.url
-      ? await checkHttp(target.url, monitor, timeoutMs, 0, Date.now(), deadlineAt)
+      ? await checkHttp(
+        target.url,
+        monitor,
+        allowPrivateTargets,
+        timeoutMs,
+        0,
+        Date.now(),
+        deadlineAt
+      )
       : null;
   } catch (error) {
     const errorMessage = formatError(error);
@@ -194,21 +206,12 @@ function resolveDiagnosticTarget(monitor: Monitor): DiagnosticTarget | null {
   }
 }
 
-async function checkDns(host: string, timeoutMs: number): Promise<DiagnosticStepResult & { addresses: string[] }> {
-  try {
-    const records = await withTimeout(
-      dns.lookup(host, { all: true }),
-      timeoutMs,
-      `DNS diagnostics timed out after ${timeoutMs}ms.`
-    );
-    return {
-      status: records.length > 0 ? "ok" : "failed",
-      addresses: records.map((record) => record.address),
-      errorMessage: records.length > 0 ? null : "DNS lookup returned no addresses.",
-    };
-  } catch (error) {
-    return { status: "failed", addresses: [], errorMessage: formatError(error) };
-  }
+function buildDnsResult(target: ResolvedNetworkTarget): DiagnosticStepResult & { addresses: string[] } {
+  return {
+    status: "ok",
+    addresses: target.addresses.map((record) => record.address),
+    errorMessage: null,
+  };
 }
 
 function getRemainingTimeout(deadlineAt: number) {
@@ -220,24 +223,24 @@ function getRemainingTimeout(deadlineAt: number) {
   return remainingTimeoutMs;
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(message)), Math.max(1, timeoutMs));
-  });
-
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  }
+function resolvePrivateTargetAccess(monitor: Monitor) {
+  const claimedPolicy = (monitor as Monitor & { allowPrivateTargets?: boolean }).allowPrivateTargets;
+  return claimedPolicy === undefined
+    ? canUserAccessPrivateTargets(monitor.userId)
+    : Promise.resolve(claimedPolicy);
 }
 
-function checkTcp(target: DiagnosticTarget & { port: number }, timeoutMs: number): Promise<DiagnosticStepResult> {
+function checkTcp(
+  target: DiagnosticTarget & { port: number },
+  resolvedTarget: ResolvedNetworkTarget,
+  timeoutMs: number
+): Promise<DiagnosticStepResult> {
   return new Promise((resolve) => {
-    const socket = net.createConnection({ host: target.host, port: target.port });
+    const socket = net.createConnection({
+      host: target.host,
+      port: target.port,
+      lookup: createPinnedLookup(resolvedTarget),
+    });
     let settled = false;
 
     const finish = (status: DiagnosticStatus, errorMessage: string | null) => {
@@ -258,6 +261,7 @@ function checkTcp(target: DiagnosticTarget & { port: number }, timeoutMs: number
 
 function checkTls(
   target: DiagnosticTarget & { port: number },
+  resolvedTarget: ResolvedNetworkTarget,
   monitor: Monitor,
   timeoutMs: number
 ): Promise<DiagnosticStepResult> {
@@ -266,6 +270,7 @@ function checkTls(
       host: target.host,
       port: target.port,
       servername: target.host,
+      lookup: createPinnedLookup(resolvedTarget),
       rejectUnauthorized: !monitor.ignoreSslErrors,
     });
     let settled = false;
@@ -289,6 +294,7 @@ function checkTls(
 async function checkHttp(
   url: string,
   monitor: Monitor,
+  allowPrivateTargets: boolean,
   timeoutMs: number,
   redirectCount = 0,
   startedAt = Date.now(),
@@ -296,8 +302,8 @@ async function checkHttp(
 ) {
   const parsed = new URL(url);
   const remainingTimeoutMs = getRemainingTimeout(deadlineAt);
-  await assertMonitorNetworkTargetWithTimeout(parsed.hostname, {
-    allowPrivateTargets: env.monitorAllowPrivateTargets,
+  const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(parsed.hostname, {
+    allowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
   }, remainingTimeoutMs);
 
@@ -318,6 +324,7 @@ async function checkHttp(
       {
         method: monitor.method,
         timeout: remainingTimeoutMs,
+        lookup: createPinnedLookup(resolvedTarget),
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
       (response) => {
@@ -334,7 +341,15 @@ async function checkHttp(
         ) {
           response.resume();
           const nextUrl = new URL(location, parsed).toString();
-          resolveAndClear(checkHttp(nextUrl, monitor, timeoutMs, redirectCount + 1, startedAt, deadlineAt));
+          resolveAndClear(checkHttp(
+            nextUrl,
+            monitor,
+            allowPrivateTargets,
+            timeoutMs,
+            redirectCount + 1,
+            startedAt,
+            deadlineAt
+          ));
           return;
         }
 

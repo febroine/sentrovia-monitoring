@@ -7,6 +7,7 @@ import {
   listMonitors,
   listReservedMonitorTargets,
 } from "@/lib/monitors/service";
+import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 import { buildCanonicalMonitorTarget, buildMonitorIdentityKey, getMonitorTargetDisplay, toMonitorPayload } from "@/lib/monitors/targets";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import type { MonitorConfigBundle, MonitorPayload, MonitorRecord, MonitorType } from "@/lib/monitors/types";
@@ -70,10 +71,13 @@ export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
 }
 
 export async function previewMonitorConfigImport(userId: string, inputs: MonitorInput[]) {
-  const [existing, validationErrors] = await Promise.all([
+  const [existing, allowPrivateTargets] = await Promise.all([
     listReservedMonitorTargets(userId),
-    Promise.all(inputs.map(validateImportNetworkTarget)),
+    canUserAccessPrivateTargets(userId),
   ]);
+  const validationErrors = await Promise.all(
+    inputs.map((input) => validateImportNetworkTarget(input, allowPrivateTargets))
+  );
   return buildMonitorConfigImportPreview(inputs, existing, validationErrors);
 }
 
@@ -124,11 +128,12 @@ export function buildMonitorConfigImportPreview(
   };
 }
 
-async function validateImportNetworkTarget(monitor: MonitorInput) {
+async function validateImportNetworkTarget(monitor: MonitorInput, allowPrivateTargets: boolean) {
   try {
     await assertMonitorNetworkTargetAllowed(
       monitor.monitorType,
-      buildCanonicalMonitorTarget(monitor)
+      buildCanonicalMonitorTarget(monitor),
+      allowPrivateTargets
     );
     return null;
   } catch (error) {

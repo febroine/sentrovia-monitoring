@@ -72,6 +72,7 @@ export async function getPublicStatusPage(slug: string) {
       .where(and(
         eq(monitors.userId, settingsRow.userId),
         eq(monitors.isActive, true),
+        eq(monitors.publishOnStatusPage, true),
         isNull(monitors.deletedAt),
         monitorScope
       ))

@@ -1,5 +1,5 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import { AuthError } from "@/lib/auth/errors";
 
 export const PUBLIC_NETWORK_TARGET_ERROR = "Network targets must point to a public endpoint.";
@@ -12,56 +12,48 @@ const BLOCKED_HOSTNAMES = new Set([
 ]);
 const BLOCKED_HOST_SUFFIXES = [".internal", ".lan", ".local", ".localhost", ".localdomain"];
 
+export type ResolvedNetworkAddress = {
+  address: string;
+  family: 4 | 6;
+};
+
+export type ResolvedNetworkTarget = {
+  hostname: string;
+  addresses: ResolvedNetworkAddress[];
+};
+
 export async function assertPublicNetworkTarget(
   hostname: string,
   message = PUBLIC_NETWORK_TARGET_ERROR
 ) {
-  const normalizedHostname = normalizeNetworkHostname(hostname);
-
-  if (!isPublicNetworkHostnameLiteral(normalizedHostname)) {
-    throw new AuthError(message, 400);
-  }
-
-  if (isIP(normalizedHostname)) {
-    return;
-  }
-
-  let resolved: string[];
   try {
-    resolved = await resolveHostname(normalizedHostname);
+    await resolvePublicNetworkTarget(hostname, message);
   } catch {
     throw new AuthError(message, 400);
   }
-  if (resolved.length === 0 || resolved.some((address) => isNonPublicIpAddress(address))) {
-    throw new AuthError(message, 400);
-  }
+}
+
+export async function resolvePublicNetworkTarget(
+  hostname: string,
+  message = PUBLIC_NETWORK_TARGET_ERROR
+) {
+  return resolveNetworkTarget(hostname, {
+    allowPrivateTargets: false,
+    message,
+  });
 }
 
 export async function assertMonitorNetworkTarget(
   hostname: string,
   options: { allowPrivateTargets: boolean; allowUnresolved?: boolean; message?: string }
 ) {
-  const normalizedHostname = normalizeNetworkHostname(hostname);
-  if (!isMonitorNetworkHostnameLiteralAllowed(normalizedHostname, options.allowPrivateTargets)) {
-    throw new AuthError(options.message ?? PUBLIC_NETWORK_TARGET_ERROR, 400);
-  }
-
-  if (isIP(normalizedHostname)) {
-    return;
-  }
-
-  let resolved: string[];
   try {
-    resolved = await resolveHostname(normalizedHostname);
+    await resolveNetworkTarget(hostname, options);
   } catch (error) {
-    if (options.allowUnresolved) {
+    if (options.allowUnresolved && !(error instanceof AuthError)) {
       return;
     }
     throw error;
-  }
-  const isBlockedAddress = options.allowPrivateTargets ? isServerLocalIpAddress : isNonPublicIpAddress;
-  if (resolved.length === 0 || resolved.some(isBlockedAddress)) {
-    throw new AuthError(options.message ?? PUBLIC_NETWORK_TARGET_ERROR, 400);
   }
 }
 
@@ -82,6 +74,59 @@ export async function assertMonitorNetworkTargetWithTimeout(
       clearTimeout(timeoutId);
     }
   }
+}
+
+export async function resolveMonitorNetworkTargetWithTimeout(
+  hostname: string,
+  options: { allowPrivateTargets: boolean; message?: string },
+  timeoutMs: number
+) {
+  return withResolutionTimeout(
+    resolveNetworkTarget(hostname, options),
+    timeoutMs
+  );
+}
+
+export function createPinnedLookup(target: ResolvedNetworkTarget): LookupFunction {
+  return (_hostname, options, callback) => {
+    const requestedFamily = typeof options.family === "number" ? options.family : 0;
+    const candidates = requestedFamily === 4 || requestedFamily === 6
+      ? target.addresses.filter((item) => item.family === requestedFamily)
+      : target.addresses;
+
+    if (candidates.length === 0) {
+      const error = Object.assign(new Error("No validated address matches the requested IP family."), {
+        code: "EADDRNOTAVAIL",
+      });
+      queueMicrotask(() => callback(error, "", requestedFamily || undefined));
+      return;
+    }
+
+    if (options.all) {
+      queueMicrotask(() => callback(null, candidates));
+      return;
+    }
+
+    const selected = candidates[0];
+    queueMicrotask(() => callback(null, selected.address, selected.family));
+  };
+}
+
+export function selectResolvedAddress(
+  target: ResolvedNetworkTarget,
+  family?: 4 | 6 | null
+) {
+  const selected = family
+    ? target.addresses.find((item) => item.family === family)
+    : target.addresses[0];
+
+  if (!selected) {
+    throw Object.assign(new Error("No validated address matches the requested IP family."), {
+      code: "EADDRNOTAVAIL",
+    });
+  }
+
+  return selected.address;
 }
 
 export function isPublicNetworkHostnameLiteral(hostname: string) {
@@ -134,9 +179,61 @@ function isServerLocalHostname(hostname: string) {
   );
 }
 
-async function resolveHostname(hostname: string) {
+async function resolveNetworkTarget(
+  hostname: string,
+  options: { allowPrivateTargets: boolean; message?: string }
+): Promise<ResolvedNetworkTarget> {
+  const normalizedHostname = normalizeNetworkHostname(hostname);
+  const message = options.message ?? PUBLIC_NETWORK_TARGET_ERROR;
+
+  if (!isMonitorNetworkHostnameLiteralAllowed(normalizedHostname, options.allowPrivateTargets)) {
+    throw new AuthError(message, 400);
+  }
+
+  const literalFamily = isIP(normalizedHostname);
+  const addresses = literalFamily
+    ? [{ address: normalizedHostname, family: literalFamily as 4 | 6 }]
+    : await resolveHostname(normalizedHostname);
+  const isBlockedAddress = options.allowPrivateTargets ? isServerLocalIpAddress : isNonPublicIpAddress;
+
+  if (addresses.length === 0 || addresses.some((item) => isBlockedAddress(item.address))) {
+    throw new AuthError(message, 400);
+  }
+
+  return { hostname: normalizedHostname, addresses };
+}
+
+async function withResolutionTimeout<T>(operation: Promise<T>, timeoutMs: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error("Network target resolution timed out.")),
+      Math.max(1, timeoutMs)
+    );
+  });
+
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+async function resolveHostname(hostname: string): Promise<ResolvedNetworkAddress[]> {
   const records = await lookup(hostname, { all: true, verbatim: true });
-  return Array.from(new Set(records.map((record) => stripIpv6Brackets(record.address))));
+  const unique = new Map<string, ResolvedNetworkAddress>();
+
+  for (const record of records) {
+    const address = stripIpv6Brackets(record.address);
+    unique.set(`${record.family}:${address}`, {
+      address,
+      family: record.family === 6 ? 6 : 4,
+    });
+  }
+
+  return Array.from(unique.values());
 }
 
 function isNonPublicIpv4(address: string) {
@@ -192,10 +289,15 @@ function isNonPublicIpv6(address: string) {
     normalized === "::1" ||
     normalized.startsWith("fc") ||
     normalized.startsWith("fd") ||
+    normalized.startsWith("fec") ||
+    normalized.startsWith("fed") ||
+    normalized.startsWith("fee") ||
+    normalized.startsWith("fef") ||
     normalized.startsWith("fe8") ||
     normalized.startsWith("fe9") ||
     normalized.startsWith("fea") ||
-    normalized.startsWith("feb")
+    normalized.startsWith("feb") ||
+    normalized.startsWith("ff")
   );
 }
 

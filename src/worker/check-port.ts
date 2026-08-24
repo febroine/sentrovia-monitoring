@@ -2,26 +2,33 @@ import net from "node:net";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePortMonitorTarget } from "@/lib/monitors/targets";
-import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
+import {
+  createPinnedLookup,
+  resolveMonitorNetworkTargetWithTimeout,
+  type ResolvedNetworkTarget,
+} from "@/lib/security/public-network-target";
 import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
-export async function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
+export async function checkPortMonitor(
+  monitor: Monitor,
+  allowPrivateTargets = env.monitorAllowPrivateTargets
+): Promise<CheckResult> {
   const checkedAt = new Date();
 
   try {
     const target = parsePortMonitorTarget(monitor.url);
-    await assertMonitorNetworkTargetWithTimeout(target.host, {
-      allowPrivateTargets: env.monitorAllowPrivateTargets,
+    const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(target.host, {
+      allowPrivateTargets,
       message: MONITOR_PUBLIC_TARGET_ERROR,
     }, monitor.timeout);
     const remainingTimeoutMs = monitor.timeout - (Date.now() - checkedAt.getTime());
     if (remainingTimeoutMs <= 0) {
       throw new Error(`TCP service did not respond within ${formatTimeoutDuration(monitor.timeout)}.`);
     }
-    return await checkTcpPort(monitor, target, checkedAt, remainingTimeoutMs);
+    return await checkTcpPort(monitor, target, resolvedTarget, checkedAt, remainingTimeoutMs);
   } catch (error) {
     return buildCheckResult(checkedAt, {
       ok: false,
@@ -36,6 +43,7 @@ export async function checkPortMonitor(monitor: Monitor): Promise<CheckResult> {
 function checkTcpPort(
   monitor: Monitor,
   target: ReturnType<typeof parsePortMonitorTarget>,
+  resolvedTarget: ResolvedNetworkTarget,
   checkedAt: Date,
   timeoutMs: number
 ): Promise<CheckResult> {
@@ -44,6 +52,7 @@ function checkTcpPort(
       host: target.host,
       port: target.port,
       family: toNodeFamily(monitor.ipFamily),
+      lookup: createPinnedLookup(resolvedTarget),
     });
     let settled = false;
 

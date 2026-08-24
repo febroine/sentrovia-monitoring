@@ -213,6 +213,7 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     databasePassword: "",
     databasePasswordConfigured: false,
     databaseSsl: true,
+    databaseTlsVerify: true,
     keywordQuery: "",
     keywordInvert: false,
     jsonPath: "",
@@ -248,6 +249,7 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     emailBody: null,
     sendOutageScreenshot: false,
     isActive: true,
+    publishOnStatusPage: false,
     ...overrides,
   };
 }

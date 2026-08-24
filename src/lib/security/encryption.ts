@@ -28,12 +28,18 @@ export function decryptValue(payload: string | null | undefined) {
   }
 
   try {
+    const iv = Buffer.from(ivPart, "base64");
+    const authTag = Buffer.from(authTagPart, "base64");
+    if (iv.length !== IV_LENGTH || authTag.length !== 16) {
+      return null;
+    }
+
     const decipher = crypto.createDecipheriv(
       "aes-256-gcm",
       getKey(),
-      Buffer.from(ivPart, "base64")
+      iv
     );
-    decipher.setAuthTag(Buffer.from(authTagPart, "base64"));
+    decipher.setAuthTag(authTag);
     const decrypted = Buffer.concat([
       decipher.update(Buffer.from(encryptedPart, "base64")),
       decipher.final(),
@@ -42,4 +48,30 @@ export function decryptValue(payload: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+export function decryptValueOrLegacyPlaintext(payload: string | null | undefined) {
+  if (!payload) {
+    return null;
+  }
+
+  const decrypted = decryptValue(payload);
+  if (decrypted !== null) {
+    return decrypted;
+  }
+
+  return payload.split(":").length < 3 ? payload : null;
+}
+
+export function isEncryptedValue(payload: string | null | undefined) {
+  return decryptValue(payload) !== null;
+}
+
+export function hashSecretValue(domain: string, value: string) {
+  return crypto
+    .createHmac("sha256", getKey())
+    .update(domain)
+    .update("\0")
+    .update(value)
+    .digest("hex");
 }

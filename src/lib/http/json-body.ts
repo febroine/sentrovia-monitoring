@@ -1,15 +1,54 @@
 import { AuthError } from "@/lib/auth/errors";
+import { env } from "@/lib/env";
 
 const EMPTY_JSON_BODY_ERROR = "Invalid JSON request body.";
 export const STANDARD_JSON_BODY_LIMIT_BYTES = 128_000;
 
 export async function readJsonBody(request: Request, maxBytes: number) {
+  assertJsonContentType(request);
+  assertSameOriginMutation(request);
   const body = await readRequestBodyText(request, maxBytes);
 
   try {
     return JSON.parse(body) as unknown;
   } catch {
     throw new SyntaxError(EMPTY_JSON_BODY_ERROR);
+  }
+}
+
+function assertJsonContentType(request: Request) {
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  const isJson = contentType === "application/json" || contentType?.endsWith("+json") === true;
+
+  if (!isJson) {
+    throw new AuthError("Content-Type must be application/json.", 415);
+  }
+}
+
+function assertSameOriginMutation(request: Request) {
+  if (request.headers.get("sec-fetch-site") === "cross-site") {
+    throw new AuthError("Cross-site requests are not allowed.", 403);
+  }
+
+  const origin = request.headers.get("origin");
+  if (!origin) {
+    return;
+  }
+
+  let allowedOrigins: Set<string>;
+  let suppliedOrigin: string;
+  try {
+    allowedOrigins = new Set([
+      new URL(request.url).origin,
+      new URL(env.appUrl).origin,
+    ]);
+    suppliedOrigin = new URL(origin).origin;
+  } catch {
+    throw new AuthError("Request origin is invalid.", 403);
+  }
+
+  if (!allowedOrigins.has(suppliedOrigin)) {
+    throw new AuthError("Cross-origin requests are not allowed.", 403);
   }
 }
 

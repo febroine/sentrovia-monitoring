@@ -4,18 +4,24 @@ import type { Monitor } from "@/lib/db/schema";
 import { runMonitorDiagnostics } from "@/lib/diagnostics/service";
 
 const mocks = vi.hoisted(() => ({
-  assertMonitorNetworkTarget: vi.fn(),
+  resolveMonitorNetworkTarget: vi.fn(),
 }));
 
 vi.mock("@/lib/security/public-network-target", () => ({
-  assertMonitorNetworkTarget: mocks.assertMonitorNetworkTarget,
-  assertMonitorNetworkTargetWithTimeout: mocks.assertMonitorNetworkTarget,
+  resolveMonitorNetworkTargetWithTimeout: mocks.resolveMonitorNetworkTarget,
+  createPinnedLookup: vi.fn(() => undefined),
+}));
+vi.mock("@/lib/security/network-policy", () => ({
+  canUserAccessPrivateTargets: vi.fn(async () => true),
 }));
 
 let activeServer: http.Server | null = null;
 
 beforeEach(() => {
-  mocks.assertMonitorNetworkTarget.mockReset().mockResolvedValue(undefined);
+  mocks.resolveMonitorNetworkTarget.mockReset().mockImplementation(async (hostname: string) => ({
+    hostname,
+    addresses: [{ address: hostname, family: 4 }],
+  }));
 });
 
 afterEach(async () => {
@@ -82,14 +88,14 @@ describe("runMonitorDiagnostics", () => {
   it("checks the network safety policy again for redirect targets", async () => {
     const { server, url } = await startRedirectServer();
     activeServer = server;
-    mocks.assertMonitorNetworkTarget
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined)
+    mocks.resolveMonitorNetworkTarget
+      .mockImplementationOnce(async (hostname: string) => ({ hostname, addresses: [{ address: hostname, family: 4 }] }))
+      .mockImplementationOnce(async (hostname: string) => ({ hostname, addresses: [{ address: hostname, family: 4 }] }))
       .mockRejectedValueOnce(new Error("redirect target blocked"));
 
     const diagnostic = await runMonitorDiagnostics(buildMonitor({ url, maxRedirects: 1 }));
 
-    expect(mocks.assertMonitorNetworkTarget).toHaveBeenCalledTimes(3);
+    expect(mocks.resolveMonitorNetworkTarget).toHaveBeenCalledTimes(3);
     expect(diagnostic.httpStatus).toBe("failed");
     expect(diagnostic.errorMessage).toBe("redirect target blocked");
   });
@@ -170,6 +176,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 200,
     uptime: "100%",
     isActive: true,
+    publishOnStatusPage: false,
     isFavorite: false,
     isCritical: false,
     deletedAt: null,
@@ -192,6 +199,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramBotToken: null,
     telegramChatId: null,
     heartbeatToken: null,
+    heartbeatTokenHash: null,
     heartbeatLastReceivedAt: null,
     intervalValue: 5,
     intervalUnit: "dk",
@@ -202,6 +210,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     retries: 3,
     method: "GET",
     databaseSsl: true,
+    databaseTlsVerify: true,
     databasePasswordEncrypted: null,
     keywordQuery: null,
     keywordInvert: false,

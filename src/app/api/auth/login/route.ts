@@ -6,6 +6,7 @@ import { loginSchema, flattenValidationIssues } from "@/lib/auth/schemas";
 import { applySessionCookie } from "@/lib/auth/session";
 import { loginUser } from "@/lib/auth/service";
 import { readJsonBody } from "@/lib/http/json-body";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 const AUTH_JSON_BODY_LIMIT_BYTES = 32_000;
@@ -26,6 +27,16 @@ export async function POST(request: NextRequest) {
 
     const result = await loginUser(parsed.data);
     clearAuthFailures(request, "login", parsed.data.identifier);
+    await recordAuditEventSafely({
+      userId: result.user.id,
+      actorUserId: result.user.id,
+      actorLabel: result.user.email,
+      entityType: "session",
+      entityId: result.user.id,
+      entityLabel: result.user.email,
+      action: "auth.login.succeeded",
+      summary: "User signed in successfully.",
+    });
     const response = NextResponse.json({
       message: "Signed in successfully.",
       user: result.user,
@@ -81,5 +92,5 @@ function normalizeLoginBody(body: unknown) {
 }
 
 function shouldRecordFailure(status: number) {
-  return status >= 400 && status < 500 && status !== 429;
+  return status === 401;
 }

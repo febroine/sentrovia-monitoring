@@ -17,6 +17,7 @@ import {
   releaseMonitorLease,
   renewMonitorLease,
   updateWorkerState,
+  type ClaimedMonitor,
 } from "@/lib/monitors/service";
 import { calculateVerificationTimeout } from "@/lib/monitors/verification";
 import type { Monitor } from "@/lib/db/schema";
@@ -126,7 +127,7 @@ function buildCycleStatusMessage(claimedCount: number, completedCount: number, e
   return `Completed ${completedCount} of ${claimedCount} monitor check(s).${errorSuffix}`;
 }
 
-async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
+async function processMonitor(monitor: ClaimedMonitor): Promise<MonitorCycleResult | null> {
   let processingError: unknown;
 
   try {
@@ -152,7 +153,7 @@ async function processMonitor(monitor: Monitor): Promise<MonitorCycleResult | nu
   }
 }
 
-async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResult | null> {
+async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCycleResult | null> {
   const threshold = Math.max(2, monitor.retries);
   const previousStatus = monitor.status;
   const previousStatusCode = monitor.statusCode;
@@ -160,7 +161,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
   const wasVerifying = monitor.verificationMode;
   const verificationAttempt = wasVerifying ? monitor.verificationFailureCount : 0;
   let diagnosticMonitor = withVerificationTimeout(monitor, verificationAttempt);
-  let result = await checkMonitor(diagnosticMonitor);
+  let result = await checkClaimedMonitor(diagnosticMonitor, monitor.allowPrivateTargets);
   let executedProbeCount = 1;
   let recoveredDuringFinalConfirmation = false;
 
@@ -175,7 +176,7 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
 
   if (shouldRunFinalConfirmationProbe(result.ok, hadConfirmedOutage, wasVerifying, verificationAttempt, threshold)) {
     diagnosticMonitor = withVerificationTimeout(monitor, threshold);
-    result = await checkMonitor(diagnosticMonitor);
+    result = await checkClaimedMonitor(diagnosticMonitor, monitor.allowPrivateTargets);
     executedProbeCount += 1;
     recoveredDuringFinalConfirmation = result.ok;
 
@@ -517,6 +518,12 @@ async function processClaimedMonitor(monitor: Monitor): Promise<MonitorCycleResu
     finalStatus: checkStatus,
     latencyMs: result.latencyMs,
   };
+}
+
+function checkClaimedMonitor(monitor: Monitor, allowPrivateTargets: boolean | undefined) {
+  return allowPrivateTargets === undefined
+    ? checkMonitor(monitor)
+    : checkMonitor(monitor, { allowPrivateTargets });
 }
 
 async function recordConfigurationFailure(

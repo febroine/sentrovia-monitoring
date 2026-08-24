@@ -3,8 +3,10 @@ import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import {
-  assertMonitorNetworkTargetWithTimeout,
   normalizeNetworkHostname,
+  resolveMonitorNetworkTargetWithTimeout,
+  selectResolvedAddress,
+  type ResolvedNetworkTarget,
 } from "@/lib/security/public-network-target";
 
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
@@ -40,14 +42,16 @@ export async function buildFailureScreenshotAttachment(
   try {
     return await withScreenshotDeadline(async () => {
       try {
-        await assertScreenshotTargetAllowed(monitor);
+        const resolvedTarget = await resolveScreenshotTarget(monitor);
+        return withScreenshotSlot(() =>
+          captureScreenshotAttachment(monitor, capturedAt, resolvedTarget)
+        );
       } catch (error) {
         if (isUnresolvedHostnameError(error)) {
           return withScreenshotSlot(() => captureUnavailableScreenshotAttachment(monitor, capturedAt));
         }
         throw error;
       }
-      return withScreenshotSlot(() => captureScreenshotAttachment(monitor, capturedAt));
     });
   } catch (error) {
     const message = toScreenshotErrorMessage(error);
@@ -79,14 +83,14 @@ function getScreenshotSkipReason(monitor: Monitor) {
   return null;
 }
 
-async function assertScreenshotTargetAllowed(monitor: Monitor) {
+async function resolveScreenshotTarget(monitor: Monitor) {
   const hostname = parseScreenshotHostname(monitor.url);
   if (!hostname) {
     throw new Error("screenshot target is not a valid URL");
   }
 
-  await assertMonitorNetworkTargetWithTimeout(hostname, {
-    allowPrivateTargets: env.monitorAllowPrivateTargets,
+  return resolveMonitorNetworkTargetWithTimeout(hostname, {
+    allowPrivateTargets: resolvePrivateTargetAccess(monitor),
     message: SCREENSHOT_PUBLIC_TARGET_ERROR,
   }, SCREENSHOT_TIMEOUT_MS);
 }
@@ -118,10 +122,17 @@ function parseScreenshotHostname(value: string) {
   }
 }
 
-async function captureScreenshotAttachment(monitor: Monitor, capturedAt: Date): Promise<Mail.Attachment | null> {
+async function captureScreenshotAttachment(
+  monitor: Monitor,
+  capturedAt: Date,
+  resolvedTarget: ResolvedNetworkTarget
+): Promise<Mail.Attachment | null> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
-    args: CHROMIUM_HEADLESS_ARGS,
+    args: [
+      ...CHROMIUM_HEADLESS_ARGS,
+      buildHostResolverRule(resolvedTarget),
+    ],
     headless: true,
     timeout: SCREENSHOT_TIMEOUT_MS,
   });
@@ -258,6 +269,17 @@ function acquireScreenshotSlot() {
     };
     screenshotQueue.push(entry);
   });
+}
+
+function buildHostResolverRule(target: ResolvedNetworkTarget) {
+  const address = selectResolvedAddress(target);
+  const mappedAddress = address.includes(":") ? `[${address}]` : address;
+  return `--host-resolver-rules=MAP ${target.hostname} ${mappedAddress}`;
+}
+
+function resolvePrivateTargetAccess(monitor: Monitor) {
+  return env.monitorAllowPrivateTargets
+    && (monitor as Monitor & { allowPrivateTargets?: boolean }).allowPrivateTargets === true;
 }
 
 async function captureUnavailableScreenshotAttachment(monitor: Monitor, capturedAt: Date) {

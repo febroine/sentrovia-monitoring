@@ -7,6 +7,7 @@ import { flattenValidationIssues, memberCreateSchema } from "@/lib/auth/schemas"
 import { createMember } from "@/lib/auth/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { deleteMembers, listMembers } from "@/lib/members/service";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,16 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await createMember(parsed.data);
+    await recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "member",
+      entityId: result.user.id,
+      entityLabel: result.user.email,
+      action: "member.created",
+      summary: `Member account created with role ${result.user.role}.`,
+    });
     return NextResponse.json({ member: result.user }, { status: 201 });
   } catch (error) {
     const authError = toAuthError(error, "Unable to add member right now.");
@@ -76,6 +87,16 @@ export async function DELETE(request: NextRequest) {
 
     const deleted = await deleteMembers(session.id, session.role, parsed.data.ids);
     const deletedIds = deleted.map((member) => member.id);
+    await Promise.all(deleted.map((member) => recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "member",
+      entityId: member.id,
+      entityLabel: member.id,
+      action: "member.deleted",
+      summary: "Member account was deleted.",
+    })));
     const response = NextResponse.json({
       ids: deletedIds,
       signedOut: deletedIds.includes(session.id),
