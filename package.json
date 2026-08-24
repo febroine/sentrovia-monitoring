@@ -1,6 +1,6 @@
 {
   "name": "sentrovia",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Self-hosted uptime monitoring that verifies outages before alerting, with HTTP, TCP, Ping, PostgreSQL, evidence, and Windows deployment.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
@@ -20,6 +20,7 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "test:e2e:docker": "node tests/e2e/docker-runtime.mjs",
     "typecheck": "tsc --noEmit",
     "docker:web": "node scripts/bootstrap-runtime.mjs web",
     "docker:worker": "node scripts/bootstrap-runtime.mjs worker",

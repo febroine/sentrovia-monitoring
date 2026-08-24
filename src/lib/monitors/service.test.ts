@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildConfigurationScheduleUpdate,
   buildRestoredMonitorState,
   calculateMonitorLeaseMs,
   filterDuplicateMonitorInputs,
@@ -53,6 +54,21 @@ describe("monitor due selection", () => {
     );
 
     expect(selected.map((monitor) => monitor.id)).toEqual(["user-1-verification", "user-2-normal"]);
+  });
+});
+
+describe("monitor configuration scheduling", () => {
+  it("makes an edited active monitor due immediately", () => {
+    const now = new Date("2026-08-24T12:00:00.000Z");
+
+    expect(buildConfigurationScheduleUpdate(true, true, now)).toEqual({ nextCheckAt: now });
+  });
+
+  it("does not schedule inactive monitors", () => {
+    const now = new Date("2026-08-24T12:00:00.000Z");
+
+    expect(buildConfigurationScheduleUpdate(true, false, now)).toEqual({});
+    expect(buildConfigurationScheduleUpdate(false, false, now)).toEqual({});
   });
 });
 

@@ -147,6 +147,11 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
     await assertMonitorTargetAvailable(userId, values.monitorType, values.url, monitorId, tx);
     const now = new Date();
     const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
+    const scheduleUpdate = buildConfigurationScheduleUpdate(
+      existingMonitor.isActive,
+      values.isActive,
+      now
+    );
     const [monitor] = await tx
       .update(monitors)
       .set({
@@ -154,6 +159,7 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
         leaseToken: null,
         leaseExpiresAt: null,
         ...activeStateUpdate,
+        ...scheduleUpdate,
         userId,
         updatedAt: now,
       })
@@ -590,6 +596,14 @@ function buildActiveStateUpdate(wasActive: boolean, isActive: boolean, now: Date
     verificationFailureCount: 0,
     latencyMs: null,
   };
+}
+
+export function buildConfigurationScheduleUpdate(
+  wasActive: boolean,
+  isActive: boolean,
+  now: Date
+) {
+  return wasActive && isActive ? { nextCheckAt: now } : {};
 }
 
 async function resolveOutageOnPause(

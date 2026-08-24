@@ -87,7 +87,6 @@ export default function LoginPage() {
 
       startTransition(() => {
         router.replace(nextPath === "/dashboard" ? "/" : nextPath);
-        router.refresh();
       });
     } catch {
       clearPasswordFields(formRef.current);
