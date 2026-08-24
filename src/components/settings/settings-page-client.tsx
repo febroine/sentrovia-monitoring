@@ -12,6 +12,7 @@ import {
   UpdateAssistantTab,
 } from "@/components/settings/settings-sections";
 import { useSettingsStore } from "@/stores/use-settings-store";
+import { hasPermission } from "@/lib/auth/permissions";
 
 type TabId = "notifications" | "monitoring" | "publicStatus" | "appearance" | "data" | "updates";
 
@@ -29,6 +30,7 @@ export default function SettingsPageClient() {
   const { settings, loading, saving, error, message, loadSettings, saveSettings, updateSetting } =
     useSettingsStore();
   const isAdmin = settings.profile.role === "admin";
+  const canManageSettings = hasPermission(settings.profile.role, "settings.manage");
   const visibleTabs = tabs.filter((tab) => !tab.adminOnly || isAdmin);
   const effectiveActiveTab = !isAdmin && activeTab === "updates" ? "notifications" : activeTab;
 
@@ -47,6 +49,9 @@ export default function SettingsPageClient() {
 
       {error ? <Banner tone="error">{error}</Banner> : null}
       {message ? <Banner tone="success">{message}</Banner> : null}
+      {!loading && !canManageSettings ? (
+        <Banner tone="neutral">Your viewer role can inspect settings but cannot change workspace configuration.</Banner>
+      ) : null}
 
       <Tabs
         value={effectiveActiveTab}
@@ -65,7 +70,7 @@ export default function SettingsPageClient() {
           ))}
         </TabsList>
 
-        <div className="space-y-6">
+        <fieldset disabled={!canManageSettings} className="min-w-0 space-y-6 disabled:opacity-75">
           {loading ? (
             <div className="border-y py-8 text-sm text-muted-foreground">Loading settings...</div>
           ) : (
@@ -93,7 +98,7 @@ export default function SettingsPageClient() {
 
             </>
           )}
-        </div>
+        </fieldset>
       </Tabs>
     </div>
   );
@@ -104,14 +109,16 @@ function Banner({
   tone,
 }: {
   children: ReactNode;
-  tone: "error" | "success";
+  tone: "error" | "success" | "neutral";
 }) {
   return (
     <div
       className={`border-l-2 px-4 py-2 text-sm ${
         tone === "error"
           ? "border-destructive text-destructive"
-          : "border-emerald-500 text-emerald-700 dark:text-emerald-400"
+          : tone === "success"
+            ? "border-emerald-500 text-emerald-700 dark:text-emerald-400"
+            : "border-border text-muted-foreground"
       }`}
     >
       {children}

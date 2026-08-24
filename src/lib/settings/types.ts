@@ -1,11 +1,12 @@
 import type { DashboardFocus, DashboardWidgetId } from "@/lib/dashboard/preferences";
+import type { UserRole } from "@/lib/auth/permissions";
 
 export interface SettingsPayload {
   profile: {
     firstName: string;
     lastName: string;
     email: string;
-    role: "admin" | "member";
+    role: UserRole;
     department: string;
     username: string;
     organization: string;
@@ -87,6 +88,10 @@ export interface SettingsPayload {
     deliveryRetentionDays: number;
     autoBackupEnabled: boolean;
     backupWindow: string;
+    backupRetentionCount: number;
+    lastBackupStatus: "completed" | "failed" | "running" | null;
+    lastBackupError: string | null;
+    lastAutomaticBackupAt: string | null;
     eventRetentionDays: number;
     lastBackupAt: string | null;
   };
@@ -142,7 +147,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     firstName: "",
     lastName: "",
     email: "",
-    role: "member",
+    role: "operator",
     department: "",
     username: "",
     organization: "",
@@ -214,8 +219,12 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   data: {
     retentionDays: 90,
     deliveryRetentionDays: 90,
-    autoBackupEnabled: true,
+    autoBackupEnabled: false,
     backupWindow: "03:00",
+    backupRetentionCount: 7,
+    lastBackupStatus: null,
+    lastBackupError: null,
+    lastAutomaticBackupAt: null,
     eventRetentionDays: 30,
     lastBackupAt: null,
   },

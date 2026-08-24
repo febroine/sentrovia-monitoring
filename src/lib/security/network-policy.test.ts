@@ -17,11 +17,13 @@ import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 describe("private target authorization", () => {
   it("allows private targets only for administrators", async () => {
     await expect(canUserAccessPrivateTargets("admin-1", buildDatabase("admin"))).resolves.toBe(true);
-    await expect(canUserAccessPrivateTargets("member-1", buildDatabase("member"))).resolves.toBe(false);
+    await expect(canUserAccessPrivateTargets("manager-1", buildDatabase("manager"))).resolves.toBe(false);
+    await expect(canUserAccessPrivateTargets("operator-1", buildDatabase("operator"))).resolves.toBe(false);
+    await expect(canUserAccessPrivateTargets("viewer-1", buildDatabase("viewer"))).resolves.toBe(false);
   });
 });
 
-function buildDatabase(role: "admin" | "member") {
+function buildDatabase(role: "admin" | "manager" | "operator" | "viewer") {
   return {
     select: () => ({
       from: () => ({

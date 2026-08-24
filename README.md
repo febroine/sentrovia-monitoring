@@ -277,6 +277,8 @@ npm run test
 npm run db:sync
 npm run db:push
 npm run db:manual
+npm run benchmark:scale
+npm run backup:restore -- --help
 ```
 
 Use the schema synchronizer during normal installations and updates:
@@ -333,6 +335,17 @@ If you copy release files to the server manually, skip the Git commands and doub
 The updater requests Administrator permission and handles dependencies, build validation, migrations, and both service restarts. It recognizes both `SentroviaWeb` / `SentroviaWorker` and newer hyphenated service names. It removes known retired project paths left behind by manually overlaid releases, while preserving `.env.local` and database records. Previous dependencies and the production build are restored if an update fails. Browser sessions from the previous deployment are invalidated, so users sign in again after a successful update. Errors stay visible and the full transcript is saved under `logs`.
 When a release introduces new non-secret runtime settings, the updater appends only missing defaults to `.env.local`. Existing database credentials, authentication and encryption secrets, and application settings are never replaced; only the deployment session identifier is rotated to invalidate old browser sessions.
 
+### Verify a downloaded release
+
+Every release publishes a source archive, `SHA256SUMS`, and a GitHub build-provenance attestation. Verify both before copying an archive to a server:
+
+```bash
+sha256sum --check SHA256SUMS
+gh attestation verify sentrovia-monitoring-vX.Y.Z.zip --repo febroine/sentrovia-monitoring
+```
+
+Published version tags and release assets are immutable. Use a new patch version for every corrected release instead of moving an existing tag.
+
 <details>
 <summary>Manual Node.js services without NSSM</summary>
 
@@ -370,6 +383,58 @@ Sentrovia supports:
 - Cron and heartbeat monitoring
 
 Each monitor can define its own interval, timeout, retry behavior, HTTP method, redirect behavior, SSL behavior, cache behavior, response-size limit, active state, and slow-response threshold.
+
+## Workspace Access
+
+Sentrovia uses four workspace roles:
+
+- **Administrator:** all product, worker, private-target, member, and database-backup controls
+- **Manager:** team and operational administration without infrastructure backup or private-target privileges
+- **Operator:** monitor, company, delivery, report, and workspace configuration
+- **Viewer:** read-only workspace access
+
+The API enforces permissions independently of disabled or hidden interface controls. Role changes invalidate the affected member's existing sessions.
+
+## Database Backups
+
+Administrators can enable daily PostgreSQL backups under **Settings -> Data**. The worker creates a PostgreSQL custom-format dump, verifies it with `pg_restore`, encrypts it with AES-256-GCM using the application encryption secret, records a SHA-256 checksum, and rotates only verified backup files according to the configured retention count.
+
+Docker stores automatic backups in the named `backups` volume. Native installations default to the `backups` directory; set `AUTOMATIC_BACKUP_DIRECTORY` to use a protected host path. A restore is verification-only unless destructive confirmation is explicit:
+
+```bash
+npm run backup:restore -- backups/sentrovia-db-YYYY-MM-DDTHHMMSSZ.sentrovia-backup
+npm run backup:restore -- backups/sentrovia-db-YYYY-MM-DDTHHMMSSZ.sentrovia-backup --restore --confirm=REPLACE_DATABASE
+```
+
+For Docker, stop the application processes and run the restore as a one-off worker so the backup volume remains mounted:
+
+```bash
+docker compose stop web worker
+docker compose run --rm --no-deps worker npm run backup:restore -- /app/backups/<backup-file> --restore --confirm=REPLACE_DATABASE
+docker compose up -d web worker
+```
+
+Keep `APP_ENCRYPTION_SECRET` with the database backups. Losing or rotating it without a migration plan makes encrypted backups and stored credentials unreadable.
+
+## Prometheus Metrics
+
+Set a random `METRICS_AUTH_TOKEN` of at least 32 characters to enable `GET /api/metrics`. The endpoint is otherwise returned as not found and accepts only `Authorization: Bearer <token>`.
+
+```yaml
+scrape_configs:
+  - job_name: sentrovia
+    authorization:
+      type: Bearer
+      credentials: "replace-with-a-strong-token"
+    static_configs:
+      - targets: ["sentrovia.example.com"]
+```
+
+Metrics use bounded labels and cover worker health, monitor status/backlog, delivery outcomes, and automatic backup state. Do not expose this endpoint without HTTPS and a strong token.
+
+## Scale Benchmark
+
+`npm run benchmark:scale` measures the real due-monitor selection shape against deterministic rows in a connection-scoped temporary PostgreSQL table. It does not read or mutate application tables. See [docs/scale-benchmarks.md](docs/scale-benchmarks.md) for repeatable workloads and result interpretation.
 
 ## Notifications and Evidence
 
@@ -444,10 +509,7 @@ The strongest use case is an internal team that wants verified alerts, screensho
 
 Possible next improvements:
 
-- Signed release builds
 - Hosted read-only demo instance
-- Published, reproducible scale benchmarks
-- More granular role-based access controls
 - Escalation policies
 - Multi-region workers
 - DNS-specific monitors

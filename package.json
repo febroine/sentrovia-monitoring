@@ -1,6 +1,6 @@
 {
   "name": "sentrovia",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Self-hosted uptime monitoring that verifies outages before alerting, with HTTP, TCP, Ping, PostgreSQL, evidence, and Windows deployment.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
@@ -34,7 +34,10 @@
     "db:repair:dry-run": "node scripts/repair-database.mjs --dry-run",
     "auth:recover-admin": "node scripts/recover-admin.mjs",
     "db:manual": "node scripts/apply-manual-migrations.mjs",
-    "db:manual:baseline": "node scripts/apply-manual-migrations.mjs --baseline"
+    "db:manual:baseline": "node scripts/apply-manual-migrations.mjs --baseline",
+    "backup:restore": "tsx scripts/restore-database-backup.ts",
+    "release:artifacts": "node scripts/create-release-artifacts.mjs",
+    "benchmark:scale": "node scripts/benchmark-scale.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

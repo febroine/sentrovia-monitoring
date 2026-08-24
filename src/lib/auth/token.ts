@@ -1,12 +1,14 @@
 import { SignJWT, jwtVerify } from "jose";
 import { env, getAuthSecret, getAuthSessionId } from "@/lib/env";
+import { normalizeUserRole, type UserRole } from "@/lib/auth/permissions";
+
+export type { UserRole } from "@/lib/auth/permissions";
 
 export const SESSION_COOKIE_NAME = "sentrovia.session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_ISSUER = "sentrovia-auth";
 const SESSION_AUDIENCE = "sentrovia-session";
 export const DEFAULT_SESSION_VERSION = 1;
-export type UserRole = "admin" | "member";
 
 export interface SessionUser {
   id: string;
@@ -100,7 +102,7 @@ export async function verifySessionToken(token?: string | null): Promise<Version
 }
 
 function parseUserRole(value: unknown): UserRole {
-  return value === "admin" ? "admin" : "member";
+  return normalizeUserRole(value);
 }
 
 export function getSessionCookieOptions() {

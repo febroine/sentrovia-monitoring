@@ -5,12 +5,14 @@ import { runDueReportSchedules } from "@/lib/reports/service";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { runWorkerPhases } from "@/worker/phases";
 import { runMonitoringCycle } from "@/worker/scheduler";
+import { triggerAutomaticDatabaseBackup } from "@/lib/system/automatic-backup";
 
 vi.mock("@/lib/data-retention/service", () => ({ runRetentionCleanup: vi.fn() }));
 vi.mock("@/lib/delivery/service", () => ({ retryDeliveryQueueForAllUsers: vi.fn() }));
 vi.mock("@/lib/reports/service", () => ({ runDueReportSchedules: vi.fn() }));
 vi.mock("@/worker/connectivity", () => ({ ensureWorkerConnectivity: vi.fn() }));
 vi.mock("@/worker/scheduler", () => ({ runMonitoringCycle: vi.fn() }));
+vi.mock("@/lib/system/automatic-backup", () => ({ triggerAutomaticDatabaseBackup: vi.fn() }));
 
 const online = {
   available: true,
@@ -67,6 +69,7 @@ describe("worker phase connectivity guard", () => {
     expect(runMonitoringCycle).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
+    expect(triggerAutomaticDatabaseBackup).toHaveBeenCalledOnce();
   });
 
   it("does not start monitor work after a stop request", async () => {

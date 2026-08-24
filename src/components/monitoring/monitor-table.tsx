@@ -71,6 +71,7 @@ function NotificationBadge({ pref }: { pref: NotificationPref }) {
 
 export function MonitorTable({
   monitors,
+  readOnly = false,
   loading,
   historyByMonitor,
   selectedIds,
@@ -86,6 +87,7 @@ export function MonitorTable({
   onSelectTimelinePoint,
 }: {
   monitors: MonitorRecord[];
+  readOnly?: boolean;
   loading: boolean;
   historyByMonitor: Record<string, MonitorHistoryPoint[]>;
   selectedIds: Set<string>;
@@ -123,7 +125,7 @@ export function MonitorTable({
         <TableHeader>
           <TableRow className="bg-surface-high hover:bg-surface-high">
             <TableHead className="px-1 pl-2">
-              <button type="button" onClick={onToggleAll} className="flex items-center justify-center text-muted-foreground hover:text-foreground" aria-label="Select all">
+              <button type="button" disabled={readOnly} onClick={onToggleAll} className="flex items-center justify-center text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30" aria-label="Select all">
                 {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
               </button>
             </TableHead>
@@ -159,9 +161,9 @@ export function MonitorTable({
             </TableRow>
           ) : (
             monitors.map((monitor) => (
-              <TableRow key={monitor.id} className={selectedIds.has(monitor.id) ? "bg-primary/5" : ""} onClick={() => onEdit(monitor)}>
+              <TableRow key={monitor.id} className={selectedIds.has(monitor.id) ? "bg-primary/5" : ""} onClick={readOnly ? undefined : () => onEdit(monitor)}>
                 <TableCell className="px-1 pl-2" onClick={(event) => event.stopPropagation()}>
-                  <button type="button" onClick={(event) => { event.stopPropagation(); onToggleOne(monitor.id); }} className="flex items-center justify-center text-muted-foreground hover:text-foreground" aria-label="Select row">
+                  <button type="button" disabled={readOnly} onClick={(event) => { event.stopPropagation(); onToggleOne(monitor.id); }} className="flex items-center justify-center text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30" aria-label="Select row">
                     {selectedIds.has(monitor.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableCell>
@@ -211,7 +213,7 @@ export function MonitorTable({
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0"
-                      disabled={activeTogglePendingId === monitor.id}
+                      disabled={readOnly || activeTogglePendingId === monitor.id}
                       aria-label={monitor.isActive ? `Disable ${monitor.name}` : `Enable ${monitor.name}`}
                       title={monitor.isActive ? "Disable monitor" : "Enable monitor"}
                       onClick={() => onToggleActive(monitor)}
@@ -241,7 +243,7 @@ export function MonitorTable({
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0"
-                      disabled={flagPendingId === monitor.id}
+                      disabled={readOnly || flagPendingId === monitor.id}
                       aria-label={monitor.isFavorite ? `Remove ${monitor.name} from favorites` : `Add ${monitor.name} to favorites`}
                       title={monitor.isFavorite ? "Remove favorite" : "Add favorite"}
                       onClick={() => onToggleFlag(monitor, "isFavorite")}
@@ -252,7 +254,7 @@ export function MonitorTable({
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0"
-                      disabled={flagPendingId === monitor.id}
+                      disabled={readOnly || flagPendingId === monitor.id}
                       aria-label={monitor.isCritical ? `Remove critical flag from ${monitor.name}` : `Mark ${monitor.name} as critical`}
                       title={monitor.isCritical ? "Remove critical flag" : "Mark critical"}
                       onClick={() => onToggleFlag(monitor, "isCritical")}
@@ -263,6 +265,7 @@ export function MonitorTable({
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0"
+                      disabled={readOnly}
                       aria-label={`Edit ${monitor.name}`}
                       title="Edit monitor"
                       onClick={() => onEdit(monitor)}
@@ -279,6 +282,7 @@ export function MonitorTable({
       </div>
       <MobileMonitorList
       monitors={monitors}
+      readOnly={readOnly}
       loading={loading}
       historyByMonitor={historyByMonitor}
       selectedIds={selectedIds}
@@ -299,6 +303,7 @@ export function MonitorTable({
 
 function MobileMonitorList({
   monitors,
+  readOnly,
   loading,
   historyByMonitor,
   selectedIds,
@@ -314,6 +319,7 @@ function MobileMonitorList({
   onSelectTimelinePoint,
 }: {
   monitors: MonitorRecord[];
+  readOnly: boolean;
   loading: boolean;
   historyByMonitor: Record<string, MonitorHistoryPoint[]>;
   selectedIds: Set<string>;
@@ -347,16 +353,17 @@ function MobileMonitorList({
   return (
     <div className="space-y-3 md:hidden">
       <div className="flex items-center justify-between border-b pb-2">
-        <button type="button" onClick={onToggleAll} className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground">
+        <button type="button" disabled={readOnly} onClick={onToggleAll} className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground disabled:opacity-30">
           {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
           Select page
         </button>
-        <span className="text-xs text-muted-foreground">Tap a monitor to edit</span>
+        <span className="text-xs text-muted-foreground">{readOnly ? "Read-only access" : "Tap a monitor to edit"}</span>
       </div>
       {monitors.map((monitor) => (
         <MobileMonitorCard
           key={monitor.id}
           monitor={monitor}
+          readOnly={readOnly}
           history={historyByMonitor[monitor.id] ?? []}
           selected={selectedIds.has(monitor.id)}
           activePending={activeTogglePendingId === monitor.id}
@@ -374,6 +381,7 @@ function MobileMonitorList({
 
 function MobileMonitorCard({
   monitor,
+  readOnly,
   history,
   selected,
   activePending,
@@ -385,6 +393,7 @@ function MobileMonitorCard({
   onSelectTimelinePoint,
 }: {
   monitor: MonitorRecord;
+  readOnly: boolean;
   history: MonitorHistoryPoint[];
   selected: boolean;
   activePending: boolean;
@@ -404,10 +413,10 @@ function MobileMonitorCard({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onEdit(monitor)}
-      onKeyDown={openOnEnter}
+      role={readOnly ? undefined : "button"}
+      tabIndex={readOnly ? undefined : 0}
+      onClick={readOnly ? undefined : () => onEdit(monitor)}
+      onKeyDown={readOnly ? undefined : openOnEnter}
       className={`rounded-lg border p-4 ${selected ? "border-primary/50 bg-primary/5" : "border-border bg-background"}`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -436,7 +445,7 @@ function MobileMonitorCard({
       <div className="mt-3" onClick={(event) => event.stopPropagation()}>
         <MonitorHistoryStrip points={history} onSelect={(point) => onSelectTimelinePoint(monitor, point)} compact />
       </div>
-      <div className="mt-3 flex items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
+      {!readOnly ? <div className="mt-3 flex items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
         <button type="button" onClick={() => onToggleOne(monitor.id)} className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground">
           {selected ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
           Select
@@ -455,7 +464,7 @@ function MobileMonitorCard({
             Edit
           </Button>
         </div>
-      </div>
+      </div> : null}
     </div>
   );
 }

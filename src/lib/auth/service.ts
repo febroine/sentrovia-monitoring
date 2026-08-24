@@ -5,6 +5,7 @@ import { runBoundedAuthWork } from "@/lib/auth/rate-limit";
 import { recordAuditEventSafely } from "@/lib/audit/service";
 import type { ChangePasswordInput, LoginInput, MemberCreateInput, OnboardingInput } from "@/lib/auth/schemas";
 import { createSessionToken, type SessionUser, type UserRole } from "@/lib/auth/token";
+import { normalizeUserRole } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { users, userSettings } from "@/lib/db/schema";
 import { getAuthSecret } from "@/lib/env";
@@ -117,11 +118,12 @@ export async function createInitialAdmin(input: OnboardingInput) {
   };
 }
 
-export async function createMember(input: MemberCreateInput) {
+export async function createMember(input: Omit<MemberCreateInput, "role"> & { role?: UserRole }) {
   ensureAuthRuntimeReady();
   const passwordHash = await runBoundedAuthWork(() => bcrypt.hash(input.password, 12));
+  const role = input.role ?? "operator";
   const createdUser = await db.transaction((tx) =>
-    createUserWithPasswordHash(input, "member", passwordHash, tx)
+    createUserWithPasswordHash({ ...input, role }, role, passwordHash, tx)
   );
 
   return {
@@ -306,5 +308,5 @@ function serializeMember(user: AuthSessionRecord) {
 }
 
 function toUserRole(role: string): UserRole {
-  return role === "admin" ? "admin" : "member";
+  return normalizeUserRole(role);
 }

@@ -1,6 +1,12 @@
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
 import type { UserRole } from "@/lib/auth/token";
+import {
+  canAssignRole,
+  canManageMemberRole,
+  hasPermission,
+  normalizeUserRole,
+} from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 
@@ -8,7 +14,7 @@ const ADMIN_MEMBERSHIP_ADVISORY_LOCK_KEY = 63_194_207;
 type MemberSelectExecutor = Pick<typeof db, "select">;
 
 export async function listMembers(currentUserId: string, currentUserRole: UserRole) {
-  return db
+  const rows = await db
     .select({
       id: users.id,
       firstName: users.firstName,
@@ -22,8 +28,9 @@ export async function listMembers(currentUserId: string, currentUserRole: UserRo
       createdAt: users.createdAt,
     })
     .from(users)
-    .where(currentUserRole === "admin" ? undefined : eq(users.id, currentUserId))
+    .where(hasPermission(currentUserRole, "members.read") ? undefined : eq(users.id, currentUserId))
     .orderBy(asc(users.firstName), asc(users.lastName));
+  return rows.map((row) => ({ ...row, role: normalizeUserRole(row.role) }));
 }
 
 export async function updateMember(
@@ -36,7 +43,7 @@ export async function updateMember(
     role?: UserRole;
   }
 ) {
-  if (memberId !== currentUserId && currentUserRole !== "admin") {
+  if (memberId !== currentUserId && !hasPermission(currentUserRole, "members.manage")) {
     return null;
   }
 
@@ -50,14 +57,18 @@ export async function updateMember(
       return null;
     }
 
-    const nextRole = input.role ?? existingMember.role;
-    if (nextRole !== existingMember.role) {
-      if (currentUserRole !== "admin") {
-        throw new AuthError("Only admins can change workspace roles.", 403);
+    const existingRole = normalizeUserRole(existingMember.role);
+    const nextRole = input.role ?? existingRole;
+    if (memberId !== currentUserId && !canManageMemberRole(currentUserRole, existingRole)) {
+      throw new AuthError("You cannot manage a member with this role.", 403);
+    }
+    if (nextRole !== existingRole) {
+      if (!canAssignRole(currentUserRole, nextRole)) {
+        throw new AuthError("You cannot assign this workspace role.", 403);
       }
 
       await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_MEMBERSHIP_ADVISORY_LOCK_KEY})`);
-      if (existingMember.role === "admin" && nextRole === "member") {
+      if (existingRole === "admin" && nextRole !== "admin") {
         await assertAtLeastOneAdminRemainsAfterDemotion(tx);
       }
     }
@@ -68,6 +79,7 @@ export async function updateMember(
         username: normalizeUsername(input.username),
         email: input.email.trim(),
         role: nextRole,
+        sessionVersion: nextRole === existingRole ? users.sessionVersion : sql`${users.sessionVersion} + 1`,
         updatedAt: new Date(),
       })
       .where(eq(users.id, memberId))
@@ -78,13 +90,14 @@ export async function updateMember(
         email: users.email,
         department: users.department,
         role: users.role,
+        sessionVersion: users.sessionVersion,
         username: users.username,
         organization: users.organization,
         jobTitle: users.jobTitle,
         createdAt: users.createdAt,
       });
 
-    return member ?? null;
+    return member ? { ...member, role: normalizeUserRole(member.role) } : null;
   });
 }
 
@@ -99,12 +112,21 @@ export async function deleteMembers(currentUserId: string, currentUserRole: User
     return [];
   }
 
-  if (currentUserRole !== "admin") {
+  if (!hasPermission(currentUserRole, "members.manage")) {
     return deleteMembersById(filterSelfMemberIds(currentUserId, memberIds));
   }
 
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_MEMBERSHIP_ADVISORY_LOCK_KEY})`);
+    const targets = await tx
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(inArray(users.id, memberIds));
+    if (targets.some((target) =>
+      target.id !== currentUserId && !canManageMemberRole(currentUserRole, normalizeUserRole(target.role))
+    )) {
+      throw new AuthError("You cannot delete a member with this role.", 403);
+    }
     await assertAtLeastOneAdminRemains(tx, memberIds);
 
     return tx

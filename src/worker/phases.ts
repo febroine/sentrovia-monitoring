@@ -3,6 +3,7 @@ import { retryDeliveryQueueForAllUsers } from "@/lib/delivery/service";
 import { runDueReportSchedules } from "@/lib/reports/service";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { runMonitoringCycle } from "@/worker/scheduler";
+import { triggerAutomaticDatabaseBackup } from "@/lib/system/automatic-backup";
 
 export type WorkerPhaseResult =
   | { status: "completed" }
@@ -12,6 +13,7 @@ export type WorkerPhaseResult =
 export async function runWorkerPhases(
   isRunRequested: () => Promise<boolean>
 ): Promise<WorkerPhaseResult> {
+  void triggerAutomaticDatabaseBackup();
   try {
     await runRetentionCleanup();
   } catch (error) {

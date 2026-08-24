@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  bigint,
   index,
   integer,
   pgTable,
@@ -36,7 +37,7 @@ export const users = pgTable(
     jobTitle: varchar("job_title", { length: 120 }),
     phone: varchar("phone", { length: 40 }),
     passwordHash: text("password_hash").notNull(),
-    role: varchar("role", { length: 16 }).default("member").notNull(),
+    role: varchar("role", { length: 16 }).default("operator").notNull(),
     sessionVersion: integer("session_version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -159,8 +160,12 @@ export const userSettings = pgTable(
     publicStatusCompanyId: text("public_status_company_id"),
     dataRetentionDays: integer("data_retention_days").default(90).notNull(),
     deliveryRetentionDays: integer("delivery_retention_days").default(90).notNull(),
-    autoBackupEnabled: boolean("auto_backup_enabled").default(true).notNull(),
+    autoBackupEnabled: boolean("auto_backup_enabled").default(false).notNull(),
     backupWindow: varchar("backup_window", { length: 32 }).default("03:00").notNull(),
+    backupRetentionCount: integer("backup_retention_count").default(7).notNull(),
+    lastBackupStatus: varchar("last_backup_status", { length: 16 }),
+    lastBackupError: text("last_backup_error"),
+    lastAutomaticBackupAt: timestamp("last_automatic_backup_at", { withTimezone: true }),
     eventRetentionDays: integer("event_retention_days").default(30).notNull(),
     lastBackupAt: timestamp("last_backup_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -170,6 +175,30 @@ export const userSettings = pgTable(
     uniqueIndex("user_settings_user_id_unique").on(table.userId),
     uniqueIndex("user_settings_public_status_slug_unique").on(table.publicStatusSlug),
     index("user_settings_public_status_company_id_idx").on(table.publicStatusCompanyId),
+  ]
+);
+
+export const automaticBackupRuns = pgTable(
+  "automatic_backup_runs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    ownerUserId: text("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+    scheduledDate: varchar("scheduled_date", { length: 10 }).notNull(),
+    status: varchar("status", { length: 16 }).default("running").notNull(),
+    attempts: integer("attempts").default(1).notNull(),
+    fileName: varchar("file_name", { length: 255 }),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    checksumSha256: varchar("checksum_sha256", { length: 64 }),
+    errorMessage: text("error_message"),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("automatic_backup_runs_scheduled_date_unique").on(table.scheduledDate),
+    index("automatic_backup_runs_status_updated_idx").on(table.status, table.updatedAt),
   ]
 );
 

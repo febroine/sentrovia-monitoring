@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
     email: "aykut@example.com",
     department: "SRE",
     username: "aykut.bayram",
-    role: "member",
+    role: "operator",
     sessionVersion: 1,
     createdAt: new Date("2026-05-18T07:00:00.000Z"),
   },
@@ -45,7 +45,7 @@ import { createInitialAdmin, createMember, isCurrentSessionVersion } from "@/lib
 describe("auth service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createdUser.role = "member";
+    mocks.createdUser.role = "operator";
     mocks.hash.mockResolvedValue("hashed-password");
     mocks.select.mockImplementation((projection) => ({
       from: vi.fn(() => {
@@ -95,13 +95,13 @@ describe("auth service", () => {
         email: "aykut@example.com",
         department: "SRE",
         passwordHash: "hashed-password",
-        role: "member",
+        role: "operator",
       })
     );
     expect(mocks.insertValues).toHaveBeenCalledWith({ userId: "user-1" });
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
     expect(result.user.department).toBe("SRE");
-    expect(result.user.role).toBe("member");
+    expect(result.user.role).toBe("operator");
   });
 
   it("rejects a legacy email that differs only by letter case", async () => {

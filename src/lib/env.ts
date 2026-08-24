@@ -130,6 +130,11 @@ export function getAppEncryptionSecret() {
   );
 }
 
+export function getMetricsAuthToken() {
+  const token = process.env.METRICS_AUTH_TOKEN?.trim() ?? "";
+  return token.length >= 32 ? token : null;
+}
+
 export const env = {
   appUrl: readString(process.env.APP_URL, "http://localhost:3000"),
   isProduction: process.env.NODE_ENV === "production",
@@ -159,4 +164,7 @@ export const env = {
     MIN_WORKER_CONNECTIVITY_TIMEOUT_MS,
     MAX_WORKER_CONNECTIVITY_TIMEOUT_MS
   ),
+  automaticBackupDirectory: readString(process.env.AUTOMATIC_BACKUP_DIRECTORY, "backups"),
+  pgDumpPath: readString(process.env.PG_DUMP_PATH, "pg_dump"),
+  pgRestorePath: readString(process.env.PG_RESTORE_PATH, "pg_restore"),
 };

@@ -99,6 +99,7 @@ describe("members route", () => {
       email: "member@example.com",
       department: null,
       role: "admin",
+      sessionVersion: 1,
       username: "member.two",
       organization: null,
       jobTitle: null,
@@ -139,7 +140,8 @@ describe("members route", () => {
       lastName: "User",
       email: "new@example.com",
       department: "Ops",
-      role: "member",
+      role: "operator",
+      sessionVersion: 8,
       username: "admin.user",
       organization: null,
       jobTitle: null,
@@ -149,7 +151,7 @@ describe("members route", () => {
     const response = await PATCH(
       new Request("https://example.com/api/members/admin-1", {
         method: "PATCH",
-        body: JSON.stringify({ email: "New@Example.COM", username: "Admin.User", role: "member" }),
+        body: JSON.stringify({ email: "New@Example.COM", username: "Admin.User", role: "operator" }),
         headers: { "content-type": "application/json" },
       }) as never,
       { params: Promise.resolve({ id: "admin-1" }) }
@@ -163,9 +165,9 @@ describe("members route", () => {
         lastName: "User",
         email: "new@example.com",
         department: "Ops",
-        role: "member",
+        role: "operator",
       },
-      7
+      8
     );
     expect(applySessionCookie).toHaveBeenCalledWith(response, "next-session-token");
   });
@@ -178,7 +180,7 @@ describe("members route", () => {
       lastName: "One",
       email: "member@example.com",
       department: null,
-      role: "member",
+      role: "operator",
       sessionVersion: 1,
     });
 

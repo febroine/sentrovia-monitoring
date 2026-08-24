@@ -21,6 +21,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { MemberRecord } from "@/lib/members/types";
+import {
+  canAssignRole,
+  canManageMemberRole,
+  hasPermission,
+  ROLE_LABELS,
+  USER_ROLES,
+} from "@/lib/auth/permissions";
 
 type MemberRole = MemberRecord["role"];
 type MemberRoleFilter = "all" | MemberRole;
@@ -33,9 +40,10 @@ type CreateMemberForm = {
   department: string;
   password: string;
   confirmPassword: string;
+  role: MemberRole;
 };
 
-const EMPTY_EDIT_FORM: EditMemberForm = { username: "", email: "", role: "member" };
+const EMPTY_EDIT_FORM: EditMemberForm = { username: "", email: "", role: "operator" };
 const EMPTY_CREATE_FORM: CreateMemberForm = {
   firstName: "",
   lastName: "",
@@ -44,13 +52,14 @@ const EMPTY_CREATE_FORM: CreateMemberForm = {
   department: "",
   password: "",
   confirmPassword: "",
+  role: "operator",
 };
 
 export default function MembersPageClient() {
   const router = useRouter();
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
-  const [currentUserRole, setCurrentUserRole] = useState<MemberRole>("member");
+  const [currentUserRole, setCurrentUserRole] = useState<MemberRole>("operator");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +72,7 @@ export default function MembersPageClient() {
   const [createForm, setCreateForm] = useState<CreateMemberForm>(EMPTY_CREATE_FORM);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const isAdmin = currentUserRole === "admin";
+  const canManageMembers = hasPermission(currentUserRole, "members.manage");
 
   useEffect(() => {
     void loadMembers();
@@ -111,7 +120,7 @@ export default function MembersPageClient() {
       }
 
       setCurrentUserId(data.currentUserId ?? "");
-      setCurrentUserRole(data.currentUserRole ?? "member");
+      setCurrentUserRole(data.currentUserRole ?? "operator");
       setMembers(data.members ?? []);
       setSelectedIds(new Set());
       setError(null);
@@ -212,7 +221,8 @@ export default function MembersPageClient() {
   }
 
   function canSelectMember(member: MemberRecord) {
-    return isAdmin || member.id === currentUserId;
+    return member.id === currentUserId
+      || (canManageMembers && canManageMemberRole(currentUserRole, member.role));
   }
 
   function toggleSelect(member: MemberRecord) {
@@ -244,7 +254,7 @@ export default function MembersPageClient() {
   }
 
   function openEdit(member: MemberRecord) {
-    if (!isAdmin && member.id !== currentUserId) {
+    if (!canSelectMember(member)) {
       setError("You can only edit your own username and email address.");
       return;
     }
@@ -259,9 +269,12 @@ export default function MembersPageClient() {
 
   function openDeleteConfirmation(memberIds: string[]) {
     const uniqueIds = Array.from(new Set(memberIds.filter(Boolean)));
-    const allowedIds = isAdmin ? uniqueIds : uniqueIds.filter((id) => id === currentUserId);
+    const allowedIds = uniqueIds.filter((id) => {
+      const member = members.find((item) => item.id === id);
+      return member ? canSelectMember(member) : false;
+    });
     if (allowedIds.length === 0) {
-      setError(isAdmin ? "Select at least one member." : "You can only delete your own account.");
+      setError(canManageMembers ? "You cannot manage the selected role." : "You can only delete your own account.");
       return;
     }
 
@@ -286,7 +299,7 @@ export default function MembersPageClient() {
             <span className="text-xs tabular-nums text-muted-foreground">{members.length} total</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            {isAdmin
+            {canManageMembers
               ? "Manage workspace access, add members, and remove accounts."
               : "Review and maintain your own account details."}
           </p>
@@ -300,11 +313,13 @@ export default function MembersPageClient() {
             <div className="flex w-fit items-center gap-1 rounded-md border border-border/70 bg-muted/20 p-1" aria-label="Filter members by role">
               <RoleFilterButton active={roleFilter === "all"} onClick={() => setRoleFilter("all")}>All</RoleFilterButton>
               <RoleFilterButton active={roleFilter === "admin"} onClick={() => setRoleFilter("admin")}>Admins</RoleFilterButton>
-              <RoleFilterButton active={roleFilter === "member"} onClick={() => setRoleFilter("member")}>Members</RoleFilterButton>
+              <RoleFilterButton active={roleFilter === "manager"} onClick={() => setRoleFilter("manager")}>Managers</RoleFilterButton>
+              <RoleFilterButton active={roleFilter === "operator"} onClick={() => setRoleFilter("operator")}>Operators</RoleFilterButton>
+              <RoleFilterButton active={roleFilter === "viewer"} onClick={() => setRoleFilter("viewer")}>Viewers</RoleFilterButton>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isAdmin ? (
+            {canManageMembers ? (
               <Button onClick={() => setCreateOpen(true)}>
                 <Plus data-icon="inline-start" />
                 Add member
@@ -330,7 +345,7 @@ export default function MembersPageClient() {
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
             <p className="text-xs text-muted-foreground">
-              {isAdmin ? "Admins can edit or remove selected accounts." : "Edit and deletion actions are limited to your own account."}
+              {canManageMembers ? "Actions follow your role-management permissions." : "Edit and deletion actions are limited to your own account."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -355,7 +370,7 @@ export default function MembersPageClient() {
             <div>
               <CardTitle className="text-base">Workspace users</CardTitle>
               <CardDescription className="mt-1">
-                {isAdmin ? "All members are visible here. New accounts are created by admins." : "Only your own profile is visible here."}
+                {canManageMembers ? "Visible accounts and role changes follow your access level." : "Only your own profile is visible here."}
               </CardDescription>
             </div>
             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{filtered.length} shown</span>
@@ -444,10 +459,10 @@ export default function MembersPageClient() {
                   </TableCell>
                   <TableCell className="align-top pr-4 pt-3.5 text-right md:pr-6">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" aria-label={`Edit ${member.firstName} ${member.lastName}`} title="Edit member" onClick={() => openEdit(member)} disabled={!isAdmin && member.id !== currentUserId}>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Edit ${member.firstName} ${member.lastName}`} title="Edit member" onClick={() => openEdit(member)} disabled={!canSelectMember(member)}>
                         <Pencil className="size-4" />
                       </Button>
-                      <Button variant="ghost" size="icon-sm" aria-label={`Delete ${member.firstName} ${member.lastName}`} title="Delete member" onClick={() => openDeleteConfirmation([member.id])} disabled={saving || (!isAdmin && member.id !== currentUserId)}>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Delete ${member.firstName} ${member.lastName}`} title="Delete member" onClick={() => openDeleteConfirmation([member.id])} disabled={saving || !canSelectMember(member)}>
                         <Trash2 className="size-4 text-destructive" />
                       </Button>
                     </div>
@@ -465,6 +480,7 @@ export default function MembersPageClient() {
         saving={saving}
         onOpenChange={setCreateOpen}
         onChange={setCreateForm}
+        actorRole={currentUserRole}
         onSubmit={() => void createMember()}
       />
 
@@ -472,7 +488,7 @@ export default function MembersPageClient() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit member</DialogTitle>
-            <DialogDescription>Update account details{isAdmin ? " and workspace access" : ""}.</DialogDescription>
+            <DialogDescription>Update account details{canManageMembers ? " and workspace access" : ""}.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <Field label="Username">
@@ -481,23 +497,32 @@ export default function MembersPageClient() {
             <Field label="Email">
               <Input type="email" value={editForm.email} onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))} />
             </Field>
-            {isAdmin ? (
+            {canManageMembers ? (
               <Field label="Access">
                 <Select
                   value={editForm.role}
                   onValueChange={(value) => {
-                    if (value === "admin" || value === "member") {
-                      setEditForm((current) => ({ ...current, role: value }));
+                    if (USER_ROLES.includes(value as MemberRole) && canAssignRole(currentUserRole, value as MemberRole)) {
+                      setEditForm((current) => ({ ...current, role: value as MemberRole }));
                     }
                   }}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    {USER_ROLES.filter(
+                      (role) => role === editForm.role || canAssignRole(currentUserRole, role)
+                    ).map((role) => (
+                      <SelectItem
+                        key={role}
+                        value={role}
+                        disabled={role === editForm.role && !canAssignRole(currentUserRole, role)}
+                      >
+                        {ROLE_LABELS[role]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">Admins can manage members and workspace settings. At least one admin must remain.</p>
+                <p className="text-xs text-muted-foreground">Managers can manage operators and viewers. Infrastructure and backup access remain admin-only.</p>
               </Field>
             ) : null}
           </div>
@@ -549,6 +574,7 @@ function CreateMemberDialog({
   saving,
   onOpenChange,
   onChange,
+  actorRole,
   onSubmit,
 }: {
   open: boolean;
@@ -556,6 +582,7 @@ function CreateMemberDialog({
   saving: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (form: CreateMemberForm) => void;
+  actorRole: MemberRole;
   onSubmit: () => void;
 }) {
   function updateField(field: keyof CreateMemberForm, value: string) {
@@ -592,6 +619,16 @@ function CreateMemberDialog({
           <Field label="Department">
             <Input value={form.department} onChange={(event) => updateField("department", event.target.value)} />
           </Field>
+          <Field label="Access">
+            <Select value={form.role} onValueChange={(value) => updateField("role", String(value))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {USER_ROLES.filter((role) => canAssignRole(actorRole, role)).map((role) => (
+                  <SelectItem key={role} value={role}>{ROLE_LABELS[role]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
           <Field label="Password">
             <Input type="password" minLength={12} maxLength={128} value={form.password} onChange={(event) => updateField("password", event.target.value)} />
           </Field>
@@ -618,13 +655,18 @@ function StatItem({ label, value }: { label: string; value: string }) {
 }
 
 function RoleBadge({ role }: { role: MemberRole }) {
+  const roleStyles: Record<MemberRole, string> = {
+    admin: "border-violet-500/30 text-violet-700 dark:text-violet-300",
+    manager: "border-sky-500/30 text-sky-700 dark:text-sky-300",
+    operator: "border-emerald-500/30 text-emerald-700 dark:text-emerald-300",
+    viewer: "border-border/70 text-muted-foreground",
+  };
   return (
     <Badge
       variant="outline"
-      className={role === "admin" ? "border-violet-500/30 bg-violet-500/5 text-violet-700 dark:text-violet-300" : "border-border/70 text-muted-foreground"}
+      className={roleStyles[role]}
     >
-      <span className={`size-1.5 rounded-full ${role === "admin" ? "bg-violet-500" : "bg-slate-400"}`} />
-      {role === "admin" ? "Admin" : "Member"}
+      {ROLE_LABELS[role]}
     </Badge>
   );
 }

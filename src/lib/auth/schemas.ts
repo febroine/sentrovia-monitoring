@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { USER_ROLES } from "@/lib/auth/permissions";
 
 const passwordSchema = z
   .string()
@@ -58,6 +59,7 @@ export const memberCreateSchema = z
   .object({
     ...accountSetupShape,
     username: optionalUsernameSchema,
+    role: z.enum(USER_ROLES).default("operator"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],
