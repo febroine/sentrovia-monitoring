@@ -25,6 +25,10 @@ vi.mock("@/lib/auth/service", () => ({
   createMember: vi.fn(),
 }));
 
+vi.mock("@/lib/audit/service", () => ({
+  recordAuditEventSafely: vi.fn(() => Promise.resolve()),
+}));
+
 describe("members route", () => {
   it("lets admins request deletion of other members", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({

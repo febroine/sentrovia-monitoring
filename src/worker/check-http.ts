@@ -4,7 +4,6 @@ import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import type { IncomingMessage } from "node:http";
 import type { TLSSocket } from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
-import { env } from "@/lib/env";
 import {
   hasExpectedStatusCodeOverride,
   isCustomExpectedStatusCode,
@@ -28,7 +27,7 @@ const ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES = 100_000;
 
 export async function checkHttpMonitor(
   monitor: Monitor,
-  allowPrivateTargets = env.monitorAllowPrivateTargets
+  allowPrivateTargets = false
 ): Promise<CheckResult> {
   const checkedAt = new Date();
 
@@ -157,7 +156,7 @@ async function requestWithRedirects(
   redirectCount: number,
   deadlineAt = Date.now() + monitor.timeout,
   method: Monitor["method"] = monitor.method,
-  allowPrivateTargets = env.monitorAllowPrivateTargets
+  allowPrivateTargets = false
 ): Promise<HttpResponseSnapshot> {
   const parsed = new URL(url);
   const resolutionTimeoutMs = deadlineAt - Date.now();

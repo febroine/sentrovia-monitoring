@@ -61,10 +61,6 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       },
     });
 
-    if (id !== session.id) {
-      return response;
-    }
-
     await recordAuditEventSafely({
       userId: session.id,
       actorUserId: session.id,
@@ -75,6 +71,10 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       action: "member.updated",
       summary: `Member profile was updated with role ${member.role}.`,
     });
+
+    if (id !== session.id) {
+      return response;
+    }
 
     const updatedRole: UserRole = member.role === "admin" ? "admin" : "member";
 

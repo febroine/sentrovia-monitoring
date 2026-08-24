@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const body = await readJsonBody(request, AUTH_JSON_BODY_LIMIT_BYTES);
     const loginBody = normalizeLoginBody(body);
     submittedIdentifier = readSubmittedIdentifier(loginBody);
-    assertAuthRateLimit(request, "login", submittedIdentifier);
+    await assertAuthRateLimit(request, "login", submittedIdentifier);
     const parsed = loginSchema.safeParse(loginBody);
 
     if (!parsed.success) {
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await loginUser(parsed.data);
-    clearAuthFailures(request, "login", parsed.data.identifier);
+    await clearAuthFailures(request, "login", parsed.data.identifier);
     await recordAuditEventSafely({
       userId: result.user.id,
       actorUserId: result.user.id,
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const authError =
       error instanceof AuthError ? error : toAuthError(error, "Unable to sign in right now.");
     if (shouldRecordFailure(authError.status)) {
-      recordAuthFailure(request, "login", submittedIdentifier);
+      await recordAuthFailure(request, "login", submittedIdentifier);
     }
 
     return applyAuthResponseHeaders(NextResponse.json(

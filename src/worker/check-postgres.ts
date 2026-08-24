@@ -1,6 +1,5 @@
 import postgres from "postgres";
 import type { Monitor } from "@/lib/db/schema";
-import { env } from "@/lib/env";
 import { parsePostgresMonitorTarget } from "@/lib/monitors/targets";
 import { decryptValue } from "@/lib/security/encryption";
 import {
@@ -14,7 +13,7 @@ const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the curren
 
 export async function checkPostgresMonitor(
   monitor: Monitor,
-  allowPrivateTargets = env.monitorAllowPrivateTargets
+  allowPrivateTargets = false
 ): Promise<CheckResult> {
   const checkedAt = new Date();
   let target: ReturnType<typeof parsePostgresMonitorTarget>;

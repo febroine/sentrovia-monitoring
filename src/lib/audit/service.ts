@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { auditEvents } from "@/lib/db/schema";
 
 export type AuditEventInput = {
-  userId: string;
+  userId: string | null;
   actorUserId: string | null;
   actorLabel: string;
   entityType: string;

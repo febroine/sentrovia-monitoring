@@ -183,7 +183,8 @@ describe("auth service", () => {
       status: 409,
     });
 
-    expect(mocks.transactionExecute).toHaveBeenCalledTimes(1);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.transactionExecute).not.toHaveBeenCalled();
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 });

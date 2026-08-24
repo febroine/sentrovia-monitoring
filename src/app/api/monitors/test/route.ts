@@ -52,7 +52,9 @@ export async function POST(request: NextRequest) {
       parsed.data,
       requestData.data.monitorId
     );
-    const result = await checkMonitor(monitor);
+    const result = await checkMonitor(monitor, {
+      allowPrivateTargets: monitor.allowPrivateTargets,
+    });
     const rca = analyzeRootCause(result);
 
     return NextResponse.json({

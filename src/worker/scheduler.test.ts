@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => ({
   ensureWorkerConnectivity: vi.fn(),
   getRecentMonitorEventMessage: vi.fn(),
   hasRecentFailedNotificationDelivery: vi.fn(),
+  canUserAccessPrivateTargets: vi.fn(),
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -61,6 +62,10 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/lib/outages/service", () => ({
   openOrUpdateOutage: mocks.openOrUpdateOutage,
   resolveOutage: mocks.resolveOutage,
+}));
+
+vi.mock("@/lib/security/network-policy", () => ({
+  canUserAccessPrivateTargets: mocks.canUserAccessPrivateTargets,
 }));
 
 vi.mock("@/lib/diagnostics/service", () => ({
@@ -174,6 +179,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.sendMonitorNotifications.mockResolvedValue(false);
     mocks.getRecentMonitorEventMessage.mockResolvedValue(null);
     mocks.hasRecentFailedNotificationDelivery.mockResolvedValue(false);
+    mocks.canUserAccessPrivateTargets.mockResolvedValue(true);
     mocks.ensureWorkerConnectivity.mockResolvedValue({
       available: true,
       status: "online",
@@ -1104,7 +1110,10 @@ describe("monitoring scheduler verification flow", () => {
 
     await runMonitoringCycle();
 
-    expect(mocks.checkMonitor).toHaveBeenCalledWith(expect.objectContaining({ timeout: 7500 }));
+    expect(mocks.checkMonitor).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout: 7500 }),
+      { allowPrivateTargets: false }
+    );
   });
 
   it("uses the capped escalation for the final configured verification attempt", async () => {
@@ -1122,8 +1131,16 @@ describe("monitoring scheduler verification flow", () => {
     await runMonitoringCycle();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
-    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(1, expect.objectContaining({ timeout: 10000 }));
-    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(2, expect.objectContaining({ timeout: 10000 }));
+    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ timeout: 10000 }),
+      { allowPrivateTargets: false }
+    );
+    expect(mocks.checkMonitor).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ timeout: 10000 }),
+      { allowPrivateTargets: false }
+    );
   });
 
   it("does not write events or notifications when a claimed monitor was paused mid-cycle", async () => {

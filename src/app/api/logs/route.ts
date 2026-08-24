@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { clearLogs, getLogFilterOptions, listLogs } from "@/lib/logs/service";
+import { assertSameOriginMutation } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -41,8 +42,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
+    assertSameOriginMutation(request);
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

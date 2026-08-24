@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { sendReportScheduleNow } from "@/lib/reports/service";
+import { assertSameOriginMutation } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
 type Params = Promise<{ id: string }>;
 
-export async function POST(_request: NextRequest, context: { params: Params }) {
+export async function POST(request: NextRequest, context: { params: Params }) {
   try {
+    assertSameOriginMutation(request);
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

@@ -88,12 +88,12 @@ export async function DELETE(request: NextRequest) {
     const deleted = await deleteMembers(session.id, session.role, parsed.data.ids);
     const deletedIds = deleted.map((member) => member.id);
     await Promise.all(deleted.map((member) => recordAuditEventSafely({
-      userId: session.id,
-      actorUserId: session.id,
+      userId: member.id === session.id ? null : session.id,
+      actorUserId: member.id === session.id ? null : session.id,
       actorLabel: session.email,
       entityType: "member",
       entityId: member.id,
-      entityLabel: member.id,
+      entityLabel: member.id === session.id ? session.email : member.id,
       action: "member.deleted",
       summary: "Member account was deleted.",
     })));

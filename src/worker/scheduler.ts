@@ -19,6 +19,7 @@ import {
   updateWorkerState,
   type ClaimedMonitor,
 } from "@/lib/monitors/service";
+import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 import { calculateVerificationTimeout } from "@/lib/monitors/verification";
 import type { Monitor } from "@/lib/db/schema";
 import { recordWorkerCycleMetric } from "@/lib/worker/observability";
@@ -520,10 +521,11 @@ async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCy
   };
 }
 
-function checkClaimedMonitor(monitor: Monitor, allowPrivateTargets: boolean | undefined) {
-  return allowPrivateTargets === undefined
-    ? checkMonitor(monitor)
-    : checkMonitor(monitor, { allowPrivateTargets });
+async function checkClaimedMonitor(monitor: Monitor, allowPrivateTargets: boolean | undefined) {
+  const currentPrivateTargetAccess = allowPrivateTargets === true
+    ? await canUserAccessPrivateTargets(monitor.userId)
+    : false;
+  return checkMonitor(monitor, { allowPrivateTargets: currentPrivateTargetAccess });
 }
 
 async function recordConfigurationFailure(

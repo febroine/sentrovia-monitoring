@@ -132,7 +132,7 @@ export async function getDeliveryOverview(userId: string, requestedPage = 1): Pr
   return {
     webhook: endpoint
       ? {
-          url: endpoint.url,
+          url: decryptValueOrLegacyPlaintext(endpoint.url) ?? "",
           isActive: endpoint.isActive,
           secretConfigured: Boolean(decryptValue(endpoint.secretEncrypted)),
         }

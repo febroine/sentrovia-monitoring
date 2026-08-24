@@ -33,7 +33,10 @@ describe("monitor connection test route", () => {
       sessionVersion: 1,
     });
     vi.mocked(getSettings).mockResolvedValueOnce(null);
-    vi.mocked(buildMonitorForTest).mockResolvedValueOnce({ id: "test-monitor" } as never);
+    vi.mocked(buildMonitorForTest).mockResolvedValueOnce({
+      id: "test-monitor",
+      allowPrivateTargets: false,
+    } as never);
     vi.mocked(checkMonitor).mockResolvedValueOnce({
       ok: true,
       status: "up",
@@ -51,7 +54,10 @@ describe("monitor connection test route", () => {
     expect(response.status).toBe(200);
     expect(body.result).toMatchObject({ ok: true, statusCode: 200 });
     expect(buildMonitorForTest).toHaveBeenCalledOnce();
-    expect(checkMonitor).toHaveBeenCalledOnce();
+    expect(checkMonitor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "test-monitor" }),
+      { allowPrivateTargets: false }
+    );
   });
 });
 

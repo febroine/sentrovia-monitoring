@@ -1,6 +1,5 @@
 import net from "node:net";
 import type { Monitor } from "@/lib/db/schema";
-import { env } from "@/lib/env";
 import { parsePortMonitorTarget } from "@/lib/monitors/targets";
 import {
   createPinnedLookup,
@@ -14,7 +13,7 @@ const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the curren
 
 export async function checkPortMonitor(
   monitor: Monitor,
-  allowPrivateTargets = env.monitorAllowPrivateTargets
+  allowPrivateTargets = false
 ): Promise<CheckResult> {
   const checkedAt = new Date();
 
