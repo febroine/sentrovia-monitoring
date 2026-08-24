@@ -1,4 +1,5 @@
 import type { IntervalUnit } from "@/lib/monitors/types";
+import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
 
 function serializeMonitorDates<T extends Record<string, unknown>>(monitor: T) {
   return {
@@ -15,11 +16,23 @@ function serializeMonitorDates<T extends Record<string, unknown>>(monitor: T) {
 }
 
 export function serializeMonitorRecord<
-  T extends Record<string, unknown> & { databasePasswordEncrypted?: unknown }
+  T extends Record<string, unknown> & {
+    databasePasswordEncrypted?: unknown;
+    heartbeatToken?: unknown;
+    heartbeatTokenHash?: unknown;
+    telegramBotToken?: unknown;
+  }
 >(monitor: T) {
   const serialized = serializeMonitorDates(monitor);
   const safeMonitor = { ...serialized };
   delete safeMonitor.databasePasswordEncrypted;
+  delete safeMonitor.heartbeatTokenHash;
+  if (typeof safeMonitor.heartbeatToken === "string") {
+    safeMonitor.heartbeatToken = decryptValueOrLegacyPlaintext(safeMonitor.heartbeatToken);
+  }
+  if (typeof safeMonitor.telegramBotToken === "string") {
+    safeMonitor.telegramBotToken = decryptValueOrLegacyPlaintext(safeMonitor.telegramBotToken);
+  }
 
   return {
     ...safeMonitor,

@@ -8,17 +8,21 @@ import {
   monitorEvents,
   monitors,
   userSettings,
+  users,
   workerState,
   type Monitor,
 } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
 import { env } from "@/lib/env";
+import { MAX_MONITORS_PER_USER } from "@/lib/import-limits";
 import { resolveOutage } from "@/lib/outages/service";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import {
   buildCanonicalMonitorTarget,
+  buildHeartbeatMonitorTarget,
   buildMonitorIdentityKey,
   parseHeartbeatMonitorTarget,
   parsePingMonitorTarget,
@@ -27,7 +31,13 @@ import {
 } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
-import { encryptValue } from "@/lib/security/encryption";
+import {
+  decryptValueOrLegacyPlaintext,
+  encryptValue,
+  hashSecretValue,
+  isEncryptedValue,
+} from "@/lib/security/encryption";
+import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
@@ -40,6 +50,7 @@ const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 export const SOFT_DELETE_UNDO_MS = 60_000;
+export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };
 
 export async function listMonitors(userId: string, database: DatabaseExecutor = db) {
   return database
@@ -52,7 +63,9 @@ export async function listMonitors(userId: string, database: DatabaseExecutor = 
 export async function createMonitor(userId: string, input: MonitorInput) {
   return db.transaction(async (tx) => {
     await lockMonitorTargets(tx, userId);
-    const values = await buildMonitorValues(userId, input, null, tx);
+    await assertMonitorQuota(userId, 1, tx);
+    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
+    const values = await buildMonitorValues(userId, input, null, allowPrivateTargets, tx);
     await assertMonitorTargetAvailable(userId, values.monitorType, values.url, null, tx);
     const [monitor] = await tx
       .insert(monitors)
@@ -73,7 +86,8 @@ export async function buildMonitorForTest(
     throw new AuthError("Monitor not found.", 404);
   }
 
-  const values = await buildMonitorValues(userId, input, existingMonitor);
+  const allowPrivateTargets = await canUserAccessPrivateTargets(userId);
+  const values = await buildMonitorValues(userId, input, existingMonitor, allowPrivateTargets);
   const now = new Date();
 
   return {
@@ -118,7 +132,8 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
       return null;
     }
 
-    const values = await buildMonitorValues(userId, input, existingMonitor, tx);
+    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
+    const values = await buildMonitorValues(userId, input, existingMonitor, allowPrivateTargets, tx);
     await assertMonitorTargetAvailable(userId, values.monitorType, values.url, monitorId, tx);
     const now = new Date();
     const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
@@ -234,6 +249,7 @@ export async function updateMonitorFlags(
 
 export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {
   return db.transaction(async (tx) => {
+    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
     const existingMonitors = await tx
       .select()
       .from(monitors)
@@ -243,7 +259,13 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
 
     for (const existingMonitor of existingMonitors) {
       const mergedInput = buildBulkUpdatePayload(existingMonitor, input);
-      const values = await buildMonitorValues(userId, mergedInput, existingMonitor, tx);
+      const values = await buildMonitorValues(
+        userId,
+        mergedInput,
+        existingMonitor,
+        allowPrivateTargets,
+        tx
+      );
       const now = new Date();
       const [monitor] = await tx
         .update(monitors)
@@ -357,7 +379,17 @@ export async function deleteMonitors(userId: string, ids: string[]) {
 export async function restoreMonitors(userId: string, ids: string[], now = new Date()) {
   const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
   const nextCheckTimestamp = now.toISOString();
-  return db
+  const [restorable] = await db
+    .select({ total: count() })
+    .from(monitors)
+    .where(and(
+      eq(monitors.userId, userId),
+      inArray(monitors.id, ids),
+      isNotNull(monitors.deletedAt),
+      gte(monitors.deletedAt, undoCutoff)
+    ));
+  await assertMonitorQuota(userId, Number(restorable?.total ?? 0));
+  const claimed = await db
     .update(monitors)
     .set({
       ...buildRestoredMonitorState(),
@@ -376,6 +408,8 @@ export async function restoreMonitors(userId: string, ids: string[], now = new D
       )
     )
     .returning();
+
+  return claimed;
 }
 
 export function buildRestoredMonitorState() {
@@ -409,6 +443,7 @@ export async function createManyMonitors(userId: string, inputs: MonitorInput[],
 
 async function persistManyMonitors(userId: string, inputs: MonitorInput[], database: DatabaseExecutor) {
   const existing = await listReservedMonitorTargets(userId, database);
+  const allowPrivateTargets = await canUserAccessPrivateTargets(userId, database);
 
   const existingTargets = new Set(
     existing.map((item) =>
@@ -419,7 +454,10 @@ async function persistManyMonitors(userId: string, inputs: MonitorInput[], datab
     )
   );
   const filtered = filterDuplicateMonitorInputs(inputs, existingTargets);
-  const values = await Promise.all(filtered.map((input) => buildMonitorValues(userId, input, null, database)));
+  await assertMonitorQuota(userId, filtered.length, database);
+  const values = await Promise.all(filtered.map((input) =>
+    buildMonitorValues(userId, input, null, allowPrivateTargets, database)
+  ));
   const valuesWithInitialSchedule = spreadInitialMonitorChecks(values, new Date());
 
   if (valuesWithInitialSchedule.length === 0) {
@@ -427,6 +465,29 @@ async function persistManyMonitors(userId: string, inputs: MonitorInput[], datab
   }
 
   return database.insert(monitors).values(valuesWithInitialSchedule).returning();
+}
+
+async function assertMonitorQuota(
+  userId: string,
+  requested: number,
+  database: DatabaseExecutor = db
+) {
+  if (requested <= 0) {
+    return;
+  }
+
+  const [row] = await database
+    .select({ total: count() })
+    .from(monitors)
+    .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
+  const current = Number(row?.total ?? 0);
+
+  if (current + requested > MAX_MONITORS_PER_USER) {
+    throw new AuthError(
+      `A workspace can contain at most ${MAX_MONITORS_PER_USER.toLocaleString("en-US")} monitors.`,
+      409
+    );
+  }
 }
 
 export async function listReservedMonitorTargets(
@@ -538,25 +599,17 @@ async function resolveOutageOnPause(
   }, database);
 }
 
-export async function claimDueMonitors(now: Date) {
-  const dueRows = await db
-    .select()
+export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
+  const dueUsers = await db
+    .selectDistinct({ userId: monitors.userId })
     .from(monitors)
-    .where(
-      and(
-        eq(monitors.isActive, true),
-        isNull(monitors.deletedAt),
-        or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
-        or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
-      )
-    )
-    .orderBy(asc(monitors.nextCheckAt), asc(monitors.createdAt));
+    .where(buildDueMonitorPredicate(now));
 
-  if (dueRows.length === 0) {
+  if (dueUsers.length === 0) {
     return [];
   }
 
-  const userIds = Array.from(new Set(dueRows.map((monitor) => monitor.userId)));
+  const userIds = dueUsers.map((row) => row.userId);
   const settingsRows = await db
     .select({ userId: userSettings.userId, batchSize: userSettings.monitoringBatchSize })
     .from(userSettings)
@@ -565,7 +618,14 @@ export async function claimDueMonitors(now: Date) {
   const batchSizeMap = new Map(
     settingsRows.map((item) => [item.userId, item.batchSize ?? DEFAULT_SETTINGS.monitoring.batchSize])
   );
-  const selectedRows = selectDueMonitorsForCycle(dueRows, batchSizeMap);
+  const selectedRows = (await Promise.all(userIds.map((userId) =>
+    db
+      .select()
+      .from(monitors)
+      .where(and(eq(monitors.userId, userId), buildDueMonitorPredicate(now)))
+      .orderBy(desc(monitors.verificationMode), asc(monitors.nextCheckAt), asc(monitors.createdAt))
+      .limit(batchSizeMap.get(userId) ?? DEFAULT_SETTINGS.monitoring.batchSize)
+  ))).flat();
 
   if (selectedRows.length === 0) {
     return [];
@@ -573,7 +633,7 @@ export async function claimDueMonitors(now: Date) {
 
   const leaseToken = crypto.randomUUID();
   const leaseDurationMs = calculateMonitorLeaseMs(selectedRows);
-  return db
+  const claimed = await db
     .update(monitors)
     .set({
       leaseToken,
@@ -593,22 +653,42 @@ export async function claimDueMonitors(now: Date) {
       )
     )
     .returning();
+
+  const claimedUserIds = Array.from(new Set(claimed.map((monitor) => monitor.userId)));
+  const roleRows = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(inArray(users.id, claimedUserIds));
+  const privateTargetUsers = new Set(
+    roleRows.filter((user) => user.role === "admin").map((user) => user.id)
+  );
+
+  await encryptLegacyClaimedSecrets(claimed);
+
+  return claimed.map((monitor): ClaimedMonitor => ({
+    ...monitor,
+    heartbeatToken: decryptValueOrLegacyPlaintext(monitor.heartbeatToken),
+    telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
+    allowPrivateTargets: env.monitorAllowPrivateTargets && privateTargetUsers.has(monitor.userId),
+  }));
 }
 
 export async function countDueMonitors(now: Date) {
-  const rows = await db
-    .select({ id: monitors.id })
+  const [row] = await db
+    .select({ total: count() })
     .from(monitors)
-    .where(
-      and(
-        eq(monitors.isActive, true),
-        isNull(monitors.deletedAt),
-        or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
-        or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
-      )
-    );
+    .where(buildDueMonitorPredicate(now));
 
-  return rows.length;
+  return Number(row?.total ?? 0);
+}
+
+function buildDueMonitorPredicate(now: Date) {
+  return and(
+    eq(monitors.isActive, true),
+    isNull(monitors.deletedAt),
+    or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
+    or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
+  );
 }
 
 export function calculateMonitorLeaseMs(
@@ -747,19 +827,35 @@ export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
   }
 
   return db.transaction(async (tx) => {
-    const [existingMonitor] = await tx
+    const tokenHash = hashSecretValue("heartbeat-token", normalizedToken);
+    const [foundMonitor] = await tx
       .select()
       .from(monitors)
       .where(and(
         eq(monitors.monitorType, "heartbeat"),
-        eq(monitors.heartbeatToken, normalizedToken),
+        or(
+          eq(monitors.heartbeatTokenHash, tokenHash),
+          eq(monitors.heartbeatToken, normalizedToken)
+        ),
         isNull(monitors.deletedAt)
       ))
       .limit(1);
 
-    if (!existingMonitor) {
+    if (!foundMonitor) {
       return null;
     }
+
+    const [migratedMonitor] = await tx
+      .update(monitors)
+      .set({
+        heartbeatToken: encryptValue(normalizedToken),
+        heartbeatTokenHash: tokenHash,
+        url: buildHeartbeatMonitorTarget(tokenHash),
+        updatedAt: new Date(),
+      })
+      .where(eq(monitors.id, foundMonitor.id))
+      .returning();
+    const existingMonitor = migratedMonitor ?? foundMonitor;
 
     if (!existingMonitor.isActive) {
       return {
@@ -796,7 +892,10 @@ export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
         .from(monitors)
         .where(and(
           eq(monitors.id, existingMonitor.id),
-          eq(monitors.heartbeatToken, normalizedToken),
+          or(
+            eq(monitors.heartbeatTokenHash, tokenHash),
+            eq(monitors.heartbeatToken, normalizedToken)
+          ),
           isNull(monitors.deletedAt)
         ))
         .limit(1);
@@ -1216,6 +1315,7 @@ async function buildMonitorValues(
   userId: string,
   input: MonitorInput,
   existingMonitor: typeof monitors.$inferSelect | null,
+  allowPrivateTargets: boolean,
   database: DatabaseExecutor = db
 ) {
   const companyRecord =
@@ -1223,11 +1323,21 @@ async function buildMonitorValues(
   const monitorType = normalizeMonitorType(input.monitorType);
   const heartbeatToken =
     monitorType === "heartbeat" ? resolveHeartbeatToken(input, existingMonitor) : null;
-  const url = buildCanonicalMonitorTarget({
-    ...input,
-    heartbeatToken: heartbeatToken ?? input.heartbeatToken,
-  });
-  await assertMonitorNetworkTargetAllowed(monitorType, url);
+  const heartbeatTokenHash = heartbeatToken
+    ? hashSecretValue("heartbeat-token", heartbeatToken)
+    : null;
+  const url = monitorType === "heartbeat"
+    ? buildHeartbeatMonitorTarget(heartbeatTokenHash ?? "")
+    : buildCanonicalMonitorTarget({
+      ...input,
+      heartbeatToken: heartbeatToken ?? input.heartbeatToken,
+    });
+  try {
+    await assertMonitorNetworkTargetAllowed(monitorType, url, allowPrivateTargets);
+  } catch (error) {
+    await recordBlockedMonitorTarget(userId, input.name, monitorType);
+    throw error;
+  }
   const databasePasswordEncrypted =
     monitorType === "postgres"
       ? resolveDatabasePassword(input, existingMonitor)
@@ -1243,9 +1353,10 @@ async function buildMonitorValues(
     notificationPref: input.notificationPref,
     notificationLanguage: input.notificationLanguage,
     notifEmail: input.notifEmail,
-    telegramBotToken: input.telegramBotToken,
+    telegramBotToken: input.telegramBotToken ? encryptValue(input.telegramBotToken) : null,
     telegramChatId: input.telegramChatId,
-    heartbeatToken,
+    heartbeatToken: heartbeatToken ? encryptValue(heartbeatToken) : null,
+    heartbeatTokenHash,
     heartbeatLastReceivedAt:
       monitorType === "heartbeat" ? existingMonitor?.heartbeatLastReceivedAt ?? null : null,
     intervalValue: input.intervalValue,
@@ -1257,6 +1368,7 @@ async function buildMonitorValues(
     retries: input.retries,
     method: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? "GET" : input.method,
     databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
+    databaseTlsVerify: monitorType === "postgres" ? input.databaseTlsVerify : true,
     databasePasswordEncrypted,
     keywordQuery: monitorType === "keyword" ? input.keywordQuery.trim() : null,
     keywordInvert: monitorType === "keyword" ? input.keywordInvert : false,
@@ -1278,7 +1390,54 @@ async function buildMonitorValues(
     emailBody: input.emailBody,
     sendOutageScreenshot: shouldPersistOutageScreenshot(monitorType, input.notificationPref, input.sendOutageScreenshot),
     isActive: input.isActive,
+    publishOnStatusPage: input.publishOnStatusPage,
   };
+}
+
+async function recordBlockedMonitorTarget(
+  userId: string,
+  monitorName: string,
+  monitorType: MonitorInput["monitorType"]
+) {
+  await recordAuditEventSafely({
+    userId,
+    actorUserId: userId,
+    actorLabel: userId,
+    entityType: "monitor",
+    entityLabel: monitorName,
+    action: "monitor.target.blocked",
+    summary: `${monitorType} monitor target was rejected by the network safety policy.`,
+  });
+}
+
+async function encryptLegacyClaimedSecrets(claimed: Monitor[]) {
+  const legacyTelegramTokens = claimed.filter((monitor) =>
+    monitor.telegramBotToken && !isEncryptedValue(monitor.telegramBotToken)
+  );
+  const legacyHeartbeatTokens = claimed.filter((monitor) =>
+    monitor.monitorType === "heartbeat"
+    && monitor.heartbeatToken
+    && !isEncryptedValue(monitor.heartbeatToken)
+  );
+
+  await Promise.all(legacyTelegramTokens.map((monitor) =>
+    db
+      .update(monitors)
+      .set({ telegramBotToken: encryptValue(monitor.telegramBotToken as string) })
+      .where(eq(monitors.id, monitor.id))
+  ));
+  await Promise.all(legacyHeartbeatTokens.map((monitor) => {
+    const token = monitor.heartbeatToken as string;
+    const tokenHash = hashSecretValue("heartbeat-token", token);
+    return db
+      .update(monitors)
+      .set({
+        heartbeatToken: encryptValue(token),
+        heartbeatTokenHash: tokenHash,
+        url: buildHeartbeatMonitorTarget(tokenHash),
+      })
+      .where(eq(monitors.id, monitor.id));
+  }));
 }
 
 async function getMonitorById(userId: string, monitorId: string, database: DatabaseExecutor = db) {
@@ -1360,6 +1519,7 @@ function buildBulkUpdatePayload(
     databasePassword: "",
     databasePasswordConfigured: Boolean(existingMonitor.databasePasswordEncrypted),
     isActive: existingMonitor.isActive,
+    publishOnStatusPage: existingMonitor.publishOnStatusPage,
   };
 
   if (monitorType === "http" || monitorType === "keyword" || monitorType === "json") {
@@ -1399,6 +1559,7 @@ function buildBulkUpdatePayload(
     payload.databaseName = target.databaseName;
     payload.databaseUsername = target.databaseUsername;
     payload.databaseSsl = existingMonitor.databaseSsl;
+    payload.databaseTlsVerify = existingMonitor.databaseTlsVerify;
   }
 
   return payload;
@@ -1456,17 +1617,22 @@ function shouldPersistExpectedStatusCodes(
   return expectedStatusCodes || null;
 }
 
-export async function assertMonitorNetworkTargetAllowed(monitorType: MonitorInput["monitorType"], url: string) {
+export async function assertMonitorNetworkTargetAllowed(
+  monitorType: MonitorInput["monitorType"],
+  url: string,
+  allowPrivateTargets = false
+) {
   if (monitorType === "heartbeat") {
     return;
   }
 
   await assertMonitorNetworkTarget(resolveMonitorTargetHostname(monitorType, url), {
-    allowPrivateTargets: env.monitorAllowPrivateTargets,
+    allowPrivateTargets,
     allowUnresolved: true,
     message: MONITOR_PUBLIC_TARGET_ERROR,
   });
 }
+
 
 function resolveMonitorTargetHostname(monitorType: MonitorInput["monitorType"], url: string) {
   if (monitorType === "port") {
@@ -1508,7 +1674,7 @@ function resolveHeartbeatToken(
   existingMonitor: typeof monitors.$inferSelect | null
 ) {
   if (existingMonitor?.heartbeatToken) {
-    return existingMonitor.heartbeatToken;
+    return decryptValueOrLegacyPlaintext(existingMonitor.heartbeatToken) ?? "";
   }
 
   if (input.heartbeatToken.trim().length >= MIN_HEARTBEAT_TOKEN_LENGTH) {

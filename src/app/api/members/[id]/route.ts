@@ -5,6 +5,7 @@ import { applySessionCookie, getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { updateMember } from "@/lib/members/service";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,17 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     if (id !== session.id) {
       return response;
     }
+
+    await recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "member",
+      entityId: member.id,
+      entityLabel: member.email,
+      action: "member.updated",
+      summary: `Member profile was updated with role ${member.role}.`,
+    });
 
     const updatedRole: UserRole = member.role === "admin" ? "admin" : "member";
 

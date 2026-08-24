@@ -7,6 +7,7 @@ import { monitorBulkDeleteSchema, monitorInputSchema } from "@/lib/monitors/sche
 import { createMonitor, deleteMonitors, listMonitors, SOFT_DELETE_UNDO_MS } from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { getSettings } from "@/lib/settings/service";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,16 @@ export async function POST(request: NextRequest) {
     }
 
     const monitor = await createMonitor(session.id, parsed.data);
+    await recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "monitor",
+      entityId: monitor.id,
+      entityLabel: monitor.name,
+      action: "monitor.created",
+      summary: `${monitor.monitorType} monitor was created.`,
+    });
 
     return NextResponse.json({ monitor: serializeMonitor(monitor) }, { status: 201 });
   } catch (error) {
@@ -74,6 +85,16 @@ export async function DELETE(request: NextRequest) {
     }
 
     const deleted = await deleteMonitors(session.id, parsed.data.ids);
+    await Promise.all(deleted.map((monitor) => recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "monitor",
+      entityId: monitor.id,
+      entityLabel: monitor.id,
+      action: "monitor.deleted",
+      summary: "Monitor was moved to recently deleted items.",
+    })));
     const deletedAt = deleted[0]?.deletedAt;
     return NextResponse.json({
       ids: deleted.map((item) => item.id),

@@ -4,9 +4,11 @@ import {
   assertMonitorNetworkTarget,
   assertMonitorNetworkTargetWithTimeout,
   assertPublicNetworkTarget,
+  createPinnedLookup,
   isNonPublicIpAddress,
   isMonitorNetworkHostnameLiteralAllowed,
   isPublicNetworkHostnameLiteral,
+  resolvePublicNetworkTarget,
 } from "@/lib/security/public-network-target";
 
 vi.mock("node:dns/promises", () => ({ lookup: vi.fn() }));
@@ -26,6 +28,8 @@ describe("public network target safety", () => {
     "0.0.0.0",
     "::1",
     "fc00::1",
+    "fec0::1",
+    "ff02::1",
     "::ffff:127.0.0.1",
   ])("classifies %s as non-public", (address) => {
     expect(isNonPublicIpAddress(address)).toBe(true);
@@ -107,5 +111,29 @@ describe("public network target safety", () => {
 
     await rejection;
     vi.useRealTimers();
+  });
+
+  it("pins the validated DNS answer for the eventual socket connection", async () => {
+    vi.mocked(lookup).mockClear();
+    vi.mocked(lookup).mockResolvedValueOnce([
+      { address: "8.8.8.8", family: 4 },
+    ] as never);
+    const target = await resolvePublicNetworkTarget("dns.example");
+    vi.mocked(lookup).mockResolvedValueOnce([
+      { address: "127.0.0.1", family: 4 },
+    ] as never);
+
+    const address = await new Promise<string>((resolve, reject) => {
+      createPinnedLookup(target)("dns.example", { family: 4 }, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(result as string);
+      });
+    });
+
+    expect(address).toBe("8.8.8.8");
+    expect(lookup).toHaveBeenCalledTimes(1);
   });
 });

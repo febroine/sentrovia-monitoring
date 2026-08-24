@@ -107,6 +107,7 @@ const monitorInputObjectSchema = z
     databasePassword: optionalRequiredString(500),
     databasePasswordConfigured: z.boolean().default(false),
     databaseSsl: z.boolean().default(true),
+    databaseTlsVerify: z.boolean().default(true),
     keywordQuery: optionalRequiredString(500),
     keywordInvert: z.boolean().default(false),
     jsonPath: optionalRequiredString(255),
@@ -157,6 +158,7 @@ const monitorInputObjectSchema = z
     emailBody: optionalString(4000),
     sendOutageScreenshot: z.boolean().default(true),
     isActive: z.boolean().default(true),
+    publishOnStatusPage: z.boolean().default(false),
   })
   .superRefine((value, context) => {
     if (value.monitorType === "http" || value.monitorType === "keyword" || value.monitorType === "json") {

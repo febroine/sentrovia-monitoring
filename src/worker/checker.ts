@@ -10,20 +10,24 @@ import type { CheckResult } from "@/worker/types";
 const VERIFICATION_INTERVAL_MS = 60_000;
 const HEARTBEAT_DEADLINE_OFFSET_MS = 1;
 
-export async function checkMonitor(monitor: Monitor): Promise<CheckResult> {
+export async function checkMonitor(
+  monitor: Monitor,
+  options: { allowPrivateTargets?: boolean } = {}
+): Promise<CheckResult> {
   const checkedAt = new Date();
+  const allowPrivateTargets = options.allowPrivateTargets;
 
   try {
     if (monitor.monitorType === "port") {
-      return await checkPortMonitor(monitor);
+      return await checkPortMonitor(monitor, allowPrivateTargets);
     }
 
     if (monitor.monitorType === "ping") {
-      return await checkPingMonitor(monitor);
+      return await checkPingMonitor(monitor, allowPrivateTargets);
     }
 
     if (monitor.monitorType === "postgres") {
-      return await checkPostgresMonitor(monitor);
+      return await checkPostgresMonitor(monitor, allowPrivateTargets);
     }
 
     if (monitor.monitorType === "heartbeat") {
@@ -31,7 +35,7 @@ export async function checkMonitor(monitor: Monitor): Promise<CheckResult> {
     }
 
     if (monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json") {
-      return await checkHttpMonitor(monitor);
+      return await checkHttpMonitor(monitor, allowPrivateTargets);
     }
 
     return buildConfigurationFailure(checkedAt, `Unsupported monitor type: ${monitor.monitorType}.`);

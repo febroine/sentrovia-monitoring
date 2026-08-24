@@ -3,16 +3,23 @@ import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePostgresMonitorTarget } from "@/lib/monitors/targets";
 import { decryptValue } from "@/lib/security/encryption";
-import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
+import {
+  resolveMonitorNetworkTargetWithTimeout,
+  selectResolvedAddress,
+} from "@/lib/security/public-network-target";
 import { classifyFailureMessage } from "@/worker/failure-reasons";
 import type { CheckFailureReason, CheckResult } from "@/worker/types";
 
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
-export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResult> {
+export async function checkPostgresMonitor(
+  monitor: Monitor,
+  allowPrivateTargets = env.monitorAllowPrivateTargets
+): Promise<CheckResult> {
   const checkedAt = new Date();
   let target: ReturnType<typeof parsePostgresMonitorTarget>;
   let password: string | null;
+  let resolvedHost: string;
 
   try {
     target = parsePostgresMonitorTarget(monitor.url);
@@ -30,10 +37,11 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
   }
 
   try {
-    await assertMonitorNetworkTargetWithTimeout(target.host, {
-      allowPrivateTargets: env.monitorAllowPrivateTargets,
+    const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(target.host, {
+      allowPrivateTargets,
       message: MONITOR_PUBLIC_TARGET_ERROR,
     }, monitor.timeout);
+    resolvedHost = selectResolvedAddress(resolvedTarget);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Database check failed.";
     return buildFailure(checkedAt, message, classifyFailureMessage(message, "database"));
@@ -48,12 +56,17 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
     );
   }
 
-  const connection = postgres(buildConnectionString(target, password), {
+  const connection = postgres(buildConnectionString(target, password, resolvedHost), {
     connect_timeout: Math.max(1, Math.ceil(remainingTimeoutMs / 1000)),
     idle_timeout: 0,
     max: 1,
     prepare: false,
-    ssl: monitor.databaseSsl ? "require" : false,
+    ssl: monitor.databaseSsl
+      ? {
+        rejectUnauthorized: monitor.databaseTlsVerify,
+        servername: target.host,
+      }
+      : false,
   });
   const timeoutGuard = createTimeoutGuard(
     remainingTimeoutMs,
@@ -75,12 +88,13 @@ export async function checkPostgresMonitor(monitor: Monitor): Promise<CheckResul
 
 function buildConnectionString(
   target: ReturnType<typeof parsePostgresMonitorTarget>,
-  password: string
+  password: string,
+  resolvedHost: string
 ) {
   const username = encodeURIComponent(target.databaseUsername);
   const secret = encodeURIComponent(password);
   const databaseName = encodeURIComponent(target.databaseName);
-  const host = target.host.includes(":") ? `[${target.host}]` : target.host;
+  const host = resolvedHost.includes(":") ? `[${resolvedHost}]` : resolvedHost;
 
   return `postgres://${username}:${secret}@${host}:${target.port}/${databaseName}`;
 }

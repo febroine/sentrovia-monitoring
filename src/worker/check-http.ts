@@ -10,7 +10,10 @@ import {
   isCustomExpectedStatusCode,
   isExpectedHttpStatusCode,
 } from "@/lib/monitors/status-codes";
-import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
+import {
+  createPinnedLookup,
+  resolveMonitorNetworkTargetWithTimeout,
+} from "@/lib/security/public-network-target";
 import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
@@ -23,11 +26,21 @@ interface HttpResponseSnapshot {
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 const ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES = 100_000;
 
-export async function checkHttpMonitor(monitor: Monitor): Promise<CheckResult> {
+export async function checkHttpMonitor(
+  monitor: Monitor,
+  allowPrivateTargets = env.monitorAllowPrivateTargets
+): Promise<CheckResult> {
   const checkedAt = new Date();
 
   try {
-    const response = await requestWithRedirects(monitor, buildRequestUrl(monitor.url, monitor.cacheBuster), 0);
+    const response = await requestWithRedirects(
+      monitor,
+      buildRequestUrl(monitor.url, monitor.cacheBuster),
+      0,
+      undefined,
+      undefined,
+      allowPrivateTargets
+    );
     const result = evaluateHttpResponse(monitor, response.statusCode, response.bodyText);
 
     return buildCheckResult(checkedAt, {
@@ -143,15 +156,16 @@ async function requestWithRedirects(
   url: string,
   redirectCount: number,
   deadlineAt = Date.now() + monitor.timeout,
-  method: Monitor["method"] = monitor.method
+  method: Monitor["method"] = monitor.method,
+  allowPrivateTargets = env.monitorAllowPrivateTargets
 ): Promise<HttpResponseSnapshot> {
   const parsed = new URL(url);
   const resolutionTimeoutMs = deadlineAt - Date.now();
   if (resolutionTimeoutMs <= 0) {
     throw buildRequestTimeoutError(monitor.timeout);
   }
-  await assertMonitorNetworkTargetWithTimeout(parsed.hostname, {
-    allowPrivateTargets: env.monitorAllowPrivateTargets,
+  const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(parsed.hostname, {
+    allowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
   }, resolutionTimeoutMs);
   const remainingTimeoutMs = deadlineAt - Date.now();
@@ -182,6 +196,7 @@ async function requestWithRedirects(
       {
         method,
         family: toNodeFamily(monitor.ipFamily),
+        lookup: createPinnedLookup(resolvedTarget),
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
       (response) => {
@@ -203,7 +218,8 @@ async function requestWithRedirects(
             nextUrl,
             redirectCount + 1,
             deadlineAt,
-            resolveRedirectMethod(statusCode, method)
+            resolveRedirectMethod(statusCode, method),
+            allowPrivateTargets
           ));
           return;
         }

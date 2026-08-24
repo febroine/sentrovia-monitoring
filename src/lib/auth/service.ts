@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { count, eq, or, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 import type { ChangePasswordInput, LoginInput, MemberCreateInput, OnboardingInput } from "@/lib/auth/schemas";
 import { createSessionToken, type SessionUser, type UserRole } from "@/lib/auth/token";
 import { db } from "@/lib/db";
@@ -192,6 +193,16 @@ export async function loginUser(input: LoginInput) {
   const isPasswordValid = await bcrypt.compare(input.password, user.passwordHash);
 
   if (!isPasswordValid) {
+    await recordAuditEventSafely({
+      userId: user.id,
+      actorUserId: null,
+      actorLabel: input.identifier,
+      entityType: "session",
+      entityId: user.id,
+      entityLabel: user.email,
+      action: "auth.login.failed",
+      summary: "A sign-in attempt failed because the password was incorrect.",
+    });
     throw new AuthError("Invalid email, username, or password.", 401);
   }
 

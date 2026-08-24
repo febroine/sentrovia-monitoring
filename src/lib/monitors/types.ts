@@ -41,6 +41,7 @@ export interface MonitorRecord {
   statusCode: number | null;
   uptime: string;
   isActive: boolean;
+  publishOnStatusPage: boolean;
   isFavorite: boolean;
   isCritical: boolean;
   lastCheckedAt: string | null;
@@ -73,6 +74,7 @@ export interface MonitorRecord {
   maxRedirects: number;
   ipFamily: IpFamily;
   databaseSsl: boolean;
+  databaseTlsVerify: boolean;
   databasePasswordConfigured: boolean;
   keywordQuery: string | null;
   keywordInvert: boolean;
@@ -250,6 +252,7 @@ export interface MonitorPayload {
   databasePassword: string;
   databasePasswordConfigured: boolean;
   databaseSsl: boolean;
+  databaseTlsVerify: boolean;
   keywordQuery: string;
   keywordInvert: boolean;
   jsonPath: string;
@@ -285,6 +288,7 @@ export interface MonitorPayload {
   emailBody: string;
   sendOutageScreenshot: boolean;
   isActive: boolean;
+  publishOnStatusPage: boolean;
 }
 
 export interface WorkerStatus {
@@ -328,6 +332,7 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   databasePassword: "",
   databasePasswordConfigured: false,
   databaseSsl: true,
+  databaseTlsVerify: true,
   keywordQuery: "",
   keywordInvert: false,
   jsonPath: "",
@@ -353,7 +358,7 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   maxRedirects: 5,
   ipFamily: "auto",
   checkSslExpiry: false,
-  ignoreSslErrors: true,
+  ignoreSslErrors: false,
   cacheBuster: false,
   saveErrorPages: false,
   saveSuccessPages: false,
@@ -363,4 +368,5 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   emailBody: "",
   sendOutageScreenshot: true,
   isActive: true,
+  publishOnStatusPage: false,
 };

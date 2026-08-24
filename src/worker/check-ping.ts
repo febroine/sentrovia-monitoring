@@ -3,27 +3,37 @@ import { promisify } from "node:util";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { parsePingMonitorTarget } from "@/lib/monitors/targets";
-import { assertMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
+import {
+  resolveMonitorNetworkTargetWithTimeout,
+  selectResolvedAddress,
+} from "@/lib/security/public-network-target";
 import { classifyFailureMessage, formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckResult } from "@/worker/types";
 
 const execFileAsync = promisify(execFile);
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 
-export async function checkPingMonitor(monitor: Monitor): Promise<CheckResult> {
+export async function checkPingMonitor(
+  monitor: Monitor,
+  allowPrivateTargets = env.monitorAllowPrivateTargets
+): Promise<CheckResult> {
   const checkedAt = new Date();
 
   try {
     const target = parsePingMonitorTarget(monitor.url);
-    await assertMonitorNetworkTargetWithTimeout(target.host, {
-      allowPrivateTargets: env.monitorAllowPrivateTargets,
+    const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(target.host, {
+      allowPrivateTargets,
       message: MONITOR_PUBLIC_TARGET_ERROR,
     }, monitor.timeout);
     const remainingTimeoutMs = monitor.timeout - (Date.now() - checkedAt.getTime());
     if (remainingTimeoutMs <= 0) {
       throw new Error(`Ping target did not respond within ${formatTimeoutDuration(monitor.timeout)}.`);
     }
-    const latencyMs = await measurePingLatency(target.host, remainingTimeoutMs);
+    const family = monitor.ipFamily === "ipv4" ? 4 : monitor.ipFamily === "ipv6" ? 6 : null;
+    const latencyMs = await measurePingLatency(
+      selectResolvedAddress(resolvedTarget, family),
+      remainingTimeoutMs
+    );
     return {
       ok: true,
       status: "up",

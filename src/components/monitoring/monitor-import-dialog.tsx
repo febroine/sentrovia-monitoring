@@ -21,6 +21,7 @@ const DEFAULT_MAPPING = [
   "databaseUsername=databaseUsername",
   "databasePassword=databasePassword",
   "databaseSsl=databaseSsl",
+  "databaseTlsVerify=databaseTlsVerify",
   "keywordQuery=keywordQuery",
   "keywordInvert=keywordInvert",
   "jsonPath=jsonPath",
@@ -266,6 +267,9 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     databasePassword: read("databasePassword"),
     databasePasswordConfigured: booleanValue("databasePasswordConfigured"),
     databaseSsl: read("databaseSsl") ? booleanValue("databaseSsl") : DEFAULT_MONITOR_FORM.databaseSsl,
+    databaseTlsVerify: read("databaseTlsVerify")
+      ? booleanValue("databaseTlsVerify")
+      : DEFAULT_MONITOR_FORM.databaseTlsVerify,
     keywordQuery: read("keywordQuery"),
     keywordInvert: booleanValue("keywordInvert"),
     jsonPath: read("jsonPath"),

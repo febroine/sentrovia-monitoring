@@ -55,7 +55,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Why are some network targets still blocked?",
         answer:
-          "Private network targets are allowed when MONITOR_ALLOW_PRIVATE_TARGETS is true, but localhost, loopback, link-local, and cloud metadata targets remain blocked to prevent access to sensitive services on the Sentrovia host. Use a network-reachable hostname or IP for the service instead.",
+          "Private network targets are available only to administrators when MONITOR_ALLOW_PRIVATE_TARGETS is true. Members remain limited to public endpoints, and localhost, loopback, link-local, multicast, and cloud metadata targets stay blocked. Sentrovia pins every check to the validated DNS answer before connecting.",
       },
       {
         question: "What is Verification Mode?",

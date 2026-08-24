@@ -3,7 +3,11 @@ import { db, sql, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, users } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
-import { decryptValue, encryptValue } from "@/lib/security/encryption";
+import {
+  decryptValue,
+  decryptValueOrLegacyPlaintext,
+  encryptValue,
+} from "@/lib/security/encryption";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-safety";
 import {
   normalizeDashboardPreferences,
@@ -278,7 +282,9 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         settings?.smtpInsecureSkipVerify,
         DEFAULT_SETTINGS.notifications.smtpInsecureSkipVerify
       ),
-      discordWebhookUrl: stringOrEmpty(settings?.discordWebhookUrl),
+      discordWebhookUrl: decryptValueOrLegacyPlaintext(
+        stringOrEmpty(settings?.discordWebhookUrl)
+      ) ?? "",
       discordEnabled: booleanOrDefault(settings?.discordEnabled, DEFAULT_SETTINGS.notifications.discordEnabled),
       notificationEmailBrandName: stringOrEmpty(settings?.notificationEmailBrandName)
         || DEFAULT_SETTINGS.notifications.notificationEmailBrandName,
@@ -627,7 +633,9 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     smtpSecure: input.notifications.smtpSecure,
     smtpRequireTls: input.notifications.smtpRequireTls,
     smtpInsecureSkipVerify: input.notifications.smtpInsecureSkipVerify,
-    discordWebhookUrl: emptyToNull(input.notifications.discordWebhookUrl),
+    discordWebhookUrl: input.notifications.discordWebhookUrl.trim()
+      ? encryptValue(input.notifications.discordWebhookUrl.trim())
+      : null,
     discordEnabled: input.notifications.discordEnabled,
     notificationEmailBrandName: emptyToNull(input.notifications.notificationEmailBrandName),
     notificationEmailFooterText: emptyToNull(input.notifications.notificationEmailFooterText),

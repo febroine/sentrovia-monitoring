@@ -42,6 +42,30 @@ export const users = pgTable(
   ]
 );
 
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorLabel: varchar("actor_label", { length: 255 }).notNull(),
+    entityType: varchar("entity_type", { length: 32 }).notNull(),
+    entityId: text("entity_id"),
+    entityLabel: varchar("entity_label", { length: 255 }).notNull(),
+    action: varchar("action", { length: 64 }).notNull(),
+    summary: text("summary").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("audit_events_user_created_idx").on(table.userId, table.createdAt),
+    index("audit_events_actor_created_idx").on(table.actorUserId, table.createdAt),
+  ]
+);
+
 export const userSettings = pgTable(
   "user_settings",
   {
@@ -66,11 +90,11 @@ export const userSettings = pgTable(
     smtpFromEmail: varchar("smtp_from_email", { length: 255 }),
     smtpDefaultToEmail: varchar("smtp_default_to_email", { length: 255 }),
     smtpSecure: boolean("smtp_secure").default(false).notNull(),
-    smtpRequireTls: boolean("smtp_require_tls").default(false).notNull(),
-    smtpInsecureSkipVerify: boolean("smtp_insecure_skip_verify").default(true).notNull(),
+    smtpRequireTls: boolean("smtp_require_tls").default(true).notNull(),
+    smtpInsecureSkipVerify: boolean("smtp_insecure_skip_verify").default(false).notNull(),
     slackWebhookUrl: varchar("slack_webhook_url", { length: 500 }),
     slackEnabled: boolean("slack_enabled").default(false).notNull(),
-    discordWebhookUrl: varchar("discord_webhook_url", { length: 500 }),
+    discordWebhookUrl: text("discord_webhook_url"),
     discordEnabled: boolean("discord_enabled").default(false).notNull(),
     notificationEmailBrandName: varchar("notification_email_brand_name", { length: 160 }),
     notificationEmailFooterText: varchar("notification_email_footer_text", { length: 240 }),
@@ -95,7 +119,7 @@ export const userSettings = pgTable(
     monitoringResponseMaxLength: integer("monitoring_response_max_length").default(1024).notNull(),
     monitoringMaxRedirects: integer("monitoring_max_redirects").default(5).notNull(),
     monitoringCheckSslExpiry: boolean("monitoring_check_ssl_expiry").default(false).notNull(),
-    monitoringIgnoreSslErrors: boolean("monitoring_ignore_ssl_errors").default(true).notNull(),
+    monitoringIgnoreSslErrors: boolean("monitoring_ignore_ssl_errors").default(false).notNull(),
     monitoringCacheBuster: boolean("monitoring_cache_buster").default(false).notNull(),
     monitoringSaveErrorPages: boolean("monitoring_save_error_pages").default(false).notNull(),
     monitoringSaveSuccessPages: boolean("monitoring_save_success_pages").default(false).notNull(),
@@ -177,6 +201,7 @@ export const monitors = pgTable("monitors", {
   statusCode: integer("status_code"),
   uptime: varchar("uptime", { length: 32 }).default("--").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  publishOnStatusPage: boolean("publish_on_status_page").default(false).notNull(),
   isFavorite: boolean("is_favorite").default(false).notNull(),
   isCritical: boolean("is_critical").default(false).notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -198,7 +223,8 @@ export const monitors = pgTable("monitors", {
   notifEmail: text("notif_email"),
   telegramBotToken: text("telegram_bot_token"),
   telegramChatId: varchar("telegram_chat_id", { length: 120 }),
-  heartbeatToken: text("heartbeat_token"),
+    heartbeatToken: text("heartbeat_token"),
+    heartbeatTokenHash: varchar("heartbeat_token_hash", { length: 64 }),
   heartbeatLastReceivedAt: timestamp("heartbeat_last_received_at", { withTimezone: true }),
   intervalValue: integer("interval_value").default(5).notNull(),
   intervalUnit: varchar("interval_unit", { length: 8 }).default("dk").notNull(),
@@ -209,6 +235,7 @@ export const monitors = pgTable("monitors", {
   retries: integer("retries").default(3).notNull(),
   method: varchar("method", { length: 10 }).default("GET").notNull(),
   databaseSsl: boolean("database_ssl").default(true).notNull(),
+  databaseTlsVerify: boolean("database_tls_verify").default(true).notNull(),
   databasePasswordEncrypted: text("database_password_encrypted"),
   keywordQuery: text("keyword_query"),
   keywordInvert: boolean("keyword_invert").default(false).notNull(),
@@ -237,7 +264,7 @@ export const monitors = pgTable("monitors", {
 }, (table) => [
   index("monitors_user_deleted_at_idx").on(table.userId, table.deletedAt),
   index("monitors_user_favorite_critical_idx").on(table.userId, table.isFavorite, table.isCritical, table.status),
-  uniqueIndex("monitors_heartbeat_token_unique").on(table.heartbeatToken),
+    uniqueIndex("monitors_heartbeat_token_hash_unique").on(table.heartbeatTokenHash),
 ]);
 
 export const monitorEvents = pgTable("monitor_events", {
@@ -331,7 +358,7 @@ export const webhookEndpoints = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    url: varchar("url", { length: 500 }).notNull(),
+    url: text("url").notNull(),
     secretEncrypted: text("secret_encrypted"),
     isActive: boolean("is_active").default(true).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

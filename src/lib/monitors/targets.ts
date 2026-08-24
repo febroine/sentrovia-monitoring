@@ -206,6 +206,7 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     databasePassword: "",
     databasePasswordConfigured: record.databasePasswordConfigured,
     databaseSsl: record.databaseSsl,
+    databaseTlsVerify: record.databaseTlsVerify,
     keywordQuery: record.keywordQuery ?? "",
     keywordInvert: record.keywordInvert,
     jsonPath: record.jsonPath ?? "",
@@ -241,6 +242,7 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     emailBody: record.emailBody ?? "",
     sendOutageScreenshot: record.sendOutageScreenshot,
     isActive: record.isActive,
+    publishOnStatusPage: record.publishOnStatusPage,
   };
 }
 
@@ -271,7 +273,7 @@ function buildPingMonitorTarget(host: string) {
   return `icmp://${normalizedHost}`;
 }
 
-function buildHeartbeatMonitorTarget(token: string) {
+export function buildHeartbeatMonitorTarget(token: string) {
   return `heartbeat://${encodeURIComponent(token.trim())}`;
 }
 

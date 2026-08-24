@@ -5,8 +5,21 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } fro
 import { db } from "@/lib/db";
 import { deliveryEvents, monitors, webhookEndpoints } from "@/lib/db/schema";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
-import { decryptValue, encryptValue } from "@/lib/security/encryption";
-import { assertSafeWebhookUrl, isWebhookSafetyError } from "@/lib/security/webhook-safety";
+import {
+  decryptValue,
+  decryptValueOrLegacyPlaintext,
+  encryptValue,
+} from "@/lib/security/encryption";
+import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
+import {
+  resolveMonitorNetworkTargetWithTimeout,
+  selectResolvedAddress,
+} from "@/lib/security/public-network-target";
+import {
+  assertSafeWebhookUrl,
+  isWebhookSafetyError,
+  postSafeWebhook,
+} from "@/lib/security/webhook-safety";
 import { getSettings } from "@/lib/settings/service";
 import { getSmtpSettings } from "@/lib/settings/smtp";
 import type {
@@ -27,7 +40,6 @@ const DELIVERY_RESPONSE_BODY_LIMIT_BYTES = 4_000;
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 const TELEGRAM_TRUNCATION_SUFFIX = "\n\n...[truncated]";
 const TELEGRAM_PHOTO_CAPTION_LIMIT = 1024;
-const OUTBOUND_WEBHOOK_REDIRECT_MODE = "manual";
 const DELIVERY_CLAIM_LEASE_MS = 2 * 60 * 1000;
 const DELIVERY_QUEUE_STATUSES = ["pending", "retrying", "processing"] as const;
 const DELIVERY_HISTORY_DELETABLE_STATUSES = ["delivered", "failed"];
@@ -267,7 +279,7 @@ export async function upsertWebhookSettings(userId: string, input: WebhookSettin
 
   const values = {
     userId,
-    url: safeUrl,
+    url: encryptValue(safeUrl),
     secretEncrypted,
     isActive: input.isActive,
     updatedAt: new Date(),
@@ -343,17 +355,7 @@ export async function sendEmailDelivery(input: {
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: smtp.secure,
-      requireTLS: smtp.requireTls,
-      auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
-      tls: { rejectUnauthorized: !smtp.insecureSkipVerify },
-      connectionTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
-      greetingTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
-      socketTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
-    });
+    const transporter = await createSafeSmtpTransport(input.userId, smtp);
 
     const attachments = await resolveEmailAttachments(input);
     await transporter.sendMail(buildEmailMessage({ ...input, attachments }, smtp.fromEmail, destination));
@@ -474,7 +476,7 @@ export async function sendWebhookDelivery(
     userId,
     "webhook",
     kind,
-    endpoint?.url ?? "Webhook not configured",
+    redactWebhookDestination(endpoint?.url ?? "Webhook not configured"),
     payload,
     monitorId
   );
@@ -496,20 +498,24 @@ export async function sendChannelWebhookDelivery(
   const settings = await getSettings(userId);
   const destination = settings?.notifications.discordWebhookUrl;
   const enabled = settings?.notifications.discordEnabled;
-  const event = await createDeliveryEvent(userId, channel, kind, destination || `${channel} not configured`, {
-    text: message,
-  }, monitorId);
+  const event = await createDeliveryEvent(
+    userId,
+    channel,
+    kind,
+    redactWebhookDestination(destination || `${channel} not configured`),
+    {
+      text: message,
+    },
+    monitorId
+  );
 
   if (!enabled || !destination) {
     return markDeliveryFailed(event.id, null, `${channel} webhook is not configured or inactive.`);
   }
 
   try {
-    const safeDestination = await assertSafeWebhookUrl(destination);
     const body = { content: message };
-    const response = await fetch(safeDestination, {
-      method: "POST",
-      redirect: OUTBOUND_WEBHOOK_REDIRECT_MODE,
+    const response = await postSafeWebhook(destination, {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal: buildDeliveryAbortSignal(),
@@ -686,7 +692,12 @@ export async function getWebhookEndpoint(userId: string) {
     .from(webhookEndpoints)
     .where(eq(webhookEndpoints.userId, userId));
 
-  return endpoint ?? null;
+  return endpoint
+    ? {
+      ...endpoint,
+      url: decryptValueOrLegacyPlaintext(endpoint.url) ?? "",
+    }
+    : null;
 }
 
 async function createDeliveryEvent(
@@ -728,6 +739,15 @@ async function attemptWebhookDelivery(
   return deliverWebhookClaimed(current, endpointUrl, secret, payload);
 }
 
+function redactWebhookDestination(value: string) {
+  try {
+    const parsed = new URL(value);
+    return `${parsed.origin}/[redacted]`;
+  } catch {
+    return value;
+  }
+}
+
 async function deliverWebhookClaimed(
   current: DeliveryEventRow,
   endpointUrl: string,
@@ -735,11 +755,8 @@ async function deliverWebhookClaimed(
   payload: Record<string, unknown>
 ) {
   try {
-    const safeEndpointUrl = await assertSafeWebhookUrl(endpointUrl);
     const body = JSON.stringify(payload);
-    const response = await fetch(safeEndpointUrl, {
-      method: "POST",
-      redirect: OUTBOUND_WEBHOOK_REDIRECT_MODE,
+    const response = await postSafeWebhook(endpointUrl, {
       headers: buildWebhookHeaders(body, secret),
       body,
       signal: buildDeliveryAbortSignal(),
@@ -884,17 +901,7 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: smtp.secure,
-      requireTLS: smtp.requireTls,
-      auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
-      tls: { rejectUnauthorized: !smtp.insecureSkipVerify },
-      connectionTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
-      greetingTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
-      socketTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
-    });
+    const transporter = await createSafeSmtpTransport(event.userId, smtp);
     await transporter.sendMail({
       from: smtp.fromEmail,
       to: destination,
@@ -909,6 +916,36 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
       ? markDeliveryRetryable(event.id, event.attempts + 1, null, toMessage(error), event.claimToken)
       : markDeliveryFailed(event.id, null, toMessage(error), event.attempts + 1, event.claimToken);
   }
+}
+
+async function createSafeSmtpTransport(
+  userId: string,
+  smtp: NonNullable<Awaited<ReturnType<typeof getSmtpSettings>>>
+) {
+  const allowPrivateTargets = await canUserAccessPrivateTargets(userId);
+  const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(
+    smtp.host,
+    {
+      allowPrivateTargets,
+      message: "SMTP server is not allowed by the current network safety policy.",
+    },
+    DELIVERY_REQUEST_TIMEOUT_MS
+  );
+
+  return nodemailer.createTransport({
+    host: selectResolvedAddress(resolvedTarget),
+    port: smtp.port,
+    secure: smtp.secure,
+    requireTLS: smtp.requireTls,
+    auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
+    tls: {
+      rejectUnauthorized: !smtp.insecureSkipVerify,
+      servername: smtp.host,
+    },
+    connectionTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
+    greetingTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
+    socketTimeout: DELIVERY_REQUEST_TIMEOUT_MS,
+  });
 }
 
 async function deliverClaimedTelegram(event: DeliveryEventRow) {
@@ -959,11 +996,8 @@ async function deliverClaimedDiscord(event: DeliveryEventRow) {
   }
 
   try {
-    const safeDestination = await assertSafeWebhookUrl(destination);
     const payload = safeJsonParse(event.payloadJson);
-    const response = await fetch(safeDestination, {
-      method: "POST",
-      redirect: OUTBOUND_WEBHOOK_REDIRECT_MODE,
+    const response = await postSafeWebhook(destination, {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: readPayloadString(payload, "text") }),
       signal: buildDeliveryAbortSignal(),
@@ -996,7 +1030,12 @@ async function getMonitorNotificationTarget(event: DeliveryEventRow) {
     .where(and(eq(monitors.id, event.monitorId), eq(monitors.userId, event.userId)))
     .limit(1);
 
-  return monitor ?? null;
+  return monitor
+    ? {
+      ...monitor,
+      telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
+    }
+    : null;
 }
 
 async function markDeliveryDelivered(

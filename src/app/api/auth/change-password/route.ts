@@ -61,5 +61,5 @@ export async function POST(request: NextRequest) {
 }
 
 function shouldRecordFailure(status: number) {
-  return status >= 400 && status < 500 && status !== 429;
+  return status === 401;
 }

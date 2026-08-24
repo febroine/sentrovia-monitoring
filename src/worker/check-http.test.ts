@@ -5,8 +5,11 @@ import type { Monitor } from "@/lib/db/schema";
 import { checkHttpMonitor } from "@/worker/check-http";
 
 vi.mock("@/lib/security/public-network-target", () => ({
-  assertMonitorNetworkTarget: vi.fn(),
-  assertMonitorNetworkTargetWithTimeout: vi.fn(),
+  resolveMonitorNetworkTargetWithTimeout: vi.fn(async (hostname: string) => ({
+    hostname,
+    addresses: [{ address: hostname, family: 4 }],
+  })),
+  createPinnedLookup: vi.fn(() => undefined),
 }));
 
 const servers: http.Server[] = [];
@@ -296,6 +299,7 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 200,
     uptime: "100%",
     isActive: true,
+    publishOnStatusPage: false,
     isFavorite: false,
     isCritical: false,
     deletedAt: null,
@@ -318,6 +322,7 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramBotToken: null,
     telegramChatId: null,
     heartbeatToken: null,
+    heartbeatTokenHash: null,
     heartbeatLastReceivedAt: null,
     intervalValue: 5,
     intervalUnit: "dk",
@@ -328,6 +333,7 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     retries: 3,
     method: "GET",
     databaseSsl: true,
+    databaseTlsVerify: true,
     databasePasswordEncrypted: null,
     keywordQuery: null,
     keywordInvert: false,

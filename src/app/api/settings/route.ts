@@ -5,6 +5,7 @@ import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
@@ -40,6 +41,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     const settings = await upsertSettings(session.id, parsed.data);
+    await recordAuditEventSafely({
+      userId: session.id,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "settings",
+      entityId: session.id,
+      entityLabel: "Workspace settings",
+      action: "settings.updated",
+      summary: "Workspace settings were updated.",
+    });
     const response = NextResponse.json({ settings });
 
     return applySessionCookie(

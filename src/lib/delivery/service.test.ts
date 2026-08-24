@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     update: vi.fn(),
   },
   getSettings: vi.fn(),
+  postSafeWebhook: vi.fn(),
 }));
 
 vi.mock("nodemailer", () => ({
@@ -32,6 +33,24 @@ vi.mock("@/lib/settings/smtp", () => ({
 
 vi.mock("@/lib/settings/service", () => ({
   getSettings: mocks.getSettings,
+}));
+
+vi.mock("@/lib/security/network-policy", () => ({
+  canUserAccessPrivateTargets: vi.fn(async () => true),
+}));
+
+vi.mock("@/lib/security/public-network-target", () => ({
+  resolveMonitorNetworkTargetWithTimeout: vi.fn(async (hostname: string) => ({
+    hostname,
+    addresses: [{ address: "203.0.113.10", family: 4 }],
+  })),
+  selectResolvedAddress: vi.fn(() => "203.0.113.10"),
+}));
+
+vi.mock("@/lib/security/webhook-safety", () => ({
+  assertSafeWebhookUrl: vi.fn(async (value: string) => value),
+  isWebhookSafetyError: vi.fn(() => false),
+  postSafeWebhook: mocks.postSafeWebhook,
 }));
 
 import {
@@ -61,6 +80,7 @@ describe("delivery service", () => {
     }));
     mocks.db.update.mockReturnValue({ set: mocks.updateSet });
     mocks.getSettings.mockResolvedValue(null);
+    mocks.postSafeWebhook.mockResolvedValue(new Response("", { status: 200 }));
   });
 
   it("does not build email attachments when SMTP configuration is incomplete", async () => {
@@ -369,9 +389,7 @@ describe("delivery service", () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendPhoto");
   });
 
-  it("does not follow redirects for outbound channel webhooks", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+  it("sends outbound channel webhooks through the pinned safe transport", async () => {
     mocks.getSettings.mockResolvedValue({
       notifications: {
         discordEnabled: true,
@@ -380,10 +398,11 @@ describe("delivery service", () => {
     });
 
     const result = await sendChannelWebhookDelivery("user-1", "discord", "test", "Down");
-    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
-
     expect(result?.status).toBe("delivered");
-    expect(request.redirect).toBe("manual");
+    expect(mocks.postSafeWebhook).toHaveBeenCalledWith(
+      "https://8.8.8.8/hooks/sentrovia",
+      expect.objectContaining({ body: JSON.stringify({ content: "Down" }) })
+    );
   });
 
   it("keeps telegram text delivery successful when screenshot upload fails", async () => {

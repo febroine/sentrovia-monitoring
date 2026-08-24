@@ -35,7 +35,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run the Docker installer to create .env}
       POSTGRES_DB: ${POSTGRES_DB:-uptimemonitoring}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

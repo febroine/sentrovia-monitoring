@@ -76,6 +76,7 @@ describe("worker route authorization", () => {
       new NextRequest("https://example.com/api/worker", {
         method: "POST",
         body: JSON.stringify({ action: "stop" }),
+        headers: { "content-type": "application/json" },
       })
     );
     const body = (await response.json()) as { message: string };
@@ -122,6 +123,7 @@ describe("worker route authorization", () => {
       new NextRequest("https://example.com/api/worker", {
         method: "POST",
         body: JSON.stringify({ action: "stop" }),
+        headers: { "content-type": "application/json" },
       })
     );
 
