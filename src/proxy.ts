@@ -7,6 +7,7 @@ const PUBLIC_ROUTES = ["/login", "/onboarding"];
 const PUBLIC_API_ROUTES = [
   "/api/auth/login",
   "/api/auth/onboarding",
+  "/api/health",
   "/api/metrics",
   "/api/monitors/heartbeat/",
 ];

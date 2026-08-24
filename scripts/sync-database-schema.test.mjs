@@ -3,16 +3,23 @@ import { buildSchemaStepEnvironment, resolveSchemaSteps } from "./sync-database-
 
 describe("database schema synchronization order", () => {
   it("creates the base schema before manual migrations for an empty database", () => {
-    expect(resolveSchemaSteps({ users: false, monitors: false, user_settings: false })).toEqual([
+    expect(resolveSchemaSteps({ users: false, monitors: false, user_settings: false, audit_events: false })).toEqual([
       "db:push:bootstrap",
       "db:manual",
     ]);
   });
 
   it("applies manual migrations before schema reconciliation for an existing database", () => {
-    expect(resolveSchemaSteps({ users: true, monitors: true, user_settings: true })).toEqual([
+    expect(resolveSchemaSteps({ users: true, monitors: true, user_settings: true, audit_events: true })).toEqual([
       "db:manual",
       "db:push:bootstrap",
+    ]);
+  });
+
+  it("repairs missing manual-migration prerequisites before continuing an existing database", () => {
+    expect(resolveSchemaSteps({ users: true, monitors: true, user_settings: true, audit_events: false })).toEqual([
+      "db:push:bootstrap",
+      "db:manual",
     ]);
   });
 

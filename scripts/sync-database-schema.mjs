@@ -7,6 +7,7 @@ import postgres from "postgres";
 
 const { loadEnvConfig } = nextEnv;
 const CORE_TABLES = ["users", "monitors", "user_settings"];
+const MANUAL_MIGRATION_PREREQUISITES = ["audit_events"];
 const SCHEMA_LOCK_KEYS = [728551, 493027];
 const SCHEMA_LOCK_ATTEMPTS = 150;
 const SCHEMA_LOCK_RETRY_MS = 2_000;
@@ -23,6 +24,12 @@ export function resolveSchemaSteps(tablePresence) {
     return ["db:push:bootstrap", "db:manual"];
   }
   if (states.every(Boolean)) {
+    const prerequisitesPresent = MANUAL_MIGRATION_PREREQUISITES.every(
+      (table) => Boolean(tablePresence[table])
+    );
+    if (!prerequisitesPresent) {
+      return ["db:push:bootstrap", "db:manual"];
+    }
     return ["db:manual", "db:push:bootstrap"];
   }
 
@@ -108,7 +115,8 @@ async function readCoreTablePresence(sql) {
     SELECT
       to_regclass('public.users') IS NOT NULL AS users,
       to_regclass('public.monitors') IS NOT NULL AS monitors,
-      to_regclass('public.user_settings') IS NOT NULL AS user_settings
+      to_regclass('public.user_settings') IS NOT NULL AS user_settings,
+      to_regclass('public.audit_events') IS NOT NULL AS audit_events
   `;
   return rows[0];
 }
