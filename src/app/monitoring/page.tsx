@@ -40,6 +40,7 @@ import type { SettingsPayload } from "@/lib/settings/types";
 import { showToast } from "@/lib/client-toast";
 import { parseSoftDeleteUndoDeadline } from "@/lib/soft-delete";
 import { useMonitoringStore } from "@/stores/use-monitoring-store";
+import { hasPermission } from "@/lib/auth/permissions";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const;
 const PAGE_NUMBER_WINDOW = 5;
@@ -101,6 +102,9 @@ export default function MonitoringPage() {
   const [pendingBulkAction, setPendingBulkAction] = useState<PendingBulkAction | null>(null);
   const [bulkActionSeconds, setBulkActionSeconds] = useState(0);
   const [pendingRestores, setPendingRestores] = useState<PendingMonitorRestore[]>([]);
+  const canManageMonitors = workspaceSettings
+    ? hasPermission(workspaceSettings.profile.role, "monitors.manage")
+    : false;
 
   const companyFilters = useMemo(
     () => ["all", ...Array.from(new Set(monitors.map((monitor) => monitor.company).filter(Boolean)))],
@@ -430,9 +434,9 @@ export default function MonitoringPage() {
         </div>
 
         <div className="flex flex-wrap gap-2 xl:justify-end">
-          <Button variant="outline" onClick={() => setToolsOpen(true)}>
-            Tools
-          </Button>
+          {canManageMonitors ? (
+            <Button variant="outline" onClick={() => setToolsOpen(true)}>Tools</Button>
+          ) : null}
           <Button
             variant="outline"
             size="icon"
@@ -443,10 +447,12 @@ export default function MonitoringPage() {
           >
             <RefreshCw className={loading ? "animate-spin" : ""} />
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 size-4" />
-            Add monitor
-          </Button>
+          {canManageMonitors ? (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-2 size-4" />
+              Add monitor
+            </Button>
+          ) : null}
         </div>
       </section>
 
@@ -534,7 +540,7 @@ export default function MonitoringPage() {
         </Select>
       </div>
 
-      {selectedIds.size > 0 ? (
+      {canManageMonitors && selectedIds.size > 0 ? (
         <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">{selectedIds.size} monitor selected</span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -558,6 +564,7 @@ export default function MonitoringPage() {
 
       <MonitorTable
         monitors={paginated}
+        readOnly={!canManageMonitors}
         loading={loading}
         historyByMonitor={historyByMonitor}
         selectedIds={selectedIds}

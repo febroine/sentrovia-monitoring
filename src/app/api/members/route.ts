@@ -8,6 +8,7 @@ import { createMember } from "@/lib/auth/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { deleteMembers, listMembers } from "@/lib/members/service";
 import { recordAuditEventSafely } from "@/lib/audit/service";
+import { assertPermission, canAssignRole } from "@/lib/auth/permissions";
 
 export const runtime = "nodejs";
 
@@ -44,14 +45,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    if (session.role !== "admin") {
-      throw new AuthError("Only admins can add members.", 403);
-    }
+    assertPermission(session.role, "members.manage");
 
     const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
     const parsed = memberCreateSchema.safeParse(body);
     if (!parsed.success) {
       throw new AuthError(flattenValidationIssues(parsed.error), 400);
+    }
+    if (!canAssignRole(session.role, parsed.data.role)) {
+      throw new AuthError("You cannot assign this workspace role.", 403);
     }
 
     const result = await createMember(parsed.data);

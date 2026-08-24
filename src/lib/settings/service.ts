@@ -15,6 +15,7 @@ import {
   type DashboardPreferences,
 } from "@/lib/dashboard/preferences";
 import type { SettingsInput } from "@/lib/settings/schemas";
+import { normalizeUserRole } from "@/lib/auth/permissions";
 import {
   DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE,
   DEFAULT_SETTINGS,
@@ -144,6 +145,10 @@ const USER_SETTINGS_COLUMN_MAP = {
   deliveryRetentionDays: "delivery_retention_days",
   autoBackupEnabled: "auto_backup_enabled",
   backupWindow: "backup_window",
+  backupRetentionCount: "backup_retention_count",
+  lastBackupStatus: "last_backup_status",
+  lastBackupError: "last_backup_error",
+  lastAutomaticBackupAt: "last_automatic_backup_at",
   eventRetentionDays: "event_retention_days",
   lastBackupAt: "last_backup_at",
   updatedAt: "updated_at",
@@ -204,6 +209,14 @@ function numberOrDefault(value: unknown, fallback: number) {
   return typeof value === "number" ? value : fallback;
 }
 
+function stringOrNull(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function toBackupStatus(value: unknown): SettingsPayload["data"]["lastBackupStatus"] {
+  return value === "completed" || value === "failed" || value === "running" ? value : null;
+}
+
 function arrayOrDefault(value: unknown, fallback: string[]) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback;
 }
@@ -241,7 +254,7 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       firstName: stringOrEmpty(user.firstName),
       lastName: stringOrEmpty(user.lastName),
       email: stringOrEmpty(user.email),
-      role: user.role === "admin" ? "admin" : "member",
+      role: normalizeUserRole(user.role),
       department: stringOrEmpty(user.department),
       username: stringOrEmpty(user.username),
       organization: stringOrEmpty(user.organization),
@@ -408,6 +421,11 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
       ),
       autoBackupEnabled: booleanOrDefault(settings?.autoBackupEnabled, DEFAULT_SETTINGS.data.autoBackupEnabled),
       backupWindow: stringOrEmpty(settings?.backupWindow) || DEFAULT_SETTINGS.data.backupWindow,
+      backupRetentionCount: numberOrDefault(settings?.backupRetentionCount, DEFAULT_SETTINGS.data.backupRetentionCount),
+      lastBackupStatus: toBackupStatus(settings?.lastBackupStatus),
+      lastBackupError: stringOrNull(settings?.lastBackupError),
+      lastAutomaticBackupAt:
+        dateOrNull(settings?.lastAutomaticBackupAt)?.toISOString() ?? DEFAULT_SETTINGS.data.lastAutomaticBackupAt,
       eventRetentionDays: numberOrDefault(settings?.eventRetentionDays, DEFAULT_SETTINGS.data.eventRetentionDays),
       lastBackupAt: dateOrNull(settings?.lastBackupAt)?.toISOString() ?? DEFAULT_SETTINGS.data.lastBackupAt,
     },
@@ -683,6 +701,10 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     deliveryRetentionDays: input.data.deliveryRetentionDays,
     autoBackupEnabled: input.data.autoBackupEnabled,
     backupWindow: input.data.backupWindow,
+    backupRetentionCount: input.data.backupRetentionCount,
+    lastBackupStatus: toBackupStatus(existing?.lastBackupStatus),
+    lastBackupError: stringOrNull(existing?.lastBackupError),
+    lastAutomaticBackupAt: dateOrNull(existing?.lastAutomaticBackupAt),
     eventRetentionDays: input.data.eventRetentionDays,
     lastBackupAt: input.data.lastBackupAt ? new Date(input.data.lastBackupAt) : dateOrNull(existing?.lastBackupAt),
     updatedAt: new Date(),

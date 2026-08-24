@@ -8,6 +8,8 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
+  attestations: write
 
 env:
   REGISTRY: ghcr.io
@@ -22,24 +24,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Ensure GitHub Release exists
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Guard immutable release tag
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "GitHub Release $RELEASE_TAG already exists; keeping the existing release."
-            exit 0
+            echo "Release $RELEASE_TAG already exists. Published release tags are immutable." >&2
+            exit 1
           fi
 
-          if gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "Sentrovia $RELEASE_TAG"; then
-            exit 0
-          fi
+      - name: Build release archive and checksum
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/create-release-artifacts.mjs --tag "$RELEASE_TAG"
 
-          echo "Release creation raced with another process; verifying the final state."
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+      - name: Attest release archive
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/*.zip
+
+      - name: Create immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "Sentrovia $RELEASE_TAG" \
+            release/*.zip release/SHA256SUMS "$ATTESTATION_BUNDLE"
 
   publish:
     needs: quality

@@ -12,7 +12,7 @@ const memberSession = {
   lastName: "User",
   email: "member@example.com",
   department: null,
-  role: "member" as const,
+  role: "operator" as const,
   sessionVersion: 1,
 };
 

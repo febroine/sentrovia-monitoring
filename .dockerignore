@@ -3,6 +3,8 @@
 .next
 .next.sentrovia-update-backup
 node_modules
+backups
+*.sentrovia-backup
 .node_modules.sentrovia-update-backup
 .playwright-browsers
 .sentrovia-update-success

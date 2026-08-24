@@ -6,6 +6,7 @@ import { toAuthError } from "@/lib/auth/errors";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { updateMember } from "@/lib/members/service";
 import { recordAuditEventSafely } from "@/lib/audit/service";
+import { canAssignRole, hasPermission, USER_ROLES } from "@/lib/auth/permissions";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ const memberUsernameUpdateSchema = z
 const memberUpdateSchema = z.object({
   username: memberUsernameUpdateSchema.default(""),
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
-  role: z.enum(["admin", "member"]).optional(),
+  role: z.enum(USER_ROLES).optional(),
 });
 
 type Params = Promise<{ id: string }>;
@@ -42,11 +43,11 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     }
 
     const { id } = await context.params;
-    if (id !== session.id && session.role !== "admin") {
+    if (id !== session.id && !hasPermission(session.role, "members.manage")) {
       return NextResponse.json({ message: "You can only edit your own account." }, { status: 403 });
     }
-    if (parsed.data.role && parsed.data.role !== session.role && session.role !== "admin") {
-      return NextResponse.json({ message: "Only admins can change workspace roles." }, { status: 403 });
+    if (parsed.data.role && parsed.data.role !== session.role && !canAssignRole(session.role, parsed.data.role)) {
+      return NextResponse.json({ message: "You cannot assign this workspace role." }, { status: 403 });
     }
 
     const member = await updateMember(id, session.id, session.role, parsed.data);
@@ -76,7 +77,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       return response;
     }
 
-    const updatedRole: UserRole = member.role === "admin" ? "admin" : "member";
+    const updatedRole: UserRole = member.role;
 
     return applySessionCookie(
       response,
@@ -89,7 +90,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
           department: member.department,
           role: updatedRole,
         },
-        session.sessionVersion
+        member.sessionVersion
       )
     );
   } catch (error) {

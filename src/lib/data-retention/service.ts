@@ -1,12 +1,12 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { WORKER_STATE_ID } from "@/lib/worker/constants";
 import { workerState } from "@/lib/db/schema";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const RETENTION_LOCK_KEY = 54_821_903;
 const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
 const SOFT_DELETE_GRACE_MS = 60_000;
-const WORKER_STATE_ID = "primary";
 
 export async function runRetentionCleanup(now = new Date()) {
   const queryTimestamp = now.toISOString();
