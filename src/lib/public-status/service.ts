@@ -36,6 +36,13 @@ export async function getPublicStatusPage(slug: string) {
   const monitorScope = pageRow.companyId
     ? eq(monitors.companyId, pageRow.companyId)
     : undefined;
+  const publicMonitorScope = and(
+    eq(monitors.userId, pageRow.userId),
+    eq(monitors.isActive, true),
+    eq(monitors.publishOnStatusPage, true),
+    isNull(monitors.deletedAt),
+    monitorScope
+  );
 
   const generatedAt = new Date();
   const [settings, monitorRows, openOutages] = await Promise.all([
@@ -58,13 +65,7 @@ export async function getPublicStatusPage(slug: string) {
         consecutiveFailures: monitors.consecutiveFailures,
       })
       .from(monitors)
-      .where(and(
-        eq(monitors.userId, pageRow.userId),
-        eq(monitors.isActive, true),
-        eq(monitors.publishOnStatusPage, true),
-        isNull(monitors.deletedAt),
-        monitorScope
-      ))
+      .where(publicMonitorScope)
       .orderBy(asc(monitors.company), asc(monitors.url)),
     db
       .select({
@@ -72,7 +73,12 @@ export async function getPublicStatusPage(slug: string) {
         startedAt: monitorOutages.startedAt,
       })
       .from(monitorOutages)
-      .where(and(eq(monitorOutages.userId, pageRow.userId), eq(monitorOutages.status, "open")))
+      .innerJoin(monitors, eq(monitors.id, monitorOutages.monitorId))
+      .where(and(
+        eq(monitorOutages.userId, pageRow.userId),
+        eq(monitorOutages.status, "open"),
+        publicMonitorScope
+      ))
       .orderBy(desc(monitorOutages.startedAt)),
   ]);
 

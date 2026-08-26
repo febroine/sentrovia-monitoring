@@ -76,10 +76,20 @@ describe("worker notifier", () => {
     mocks.sendWebhookDelivery.mockResolvedValue(null);
   });
 
+  it("suppresses routine checks without reading notification configuration", async () => {
+    const sent = await sendMonitorNotifications(buildNotificationContext("check"));
+
+    expect(sent).toBe(false);
+    expect(mocks.getSettings).not.toHaveBeenCalled();
+    expect(mocks.getMonitorNotificationRouting).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+  });
+
   it("does not suppress recovery notifications with the generic dedup window", async () => {
     const sent = await sendMonitorNotifications(buildNotificationContext("recovery"));
 
     expect(sent).toBe(true);
+    expect(mocks.getSettings).toHaveBeenCalledTimes(1);
     expect(mocks.hasRecentMonitorEvent).not.toHaveBeenCalled();
     expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
       expect.objectContaining({

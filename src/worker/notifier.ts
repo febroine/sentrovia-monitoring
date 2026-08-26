@@ -16,18 +16,20 @@ type NotificationDeliveryResult = { status: string } | null | undefined;
 const SSL_EXPIRY_DEDUP_MINUTES = 24 * 60;
 
 export async function sendMonitorNotifications(context: NotificationContext) {
-  const decision = await evaluateNotificationDecision(context);
-  if (!decision.wouldNotify) {
+  if (context.kind === "check") {
     return false;
   }
 
-  const [settings, routing] = await Promise.all([
-    getSettings(context.monitor.userId),
-    getMonitorNotificationRouting(context.monitor.userId, context.monitor.id),
-  ]);
+  const settings = await getSettings(context.monitor.userId);
+  const decision = await evaluateNotificationDecisionWithSettings(context, settings);
+  if (!decision.wouldNotify) {
+    return false;
+  }
   if (!settings) {
     return false;
   }
+
+  const routing = await getMonitorNotificationRouting(context.monitor.userId, context.monitor.id);
 
   const rendered = renderNotificationTemplates(context, settings, env.appUrl);
   const deliveryResults: NotificationDeliveryResult[] = [];
@@ -127,6 +129,17 @@ export async function evaluateNotificationDecision(context: NotificationContext)
   }
 
   const settings = await getSettings(context.monitor.userId);
+  return evaluateNotificationDecisionWithSettings(context, settings);
+}
+
+async function evaluateNotificationDecisionWithSettings(
+  context: NotificationContext,
+  settings: Awaited<ReturnType<typeof getSettings>>
+): Promise<NotificationDecision> {
+  if (context.kind === "check") {
+    return suppress("Routine checks do not generate notifications.");
+  }
+
   if (!settings) {
     return suppress("Workspace notification settings are unavailable.");
   }

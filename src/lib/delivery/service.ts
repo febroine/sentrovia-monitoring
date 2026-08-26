@@ -74,23 +74,13 @@ function deliveryHealthWindowWhere(since: Date) {
 
 export async function getDeliveryOverview(userId: string, requestedPage = 1): Promise<DeliveryOverview> {
   const healthSince = new Date(Date.now() - DELIVERY_HEALTH_WINDOW_MS);
-  const [endpoint, totalRows, summaryRows, healthRows, latestHealthRows] = await Promise.all([
+  const [endpoint, totalRows, summary, healthRows, latestHealthRows] = await Promise.all([
     getWebhookEndpoint(userId),
     db
       .select({ total: count() })
       .from(deliveryEvents)
       .where(eq(deliveryEvents.userId, userId)),
-    db
-      .select({
-        delivered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'delivered')::integer`,
-        failed: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed')::integer`,
-        retrying: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'retrying')::integer`,
-        pendingWebhookRetries: sql<number>`count(*) filter (where ${deliveryEvents.channel} = 'webhook' and ${deliveryEvents.status} in ('pending', 'retrying', 'processing'))::integer`,
-        pendingRetries: sql<number>`count(*) filter (where ${deliveryEvents.status} in ('pending', 'retrying', 'processing'))::integer`,
-        deadLettered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed' and ${deliveryEvents.deadLetteredAt} is not null)::integer`,
-      })
-      .from(deliveryEvents)
-      .where(eq(deliveryEvents.userId, userId)),
+    getDeliverySummary(userId),
     db
       .select({ channel: deliveryEvents.channel, status: deliveryEvents.status, total: count() })
       .from(deliveryEvents)
@@ -128,8 +118,6 @@ export async function getDeliveryOverview(userId: string, requestedPage = 1): Pr
     .offset((page - 1) * DELIVERY_HISTORY_PAGE_SIZE);
 
   const history = historyRows.map(serializeDelivery);
-  const summary = summaryRows[0];
-
   return {
     webhook: endpoint
       ? {
@@ -139,19 +127,41 @@ export async function getDeliveryOverview(userId: string, requestedPage = 1): Pr
         }
       : null,
     history,
-    summary: {
-      delivered: Number(summary?.delivered ?? 0),
-      failed: Number(summary?.failed ?? 0),
-      retrying: Number(summary?.retrying ?? 0),
-      pendingWebhookRetries: Number(summary?.pendingWebhookRetries ?? 0),
-      pendingRetries: Number(summary?.pendingRetries ?? 0),
-      deadLettered: Number(summary?.deadLettered ?? 0),
-    },
+    summary,
     channelHealth: buildDeliveryChannelHealth(
       healthRows,
       latestHealthRows.flat()
     ),
     pagination: { page, pageSize: DELIVERY_HISTORY_PAGE_SIZE, totalItems, totalPages },
+  };
+}
+
+export async function getDeliverySummary(userId: string): Promise<DeliveryOverview["summary"]> {
+  const [row] = await db
+    .select({
+      delivered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'delivered')::integer`,
+      failed: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed')::integer`,
+      retrying: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'retrying')::integer`,
+      pendingWebhookRetries: sql<number>`count(*) filter (where ${deliveryEvents.channel} = 'webhook' and ${deliveryEvents.status} in ('pending', 'retrying', 'processing'))::integer`,
+      pendingRetries: sql<number>`count(*) filter (where ${deliveryEvents.status} in ('pending', 'retrying', 'processing'))::integer`,
+      deadLettered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed' and ${deliveryEvents.deadLetteredAt} is not null)::integer`,
+    })
+    .from(deliveryEvents)
+    .where(eq(deliveryEvents.userId, userId));
+
+  return normalizeDeliverySummary(row);
+}
+
+export function normalizeDeliverySummary(
+  row: Partial<Record<keyof DeliveryOverview["summary"], number | string | null>> | undefined
+): DeliveryOverview["summary"] {
+  return {
+    delivered: Number(row?.delivered ?? 0),
+    failed: Number(row?.failed ?? 0),
+    retrying: Number(row?.retrying ?? 0),
+    pendingWebhookRetries: Number(row?.pendingWebhookRetries ?? 0),
+    pendingRetries: Number(row?.pendingRetries ?? 0),
+    deadLettered: Number(row?.deadLettered ?? 0),
   };
 }
 
@@ -456,9 +466,10 @@ export async function sendTelegramDelivery(input: {
 
     return markDeliveryDelivered(event.id, response.status);
   } catch (error) {
+    const errorMessage = toTelegramErrorMessage(error, botToken);
     return isRetryableDeliveryError(error)
-      ? markDeliveryRetryable(event.id, 1, null, toMessage(error))
-      : markDeliveryFailed(event.id, null, toMessage(error));
+      ? markDeliveryRetryable(event.id, 1, null, errorMessage)
+      : markDeliveryFailed(event.id, null, errorMessage);
   }
 }
 
@@ -985,9 +996,10 @@ async function deliverClaimedTelegram(event: DeliveryEventRow) {
 
     return markDeliveryDelivered(event.id, response.status, event.attempts + 1, event.claimToken);
   } catch (error) {
+    const errorMessage = toTelegramErrorMessage(error, routing.telegramBotToken);
     return isRetryableDeliveryError(error)
-      ? markDeliveryRetryable(event.id, event.attempts + 1, null, toMessage(error), event.claimToken)
-      : markDeliveryFailed(event.id, null, toMessage(error), event.attempts + 1, event.claimToken);
+      ? markDeliveryRetryable(event.id, event.attempts + 1, null, errorMessage, event.claimToken)
+      : markDeliveryFailed(event.id, null, errorMessage, event.attempts + 1, event.claimToken);
   }
 }
 
@@ -1217,6 +1229,11 @@ function toMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unexpected delivery failure.";
 }
 
+function toTelegramErrorMessage(error: unknown, botToken: string) {
+  const message = toMessage(error);
+  return botToken ? message.replaceAll(botToken, "[redacted]") : message;
+}
+
 function escapeHtml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
@@ -1356,7 +1373,7 @@ async function sendTelegramPhotoWithoutBlockingMessage(
       console.warn(`[sentrovia] Telegram screenshot skipped: ${failure.message}`);
     }
   } catch (error) {
-    console.warn(`[sentrovia] Telegram screenshot skipped: ${toMessage(error)}`);
+    console.warn(`[sentrovia] Telegram screenshot skipped: ${toTelegramErrorMessage(error, botToken)}`);
   }
 }
 
