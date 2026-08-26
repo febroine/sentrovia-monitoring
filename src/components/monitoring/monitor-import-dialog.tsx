@@ -304,6 +304,12 @@ function toPayload(headers: string[], row: string[], mapping: Map<string, string
     telegramTemplate: read("telegramTemplate") || DEFAULT_MONITOR_FORM.telegramTemplate,
     emailSubject: read("emailSubject") || DEFAULT_MONITOR_FORM.emailSubject,
     emailBody: read("emailBody") || DEFAULT_MONITOR_FORM.emailBody,
+    slowResponseEmailSubject:
+      read("slowResponseEmailSubject") || DEFAULT_MONITOR_FORM.slowResponseEmailSubject,
+    slowResponseEmailBody:
+      read("slowResponseEmailBody") || DEFAULT_MONITOR_FORM.slowResponseEmailBody,
+    slowResponseTelegramTemplate:
+      read("slowResponseTelegramTemplate") || DEFAULT_MONITOR_FORM.slowResponseTelegramTemplate,
     sendOutageScreenshot: read("sendOutageScreenshot")
       ? booleanValue("sendOutageScreenshot")
       : read("sendIncidentScreenshot")

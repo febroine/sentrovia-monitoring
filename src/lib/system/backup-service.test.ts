@@ -8,6 +8,7 @@ import {
   buildWorkspaceRestorePreview,
   parseWorkspaceBackup,
   preparePublicStatusSettingsForBackup,
+  remapPublicStatusPages,
   resolveRestoredCompanyId,
   remapPublicStatusCompany,
   restorePostgresMonitorPasswords,
@@ -205,6 +206,61 @@ describe("workspace backup validation", () => {
     expect(exported.publicStatus.companyId).toBe("");
   });
 
+  it("validates separate public status pages for different companies", () => {
+    const bundle = buildBackupBundle({
+      companies: [
+        { name: "Northstar Labs", description: "", isActive: true },
+        { name: "Contoso", description: "", isActive: true },
+      ],
+      publicStatusPages: [
+        { companyName: "Northstar Labs", slug: "northstar", title: "", summary: "", isEnabled: true },
+        { companyName: "Contoso", slug: "contoso", title: "", summary: "", isEnabled: true },
+      ],
+    });
+
+    expect(validateWorkspaceBackupBundle(bundle).publicStatusPages).toHaveLength(2);
+  });
+
+  it("rejects duplicate public status pages for one company", () => {
+    const bundle = buildBackupBundle({
+      companies: [{ name: "Northstar Labs", description: "", isActive: true }],
+      publicStatusPages: [
+        { companyName: "Northstar Labs", slug: "northstar", title: "", summary: "", isEnabled: true },
+        { companyName: "northstar labs", slug: "northstar-alt", title: "", summary: "", isEnabled: true },
+      ],
+    });
+
+    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow("Duplicate public status scope");
+  });
+
+  it("remaps public status page companies without broadening missing scopes", () => {
+    const remapped = remapPublicStatusPages([
+      { companyName: "Northstar Labs", slug: "northstar", title: "", summary: "", isEnabled: true },
+      { companyName: null, slug: "workspace", title: "", summary: "", isEnabled: false },
+    ], buildCompanyIdByName([{ id: "company-1", name: "northstar labs" }]));
+
+    expect(remapped).toEqual([
+      { companyId: "company-1", slug: "northstar", title: "", summary: "", isEnabled: true },
+      { companyId: null, slug: "workspace", title: "", summary: "", isEnabled: false },
+    ]);
+  });
+
+  it("converts a legacy public status setting into a restorable page", () => {
+    const settings = buildSettingsPayload();
+    settings.publicStatus.enabled = true;
+    settings.publicStatus.slug = "legacy-status";
+
+    const validated = validateWorkspaceBackupBundle(buildBackupBundle({ settings }));
+
+    expect(validated.publicStatusPages).toEqual([{
+      companyName: null,
+      slug: "legacy-status",
+      title: "",
+      summary: "",
+      isEnabled: true,
+    }]);
+  });
+
   it("describes records that a restore will replace without mutating them", () => {
     const validated = validateWorkspaceBackupBundle(buildBackupBundle({
       companies: [{ name: "Kept company", description: "", isActive: true }],
@@ -258,6 +314,24 @@ describe("workspace backup validation", () => {
 
     expect(runtimeChanged).toBe(initial);
     expect(configChanged).not.toBe(initial);
+  });
+
+  it("detects public status page changes in restore revisions", () => {
+    const base = {
+      companies: [],
+      monitors: [],
+      publicStatusPages: [{ id: "page-1", slug: "northstar", isEnabled: true }],
+      settings: null,
+      user: null,
+    };
+
+    const initial = buildWorkspaceRestoreRevision(base);
+    const changed = buildWorkspaceRestoreRevision({
+      ...base,
+      publicStatusPages: [{ id: "page-1", slug: "northstar", isEnabled: false }],
+    });
+
+    expect(changed).not.toBe(initial);
   });
 });
 

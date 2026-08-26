@@ -112,7 +112,65 @@ describe("notification template preview route", () => {
     expect(body.decision.reason).toContain("configured as an expected response");
     expect(evaluateNotificationDecision).not.toHaveBeenCalled();
   });
+
+  it("renders a slow-response sample strictly between its threshold and hard timeout", async () => {
+    preparePreviewMocks({ timeout: 5_000, slowResponseThresholdMs: 2_000 });
+    vi.mocked(evaluateNotificationDecision).mockResolvedValueOnce({
+      wouldNotify: true,
+      reason: "The slow response is eligible for notification.",
+    });
+
+    const response = await POST(createRequest({ scenario: "slow-response", kind: undefined }));
+
+    expect(response.status).toBe(200);
+    expect(renderNotificationTemplates).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "latency",
+        result: expect.objectContaining({
+          ok: true,
+          status: "up",
+          latencyMs: 4_500,
+        }),
+      }),
+      DEFAULT_SETTINGS,
+      expect.any(String)
+    );
+  });
+
+  it("suppresses an unmeasurably narrow slow-response range", async () => {
+    preparePreviewMocks({ timeout: 5_000, slowResponseThresholdMs: 4_999 });
+
+    const response = await POST(createRequest({ scenario: "slow-response", kind: undefined }));
+    const body = (await response.json()) as { decision: { wouldNotify: boolean; reason: string } };
+
+    expect(response.status).toBe(200);
+    expect(body.decision.wouldNotify).toBe(false);
+    expect(body.decision.reason).toContain("measurable time");
+    expect(evaluateNotificationDecision).not.toHaveBeenCalled();
+  });
 });
+
+function preparePreviewMocks(overrides: { timeout: number; slowResponseThresholdMs: number }) {
+  vi.mocked(getSession).mockResolvedValueOnce({ id: "admin-1" } as never);
+  vi.mocked(getSettings).mockResolvedValueOnce(DEFAULT_SETTINGS);
+  vi.mocked(buildMonitorForTest).mockResolvedValueOnce({
+    id: "preview-monitor",
+    userId: "admin-1",
+    name: "Example monitor",
+    monitorType: "http",
+    url: "https://example.com",
+    status: "up",
+    expectedStatusCodes: "200",
+    ...overrides,
+  } as never);
+  vi.mocked(renderNotificationTemplates).mockReturnValueOnce({
+    subject: "Example subject",
+    textBody: "Example body",
+    htmlBody: "<p>Example body</p>",
+    telegramBody: "Example Telegram body",
+  });
+  vi.mocked(getWebhookEndpoint).mockResolvedValueOnce(null as never);
+}
 
 function createRequest(overrides: Record<string, unknown> = {}) {
   return new NextRequest("http://localhost/api/notifications/preview", {

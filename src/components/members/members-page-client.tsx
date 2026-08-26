@@ -7,13 +7,12 @@ import {
   Pencil,
   Plus,
   Search,
-  SearchX,
   Square,
   Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -300,8 +299,8 @@ export default function MembersPageClient() {
           </div>
           <p className="text-sm text-muted-foreground">
             {canManageMembers
-              ? "Manage workspace access, add members, and remove accounts."
-              : "Review and maintain your own account details."}
+              ? "Workspace accounts and access roles."
+              : "Your workspace account."}
           </p>
         </div>
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
@@ -310,7 +309,7 @@ export default function MembersPageClient() {
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search members" className="pl-9" />
             </div>
-            <div className="flex w-fit items-center gap-1 rounded-md border border-border/70 bg-muted/20 p-1" aria-label="Filter members by role">
+            <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-md border border-border/70 bg-muted/20 p-1" aria-label="Filter members by role">
               <RoleFilterButton active={roleFilter === "all"} onClick={() => setRoleFilter("all")}>All</RoleFilterButton>
               <RoleFilterButton active={roleFilter === "admin"} onClick={() => setRoleFilter("admin")}>Admins</RoleFilterButton>
               <RoleFilterButton active={roleFilter === "manager"} onClick={() => setRoleFilter("manager")}>Managers</RoleFilterButton>
@@ -344,9 +343,7 @@ export default function MembersPageClient() {
         <div className="flex flex-col gap-3 border-l-2 border-sky-500 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
-            <p className="text-xs text-muted-foreground">
-              {canManageMembers ? "Actions follow your role-management permissions." : "Edit and deletion actions are limited to your own account."}
-            </p>
+            {!canManageMembers ? <p className="text-xs text-muted-foreground">Only your account can be changed.</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => singleSelected && openEdit(singleSelected)} disabled={!singleSelected}>
@@ -364,18 +361,7 @@ export default function MembersPageClient() {
         </div>
       ) : null}
 
-      <Card className="overflow-hidden border-border/80">
-        <CardHeader className="border-b bg-muted/10 px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-base">Workspace users</CardTitle>
-              <CardDescription className="mt-1">
-                {canManageMembers ? "Visible accounts and role changes follow your access level." : "Only your own profile is visible here."}
-              </CardDescription>
-            </div>
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{filtered.length} shown</span>
-          </div>
-        </CardHeader>
+      <Card className="gap-0 overflow-hidden border-border/80 py-0">
         <CardContent className="p-0">
           <Table className="min-w-[820px]">
             <TableHeader>
@@ -403,13 +389,13 @@ export default function MembersPageClient() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">Loading members...</TableCell>
+                  <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">Loading members...</TableCell>
                 </TableRow>
               ) : null}
               {!loading && filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7}>
-                    <EmptyState icon={SearchX} title="No members found" description="Try another search term or refresh the member list." />
+                    <EmptyState title="No members match the current filters" />
                   </TableCell>
                 </TableRow>
               ) : null}
@@ -439,9 +425,7 @@ export default function MembersPageClient() {
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           <span className="truncate">{member.email}</span>
                         </p>
-                        <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
-                          {member.jobTitle ?? "Workspace member"}
-                        </p>
+                        {member.jobTitle ? <p className="mt-1 truncate text-[11px] text-muted-foreground/80">{member.jobTitle}</p> : null}
                       </div>
                     </div>
                   </TableCell>
@@ -594,7 +578,7 @@ function CreateMemberDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add member</DialogTitle>
-          <DialogDescription>Create a member account. The new user can sign in from the login page.</DialogDescription>
+          <DialogDescription>Create an account and assign its workspace role.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First name">
@@ -685,7 +669,7 @@ function RoleFilterButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         active ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
       }`}
     >

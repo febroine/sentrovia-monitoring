@@ -3,12 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
-  BellRing,
-  Database,
   Eye,
   EyeOff,
   LoaderCircle,
-  TimerReset,
 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
@@ -103,26 +100,23 @@ export default function LoginPage() {
       heroDescription="Review checks, verification attempts, and notification outcomes in one workspace."
       showcaseCards={[
         {
-          icon: TimerReset,
           title: "Failure verification",
-          description: "Transient errors are checked again before an incident reaches your team.",
+          description: "Confirm failures before notifying the team.",
         },
         {
-          icon: BellRing,
           title: "Delivery evidence",
-          description: "Email, Telegram, Discord, and webhook outcomes remain visible after the alert.",
+          description: "See which channels accepted, retried, or rejected an alert.",
         },
         {
-          icon: Database,
-          title: "Clear ownership",
-          description: "Monitors and reports stay organized around the companies your team operates.",
+          title: "Company scope",
+          description: "Group monitors, recipients, status pages, and reports by company.",
         },
       ]}
       formTitle="Welcome back"
       formDescription="Sign in with your workspace email or username."
     >
       <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit}>
-        <FieldBlock label="Email or Username" htmlFor="identifier">
+        <FieldBlock label="Email or username" htmlFor="identifier">
           <Input
             id="identifier"
             name="identifier"
@@ -137,11 +131,7 @@ export default function LoginPage() {
           />
         </FieldBlock>
 
-        <FieldBlock
-          label="Password"
-          htmlFor="password"
-          aside={<span className="text-[11px] text-muted-foreground">Case-sensitive</span>}
-        >
+        <FieldBlock label="Password" htmlFor="password">
           <div className="relative">
             <Input
               id="password"
@@ -171,7 +161,7 @@ export default function LoginPage() {
         </FieldBlock>
 
         {error ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
+          <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive-foreground">
             {error}
           </div>
         ) : null}
@@ -211,25 +201,15 @@ function clearPasswordFields(form: HTMLFormElement | null) {
 function FieldBlock({
   label,
   htmlFor,
-  aside,
   children,
 }: {
   label: string;
   htmlFor: string;
-  aside?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <Label
-          htmlFor={htmlFor}
-          className="text-xs font-medium text-muted-foreground"
-        >
-          {label}
-        </Label>
-        {aside}
-      </div>
+      <Label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">{label}</Label>
       {children}
     </div>
   );

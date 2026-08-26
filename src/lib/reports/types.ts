@@ -121,6 +121,8 @@ export interface GeneratedReport {
     lastCheckedAt: string | null;
     lastFailureAt: string | null;
     lastErrorMessage: string | null;
+    hasCompletedChecks: boolean;
+    hasLatencySamples: boolean;
     uptimePct: number;
     averageLatencyMs: number;
     p95LatencyMs: number;

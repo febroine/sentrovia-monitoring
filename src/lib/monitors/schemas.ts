@@ -13,7 +13,6 @@ const jsonMatchModeSchema = z.enum(["equals", "contains", "exists"]);
 const INVALID_HOST_INPUT_PATTERN = /[\s/?#]/;
 const MAX_MONITOR_EMAIL_RECIPIENTS = 25;
 const MAX_MONITOR_EMAIL_RECIPIENTS_LENGTH = 2000;
-const TELEGRAM_NOTIFICATION_PREFS = new Set(["telegram", "both"]);
 
 function optionalString(maxLength: number) {
   return z
@@ -156,6 +155,9 @@ const monitorInputObjectSchema = z
     telegramTemplate: optionalString(4000),
     emailSubject: optionalString(500),
     emailBody: optionalString(4000),
+    slowResponseEmailSubject: optionalString(500),
+    slowResponseEmailBody: optionalString(4000),
+    slowResponseTelegramTemplate: optionalString(4000),
     sendOutageScreenshot: z.boolean().default(true),
     isActive: z.boolean().default(true),
     publishOnStatusPage: z.boolean().default(false),
@@ -200,22 +202,14 @@ const monitorInputObjectSchema = z
       }
     }
 
-    if (TELEGRAM_NOTIFICATION_PREFS.has(value.notificationPref)) {
-      if (!value.telegramBotToken) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["telegramBotToken"],
-          message: "Enter a Telegram bot token when Telegram notifications are enabled.",
-        });
-      }
-
-      if (!value.telegramChatId) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["telegramChatId"],
-          message: "Enter a Telegram chat id when Telegram notifications are enabled.",
-        });
-      }
+    const hasTelegramToken = Boolean(value.telegramBotToken);
+    const hasTelegramChatId = Boolean(value.telegramChatId);
+    if (hasTelegramToken !== hasTelegramChatId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [hasTelegramToken ? "telegramChatId" : "telegramBotToken"],
+        message: "Configure both monitor-level Telegram fields, or leave both blank to use company or workspace defaults.",
+      });
     }
 
     if (value.monitorType === "http") {

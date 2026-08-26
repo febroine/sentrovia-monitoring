@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
 import { SentroviaMark } from "@/components/brand/sentrovia-mark";
 import { cn } from "@/lib/utils";
 
 type AuthShellTone = "primary" | "emerald";
 
 type AuthShowcaseCard = {
-  icon: LucideIcon;
   title: string;
   description: string;
 };
@@ -79,9 +77,6 @@ export function AuthShell({
                 linkClassName={palette.link}
               />
 
-              <p className="auth-reveal auth-delay-3 mt-8 border-t pt-5 text-center text-xs leading-5 text-muted-foreground">
-                Private workspace · Admin-managed access
-              </p>
             </div>
           </div>
         </section>
@@ -116,14 +111,10 @@ function ProductContext({
 
           <div className="auth-reveal auth-delay-3 mt-9 border-y">
             {showcaseCards.map((item) => (
-              <ProductFact key={item.title} item={item} accentClassName={accentClassName} />
+              <ProductFact key={item.title} item={item} />
             ))}
           </div>
         </div>
-
-        <p className="border-t pt-4 text-xs leading-5 text-muted-foreground">
-          CHECK → VERIFY → NOTIFY
-        </p>
       </div>
     </section>
   );
@@ -131,20 +122,13 @@ function ProductContext({
 
 function ProductFact({
   item,
-  accentClassName,
 }: {
   item: AuthShowcaseCard;
-  accentClassName: string;
 }) {
-  const Icon = item.icon;
-
   return (
-    <div className="grid grid-cols-[20px_minmax(0,1fr)] items-start gap-3 border-b py-4 last:border-b-0">
-      <Icon className={cn("mt-0.5 size-4", accentClassName)} aria-hidden="true" />
-      <div>
-        <h2 className="text-sm font-medium">{item.title}</h2>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.description}</p>
-      </div>
+    <div className="grid gap-1 border-b py-4 last:border-b-0 sm:grid-cols-[140px_minmax(0,1fr)] sm:gap-5">
+      <h2 className="text-sm font-medium">{item.title}</h2>
+      <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
     </div>
   );
 }
@@ -152,7 +136,7 @@ function ProductFact({
 function Brand({ accentClassName }: { accentClassName: string }) {
   return (
     <header className="auth-reveal flex items-center gap-3">
-      <SentroviaMark className={cn("auth-mark-enter size-8 shrink-0 text-base font-bold", accentClassName)} />
+      <SentroviaMark className={cn("auth-mark-enter size-8 shrink-0", accentClassName)} />
       <div>
         <p className="text-[1.1rem] font-semibold tracking-tight">Sentrovia</p>
       </div>
@@ -163,7 +147,7 @@ function Brand({ accentClassName }: { accentClassName: string }) {
 function MobileBrand() {
   return (
     <div className="auth-reveal flex items-center gap-3 lg:hidden">
-      <SentroviaMark className="auth-mark-enter size-8 shrink-0 text-base font-bold text-primary" />
+      <SentroviaMark className="auth-mark-enter size-8 shrink-0 text-primary" />
       <div>
         <p className="text-[1.1rem] font-semibold tracking-tight">Sentrovia</p>
       </div>

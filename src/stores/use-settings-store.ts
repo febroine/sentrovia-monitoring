@@ -23,7 +23,7 @@ interface SettingsState {
   saveSettings: (section?: SettingsSaveSection) => Promise<void>;
   updateSetting: (
     path: string,
-    value: string | number | boolean | string[]
+    value: string | number | boolean | string[] | null
   ) => void;
   clearMessage: () => void;
 }
@@ -130,7 +130,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         return { settings: next, message: null };
       }
 
-      (next[section] as Record<string, string | number | boolean | string[]>)[key] = value;
+      (next[section] as Record<string, unknown>)[key] = value;
       return { settings: next, message: null };
     }),
   clearMessage: () => set({ message: null, error: null }),

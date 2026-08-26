@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  Archive,
+  Braces,
+  ChevronRight,
+  DatabaseBackup,
+  HardDriveDownload,
+  MailCheck,
+  PanelsTopLeft,
+  ScanSearch,
+  ShieldAlert,
+  Waypoints,
+} from "lucide-react";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
 import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
 import { SavedRecipientsManager } from "@/components/settings/saved-recipients-manager";
 import { TemplateEditor } from "@/components/settings/template-editor";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -22,6 +32,7 @@ import type { SettingsSaveSection } from "@/lib/settings/section-save";
 import { TIME_ZONE_OPTIONS } from "@/lib/time";
 
 export { UpdateAssistantTab } from "@/components/settings/update-assistant-tab";
+export { PublicStatusSettingsTab } from "@/components/settings/public-status-pages-manager";
 
 const TEMPLATE_TOKENS = [
   "{domain}",
@@ -33,6 +44,8 @@ const TEMPLATE_TOKENS = [
   "{failure_reason}",
   "{latency_ms}",
   "{slow_threshold_ms}",
+  "{check_duration_ms}",
+  "{hard_timeout_ms}",
   "{checked_at_local}",
   "{downtime_started_at_local}",
   "{downtime_duration}",
@@ -48,8 +61,34 @@ interface TabProps {
   saveSettings: (section?: SettingsSaveSection) => Promise<void>;
   updateSetting: (
     path: string,
-    value: string | number | boolean | string[]
+    value: string | number | boolean | string[] | null
   ) => void;
+}
+
+function TemplateGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="group border-t first:border-t-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="block text-sm font-medium">{title}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
+      </summary>
+      <div className="space-y-5 pb-5">{children}</div>
+    </details>
+  );
 }
 
 export function NotificationSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
@@ -58,8 +97,10 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Alert Conditions"
-        description="These switches are read by the worker before sending down, recovery, latency, SSL, or status-change notifications."
+        title="Alert conditions"
+        description="Choose which monitor state changes produce notifications."
+        icon={ShieldAlert}
+        iconClassName="text-rose-600 dark:text-rose-400"
         action={
           <SectionSaveButton
             sectionId="alert-conditions"
@@ -103,13 +144,13 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         />
         <ToggleRow
           label="Slow response alerts"
-          description="Notify when a monitor stays online but exceeds its slow response threshold. Turn this off if you only want confirmed down alerts."
+          description="Notify when an online monitor exceeds its slow-response threshold."
           checked={settings.notifications.notifyOnLatency}
           onChange={(checked) => updateSetting("notifications.notifyOnLatency", checked)}
         />
         <ToggleRow
           label="Prolonged downtime reminders"
-          description="Allow follow-up alerts for monitors that have a non-zero Re-notify limit."
+          description="Allow follow-up alerts when a monitor has a re-notify limit."
           checked={settings.notifications.prolongedDowntimeEnabled}
           onChange={(checked) => updateSetting("notifications.prolongedDowntimeEnabled", checked)}
         />
@@ -142,8 +183,10 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       </SectionCard>
 
       <SectionCard
-        title="SMTP Delivery"
-        description="The worker uses these credentials directly. Passwords are encrypted before they are stored."
+        title="SMTP delivery"
+        description="Credentials used by the worker. Stored passwords are encrypted."
+        icon={MailCheck}
+        iconClassName="text-sky-600 dark:text-sky-400"
         action={
           <SectionSaveButton
             sectionId="smtp-delivery"
@@ -231,8 +274,10 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       </SectionCard>
 
       <SectionCard
-        title="Additional Notification Channels"
-        description="Mirror the same worker notifications to collaboration tools through incoming webhooks."
+        title="Additional channels"
+        description="Send worker notifications to Discord and webhook destinations."
+        icon={Waypoints}
+        iconClassName="text-violet-600 dark:text-violet-400"
         action={
           <SectionSaveButton
             sectionId="additional-notification-channels"
@@ -246,8 +291,10 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       </SectionCard>
 
       <SectionCard
-        title="Notification Templates"
-        description="These templates are used when a monitor does not override its own email or Telegram content."
+        title="Notification templates"
+        description="Workspace defaults used when a monitor has no template override."
+        icon={Braces}
+        iconClassName="text-amber-600 dark:text-amber-400"
         action={
           <SectionSaveButton
             sectionId="notification-templates"
@@ -260,13 +307,11 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         <div className="border-y py-4">
           <p className="text-sm font-medium">Available template tokens</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Tokens are replaced at delivery time. In email bodies, “Label: value” becomes a report row, “## Heading” starts a section, and “- Item” creates a list entry. Any other sentence remains a regular paragraph.
+            Tokens are replaced at delivery time. In email bodies, “Label: value” becomes a report row, “## Heading” starts a section, and “- Item” creates a list entry. Other sentences remain regular paragraphs.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
             {TEMPLATE_TOKENS.map((token) => (
-              <Badge key={token} variant="outline" className="font-mono text-[11px]">
-                {token}
-              </Badge>
+              <code key={token}>{token}</code>
             ))}
           </div>
         </div>
@@ -285,74 +330,113 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             />
           </Field>
         </div>
-        <Field label="Default email subject" hint="Available tokens: {domain}, {url}, {status_code}, {status_label}, {failure_reason}, {event_state}, {rca_summary}">
-          <Input
-            value={settings.notifications.defaultEmailSubjectTemplate}
-            onChange={(event) => updateSetting("notifications.defaultEmailSubjectTemplate", event.target.value)}
-          />
-        </Field>
-        <TemplateEditor
-          label="Default email body"
-          hint="The email adds a responsive report header automatically. Use detail rows for operational facts and regular sentences for notes; custom content remains readable without HTML."
-          reportLayoutTools
-          value={settings.notifications.defaultEmailBodyTemplate}
-          onChange={(value) => updateSetting("notifications.defaultEmailBodyTemplate", value)}
-        />
-        <TemplateEditor
-          label="Default Telegram template"
-          hint="Telegram keeps the same token set. Formatting controls are lightweight so the message stays readable across clients."
-          rows={6}
-          value={settings.notifications.defaultTelegramTemplate}
-          onChange={(value) => updateSetting("notifications.defaultTelegramTemplate", value)}
-        />
-        <Field
-          label="Recovery (UP) email subject"
-          hint="Used when a previously down monitor becomes healthy again."
-        >
-          <Input
-            value={settings.notifications.recoveryEmailSubjectTemplate}
-            onChange={(event) => updateSetting("notifications.recoveryEmailSubjectTemplate", event.target.value)}
-          />
-        </Field>
-        <TemplateEditor
-          label="Recovery (UP) email body"
-          hint="Used only for recovery notifications. The report header automatically switches to the healthy color treatment."
-          reportLayoutTools
-          value={settings.notifications.recoveryEmailBodyTemplate}
-          onChange={(value) => updateSetting("notifications.recoveryEmailBodyTemplate", value)}
-        />
-        <TemplateEditor
-          label="Recovery (UP) Telegram template"
-          hint="Customize the Telegram message sent when the monitor recovers."
-          rows={6}
-          value={settings.notifications.recoveryTelegramTemplate}
-          onChange={(value) => updateSetting("notifications.recoveryTelegramTemplate", value)}
-        />
-        <Field
-          label="Prolonged downtime email subject"
-          hint="Use this template for 'still down' reminder emails. Tokens like {downtime_duration} and {downtime_started_at_local} are available here."
-        >
-          <Input
-            value={settings.notifications.prolongedDowntimeEmailSubjectTemplate}
-            onChange={(event) =>
-              updateSetting("notifications.prolongedDowntimeEmailSubjectTemplate", event.target.value)
-            }
-          />
-        </Field>
-        <TemplateEditor
-          label="Prolonged downtime email body"
-          hint="Used for reminders while a monitor remains down. Detail rows, section headings, lists, and free-form notes share the same report layout."
-          reportLayoutTools
-          value={settings.notifications.prolongedDowntimeEmailBodyTemplate}
-          onChange={(value) => updateSetting("notifications.prolongedDowntimeEmailBodyTemplate", value)}
-        />
-        <TemplateEditor
-          label="Prolonged downtime Telegram template"
-          hint="Customize the reminder text sent to Telegram while an outage is still active."
-          rows={6}
-          value={settings.notifications.prolongedDowntimeTelegramTemplate}
-          onChange={(value) => updateSetting("notifications.prolongedDowntimeTelegramTemplate", value)}
-        />
+        <div>
+          <TemplateGroup
+            title="Down notification"
+            description="Message sent after a monitor is confirmed unavailable."
+          >
+            <Field label="Email subject" hint="Use event and monitor tokens from the list above.">
+              <Input
+                value={settings.notifications.defaultEmailSubjectTemplate}
+                onChange={(event) => updateSetting("notifications.defaultEmailSubjectTemplate", event.target.value)}
+              />
+            </Field>
+            <TemplateEditor
+              label="Email body"
+              hint="The email header is added automatically. Use rows for facts and regular sentences for notes."
+              reportLayoutTools
+              value={settings.notifications.defaultEmailBodyTemplate}
+              onChange={(value) => updateSetting("notifications.defaultEmailBodyTemplate", value)}
+            />
+            <TemplateEditor
+              label="Telegram message"
+              hint="Uses the same tokens with lightweight text formatting."
+              rows={6}
+              value={settings.notifications.defaultTelegramTemplate}
+              onChange={(value) => updateSetting("notifications.defaultTelegramTemplate", value)}
+            />
+          </TemplateGroup>
+
+          <TemplateGroup
+            title="Recovery notification"
+            description="Message sent when an unavailable monitor becomes healthy."
+          >
+            <Field label="Email subject">
+              <Input
+                value={settings.notifications.recoveryEmailSubjectTemplate}
+                onChange={(event) => updateSetting("notifications.recoveryEmailSubjectTemplate", event.target.value)}
+              />
+            </Field>
+            <TemplateEditor
+              label="Email body"
+              hint="The report header automatically uses the healthy status treatment."
+              reportLayoutTools
+              value={settings.notifications.recoveryEmailBodyTemplate}
+              onChange={(value) => updateSetting("notifications.recoveryEmailBodyTemplate", value)}
+            />
+            <TemplateEditor
+              label="Telegram message"
+              hint="Sent through the monitor's effective Telegram channel."
+              rows={6}
+              value={settings.notifications.recoveryTelegramTemplate}
+              onChange={(value) => updateSetting("notifications.recoveryTelegramTemplate", value)}
+            />
+          </TemplateGroup>
+
+          <TemplateGroup
+            title="Slow response notification"
+            description="Sent when an online monitor completes above its slow-response threshold."
+          >
+            <Field label="Email subject">
+              <Input
+                value={settings.notifications.slowResponseEmailSubjectTemplate}
+                onChange={(event) => updateSetting("notifications.slowResponseEmailSubjectTemplate", event.target.value)}
+              />
+            </Field>
+            <TemplateEditor
+              label="Email body"
+              hint="This is a warning notification. The monitor remains online and does not reduce uptime."
+              reportLayoutTools
+              value={settings.notifications.slowResponseEmailBodyTemplate}
+              onChange={(value) => updateSetting("notifications.slowResponseEmailBodyTemplate", value)}
+            />
+            <TemplateEditor
+              label="Telegram message"
+              hint="Sent through the monitor's effective Telegram channel."
+              rows={6}
+              value={settings.notifications.slowResponseTelegramTemplate}
+              onChange={(value) => updateSetting("notifications.slowResponseTelegramTemplate", value)}
+            />
+          </TemplateGroup>
+
+          <TemplateGroup
+            title="Downtime reminder"
+            description="Follow-up message sent while a confirmed outage remains active."
+          >
+            <Field label="Email subject" hint="Downtime duration and start-time tokens are available here.">
+              <Input
+                value={settings.notifications.prolongedDowntimeEmailSubjectTemplate}
+                onChange={(event) =>
+                  updateSetting("notifications.prolongedDowntimeEmailSubjectTemplate", event.target.value)
+                }
+              />
+            </Field>
+            <TemplateEditor
+              label="Email body"
+              hint="Supports the same detail rows, section headings, lists, and notes as the down template."
+              reportLayoutTools
+              value={settings.notifications.prolongedDowntimeEmailBodyTemplate}
+              onChange={(value) => updateSetting("notifications.prolongedDowntimeEmailBodyTemplate", value)}
+            />
+            <TemplateEditor
+              label="Telegram message"
+              hint="Sent until recovery or the monitor's re-notify limit is reached."
+              rows={6}
+              value={settings.notifications.prolongedDowntimeTelegramTemplate}
+              onChange={(value) => updateSetting("notifications.prolongedDowntimeTelegramTemplate", value)}
+            />
+          </TemplateGroup>
+        </div>
       </SectionCard>
     </div>
   );
@@ -363,8 +447,10 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
 
   return (
     <SectionCard
-      title="Default Monitor Configuration"
-      description="If a site-level setting is omitted during manual creation or CSV import, these values are applied automatically."
+      title="Monitor defaults"
+      description="Applied when a monitor or CSV import omits a value."
+      icon={ScanSearch}
+      iconClassName="text-emerald-600 dark:text-emerald-400"
       action={
         <SectionSaveButton
           sectionId="default-monitor-configuration"
@@ -377,8 +463,8 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
       <div className="border-l-2 border-border px-4 py-2">
         <p className="text-sm font-medium">Override behavior</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          These values fill the gaps when a monitor is created manually or imported from CSV. If a monitor defines its
-          own setting later, the site-level value always wins.
+          These values fill the gaps when a monitor is created manually or imported from CSV. A monitor-specific value
+          takes precedence when one is configured.
         </p>
       </div>
 
@@ -399,7 +485,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
                 placeholder="5m"
               />
             </Field>
-            <Field label="Timeout (ms)" hint="Used by the worker when a monitor does not override timeout.">
+            <Field label="Hard failure timeout (ms)" hint="Maximum time allowed for a complete check when a monitor does not override it.">
               <Input
                 type="number"
                 min={1000}
@@ -407,6 +493,23 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
                 step={500}
                 value={settings.monitoring.timeout}
                 onChange={(event) => updateSetting("monitoring.timeout", Number(event.target.value) || 1000)}
+              />
+            </Field>
+            <Field
+              label="Slow response threshold (ms)"
+              hint="Optional default for new and imported HTTP, keyword, and JSON monitors. Leave blank to disable the default."
+            >
+              <Input
+                type="number"
+                min={1}
+                max={Math.max(1, settings.monitoring.timeout - 1)}
+                step={100}
+                value={settings.monitoring.slowResponseThresholdMs ?? ""}
+                placeholder="Optional"
+                onChange={(event) => {
+                  const value = event.target.value.trim();
+                  updateSetting("monitoring.slowResponseThresholdMs", value ? Number(value) : null);
+                }}
               />
             </Field>
             <Field
@@ -434,6 +537,9 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
               />
             </Field>
           </div>
+          <p className="mt-4 border-l-2 border-amber-500/60 pl-3 text-xs leading-5 text-muted-foreground">
+            A check that completes between the slow-response threshold and hard failure timeout remains online. It can send a separate slow-response warning, but it is never counted as DOWN.
+          </p>
         </div>
 
         <div className="border-y py-4">
@@ -515,8 +621,10 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
 
   return (
     <SectionCard
-      title="Workspace Experience"
-      description="These preferences are stored per user and shape dashboard density, motion, and landing behavior."
+      title="Display preferences"
+      description="Density, contrast, time format, and dashboard defaults."
+      icon={PanelsTopLeft}
+      iconClassName="text-violet-600 dark:text-violet-400"
       action={
         <SectionSaveButton
           sectionId="workspace-experience"
@@ -618,154 +726,6 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
   );
 }
 
-export function PublicStatusSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
-  const { saveSection, savingSection } = useSectionSave(saveSettings);
-  const { companies, error: companyError, loading: companiesLoading } = usePublicStatusCompanies();
-  const statusPath = settings.publicStatus.slug ? `/status/${settings.publicStatus.slug}` : "/status/your-status-slug";
-  const canOpenStatusPage = settings.publicStatus.enabled && settings.publicStatus.slug.length >= 3;
-  const selectedCompanyMissing = Boolean(
-    settings.publicStatus.companyId
-    && !companies.some((company) => company.id === settings.publicStatus.companyId)
-  );
-
-  return (
-    <SectionCard
-      title="Public Status Page"
-      description="Publish a read-only status page that exposes active monitor health without requiring a login."
-      action={
-        <SectionSaveButton
-          sectionId="public-status-page"
-          saving={saving}
-          savingSection={savingSection}
-          onSave={saveSection}
-        />
-      }
-    >
-      <ToggleRow
-        label="Publish public status page"
-        description="Anyone with the status URL can view active service health when this is enabled."
-        checked={settings.publicStatus.enabled}
-        onChange={(checked) => updateSetting("publicStatus.enabled", checked)}
-      />
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Status page slug" hint="Use lowercase letters, numbers, and hyphens. This becomes the public URL path.">
-          <Input
-            value={settings.publicStatus.slug}
-            onChange={(event) => updateSetting("publicStatus.slug", toSlugInput(event.target.value))}
-            placeholder="sentrovia-status"
-          />
-        </Field>
-        <Field label="Public URL">
-          <div className="flex min-h-10 items-center gap-2 rounded-md border bg-muted/20 px-3 text-sm text-muted-foreground">
-            <ExternalLink className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{statusPath}</span>
-            {canOpenStatusPage ? (
-              <a
-                aria-label="Open public status page"
-                className="flex size-7 shrink-0 items-center justify-center rounded-sm hover:bg-muted hover:text-foreground"
-                href={statusPath}
-                rel="noreferrer"
-                target="_blank"
-                title="Open public status page"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            ) : null}
-          </div>
-        </Field>
-      </div>
-      <Field
-        label="Published company"
-        hint="Choose one company to publish only its active monitors, or keep the full workspace visible."
-      >
-        <Select
-          value={settings.publicStatus.companyId || "all-companies"}
-          onValueChange={(value) => updateSetting(
-            "publicStatus.companyId",
-            value === "all-companies" ? "" : String(value)
-          )}
-          disabled={companiesLoading}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={companiesLoading ? "Loading companies..." : "Select company scope"} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-companies">All companies</SelectItem>
-            {selectedCompanyMissing ? (
-              <SelectItem value={settings.publicStatus.companyId}>Unavailable selected company</SelectItem>
-            ) : null}
-            {companies.map((company) => (
-              <SelectItem key={company.id} value={company.id}>
-                {company.name} ({company.monitorsCount} monitors)
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {companyError ? <p className="mt-2 text-xs text-destructive">{companyError}</p> : null}
-      </Field>
-      <Field label="Page title" hint="Leave empty to use your organization name.">
-        <Input
-          value={settings.publicStatus.title}
-          onChange={(event) => updateSetting("publicStatus.title", event.target.value)}
-          placeholder="Sentrovia service status"
-        />
-      </Field>
-      <Field label="Summary" hint="Shown at the top of the public status page.">
-        <Input
-          value={settings.publicStatus.summary}
-          onChange={(event) => updateSetting("publicStatus.summary", event.target.value)}
-          placeholder="Live service availability and active outage summary."
-        />
-      </Field>
-    </SectionCard>
-  );
-}
-
-type PublicStatusCompanyOption = {
-  id: string;
-  name: string;
-  monitorsCount: number;
-};
-
-function usePublicStatusCompanies() {
-  const [companies, setCompanies] = useState<PublicStatusCompanyOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadCompanies() {
-      try {
-        const response = await fetch("/api/companies", { cache: "no-store", signal: controller.signal });
-        const data = await response.json().catch(() => null) as {
-          companies?: PublicStatusCompanyOption[];
-          message?: string;
-        } | null;
-        if (!response.ok) {
-          throw new Error(data?.message ?? "Unable to load companies.");
-        }
-
-        setCompanies(data?.companies ?? []);
-        setError(null);
-      } catch (loadError) {
-        if (!controller.signal.aborted) {
-          setError(loadError instanceof Error ? loadError.message : "Unable to load companies.");
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadCompanies();
-    return () => controller.abort();
-  }, []);
-
-  return { companies, loading, error };
-}
-
 export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const isAdmin = settings.profile.role === "admin";
   const { saveSection, savingSection } = useSectionSave(saveSettings);
@@ -773,8 +733,10 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
   return (
     <>
       <SectionCard
-        title="Data Retention"
-        description="Control how long operational history remains in PostgreSQL. Cleanup runs safely in the worker."
+        title="Data retention"
+        description="How long operational history remains in PostgreSQL."
+        icon={Archive}
+        iconClassName="text-cyan-600 dark:text-cyan-400"
         action={
           <SectionSaveButton
             sectionId="retention-and-backups"
@@ -820,8 +782,10 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
 
       {isAdmin ? (
         <SectionCard
-          title="Automatic Database Backup"
-          description="Create a verified, encrypted PostgreSQL backup on the worker host each day."
+          title="Automatic database backup"
+          description="Create a daily encrypted PostgreSQL backup on the worker host."
+          icon={DatabaseBackup}
+          iconClassName="text-emerald-600 dark:text-emerald-400"
         >
           <ToggleRow
             label="Enable automatic backups"
@@ -870,8 +834,10 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
       ) : null}
 
       <SectionCard
-        title="Workspace Backup"
-        description="Export or restore workspace configuration manually. Database records remain under your deployment's backup policy."
+        title="Workspace backup"
+        description="Export or restore configuration. Database records remain under the deployment backup policy."
+        icon={HardDriveDownload}
+        iconClassName="text-sky-600 dark:text-sky-400"
       >
         {isAdmin ? (
           <BackupRestorePanel
@@ -886,13 +852,4 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
       </SectionCard>
     </>
   );
-}
-
-function toSlugInput(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-")
-    .slice(0, 120);
 }

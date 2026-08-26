@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DEFAULT_DASHBOARD_PREFERENCES, type DashboardPreferences, type DashboardWidgetId } from "@/lib/dashboard/preferences";
 import type { DashboardData } from "@/lib/dashboard/service";
+import { formatDateTime, resolveTimeDisplaySettings, type TimeDisplaySettings } from "@/lib/time";
 
 export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const [data, setData] = useState(initialData);
@@ -130,7 +131,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       },
       {
         label: "Average latency",
-        value: `${data.summary.avgLatency}ms`,
+        value: data.summary.avgLatency === null ? "No data" : `${data.summary.avgLatency}ms`,
         sub: `${data.summary.coverage.toFixed(1)}% coverage`,
         tone: "text-amber-600 dark:text-amber-400",
       },
@@ -147,6 +148,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const showChartsSection = data.settings?.appearance.showChartsSection ?? true;
   const showOutageBanner = data.settings?.appearance.showOutageBanner ?? true;
   const use24HourClock = data.settings?.appearance.use24HourClock ?? true;
+  const timeDisplaySettings = resolveTimeDisplaySettings(data.settings?.appearance);
   const isAdmin = data.settings?.profile.role === "admin";
   const preferences = data.preferences ?? DEFAULT_DASHBOARD_PREFERENCES;
   const visibleWidgets = preferences.widgets.filter((widget) => {
@@ -185,7 +187,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     }
 
     if (widget === "recent-events") {
-      return <PanelRecentEvents events={eventItems} page={currentEventPage} totalPages={eventPages} onPageChange={setEventPage} use24HourClock={use24HourClock} />;
+      return <PanelRecentEvents events={eventItems} page={currentEventPage} totalPages={eventPages} onPageChange={setEventPage} timeDisplaySettings={timeDisplaySettings} />;
     }
 
     return (
@@ -210,7 +212,10 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-            <span className="flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400"><span className="size-1.5 bg-sky-500" />Live</span>
+            <span className={`flex items-center gap-1.5 text-xs ${streamError ? "text-amber-600 dark:text-amber-400" : "text-sky-600 dark:text-sky-400"}`}>
+              <span className={`size-1.5 ${streamError ? "bg-amber-500" : "bg-sky-500"}`} />
+              {streamError ? "Reconnecting" : "Live"}
+            </span>
           </div>
           <Button variant="outline" size="sm" onClick={() => { setCustomizationError(null); setCustomizationOpen((open) => !open); }}>
             <SlidersHorizontal className="h-4 w-4" />
@@ -286,7 +291,7 @@ function PanelCompanyHealth({
       </CardHeader>
       <CardContent className="space-y-3">
         {companies.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No monitor groups yet.</p>
+            <p className="text-sm text-muted-foreground">No company groups in this scope.</p>
         ) : (
           companies.map((company) => (
             <div key={company.id} className="space-y-2 border-b py-3 last:border-b-0">
@@ -331,13 +336,13 @@ function PanelRecentEvents({
   page,
   totalPages,
   onPageChange,
-  use24HourClock,
+  timeDisplaySettings,
 }: {
   events: DashboardData["events"];
   page: number;
   totalPages: number;
   onPageChange: (page: number) => void;
-  use24HourClock: boolean;
+  timeDisplaySettings: TimeDisplaySettings;
 }) {
   return (
     <Card>
@@ -349,7 +354,7 @@ function PanelRecentEvents({
       </CardHeader>
       <CardContent className="space-y-2.5">
         {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No monitor events recorded yet.</p>
+            <p className="text-sm text-muted-foreground">No events in this scope.</p>
         ) : (
           events.map((event) => (
             <div key={event.id} className="flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between">
@@ -371,7 +376,7 @@ function PanelRecentEvents({
               </div>
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Clock3 className="h-3 w-3" />
-                {new Date(event.createdAt).toLocaleString([], { hour12: !use24HourClock })}
+                {formatDateTime(event.createdAt, timeDisplaySettings)}
               </div>
             </div>
           ))

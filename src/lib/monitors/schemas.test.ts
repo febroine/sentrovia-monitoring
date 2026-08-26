@@ -25,12 +25,24 @@ describe("monitor input schema", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("requires telegram credentials when telegram notifications are enabled", () => {
+  it("allows telegram notifications to inherit company or workspace credentials", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,
       name: "Public API",
       url: "https://api.example.com",
       notificationPref: "telegram",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects an incomplete monitor-level Telegram override", () => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      notificationPref: "telegram",
+      telegramBotToken: "123456:telegram-token",
     });
 
     expect(parsed.success).toBe(false);

@@ -1,8 +1,15 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, monitorOutages, monitors, userSettings, users } from "@/lib/db/schema";
+import {
+  companies,
+  monitorOutages,
+  monitors,
+  publicStatusPages,
+  users,
+} from "@/lib/db/schema";
 import { buildMonitorHealthSummary, isMonitorCheckStale } from "@/lib/monitors/health";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
+import { formatMonitorUptime, getMonitorUptimeById } from "@/lib/monitoring/uptime";
 import { getSettings } from "@/lib/settings/service";
 import { resolveTimeDisplaySettings } from "@/lib/time";
 
@@ -12,44 +19,27 @@ export async function getPublicStatusPage(slug: string) {
     return null;
   }
 
-  const [settingsRow] = await db
-    .select({
-      userId: userSettings.userId,
-      publicStatusTitle: userSettings.publicStatusTitle,
-      publicStatusSummary: userSettings.publicStatusSummary,
-      publicStatusCompanyId: userSettings.publicStatusCompanyId,
-      companyName: companies.name,
-      companyDeletedAt: companies.deletedAt,
-      firstName: users.firstName,
-      organization: users.organization,
-    })
-    .from(userSettings)
-    .innerJoin(users, eq(users.id, userSettings.userId))
-    .leftJoin(companies, and(
-      eq(companies.id, userSettings.publicStatusCompanyId),
-      eq(companies.userId, userSettings.userId)
-    ))
-    .where(and(eq(userSettings.publicStatusEnabled, true), eq(userSettings.publicStatusSlug, trimmedSlug)))
-    .limit(1);
+  const pageRow = await findPublicStatusPage(trimmedSlug);
 
-  if (!settingsRow) {
+  if (!pageRow) {
     return null;
   }
 
   if (!isPublicStatusCompanyAvailable(
-    settingsRow.publicStatusCompanyId,
-    settingsRow.companyName,
-    settingsRow.companyDeletedAt
+    pageRow.companyId,
+    pageRow.companyName,
+    pageRow.companyDeletedAt
   )) {
     return null;
   }
 
-  const monitorScope = settingsRow.publicStatusCompanyId
-    ? eq(monitors.companyId, settingsRow.publicStatusCompanyId)
+  const monitorScope = pageRow.companyId
+    ? eq(monitors.companyId, pageRow.companyId)
     : undefined;
 
+  const generatedAt = new Date();
   const [settings, monitorRows, openOutages] = await Promise.all([
-    getSettings(settingsRow.userId),
+    getSettings(pageRow.userId),
     db
       .select({
         id: monitors.id,
@@ -61,7 +51,6 @@ export async function getPublicStatusPage(slug: string) {
         intervalValue: monitors.intervalValue,
         intervalUnit: monitors.intervalUnit,
         timeout: monitors.timeout,
-        uptime: monitors.uptime,
         latencyMs: monitors.latencyMs,
         slowResponseThresholdMs: monitors.slowResponseThresholdMs,
         isActive: monitors.isActive,
@@ -70,7 +59,7 @@ export async function getPublicStatusPage(slug: string) {
       })
       .from(monitors)
       .where(and(
-        eq(monitors.userId, settingsRow.userId),
+        eq(monitors.userId, pageRow.userId),
         eq(monitors.isActive, true),
         eq(monitors.publishOnStatusPage, true),
         isNull(monitors.deletedAt),
@@ -83,13 +72,17 @@ export async function getPublicStatusPage(slug: string) {
         startedAt: monitorOutages.startedAt,
       })
       .from(monitorOutages)
-      .where(and(eq(monitorOutages.userId, settingsRow.userId), eq(monitorOutages.status, "open")))
+      .where(and(eq(monitorOutages.userId, pageRow.userId), eq(monitorOutages.status, "open")))
       .orderBy(desc(monitorOutages.startedAt)),
   ]);
 
+  const uptimeByMonitorId = await getMonitorUptimeById(
+    pageRow.userId,
+    monitorRows.map((monitor) => monitor.id),
+    generatedAt
+  );
   const timeDisplaySettings = resolveTimeDisplaySettings(settings?.appearance);
   const openOutageMap = new Map(openOutages.map((outage) => [outage.monitorId, outage.startedAt.toISOString()]));
-  const generatedAt = new Date();
   const services = monitorRows.map((monitor) => {
     const status = normalizePublicServiceStatus(monitor.status);
     const stale = isMonitorCheckStale({
@@ -103,12 +96,13 @@ export async function getPublicStatusPage(slug: string) {
     const publicStatus = isSlowPublicService(status, monitor.latencyMs, monitor.slowResponseThresholdMs) || (status === "up" && stale)
       ? "pending"
       : status;
+    const uptime = uptimeByMonitorId.get(monitor.id) ?? formatMonitorUptime();
     const health = buildMonitorHealthSummary({
       status: publicStatus,
       verificationMode: monitor.verificationMode,
       consecutiveFailures: monitor.consecutiveFailures,
       latencyMs: monitor.latencyMs,
-      uptime: monitor.uptime,
+      uptime,
       isActive: monitor.isActive,
       lastCheckedAt: monitor.lastCheckedAt,
       nextCheckAt: monitor.nextCheckAt,
@@ -122,9 +116,9 @@ export async function getPublicStatusPage(slug: string) {
     return {
       id: monitor.id,
       url: sanitizePublicMonitorUrl(monitor.url),
-      company: settingsRow.companyName ?? monitor.company ?? "Workspace",
+      company: pageRow.companyName ?? monitor.company ?? "Workspace",
       status: publicStatus,
-      uptime: monitor.uptime,
+      uptime,
       latencyMs: monitor.latencyMs,
       slowResponseThresholdMs: monitor.slowResponseThresholdMs,
       lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
@@ -143,16 +137,16 @@ export async function getPublicStatusPage(slug: string) {
   return {
     slug: trimmedSlug,
     title:
-      settingsRow.publicStatusTitle ||
-      (settingsRow.companyName ? `${settingsRow.companyName} service status` : null) ||
-      settingsRow.organization ||
-      `${settingsRow.firstName} workspace status`,
+      pageRow.title ||
+      (pageRow.companyName ? `${pageRow.companyName} service status` : null) ||
+      pageRow.organization ||
+      `${pageRow.firstName} workspace status`,
     summary:
-      settingsRow.publicStatusSummary ||
+      pageRow.summary ||
       "Live service availability, recent health state, and active outages.",
     scope: {
-      companyId: settingsRow.publicStatusCompanyId ?? null,
-      companyName: settingsRow.companyName ?? null,
+      companyId: pageRow.companyId ?? null,
+      companyName: pageRow.companyName ?? null,
     },
     generatedAt: generatedAt.toISOString(),
     timeZone: timeDisplaySettings.timeZone,
@@ -165,6 +159,31 @@ export async function getPublicStatusPage(slug: string) {
     },
     services,
   };
+}
+
+async function findPublicStatusPage(slug: string) {
+  const [page] = await db
+    .select({
+      userId: publicStatusPages.userId,
+      title: publicStatusPages.title,
+      summary: publicStatusPages.summary,
+      companyId: publicStatusPages.companyId,
+      isEnabled: publicStatusPages.isEnabled,
+      companyName: companies.name,
+      companyDeletedAt: companies.deletedAt,
+      firstName: users.firstName,
+      organization: users.organization,
+    })
+    .from(publicStatusPages)
+    .innerJoin(users, eq(users.id, publicStatusPages.userId))
+    .leftJoin(companies, and(
+      eq(companies.id, publicStatusPages.companyId),
+      eq(companies.userId, publicStatusPages.userId)
+    ))
+    .where(eq(publicStatusPages.slug, slug))
+    .limit(1);
+
+  return page?.isEnabled ? page : null;
 }
 
 export function isSlowPublicService(status: "up" | "down" | "pending", latencyMs: number | null, thresholdMs: number | null) {

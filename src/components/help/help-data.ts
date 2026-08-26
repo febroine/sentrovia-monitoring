@@ -21,12 +21,10 @@ export type HelpCategory = {
 };
 
 export const quickNotes = [
-  "If monitors look stale, check Monitoring > Worker Pulse and Dashboard > System Health before changing monitor settings.",
-  "If a notification did not arrive, inspect Delivery before changing monitor settings.",
-  "If a hostname has no DNS record yet, you can still save it; the worker records a DNS failure until it resolves.",
-  "If a timeout alert feels noisy, check whether it was a confirmed timeout outage or a slow-but-online latency warning.",
-  "If every monitor becomes stale together, check worker heartbeat and host connectivity; an offline connectivity guard pauses due work without changing monitor states.",
-  "If a new release is available, use Settings > Updates for host-side commands instead of expecting the browser to update the app.",
+  "Stale checks: open Monitoring > Worker pulse, then Dashboard > System health.",
+  "Missing alert: inspect Delivery before changing the monitor.",
+  "Workspace-wide stale data: verify the worker heartbeat and host connectivity.",
+  "Noisy timeout: distinguish a confirmed outage from a slow-response warning.",
 ];
 
 export const helpCategories: HelpCategory[] = [
@@ -35,7 +33,7 @@ export const helpCategories: HelpCategory[] = [
     label: "Monitoring",
     icon: ServerCog,
     accent: "text-orange-600 dark:text-orange-300",
-    summary: "How checks are scheduled, verified, stored, and surfaced across the product.",
+    summary: "How checks run, enter verification, and appear in history.",
     faqs: [
       {
         question: "What monitor types are available today?",
@@ -158,17 +156,12 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Which delivery channels exist right now?",
         answer:
-          "Sentrovia supports email and Telegram monitor notifications, plus workspace-level Discord and generic webhook channels. Delivery attempts are recorded per channel so one failing destination does not hide the outcome of another.",
+          "Sentrovia supports email and Telegram monitor notifications with monitor, company, and workspace destination fallbacks, plus workspace-level Discord and generic webhook channels. Delivery attempts are recorded per channel so one failing destination does not hide the outcome of another.",
       },
       {
         question: "Can notifications be sent in Turkish?",
         answer:
           "Yes. Settings > Notifications includes a notification language option. Email and Telegram default templates are rendered in the selected language unless a monitor-level custom template overrides the workspace default.",
-      },
-      {
-        question: "Why do notification cards have separate Save buttons?",
-        answer:
-          "Notification settings are grouped by operational concern: alert conditions, SMTP delivery, additional channels, and templates. Each card can be saved from its own header, while the page-level save action remains available for broader changes.",
       },
       {
         question: "Can I test channels without triggering a real outage?",
@@ -207,7 +200,7 @@ export const helpCategories: HelpCategory[] = [
     label: "Reports",
     icon: BellRing,
     accent: "text-emerald-600 dark:text-emerald-300",
-    summary: "How previews, scheduled delivery, report scope, and report-driven operations work.",
+    summary: "How previews, schedules, report scope, and delivery work.",
     faqs: [
       {
         question: "What can the Reports page generate?",
@@ -215,9 +208,9 @@ export const helpCategories: HelpCategory[] = [
           "Every report covers the rolling previous 7 days ending when it is generated. You can preview or email one immediately, or schedule weekly or monthly email delivery for the whole workspace or a single company. Monthly changes the send cadence, not the seven-day reporting window.",
       },
       {
-        question: "What is the difference between Preview Studio and Schedule Manager?",
+        question: "What is the difference between Preview and Schedules?",
         answer:
-          "Preview Studio is for on-demand generation and manual send. Schedule Manager is for recurring delivery, search and filtering, toggling active state, loading a schedule back into the builder, and sending scheduled reports immediately.",
+          "Preview generates or sends a report now. Schedules manages recurring delivery, including pause, duplicate, edit, and send-now actions.",
       },
       {
         question: "What is included in a generated report?",
@@ -252,7 +245,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Can I pause or delete a schedule later?",
         answer:
-          "Yes. Schedule Manager lets you pause, resume, send now, load into the builder, or delete any saved schedule directly from the reports page.",
+          "Yes. The Schedules view lets you pause, resume, send now, edit, duplicate, or delete a saved schedule.",
       },
     ],
   },

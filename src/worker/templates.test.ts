@@ -123,6 +123,66 @@ describe("notification templates", () => {
     expect(rendered.telegramBody).toContain("Organization: Sentrovia Monitoring");
   });
 
+  it("uses monitor-specific slow-response templates and keeps the monitor online", () => {
+    const baseContext = buildContext({
+      status: "up",
+      statusCode: 200,
+      timeout: 50_000,
+      slowResponseThresholdMs: 20_000,
+      slowResponseEmailSubject: "Slow {domain}: {latency_ms}/{hard_timeout_ms}",
+      slowResponseEmailBody: "State: {event_state}\nResponse: {latency_ms} ms\nThreshold: {slow_threshold_ms} ms",
+      slowResponseTelegramTemplate: "SLOW {domain} {latency_ms} ms (limit {slow_threshold_ms} ms)",
+    });
+    const rendered = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "latency",
+        message: "Service is online but slow: 21000ms exceeded the 20000ms threshold.",
+        result: {
+          ...baseContext.result,
+          ok: true,
+          status: "up",
+          statusCode: 200,
+          latencyMs: 21_000,
+          errorMessage: null,
+          failureReason: null,
+        },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.subject).toBe("Slow api.example.com: 21000/50000");
+    expect(rendered.textBody).toContain("State: SLOW");
+    expect(rendered.telegramBody).toBe("SLOW api.example.com 21000 ms (limit 20000 ms)");
+    expect(rendered.htmlBody).toContain("Response time");
+    expect(rendered.htmlBody).toContain("Hard timeout");
+    expect(rendered.htmlBody).toContain("50000 ms");
+    expect(rendered.htmlBody).toContain(">SLOW</span>");
+  });
+
+  it("labels an early network timeout as check duration beside the configured hard timeout", () => {
+    const baseContext = buildContext({ lastErrorMessage: "timeout", timeout: 50_000 });
+    const rendered = renderNotificationTemplates(
+      {
+        ...baseContext,
+        message: "A network operation timed out after 19s; the configured hard timeout is 50s.",
+        result: {
+          ...baseContext.result,
+          latencyMs: 19_001,
+          errorMessage: "A network operation timed out after 19s; the configured hard timeout is 50s.",
+        },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).toContain("Check duration");
+    expect(rendered.htmlBody).not.toContain("Response time");
+    expect(rendered.htmlBody).toContain("19001 ms");
+    expect(rendered.htmlBody).toContain("50000 ms");
+  });
+
   it("formats notification timestamps in the workspace time zone", () => {
     const rendered = renderNotificationTemplates(
       buildContext({ emailBody: "Checked: {checked_at_local}" }),
@@ -293,8 +353,8 @@ describe("notification templates", () => {
 
     expect(recovery.subject).toContain("düzeldi");
     expect(recovery.telegramBody).toContain("Servis düzeldi ve yeniden yanıt veriyor.");
-    expect(latency.subject).toContain("YAVAŞ");
-    expect(latency.textBody).toContain("Servis çalışıyor ancak yavaş");
+    expect(latency.subject).toContain("yavaş yanıt veriyor");
+    expect(latency.textBody).toContain("erişilebilir ancak yavaş yanıt veriyor");
     expect(reminder.subject).toContain("3h süredir DOWN");
     expect(reminder.telegramBody).toContain("Servis 3s 0dk süredir down.");
   });
@@ -427,6 +487,9 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
+    slowResponseEmailSubject: null,
+    slowResponseEmailBody: null,
+    slowResponseTelegramTemplate: null,
     sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,

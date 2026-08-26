@@ -460,7 +460,7 @@ export function CheckMonitorSettings({
               }}
             />
             <p className="text-[11px] text-muted-foreground">
-              Responses above this value stay online but are marked degraded. Keep it below the hard failure timeout.
+              A response that completes between this threshold and the hard failure timeout remains ONLINE and is never counted as DOWN. It can send a separate slow-response warning.
             </p>
           </Field>
           <div className="flex items-start justify-between gap-3 border-y py-3">

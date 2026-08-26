@@ -149,7 +149,7 @@ function OnboardingHeader({ currentStep }: { currentStep: OnboardingStep }) {
   return (
     <header className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
       <div className="flex items-center gap-3">
-        <SentroviaMark className="size-9 rounded-md border border-emerald-400/30 bg-emerald-400/10 text-sm text-emerald-300" />
+        <SentroviaMark className="size-9 text-emerald-300" />
         <div>
           <p className="text-sm font-semibold tracking-tight">Sentrovia</p>
           <p className="text-xs text-muted-foreground">First launch setup</p>
@@ -184,13 +184,11 @@ function StepDot({ active, label }: { active: boolean; label: string }) {
 
 function IntroStep({ ready, error, onContinue }: { ready: boolean; error: string | null; onContinue: () => void }) {
   return (
-    <section className="grid flex-1 items-center gap-12 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
-      <div className="flex flex-col gap-8">
+    <section className="flex flex-1 items-center py-8 lg:py-12">
+      <div className="flex w-full max-w-4xl flex-col gap-8">
         <IntroCopy ready={ready} error={error} onContinue={onContinue} />
         <ProductStepList />
       </div>
-
-      <SetupOverview />
     </section>
   );
 }
@@ -200,14 +198,14 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex flex-col gap-4">
         <h1 className="max-w-2xl text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
-          Create the workspace administrator.
+          Create the workspace administrator
         </h1>
         <p className="max-w-xl text-base leading-7 text-zinc-400 sm:text-lg">
-          Set up the first account, then add monitors, delivery channels, and other workspace members.
+          Create the first account. Monitors and delivery channels come next.
         </p>
       </div>
       {error ? <FormError message={error} /> : null}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div>
         <Button type="button" size="lg" disabled={!ready} onClick={onContinue} className="h-11 rounded-lg px-4">
           {ready ? (
             <>
@@ -220,7 +218,6 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
             </>
           )}
         </Button>
-        <p className="text-sm text-muted-foreground">The next step creates the first account with admin access.</p>
       </div>
     </div>
   );
@@ -229,39 +226,13 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
 function ProductStepList() {
   return (
     <div className="grid gap-5 border-y border-white/10 py-1 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
-      {productSteps.map((item, index) => (
+      {productSteps.map((item) => (
         <div key={item.title} className="py-4 sm:px-5 sm:first:pl-0 sm:last:pr-0">
-          <p className="font-mono text-[11px] text-zinc-600">0{index + 1}</p>
-          <h2 className="mt-2 text-sm font-semibold">{item.title}</h2>
+          <h2 className="text-sm font-semibold">{item.title}</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
         </div>
       ))}
     </div>
-  );
-}
-
-function SetupOverview() {
-  const steps = [
-    "Create the first administrator account.",
-    "Add members, companies, and monitor targets.",
-    "Configure delivery channels and start the worker.",
-  ];
-
-  return (
-    <aside className="border-y border-white/10 py-5">
-      <p className="text-sm font-semibold">What happens next</p>
-      <ol className="mt-4 divide-y divide-white/10">
-        {steps.map((step, index) => (
-          <li key={step} className="grid grid-cols-[28px_1fr] gap-3 py-3">
-            <span className="font-mono text-[11px] text-zinc-600">0{index + 1}</span>
-            <p className="text-sm leading-6 text-zinc-400">{step}</p>
-          </li>
-        ))}
-      </ol>
-      <div className="mt-4 border-l-2 border-emerald-400 pl-3 text-xs leading-5 text-zinc-500">
-        Account creation is local to this workspace.
-      </div>
-    </aside>
   );
 }
 
@@ -355,7 +326,7 @@ function AdminFormCard({
       <div className="mb-6 border-b border-white/10 pb-5">
         <h2 className="text-2xl font-semibold tracking-tight">Create administrator</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Use your own email or username. This first account receives administrator access.
+          This first account receives administrator access.
         </p>
       </div>
         <AdminForm
@@ -425,10 +396,10 @@ function AdminIdentityFields({ ready }: { ready: boolean }) {
     <>
       <div className="grid gap-4 sm:grid-cols-2">
         <FieldBlock label="First name" htmlFor="firstName">
-          <Input id="firstName" name="firstName" autoComplete="given-name" required disabled={!ready} placeholder="Enter first name" className={inputClassName} />
+          <Input id="firstName" name="firstName" autoComplete="given-name" required disabled={!ready} className={inputClassName} />
         </FieldBlock>
         <FieldBlock label="Last name" htmlFor="lastName">
-          <Input id="lastName" name="lastName" autoComplete="family-name" required disabled={!ready} placeholder="Enter last name" className={inputClassName} />
+          <Input id="lastName" name="lastName" autoComplete="family-name" required disabled={!ready} className={inputClassName} />
         </FieldBlock>
       </div>
 

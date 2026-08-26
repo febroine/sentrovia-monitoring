@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Globe2, Search, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDateTime, type TimeDisplaySettings } from "@/lib/time";
@@ -163,11 +163,8 @@ function ServicePanel({
     <article className={cn("flex flex-col rounded-md border border-l-4", meta.panel)}>
       <div className="flex flex-1 flex-col gap-5 p-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Globe2 className="h-4 w-4 shrink-0" />
-            {service.company}
-          </p>
-          <h3 className={cn("mt-3 break-all text-xl font-semibold leading-8 sm:text-2xl", meta.url)}>
+          <p className="text-sm font-medium text-muted-foreground">{service.company}</p>
+          <h3 className={cn("mt-2 break-all text-base font-semibold leading-7 sm:text-lg", meta.url)}>
             {service.url}
           </h3>
           <p className="mt-3 text-sm text-muted-foreground">Last checked {checkedAt}</p>
@@ -204,7 +201,7 @@ function ServiceDetail({ label, tone, value }: { label: string; tone?: string; v
 
 function EmptyServiceState({ filtered, onClear }: { filtered: boolean; onClear: () => void }) {
   return (
-    <div className="flex flex-col items-center px-5 py-16 text-center">
+    <div className="flex flex-col items-center px-5 py-10 text-center">
       <p className="text-sm text-muted-foreground">
         {filtered ? "No services match the current filters." : "No active monitors are published for this status page."}
       </p>

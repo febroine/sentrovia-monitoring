@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   isMonitorActive: vi.fn(),
   openOrUpdateOutage: vi.fn(),
   recordMonitorResult: vi.fn(),
+  refreshMonitorUptime: vi.fn(),
   releaseMonitorLease: vi.fn(),
   renewMonitorLease: vi.fn(),
   recordWorkerCycleMetric: vi.fn(),
@@ -91,6 +92,7 @@ vi.mock("@/lib/monitors/service", () => ({
   incrementWorkerCheckedCount: mocks.incrementWorkerCheckedCount,
   isMonitorActive: mocks.isMonitorActive,
   recordMonitorResult: mocks.recordMonitorResult,
+  refreshMonitorUptime: mocks.refreshMonitorUptime,
   releaseMonitorLease: mocks.releaseMonitorLease,
   renewMonitorLease: mocks.renewMonitorLease,
   updateWorkerState: mocks.updateWorkerState,
@@ -155,6 +157,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
     mocks.isMonitorActive.mockResolvedValue(true);
     mocks.recordMonitorResult.mockResolvedValue({ id: "monitor-1" } as Monitor);
+    mocks.refreshMonitorUptime.mockResolvedValue(true);
     mocks.releaseMonitorLease.mockResolvedValue(true);
     mocks.renewMonitorLease.mockResolvedValue(true);
     mocks.recordWorkerCycleMetric.mockResolvedValue(null);
@@ -206,6 +209,7 @@ describe("monitoring scheduler verification flow", () => {
       "lease-1"
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+    expect(mocks.refreshMonitorUptime).not.toHaveBeenCalled();
   });
 
   it("records diagnostics and outage timeline events for failed verification attempts", async () => {
@@ -256,6 +260,12 @@ describe("monitoring scheduler verification flow", () => {
     );
     expect(mocks.appendOutageEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "outage_confirmed" })
+    );
+    expect(mocks.refreshMonitorUptime).toHaveBeenCalledWith(
+      "user-1",
+      "monitor-1",
+      "lease-1",
+      new Date("2026-05-08T07:00:00.000Z")
     );
   });
 
@@ -373,6 +383,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.dueMonitors = [
       buildMonitor({
         status: "up",
+        latencyMs: 10,
         notificationPref: "email",
         slowResponseThresholdMs: 20,
       }),
@@ -411,7 +422,8 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
-  it("records first slow response without sending a latency notification", async () => {
+  it("sends a latency warning on the first slow successful response", async () => {
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
     mocks.checkResult = {
       ok: true,
       status: "up",
@@ -440,12 +452,13 @@ describe("monitoring scheduler verification flow", () => {
         message: "Service is online but slow: 21ms exceeded the 20ms threshold.",
       })
     );
-    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "latency" })
     );
   });
 
-  it("does not count a pending timeout latency as a previous slow success", async () => {
+  it("warns after a pending timeout because it was not a previous slow success", async () => {
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
     mocks.checkResult = {
       ok: true,
       status: "up",
@@ -462,6 +475,36 @@ describe("monitoring scheduler verification flow", () => {
         verificationMode: true,
         verificationFailureCount: 1,
         latencyMs: 5000,
+        notificationPref: "email",
+        slowResponseThresholdMs: 20,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "latency", status: "up" })
+    );
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "latency" })
+    );
+  });
+
+  it("does not repeat the latency warning while the monitor remains slow", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 21,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "up",
+        latencyMs: 25,
         notificationPref: "email",
         slowResponseThresholdMs: 20,
       }),
@@ -1255,6 +1298,9 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
+    slowResponseEmailSubject: null,
+    slowResponseEmailBody: null,
+    slowResponseTelegramTemplate: null,
     sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,

@@ -122,6 +122,9 @@ function getSimulationSuppression(
     if (monitor.slowResponseThresholdMs === null) {
       return "No slow-response threshold is configured for this monitor.";
     }
+    if (monitor.slowResponseThresholdMs >= monitor.timeout - 1) {
+      return "The slow-response threshold must leave measurable time before the hard timeout.";
+    }
   }
 
   return null;
@@ -160,7 +163,7 @@ function buildSampleResult(
       status: "down",
       statusCode: null,
       latencyMs: timeoutMs,
-      errorMessage: `Service did not respond within the configured ${formatTimeout(timeoutMs)} timeout.`,
+      errorMessage: `Service did not complete within the ${formatTimeout(timeoutMs)} hard timeout.`,
       failureReason: "timeout",
       checkedAt,
       sslExpiresAt: null,
@@ -184,12 +187,19 @@ function buildSampleResult(
     ok: true,
     status: "up",
     statusCode: 200,
-    latencyMs: scenario === "slow-response" ? Math.max((slowThresholdMs ?? 10_000) + 2_500, 12_500) : 420,
+    latencyMs: scenario === "slow-response"
+      ? buildSlowResponseSampleLatency(slowThresholdMs, timeoutMs)
+      : 420,
     errorMessage: null,
     failureReason: null,
     checkedAt,
     sslExpiresAt: scenario === "ssl-expiry" ? new Date(checkedAt.getTime() + 12 * 24 * 60 * 60_000) : null,
   };
+}
+
+function buildSlowResponseSampleLatency(slowThresholdMs: number | null, timeoutMs: number) {
+  const thresholdMs = slowThresholdMs ?? Math.min(10_000, Math.max(1, timeoutMs - 2));
+  return Math.min(timeoutMs - 1, thresholdMs + 2_500);
 }
 
 function scenarioToKind(scenario: z.infer<typeof scenarioSchema>): z.infer<typeof eventKindSchema> {
@@ -209,10 +219,6 @@ function resolveNotificationChannels(
   settings: Awaited<ReturnType<typeof getSettings>>,
   webhookActive: boolean
 ) {
-  if (preference === "none") {
-    return [];
-  }
-
   const channels: string[] = [];
   if (preference === "email" || preference === "both") channels.push("Email");
   if (preference === "telegram" || preference === "both") channels.push("Telegram");

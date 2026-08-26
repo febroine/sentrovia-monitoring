@@ -52,11 +52,12 @@ export async function checkHttpMonitor(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed";
+    const checkDurationMs = Math.max(1, Date.now() - checkedAt.getTime());
     return buildCheckResult(checkedAt, {
       ok: false,
       status: "down",
       statusCode: null,
-      errorMessage: formatRequestFailureMessage(message, monitor.timeout),
+      errorMessage: formatRequestFailureMessage(message, monitor.timeout, checkDurationMs),
       failureReason: classifyFailureMessage(message),
       sslExpiresAt: null,
     });
@@ -434,9 +435,13 @@ function buildCheckResult(
   };
 }
 
-function formatRequestFailureMessage(message: string, timeoutMs: number) {
+function formatRequestFailureMessage(message: string, timeoutMs: number, checkDurationMs: number) {
+  if (/^Request timed out after \d+ms$/i.test(message)) {
+    return `Service did not complete within the ${formatTimeoutDuration(timeoutMs)} hard timeout.`;
+  }
+
   if (classifyFailureMessage(message) === "timeout") {
-    return `Service did not respond within ${formatTimeoutDuration(timeoutMs)}.`;
+    return `A network operation timed out after ${formatTimeoutDuration(checkDurationMs)}; the configured hard timeout is ${formatTimeoutDuration(timeoutMs)}.`;
   }
 
   return message;

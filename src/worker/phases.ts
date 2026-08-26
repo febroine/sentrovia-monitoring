@@ -13,6 +13,8 @@ export type WorkerPhaseResult =
 export async function runWorkerPhases(
   isRunRequested: () => Promise<boolean>
 ): Promise<WorkerPhaseResult> {
+  if (!(await isRunRequested())) return { status: "stopped" };
+
   void triggerAutomaticDatabaseBackup();
   try {
     await runRetentionCleanup();

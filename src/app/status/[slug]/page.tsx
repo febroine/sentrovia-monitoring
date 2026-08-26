@@ -116,7 +116,7 @@ function StatusHeader({
   return (
     <header className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex min-w-0 items-center gap-4">
-        <SentroviaMark className="size-10 shrink-0 text-base text-emerald-600 dark:text-emerald-300" />
+        <SentroviaMark className="size-10 shrink-0 text-emerald-600 dark:text-emerald-300" />
         <div className="min-w-0">
           <h1 className="break-words text-2xl font-semibold sm:text-3xl">{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">

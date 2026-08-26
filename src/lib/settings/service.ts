@@ -104,6 +104,11 @@ const USER_SETTINGS_COLUMN_MAP = {
   defaultEmailSubjectTemplate: "default_email_subject_template",
   defaultEmailBodyTemplate: "default_email_body_template",
   defaultTelegramTemplate: "default_telegram_template",
+  slowResponseEmailSubjectTemplate: "slow_response_email_subject_template",
+  slowResponseEmailBodyTemplate: "slow_response_email_body_template",
+  slowResponseTelegramTemplate: "slow_response_telegram_template",
+  defaultTelegramBotTokenEncrypted: "default_telegram_bot_token_encrypted",
+  defaultTelegramChatId: "default_telegram_chat_id",
   recoveryEmailSubjectTemplate: "recovery_email_subject_template",
   recoveryEmailBodyTemplate: "recovery_email_body_template",
   recoveryTelegramTemplate: "recovery_telegram_template",
@@ -114,6 +119,7 @@ const USER_SETTINGS_COLUMN_MAP = {
   savedEmailRecipients: "saved_email_recipients",
   monitoringInterval: "monitoring_interval",
   monitoringTimeout: "monitoring_timeout",
+  monitoringSlowResponseThresholdMs: "monitoring_slow_response_threshold_ms",
   monitoringRetries: "monitoring_retries",
   monitoringBatchSize: "monitoring_batch_size",
   monitoringMethod: "monitoring_method",
@@ -207,6 +213,10 @@ function booleanOrDefault(value: unknown, fallback: boolean) {
 
 function numberOrDefault(value: unknown, fallback: number) {
   return typeof value === "number" ? value : fallback;
+}
+
+function numberOrNull(value: unknown) {
+  return typeof value === "number" ? value : null;
 }
 
 function stringOrNull(value: unknown) {
@@ -317,6 +327,26 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         notificationTemplates.defaultTelegramTemplate,
         legacyNotificationTemplates.defaultTelegramTemplate
       ),
+      slowResponseEmailSubjectTemplate: resolveWorkspaceTemplate(
+        settings?.slowResponseEmailSubjectTemplate,
+        notificationTemplates.slowResponseEmailSubjectTemplate,
+        legacyNotificationTemplates.slowResponseEmailSubjectTemplate
+      ),
+      slowResponseEmailBodyTemplate: resolveWorkspaceTemplate(
+        settings?.slowResponseEmailBodyTemplate,
+        notificationTemplates.slowResponseEmailBodyTemplate,
+        legacyNotificationTemplates.slowResponseEmailBodyTemplate
+      ),
+      slowResponseTelegramTemplate: resolveWorkspaceTemplate(
+        settings?.slowResponseTelegramTemplate,
+        notificationTemplates.slowResponseTelegramTemplate,
+        legacyNotificationTemplates.slowResponseTelegramTemplate
+      ),
+      defaultTelegramBotToken: "",
+      defaultTelegramBotTokenConfigured: Boolean(
+        decryptValueOrLegacyPlaintext(stringOrEmpty(settings?.defaultTelegramBotTokenEncrypted))
+      ),
+      defaultTelegramChatId: stringOrEmpty(settings?.defaultTelegramChatId),
       recoveryEmailSubjectTemplate: resolveWorkspaceTemplate(
         settings?.recoveryEmailSubjectTemplate,
         notificationTemplates.recoveryEmailSubjectTemplate,
@@ -359,6 +389,7 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
     monitoring: {
       interval: stringOrEmpty(settings?.monitoringInterval) || DEFAULT_SETTINGS.monitoring.interval,
       timeout: numberOrDefault(settings?.monitoringTimeout, DEFAULT_SETTINGS.monitoring.timeout),
+      slowResponseThresholdMs: numberOrNull(settings?.monitoringSlowResponseThresholdMs),
       retries: numberOrDefault(settings?.monitoringRetries, DEFAULT_SETTINGS.monitoring.retries),
       batchSize: numberOrDefault(settings?.monitoringBatchSize, DEFAULT_SETTINGS.monitoring.batchSize),
       method: stringOrEmpty(settings?.monitoringMethod) || DEFAULT_SETTINGS.monitoring.method,
@@ -631,6 +662,11 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     input.notifications.smtpPasswordConfigured,
     stringOrEmpty(existing?.smtpPasswordEncrypted)
   );
+  const encryptedTelegramBotToken = resolveConfiguredSecretEncrypted(
+    input.notifications.defaultTelegramBotToken,
+    input.notifications.defaultTelegramBotTokenConfigured,
+    stringOrEmpty(existing?.defaultTelegramBotTokenEncrypted)
+  );
 
   const values = {
     userId,
@@ -660,6 +696,13 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     defaultEmailSubjectTemplate: emptyToNull(input.notifications.defaultEmailSubjectTemplate),
     defaultEmailBodyTemplate: emptyToNull(input.notifications.defaultEmailBodyTemplate),
     defaultTelegramTemplate: emptyToNull(input.notifications.defaultTelegramTemplate),
+    slowResponseEmailSubjectTemplate: emptyToNull(input.notifications.slowResponseEmailSubjectTemplate),
+    slowResponseEmailBodyTemplate: emptyToNull(input.notifications.slowResponseEmailBodyTemplate),
+    slowResponseTelegramTemplate: emptyToNull(input.notifications.slowResponseTelegramTemplate),
+    defaultTelegramBotTokenEncrypted: encryptedTelegramBotToken,
+    defaultTelegramChatId: encryptedTelegramBotToken
+      ? emptyToNull(input.notifications.defaultTelegramChatId)
+      : null,
     recoveryEmailSubjectTemplate: emptyToNull(input.notifications.recoveryEmailSubjectTemplate),
     recoveryEmailBodyTemplate: emptyToNull(input.notifications.recoveryEmailBodyTemplate),
     recoveryTelegramTemplate: emptyToNull(input.notifications.recoveryTelegramTemplate),
@@ -670,6 +713,7 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
     savedEmailRecipients: input.notifications.savedEmailRecipients,
     monitoringInterval: input.monitoring.interval,
     monitoringTimeout: input.monitoring.timeout,
+    monitoringSlowResponseThresholdMs: input.monitoring.slowResponseThresholdMs,
     monitoringRetries: input.monitoring.retries,
     monitoringBatchSize: input.monitoring.batchSize,
     monitoringMethod: input.monitoring.method,
@@ -824,14 +868,18 @@ export function resolveSmtpPasswordEncrypted(
   passwordConfigured: boolean,
   existingEncryptedPassword: string
 ) {
-  const trimmedPassword = nextPassword.trim();
-  if (trimmedPassword.length > 0) {
-    return encryptValue(trimmedPassword);
+  return resolveConfiguredSecretEncrypted(nextPassword, passwordConfigured, existingEncryptedPassword);
+}
+
+export function resolveConfiguredSecretEncrypted(
+  nextSecret: string,
+  secretConfigured: boolean,
+  existingEncryptedSecret: string
+) {
+  const trimmedSecret = nextSecret.trim();
+  if (trimmedSecret.length > 0) {
+    return encryptValue(trimmedSecret);
   }
 
-  if (passwordConfigured) {
-    return existingEncryptedPassword || null;
-  }
-
-  return null;
+  return secretConfigured ? existingEncryptedSecret || null : null;
 }

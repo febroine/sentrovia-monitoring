@@ -65,6 +65,7 @@ export default function LogsPage() {
       });
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
+      params.set("timezoneOffsetMinutes", String(new Date().getTimezoneOffset()));
 
       const response = await fetch(`/api/logs?${params.toString()}`, { cache: "no-store" });
       const data = (await response.json()) as {
@@ -238,9 +239,9 @@ export default function LogsPage() {
     <div className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="mb-1 text-2xl font-semibold tracking-tight">Event Logs</h1>
+          <h1 className="mb-1 text-2xl font-semibold tracking-tight">Event logs</h1>
           <p className="text-sm text-muted-foreground">
-            Inspect worker output with live refresh, pagination, and reusable filter presets.
+            Worker checks, delivery attempts, and system events.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 md:justify-end">
@@ -267,11 +268,10 @@ export default function LogsPage() {
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
-          <Button variant="outline" onClick={() => void loadLogs()} disabled={loading}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+          <Button variant="outline" size="icon" aria-label="Refresh event logs" title="Refresh" onClick={() => void loadLogs()} disabled={loading}>
+            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           </Button>
-          <Button variant="destructive" onClick={() => setClearConfirmationOpen(true)} disabled={total === 0}>
+          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={total === 0}>
             <Trash2 className="mr-2 h-4 w-4" />
             Clear all
           </Button>
@@ -285,7 +285,7 @@ export default function LogsPage() {
         <Input
           value={filters.search}
           onChange={(event) => updateFilter("search", event.target.value)}
-          placeholder="Search messages, companies, monitors, RCA summaries, or status context"
+          placeholder="Search event logs"
           className="h-9 pl-9"
         />
       </div>
@@ -310,9 +310,6 @@ export default function LogsPage() {
         <div className="flex items-center justify-between border-l-2 border-primary px-4 py-2">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} log selected</p>
-            <p className="text-xs text-muted-foreground">
-              Selection stays local so you can export only the rows you need.
-            </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
             Clear selection

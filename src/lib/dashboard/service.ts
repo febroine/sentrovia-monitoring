@@ -50,15 +50,8 @@ export async function getDashboardData(userId: string) {
   const online = activeRows.filter((monitor) => monitor.status === "up").length;
   const offline = activeRows.filter((monitor) => monitor.status === "down").length;
   const pending = activeRows.filter((monitor) => monitor.status === "pending").length;
-  const latencyRows = activeRows.filter((monitor) => typeof monitor.latencyMs === "number");
-  const avgLatency = latencyRows.length > 0 ? Math.round(latencyRows.reduce((sum, item) => sum + (item.latencyMs ?? 0), 0) / latencyRows.length) : 0;
-  const certificateWatch = activeRows.filter((monitor) => {
-    if (!monitor.sslExpiresAt) {
-      return false;
-    }
-
-    return monitor.sslExpiresAt.getTime() - Date.now() < 1000 * 60 * 60 * 24 * 30;
-  }).length;
+  const avgLatency = calculateAverageLatency(activeRows);
+  const certificateWatch = countCertificatesExpiringSoon(activeRows);
   const configuredNotifications = activeRows.filter((monitor) => monitor.notificationPref !== "none").length;
   const silentMonitors = active - configuredNotifications;
 
@@ -123,6 +116,7 @@ type DashboardMonitorDatabaseRow = DashboardMonitorRow & {
   intervalValue: number;
   intervalUnit: string;
   sslExpiresAt: Date | null;
+  checkSslExpiry: boolean;
 };
 
 async function getDashboardMonitors(userId: string): Promise<DashboardMonitorDatabaseRow[]> {
@@ -142,6 +136,7 @@ async function getDashboardMonitors(userId: string): Promise<DashboardMonitorDat
         statusCode: monitors.statusCode,
         latencyMs: monitors.latencyMs,
         sslExpiresAt: monitors.sslExpiresAt,
+        checkSslExpiry: monitors.checkSslExpiry,
         lastCheckedAt: monitors.lastCheckedAt,
         notificationPref: monitors.notificationPref,
         intervalValue: monitors.intervalValue,
@@ -168,6 +163,7 @@ async function getDashboardMonitors(userId: string): Promise<DashboardMonitorDat
           statusCode: monitors.statusCode,
           latencyMs: monitors.latencyMs,
           sslExpiresAt: monitors.sslExpiresAt,
+          checkSslExpiry: monitors.checkSslExpiry,
           lastCheckedAt: monitors.lastCheckedAt,
           notificationPref: monitors.notificationPref,
           intervalValue: monitors.intervalValue,
@@ -195,6 +191,7 @@ async function getDashboardMonitors(userId: string): Promise<DashboardMonitorDat
           statusCode: monitors.statusCode,
           latencyMs: monitors.latencyMs,
           sslExpiresAt: monitors.sslExpiresAt,
+          checkSslExpiry: monitors.checkSslExpiry,
           lastCheckedAt: monitors.lastCheckedAt,
           notificationPref: monitors.notificationPref,
           intervalValue: monitors.intervalValue,
@@ -446,9 +443,32 @@ export function calculateAverageIntervalMinutes(
 export function computeUptimePct(checks: Array<{ status: string }>) {
   const settledChecks = checks.filter((check) => check.status !== "pending");
   if (settledChecks.length === 0) {
-    return 100;
+    return null;
   }
 
   const upChecks = settledChecks.filter((check) => check.status === "up").length;
   return (upChecks / settledChecks.length) * 100;
+}
+
+export function calculateAverageLatency(rows: Array<{ latencyMs: number | null }>) {
+  const latencyValues = rows
+    .map((monitor) => monitor.latencyMs)
+    .filter((latencyMs): latencyMs is number => typeof latencyMs === "number");
+  if (latencyValues.length === 0) {
+    return null;
+  }
+
+  return Math.round(latencyValues.reduce((sum, latencyMs) => sum + latencyMs, 0) / latencyValues.length);
+}
+
+export function countCertificatesExpiringSoon(
+  rows: Array<{ checkSslExpiry: boolean; sslExpiresAt: Date | null }>,
+  now = new Date()
+) {
+  const warningCutoff = now.getTime() + 30 * 24 * 60 * 60_000;
+  return rows.filter((monitor) => (
+    monitor.checkSslExpiry
+    && monitor.sslExpiresAt !== null
+    && monitor.sslExpiresAt.getTime() <= warningCutoff
+  )).length;
 }

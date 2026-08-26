@@ -1,7 +1,14 @@
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
-import { companies, monitors, reportSchedules, users, userSettings } from "@/lib/db/schema";
+import {
+  companies,
+  monitors,
+  publicStatusPages,
+  reportSchedules,
+  users,
+  userSettings,
+} from "@/lib/db/schema";
 import { getAuthSecret } from "@/lib/env";
 
 const RESTORE_PREVIEW_TOKEN_TTL_MS = 10 * 60_000;
@@ -77,9 +84,10 @@ export async function getWorkspaceRestoreRevision(
   userId: string,
   database: DatabaseExecutor = db
 ) {
-  const [companyRows, monitorRows, reportScheduleRows, settingsRows, userRows] = await Promise.all([
+  const [companyRows, monitorRows, publicStatusPageRows, reportScheduleRows, settingsRows, userRows] = await Promise.all([
     database.select().from(companies).where(eq(companies.userId, userId)),
     database.select().from(monitors).where(eq(monitors.userId, userId)),
+    database.select().from(publicStatusPages).where(eq(publicStatusPages.userId, userId)),
     database.select().from(reportSchedules).where(eq(reportSchedules.userId, userId)),
     database.select().from(userSettings).where(eq(userSettings.userId, userId)),
     database
@@ -102,6 +110,7 @@ export async function getWorkspaceRestoreRevision(
   return buildWorkspaceRestoreRevision({
     companies: companyRows,
     monitors: monitorRows,
+    publicStatusPages: publicStatusPageRows,
     reportSchedules: reportScheduleRows,
     settings: settingsRows[0] ?? null,
     user: userRows[0] ?? null,
@@ -111,6 +120,7 @@ export async function getWorkspaceRestoreRevision(
 export function buildWorkspaceRestoreRevision(input: {
   companies: Array<Record<string, unknown>>;
   monitors: Array<Record<string, unknown>>;
+  publicStatusPages?: Array<Record<string, unknown>>;
   reportSchedules?: Array<Record<string, unknown>>;
   settings: Record<string, unknown> | null;
   user: Record<string, unknown> | null;
@@ -118,6 +128,7 @@ export function buildWorkspaceRestoreRevision(input: {
   return crypto.createHash("sha256").update(JSON.stringify({
     companies: normalizeRevisionRecords(input.companies, ["updatedAt"]),
     monitors: normalizeRevisionRecords(input.monitors, MONITOR_RUNTIME_REVISION_FIELDS),
+    publicStatusPages: normalizeRevisionRecords(input.publicStatusPages ?? [], ["updatedAt"]),
     reportSchedules: normalizeRevisionRecords(input.reportSchedules ?? [], REPORT_SCHEDULE_RUNTIME_REVISION_FIELDS),
     settings: input.settings ? omitRevisionFields(input.settings, ["updatedAt"]) : null,
     user: input.user,

@@ -135,7 +135,7 @@ export function MonitorForm({
           <TemplateMonitorSettings values={values} onFieldChange={setField} />
           {mode === "single" ? (
             <NotificationTemplatePreview
-              key={`${values.url}:${values.notificationLanguage}:${values.emailSubject}:${values.emailBody}:${values.telegramTemplate}`}
+              key={`${values.url}:${values.notificationLanguage}:${values.emailSubject}:${values.emailBody}:${values.telegramTemplate}:${values.slowResponseEmailSubject}:${values.slowResponseEmailBody}:${values.slowResponseTelegramTemplate}`}
               payload={payload}
               monitorId={monitorId}
             />

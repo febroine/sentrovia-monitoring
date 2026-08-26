@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type ElementType } from "react";
 import { Activity, HardDrive, LoaderCircle, Play, RefreshCw, Square, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useWorkerStore } from "@/stores/use-worker-store";
 
@@ -72,7 +72,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base">System Status</CardTitle>
+              <CardTitle className="text-base">Worker runtime</CardTitle>
               <Badge
                 variant="outline"
                 className={cn(
@@ -96,14 +96,10 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
                         : "Idle"}
               </Badge>
             </div>
-            <CardDescription>
-              Runtime telemetry and direct worker controls for the active runner process.
-            </CardDescription>
           </div>
 
-          <Button type="button" variant="outline" size="sm" onClick={() => void refreshAll(true)}>
+          <Button type="button" variant="outline" size="icon-sm" aria-label="Refresh worker runtime" title="Refresh" onClick={() => void refreshAll(true)}>
             <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-            Refresh
           </Button>
         </div>
       </CardHeader>
