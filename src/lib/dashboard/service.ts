@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { monitorEvents, monitors } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
-import { getDeliveryOverview } from "@/lib/delivery/service";
+import { getDeliverySummary } from "@/lib/delivery/service";
 import { getSettings, updateDashboardPreferences as persistDashboardPreferences } from "@/lib/settings/service";
 import {
   normalizeDashboardPreferences,
@@ -372,7 +372,7 @@ async function getDashboardWorkerState() {
 }
 
 async function getDashboardDeliverySummary(userId: string) {
-  return getDeliveryOverview(userId).then((delivery) => delivery.summary);
+  return getDeliverySummary(userId);
 }
 
 export async function loadDashboardSection<T>(label: string, request: Promise<T>, fallback: T) {

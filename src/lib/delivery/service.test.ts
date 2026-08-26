@@ -55,6 +55,7 @@ vi.mock("@/lib/security/webhook-safety", () => ({
 
 import {
   buildDeliveryChannelHealth,
+  normalizeDeliverySummary,
   readLimitedResponseText,
   retryWebhookQueue,
   retryWebhookQueueForAllUsers,
@@ -230,6 +231,24 @@ describe("delivery service", () => {
     await expect(readLimitedResponseText(response, 3)).resolves.toBe("abc");
   });
 
+  it("normalizes aggregate delivery counters returned as database strings", () => {
+    expect(normalizeDeliverySummary({
+      delivered: "12",
+      failed: 2,
+      retrying: null,
+      pendingWebhookRetries: "3",
+      pendingRetries: 4,
+      deadLettered: undefined,
+    })).toEqual({
+      delivered: 12,
+      failed: 2,
+      retrying: 0,
+      pendingWebhookRetries: 3,
+      pendingRetries: 4,
+      deadLettered: 0,
+    });
+  });
+
   it("reports unknown health when a channel has no recent delivery events", () => {
     const health = buildDeliveryChannelHealth([], []);
 
@@ -364,6 +383,29 @@ describe("delivery service", () => {
 
     expect(result?.status).toBe("failed");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("redacts Telegram bot tokens from persisted network errors", async () => {
+    const botToken = "123456:telegram-secret";
+    const fetchMock = vi.fn().mockRejectedValue(
+      new Error(`request to https://api.telegram.org/bot${botToken}/sendMessage failed`)
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "retrying" }]);
+
+    const result = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      botToken,
+      chatId: "-1001234567890",
+      body: "Down",
+    });
+
+    expect(result?.status).toBe("retrying");
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: "request to https://api.telegram.org/bot[redacted]/sendMessage failed",
+    }));
+    expect(JSON.stringify(mocks.updateSet.mock.calls)).not.toContain(botToken);
   });
 
   it("sends a telegram photo after the text message when a screenshot is available", async () => {
