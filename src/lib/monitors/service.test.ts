@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildConfigurationScheduleUpdate,
+  buildMonitorTargetResetState,
   buildRestoredMonitorState,
   calculateMonitorLeaseMs,
   filterDuplicateMonitorInputs,
   normalizeHeartbeatTokenInput,
+  hasMonitorTargetChanged,
   selectDueMonitorsForCycle,
   spreadInitialMonitorChecks,
   summarizeCompanyRecentChecks,
@@ -70,6 +72,7 @@ describe("monitor configuration scheduling", () => {
     expect(buildConfigurationScheduleUpdate(true, false, now)).toEqual({});
     expect(buildConfigurationScheduleUpdate(false, false, now)).toEqual({});
   });
+
 });
 
 describe("monitor restore state", () => {
@@ -92,6 +95,33 @@ describe("monitor restore state", () => {
   });
 });
 
+describe("monitor target changes", () => {
+  it("distinguishes target identity changes from ordinary setting edits", () => {
+    const existing = { monitorType: "http", url: "https://example.com/health" };
+
+    expect(hasMonitorTargetChanged(existing, { ...existing })).toBe(false);
+    expect(hasMonitorTargetChanged(existing, { ...existing, url: "https://example.com/status" })).toBe(true);
+    expect(hasMonitorTargetChanged(existing, { monitorType: "ping", url: "ping://example.com" })).toBe(true);
+  });
+
+  it("clears stale target health while scheduling the replacement immediately", () => {
+    const now = new Date("2026-08-25T10:00:00.000Z");
+
+    expect(buildMonitorTargetResetState(true, now)).toMatchObject({
+      status: "pending",
+      statusCode: null,
+      uptime: "--",
+      lastCheckedAt: null,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      consecutiveFailures: 0,
+      verificationMode: false,
+      verificationFailureCount: 0,
+      nextCheckAt: now,
+    });
+  });
+});
+
 describe("company recent check summary", () => {
   it("includes non-HTTP monitor latency while keeping status-code counts HTTP-only", () => {
     const summary = summarizeCompanyRecentChecks([
@@ -100,8 +130,11 @@ describe("company recent check summary", () => {
       { status: "pending", statusCode: null, latencyMs: 900 },
     ]);
 
-    expect(summary.averageLatencyMs).toBe(200);
-    expect(summary.statusCodes).toEqual([{ statusCode: 200, count: 1 }]);
+    expect(summary).toEqual({
+      averageLatencyMs: 200,
+      hasLatencySamples: true,
+      statusCodes: [{ statusCode: 200, count: 1 }],
+    });
   });
 });
 
@@ -263,6 +296,9 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
+    slowResponseEmailSubject: null,
+    slowResponseEmailBody: null,
+    slowResponseTelegramTemplate: null,
     sendOutageScreenshot: false,
     isActive: true,
     publishOnStatusPage: false,

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   buildNotificationWebhookPayload: vi.fn(() => Promise.resolve({ ok: true })),
   countMonitorEvents: vi.fn(),
   getSettings: vi.fn(),
+  getMonitorNotificationRouting: vi.fn(),
   hasRecentMonitorEvent: vi.fn(),
   sendChannelWebhookDelivery: vi.fn(),
   sendEmailDelivery: vi.fn(),
@@ -37,6 +38,10 @@ vi.mock("@/lib/settings/service", () => ({
   getSettings: mocks.getSettings,
 }));
 
+vi.mock("@/lib/notifications/routing", () => ({
+  getMonitorNotificationRouting: mocks.getMonitorNotificationRouting,
+}));
+
 vi.mock("@/worker/templates", () => ({
   renderNotificationTemplates: () => ({
     subject: "Recovered",
@@ -60,6 +65,11 @@ describe("worker notifier", () => {
       },
     });
     mocks.hasRecentMonitorEvent.mockResolvedValue(true);
+    mocks.getMonitorNotificationRouting.mockResolvedValue({
+      emailRecipients: "ops@example.com",
+      telegramBotToken: "123456:telegram-token",
+      telegramChatId: "-1001234567890",
+    });
     mocks.countMonitorEvents.mockResolvedValue(0);
     mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
     mocks.sendTelegramDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
@@ -77,6 +87,45 @@ describe("worker notifier", () => {
         subject: "Recovered",
       })
     );
+  });
+
+  it("uses the resolved company or workspace destinations for monitor channels", async () => {
+    const context = buildNotificationContext("recovery");
+    context.monitor = buildMonitor({ notificationPref: "both" });
+
+    await sendMonitorNotifications(context);
+
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ destinationOverride: "ops@example.com" })
+    );
+    expect(mocks.sendTelegramDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botToken: "123456:telegram-token",
+        chatId: "-1001234567890",
+      })
+    );
+  });
+
+  it("still mirrors notifications to workspace channels when monitor email and Telegram are disabled", async () => {
+    mocks.getSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        notifyOnRecovery: true,
+        discordEnabled: true,
+        discordWebhookUrl: "https://discord.com/api/webhooks/example",
+      },
+    });
+    mocks.sendChannelWebhookDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
+    const context = buildNotificationContext("recovery");
+    context.monitor = buildMonitor({ notificationPref: "none" });
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(true);
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+    expect(mocks.sendTelegramDelivery).not.toHaveBeenCalled();
+    expect(mocks.sendChannelWebhookDelivery).toHaveBeenCalled();
   });
 
   it("reports notification as unsent when every attempted delivery fails", async () => {
@@ -511,6 +560,9 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
+    slowResponseEmailSubject: null,
+    slowResponseEmailBody: null,
+    slowResponseTelegramTemplate: null,
     sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,

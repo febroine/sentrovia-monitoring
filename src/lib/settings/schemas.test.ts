@@ -187,6 +187,32 @@ describe("settings schema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it("accepts an optional slow-response threshold below the hard timeout", () => {
+    const parsed = settingsSchema.parse({
+      ...buildSettingsPayload(),
+      monitoring: {
+        ...buildSettingsPayload().monitoring,
+        timeout: 50_000,
+        slowResponseThresholdMs: 20_000,
+      },
+    });
+
+    expect(parsed.monitoring.slowResponseThresholdMs).toBe(20_000);
+  });
+
+  it("rejects a slow-response threshold at or above the hard timeout", () => {
+    const parsed = settingsSchema.safeParse({
+      ...buildSettingsPayload(),
+      monitoring: {
+        ...buildSettingsPayload().monitoring,
+        timeout: 50_000,
+        slowResponseThresholdMs: 50_000,
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
 });
 
 function buildSettingsPayload() {

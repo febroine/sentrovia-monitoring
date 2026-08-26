@@ -28,6 +28,10 @@ export function applyImportDefaults(
     record.timeout = settings?.monitoring.timeout ?? 60_000;
   }
 
+  if (isMissingImportValue(record.slowResponseThresholdMs)) {
+    record.slowResponseThresholdMs = settings?.monitoring.slowResponseThresholdMs ?? null;
+  }
+
   if (isMissingImportValue(record.monitorType)) {
     record.monitorType = "http";
   }

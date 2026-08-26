@@ -5,14 +5,19 @@ describe("SLA period calculations", () => {
   it("calculates uptime from all settled checks", () => {
     expect(calculateSlaPeriod("24h SLA", 90, 10, 100)).toEqual({
       label: "24h SLA",
+      hasData: true,
       uptimePct: 90,
       outages: 10,
       totalChecks: 100,
     });
   });
 
-  it("treats an empty period as fully available", () => {
-    expect(calculateSlaPeriod("7d SLA", 0, 0, 0).uptimePct).toBe(100);
+  it("marks an empty period as unavailable instead of fully healthy", () => {
+    expect(calculateSlaPeriod("7d SLA", 0, 0, 0)).toMatchObject({
+      hasData: false,
+      uptimePct: 0,
+      totalChecks: 0,
+    });
   });
 
   it("bounds inconsistent check counts while preserving the independent outage count", () => {

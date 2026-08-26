@@ -17,6 +17,8 @@ const MONITOR_TEMPLATE_TOKENS = [
   "{failure_reason}",
   "{latency_ms}",
   "{slow_threshold_ms}",
+  "{check_duration_ms}",
+  "{hard_timeout_ms}",
   "{checked_at_local}",
   "{rca_summary}",
   "{organization}",
@@ -108,12 +110,31 @@ export function NotificationMonitorSettings({
       )}
 
       {(values.notificationPref === "telegram" || values.notificationPref === "both") && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Bot token">
-            <Input value={values.telegramBotToken} onChange={(event) => onFieldChange("telegramBotToken", event.target.value)} />
-          </Field>
-          <Field label="Chat ID">
-            <Input value={values.telegramChatId} onChange={(event) => onFieldChange("telegramChatId", event.target.value)} />
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Bot token">
+              <Input
+                type="password"
+                value={values.telegramBotToken}
+                onChange={(event) => onFieldChange("telegramBotToken", event.target.value)}
+                placeholder="Leave blank to use company or workspace defaults"
+              />
+            </Field>
+            <Field label="Chat ID">
+              <Input
+                value={values.telegramChatId}
+                onChange={(event) => onFieldChange("telegramChatId", event.target.value)}
+                placeholder="Leave blank to use company or workspace defaults"
+              />
+            </Field>
+          </div>
+          <Field label="Telegram message template">
+            <Textarea
+              rows={4}
+              value={values.telegramTemplate}
+              onChange={(event) => onFieldChange("telegramTemplate", event.target.value)}
+              placeholder="Leave blank to use the workspace template"
+            />
           </Field>
         </div>
       )}
@@ -156,14 +177,41 @@ export function TemplateMonitorSettings({
         </div>
       </div>
 
-      <Field label="Telegram message template">
-        <Textarea rows={4} value={values.telegramTemplate} onChange={(event) => onFieldChange("telegramTemplate", event.target.value)} />
-      </Field>
       <Field label="Email subject template">
         <Input value={values.emailSubject} onChange={(event) => onFieldChange("emailSubject", event.target.value)} />
       </Field>
       <Field label="Email body template">
         <Textarea rows={5} value={values.emailBody} onChange={(event) => onFieldChange("emailBody", event.target.value)} />
+      </Field>
+
+      <div className="border-t pt-4">
+        <p className="text-sm font-medium">Slow response notification</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Optional monitor-specific warning templates. Leave them blank to use the workspace slow-response templates.
+        </p>
+      </div>
+      <Field label="Slow response email subject">
+        <Input
+          value={values.slowResponseEmailSubject}
+          onChange={(event) => onFieldChange("slowResponseEmailSubject", event.target.value)}
+          placeholder="Workspace slow-response subject"
+        />
+      </Field>
+      <Field label="Slow response email body">
+        <Textarea
+          rows={5}
+          value={values.slowResponseEmailBody}
+          onChange={(event) => onFieldChange("slowResponseEmailBody", event.target.value)}
+          placeholder="Workspace slow-response email body"
+        />
+      </Field>
+      <Field label="Slow response Telegram message">
+        <Textarea
+          rows={4}
+          value={values.slowResponseTelegramTemplate}
+          onChange={(event) => onFieldChange("slowResponseTelegramTemplate", event.target.value)}
+          placeholder="Workspace slow-response Telegram message"
+        />
       </Field>
     </div>
   );

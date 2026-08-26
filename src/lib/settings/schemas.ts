@@ -74,6 +74,12 @@ const settingsObjectSchema = z.object({
     defaultEmailSubjectTemplate: optionalString(500),
     defaultEmailBodyTemplate: optionalString(4000),
     defaultTelegramTemplate: optionalString(4000),
+    slowResponseEmailSubjectTemplate: optionalString(500),
+    slowResponseEmailBodyTemplate: optionalString(4000),
+    slowResponseTelegramTemplate: optionalString(4000),
+    defaultTelegramBotToken: optionalString(500),
+    defaultTelegramBotTokenConfigured: z.boolean().default(false),
+    defaultTelegramChatId: optionalString(120),
     recoveryEmailSubjectTemplate: optionalString(500),
     recoveryEmailBodyTemplate: optionalString(4000),
     recoveryTelegramTemplate: optionalString(4000),
@@ -86,10 +92,20 @@ const settingsObjectSchema = z.object({
       .max(25)
       .default([])
       .transform((recipients) => Array.from(new Set(recipients))),
+  }).superRefine((value, context) => {
+    const hasTelegramToken = value.defaultTelegramBotToken.length > 0 || value.defaultTelegramBotTokenConfigured;
+    if (hasTelegramToken !== (value.defaultTelegramChatId.length > 0)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [hasTelegramToken ? "defaultTelegramChatId" : "defaultTelegramBotToken"],
+        message: "Configure both a default Telegram bot token and chat ID, or leave both empty.",
+      });
+    }
   }),
   monitoring: z.object({
     interval: z.string().trim().min(2).max(16).transform(normalizeMonitoringInterval),
     timeout: z.coerce.number().int().min(1000).max(120000),
+    slowResponseThresholdMs: z.number().int().min(1).max(119999).nullable().default(null),
     retries: z.coerce.number().int().min(2).max(10),
     batchSize: z.coerce.number().int().min(1).max(500),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]),
@@ -100,6 +116,14 @@ const settingsObjectSchema = z.object({
     cacheBuster: z.boolean(),
     saveErrorPages: z.boolean(),
     saveSuccessPages: z.boolean(),
+  }).superRefine((value, context) => {
+    if (value.slowResponseThresholdMs !== null && value.slowResponseThresholdMs >= value.timeout) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slowResponseThresholdMs"],
+        message: "Slow response threshold must be lower than the hard failure timeout.",
+      });
+    }
   }),
   appearance: z.object({
     reduceMotion: z.boolean(),

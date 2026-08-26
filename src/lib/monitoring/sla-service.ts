@@ -6,6 +6,7 @@ const DAY_MS = 24 * 60 * 60_000;
 
 export interface SlaPeriodSummary {
   label: "24h SLA" | "7d SLA";
+  hasData: boolean;
   uptimePct: number;
   outages: number;
   totalChecks: number;
@@ -108,7 +109,8 @@ export function calculateSlaPeriod(
 
   return {
     label,
-    uptimePct: normalizedTotal > 0 ? (normalizedUp / normalizedTotal) * 100 : 100,
+    hasData: normalizedTotal > 0,
+    uptimePct: normalizedTotal > 0 ? (normalizedUp / normalizedTotal) * 100 : 0,
     outages: Math.max(0, outageCount),
     totalChecks: normalizedTotal,
   };

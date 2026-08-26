@@ -115,8 +115,8 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
     >
       <div className="flex min-h-full flex-col pb-4">
         <div className="mb-8 px-1">
-          <div className="flex items-center gap-3">
-            <SentroviaMark className={cn("size-8 shrink-0 text-[1rem] font-bold", palette.activeIcon)} />
+          <div className="flex items-center gap-2.5">
+            <SentroviaMark className={cn("size-7 shrink-0", palette.activeIcon)} />
             <div className="min-w-0">
               <h1 className="truncate text-[1.1rem] font-semibold tracking-tight text-foreground">Sentrovia</h1>
             </div>

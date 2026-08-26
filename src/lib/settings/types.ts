@@ -39,6 +39,12 @@ export interface SettingsPayload {
     defaultEmailSubjectTemplate: string;
     defaultEmailBodyTemplate: string;
     defaultTelegramTemplate: string;
+    slowResponseEmailSubjectTemplate: string;
+    slowResponseEmailBodyTemplate: string;
+    slowResponseTelegramTemplate: string;
+    defaultTelegramBotToken: string;
+    defaultTelegramBotTokenConfigured: boolean;
+    defaultTelegramChatId: string;
     recoveryEmailSubjectTemplate: string;
     recoveryEmailBodyTemplate: string;
     recoveryTelegramTemplate: string;
@@ -51,6 +57,7 @@ export interface SettingsPayload {
   monitoring: {
     interval: string;
     timeout: number;
+    slowResponseThresholdMs: number | null;
     retries: number;
     batchSize: number;
     method: string;
@@ -106,6 +113,11 @@ export const DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE = {
       "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
     defaultTelegramTemplate:
       "Monitor: {domain} ({url}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    slowResponseEmailSubjectTemplate: "[Sentrovia] {domain} is responding slowly ({latency_ms} ms)",
+    slowResponseEmailBodyTemplate:
+      "Monitor: {domain} ({url_link}) is online but responding slowly\nTime: {checked_at_local}\nResponse time: {latency_ms} ms\nSlow threshold: {slow_threshold_ms} ms\nHard timeout: {hard_timeout_ms} ms\nStatus: {status_code} - {status_label}\nOrganization: {organization}",
+    slowResponseTelegramTemplate:
+      "Monitor: {domain} ({url}) is online but responding slowly\nTime: {checked_at_local}\nResponse time: {latency_ms} ms\nSlow threshold: {slow_threshold_ms} ms\nHard timeout: {hard_timeout_ms} ms\nStatus: {status_code} - {status_label}\nOrganization: {organization}",
     recoveryEmailSubjectTemplate: "[Sentrovia] {domain} recovered ({status_code})",
     recoveryEmailBodyTemplate:
       "Monitor: {domain} ({url_link}) recovered\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
@@ -123,6 +135,11 @@ export const DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE = {
       "Monitör: {domain} ({url_link}) şu anda {event_state}\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
     defaultTelegramTemplate:
       "Monitör: {domain} ({url}) şu anda {event_state}\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+    slowResponseEmailSubjectTemplate: "[Sentrovia] {domain} yavaş yanıt veriyor ({latency_ms} ms)",
+    slowResponseEmailBodyTemplate:
+      "Monitör: {domain} ({url_link}) erişilebilir ancak yavaş yanıt veriyor\nZaman: {checked_at_local}\nYanıt süresi: {latency_ms} ms\nYavaşlık eşiği: {slow_threshold_ms} ms\nKesin hata zaman aşımı: {hard_timeout_ms} ms\nDurum: {status_code} - {status_label}\nOrganizasyon: {organization}",
+    slowResponseTelegramTemplate:
+      "Monitör: {domain} ({url}) erişilebilir ancak yavaş yanıt veriyor\nZaman: {checked_at_local}\nYanıt süresi: {latency_ms} ms\nYavaşlık eşiği: {slow_threshold_ms} ms\nKesin hata zaman aşımı: {hard_timeout_ms} ms\nDurum: {status_code} - {status_label}\nOrganizasyon: {organization}",
     recoveryEmailSubjectTemplate: "[Sentrovia] {domain} düzeldi ({status_code})",
     recoveryEmailBodyTemplate:
       "Monitör: {domain} ({url_link}) düzeldi\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
@@ -177,6 +194,9 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     discordEnabled: false,
     notificationEmailBrandName: "Sentrovia Monitoring",
     notificationEmailFooterText: "",
+    defaultTelegramBotToken: "",
+    defaultTelegramBotTokenConfigured: false,
+    defaultTelegramChatId: "",
     ...DEFAULT_NOTIFICATION_TEMPLATES,
     statusCodeAlertCodes: "500,502,503,504",
     savedEmailRecipients: [],
@@ -184,6 +204,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   monitoring: {
     interval: "5m",
     timeout: 60000,
+    slowResponseThresholdMs: null,
     retries: 3,
     batchSize: 20,
     method: "GET",

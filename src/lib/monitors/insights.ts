@@ -1,50 +1,84 @@
-import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
 import { monitorChecks, monitorDiagnostics, monitors, outageEvents } from "@/lib/db/schema";
 import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
 
-const MAX_MONITORS_WITH_RECENT_ROWS = 500;
+const MAX_RECENT_ROWS_PER_MONITOR = 100;
+const COMPANY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 12) {
-  const rows = await db
-    .select()
+  const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
+  const rankedChecks = db
+    .select({
+      ...getTableColumns(monitorChecks),
+      monitorRowNumber: sql<number>`row_number() over (
+        partition by ${monitorChecks.monitorId}
+        order by ${monitorChecks.createdAt} desc
+      )`.as("monitor_row_number"),
+    })
     .from(monitorChecks)
     .where(eq(monitorChecks.userId, userId))
-    .orderBy(desc(monitorChecks.createdAt))
-    .limit(normalizeRecentRowLimit(limitPerMonitor));
+    .as("ranked_monitor_checks");
+  const rows = await db
+    .select()
+    .from(rankedChecks)
+    .where(lte(rankedChecks.monitorRowNumber, normalizedLimit))
+    .orderBy(desc(rankedChecks.createdAt));
 
-  return groupRecentRowsByMonitor(rows, limitPerMonitor);
+  return groupRecentRowsByMonitor(rows, normalizedLimit);
 }
 
 export async function listRecentMonitorDiagnostics(userId: string, limitPerMonitor = 3) {
-  const rows = await db
-    .select()
+  const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
+  const rankedDiagnostics = db
+    .select({
+      ...getTableColumns(monitorDiagnostics),
+      monitorRowNumber: sql<number>`row_number() over (
+        partition by ${monitorDiagnostics.monitorId}
+        order by ${monitorDiagnostics.createdAt} desc
+      )`.as("monitor_row_number"),
+    })
     .from(monitorDiagnostics)
     .where(eq(monitorDiagnostics.userId, userId))
-    .orderBy(desc(monitorDiagnostics.createdAt))
-    .limit(normalizeRecentRowLimit(limitPerMonitor));
+    .as("ranked_monitor_diagnostics");
+  const rows = await db
+    .select()
+    .from(rankedDiagnostics)
+    .where(lte(rankedDiagnostics.monitorRowNumber, normalizedLimit))
+    .orderBy(desc(rankedDiagnostics.createdAt));
 
-  return groupRecentRowsByMonitor(rows, limitPerMonitor);
+  return groupRecentRowsByMonitor(rows, normalizedLimit);
 }
 
 export async function listRecentOutageEvents(userId: string, limitPerMonitor = 8) {
-  const rows = await db
-    .select()
+  const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
+  const rankedEvents = db
+    .select({
+      ...getTableColumns(outageEvents),
+      monitorRowNumber: sql<number>`row_number() over (
+        partition by ${outageEvents.monitorId}
+        order by ${outageEvents.createdAt} desc
+      )`.as("monitor_row_number"),
+    })
     .from(outageEvents)
     .where(eq(outageEvents.userId, userId))
-    .orderBy(desc(outageEvents.createdAt))
-    .limit(normalizeRecentRowLimit(limitPerMonitor));
+    .as("ranked_outage_events");
+  const rows = await db
+    .select()
+    .from(rankedEvents)
+    .where(lte(rankedEvents.monitorRowNumber, normalizedLimit))
+    .orderBy(desc(rankedEvents.createdAt));
 
-  return groupRecentRowsByMonitor(rows, limitPerMonitor);
+  return groupRecentRowsByMonitor(rows, normalizedLimit);
 }
 
-export async function getCompanySlaReport(userId: string, companyId: string) {
+export async function getCompanySlaReport(userId: string, companyId: string, now = new Date()) {
   const company = await getCompanyById(userId, companyId);
   if (!company) return null;
 
   const companyMonitors = await db
-    .select({ id: monitors.id, status: monitors.status })
+    .select({ id: monitors.id })
     .from(monitors)
     .where(and(
       eq(monitors.userId, userId),
@@ -53,31 +87,37 @@ export async function getCompanySlaReport(userId: string, companyId: string) {
       isNull(monitors.deletedAt)
     ));
   const monitorIds = companyMonitors.map((monitor) => monitor.id);
+  const recentChecksStartedAt = resolveCompanyRecentChecksStart(now);
   const [periods, recentChecks] = await Promise.all([
-    getMonitorSlaPeriods(userId, monitorIds),
+    getMonitorSlaPeriods(userId, monitorIds, now),
     monitorIds.length === 0
       ? Promise.resolve([])
       : db
           .select()
           .from(monitorChecks)
-          .where(and(eq(monitorChecks.userId, userId), inArray(monitorChecks.monitorId, monitorIds)))
+          .where(and(
+            eq(monitorChecks.userId, userId),
+            inArray(monitorChecks.monitorId, monitorIds),
+            gte(monitorChecks.createdAt, recentChecksStartedAt)
+          ))
           .orderBy(desc(monitorChecks.createdAt))
           .limit(500),
   ]);
-  const { averageLatencyMs, statusCodes } = summarizeCompanyRecentChecks(recentChecks);
+  const { averageLatencyMs, hasLatencySamples, statusCodes } = summarizeCompanyRecentChecks(recentChecks);
 
   return {
     companyId: company.id,
     companyName: company.name,
     monitorCount: companyMonitors.length,
-    activeCount: companyMonitors.filter((monitor) => monitor.status === "up").length,
+    activeCount: companyMonitors.length,
     averageLatencyMs,
+    hasLatencySamples,
     periods,
     statusCodes,
   };
 }
 
-export async function getCompanyMonthlyUptimeReport(userId: string, companyId: string) {
+export async function getCompanyMonthlyUptimeReport(userId: string, companyId: string, now = new Date()) {
   const company = await getCompanyById(userId, companyId);
   if (!company) return null;
 
@@ -95,10 +135,7 @@ export async function getCompanyMonthlyUptimeReport(userId: string, companyId: s
     return { companyId: company.id, companyName: company.name, months: [] };
   }
 
-  const since = new Date();
-  since.setMonth(since.getMonth() - 5);
-  since.setDate(1);
-  since.setHours(0, 0, 0, 0);
+  const since = resolveCompanyMonthlyReportStart(now);
   const checks = await db
     .select({ status: monitorChecks.status, createdAt: monitorChecks.createdAt })
     .from(monitorChecks)
@@ -112,17 +149,37 @@ export async function getCompanyMonthlyUptimeReport(userId: string, companyId: s
   return { companyId: company.id, companyName: company.name, months: buildMonthlyUptime(checks) };
 }
 
+export function resolveCompanyRecentChecksStart(now: Date) {
+  return new Date(now.getTime() - COMPANY_RECENT_WINDOW_MS);
+}
+
+export function resolveCompanyMonthlyReportStart(now: Date) {
+  const startedAt = new Date(now);
+  startedAt.setUTCHours(0, 0, 0, 0);
+  startedAt.setUTCDate(1);
+  startedAt.setUTCMonth(startedAt.getUTCMonth() - 5);
+  return startedAt;
+}
+
 export function summarizeCompanyRecentChecks(
   checks: Array<{ status: string; statusCode: number | null; latencyMs: number | null }>
 ) {
   const completedChecks = checks.filter((check) => check.status !== "pending");
   const latencyValues = completedChecks.map((check) => check.latencyMs).filter(isNumber);
   const statusCodes = buildStatusCodeSummary(completedChecks);
-  return { averageLatencyMs: averageValue(latencyValues), statusCodes };
+  return {
+    averageLatencyMs: averageValue(latencyValues),
+    hasLatencySamples: latencyValues.length > 0,
+    statusCodes,
+  };
 }
 
-function normalizeRecentRowLimit(limitPerMonitor: number) {
-  return Math.max(limitPerMonitor, 1) * MAX_MONITORS_WITH_RECENT_ROWS;
+export function normalizePerMonitorLimit(limitPerMonitor: number) {
+  if (!Number.isFinite(limitPerMonitor)) {
+    return 1;
+  }
+
+  return Math.min(MAX_RECENT_ROWS_PER_MONITOR, Math.max(1, Math.trunc(limitPerMonitor)));
 }
 
 function groupRecentRowsByMonitor<T extends { monitorId: string }>(rows: T[], limitPerMonitor: number) {

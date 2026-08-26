@@ -9,11 +9,11 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { CheckSquare, Pencil, Plus, Search, SearchX, Square, Trash2, Undo2 } from "lucide-react";
+import { CheckSquare, Pencil, Plus, Search, Square, Trash2, Undo2 } from "lucide-react";
 import { CompanyMonitorsPanel } from "@/components/companies/company-monitors-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -143,6 +143,10 @@ export default function CompaniesPage() {
     setForm({
       name: company.name,
       description: company.description ?? "",
+      notificationEmailRecipients: company.notificationEmailRecipients.join(", "),
+      telegramBotToken: "",
+      telegramBotTokenConfigured: company.telegramBotTokenConfigured,
+      telegramChatId: company.telegramChatId,
       isActive: company.isActive,
     });
   }
@@ -208,16 +212,15 @@ export default function CompaniesPage() {
       ) : null}
 
       <dl className="grid border-y md:grid-cols-3 md:divide-x">
-        <StatItem label="Total companies" value={String(totals.companies)} sub="Registered organizations" />
-        <StatItem label="Active companies" value={String(totals.active)} sub="Available for assignment" tone="positive" />
-        <StatItem label="Assigned monitors" value={String(totals.monitors)} sub="Endpoints mapped to companies" />
+        <StatItem label="Total companies" value={String(totals.companies)} />
+        <StatItem label="Active companies" value={String(totals.active)} tone="positive" />
+        <StatItem label="Assigned monitors" value={String(totals.monitors)} />
       </dl>
 
       {selectedIds.size > 0 ? (
         <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} compan{selectedIds.size === 1 ? "y" : "ies"} selected</p>
-            <p className="text-xs text-muted-foreground">Apply the same action across the selected organizations.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => void handleBulk("activate")} disabled={saving}>Activate</Button>
@@ -228,11 +231,7 @@ export default function CompaniesPage() {
         </div>
       ) : null}
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/20 pb-4">
-          <CardTitle className="text-base">Company Directory</CardTitle>
-          <CardDescription>Select a row to review its assigned monitors.</CardDescription>
-        </CardHeader>
+      <Card className="gap-0 overflow-hidden py-0">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -255,14 +254,12 @@ export default function CompaniesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? <TableRow><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">Loading companies...</TableCell></TableRow> : null}
+              {loading ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Loading companies...</TableCell></TableRow> : null}
               {!loading && filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6}>
                     <EmptyState
-                      icon={SearchX}
-                      title="No companies found"
-                      description="Try a different search term or add a company for monitor assignment."
+                      title={search.trim() ? "No companies match this search" : "No companies yet"}
                     />
                   </TableCell>
                 </TableRow>
@@ -282,7 +279,7 @@ export default function CompaniesPage() {
                   <TableCell className="pl-1">
                     <div className="space-y-1">
                       <p className="font-medium">{company.name}</p>
-                      <p className="max-w-md text-xs leading-5 text-muted-foreground">{company.description || "No description yet."}</p>
+                      {company.description ? <p className="max-w-md text-xs leading-5 text-muted-foreground">{company.description}</p> : null}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -328,8 +325,8 @@ export default function CompaniesPage() {
         </DialogContent>
       </Dialog>
 
-      <CompanyDialog open={createOpen} title="Add Company" description="Create a reusable organization for monitor assignment." form={form} saving={saving} onOpenChange={(open) => { setCreateOpen(open); if (!open) setForm(DEFAULT_COMPANY_FORM); }} onFormChange={setForm} onSubmit={handleCreate} />
-      <CompanyDialog open={Boolean(editing)} title="Edit Company" description="Update the organization details used across monitoring and dashboard views." form={form} saving={saving} onOpenChange={(open) => { if (!open) { setEditing(null); setForm(DEFAULT_COMPANY_FORM); } }} onFormChange={setForm} onSubmit={handleUpdate} />
+      <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} onOpenChange={(open) => { setCreateOpen(open); if (!open) setForm(DEFAULT_COMPANY_FORM); }} onFormChange={setForm} onSubmit={handleCreate} />
+      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} onOpenChange={(open) => { if (!open) { setEditing(null); setForm(DEFAULT_COMPANY_FORM); } }} onFormChange={setForm} onSubmit={handleUpdate} />
     </div>
   );
 }
@@ -355,7 +352,7 @@ function CompanyDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <form onSubmit={(event) => void onSubmit(event)} className="space-y-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
@@ -377,9 +374,73 @@ function CompanyDialog({
               onChange={(event) =>
                 onFormChange((current) => ({ ...current, description: event.target.value }))
               }
-              placeholder="Primary customer workspace for production uptime checks."
+              placeholder="Production services"
             />
           </Field>
+          <div className="border-t pt-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Notification recipients</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Used by monitors in this company when they do not define their own recipients.
+                </p>
+              </div>
+              {form.telegramBotTokenConfigured ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onFormChange((current) => ({
+                    ...current,
+                    telegramBotToken: "",
+                    telegramBotTokenConfigured: false,
+                    telegramChatId: "",
+                  }))}
+                >
+                  Clear Telegram
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-4 space-y-4">
+              <Field label="Email recipients">
+                <Textarea
+                  rows={3}
+                  value={form.notificationEmailRecipients}
+                  onChange={(event) => onFormChange((current) => ({
+                    ...current,
+                    notificationEmailRecipients: event.target.value,
+                  }))}
+                  placeholder="oncall@example.com, noc@example.com"
+                />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Telegram bot token">
+                  <Input
+                    type="password"
+                    value={form.telegramBotToken}
+                    onChange={(event) => onFormChange((current) => ({
+                      ...current,
+                      telegramBotToken: event.target.value,
+                      telegramBotTokenConfigured: event.target.value.trim()
+                        ? true
+                        : current.telegramBotTokenConfigured,
+                    }))}
+                    placeholder={form.telegramBotTokenConfigured ? "Stored securely" : "123456:ABC..."}
+                  />
+                </Field>
+                <Field label="Telegram chat ID">
+                  <Input
+                    value={form.telegramChatId}
+                    onChange={(event) => onFormChange((current) => ({
+                      ...current,
+                      telegramChatId: event.target.value,
+                    }))}
+                    placeholder="-1001234567890"
+                  />
+                </Field>
+              </div>
+            </div>
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
@@ -394,12 +455,11 @@ function CompanyDialog({
   );
 }
 
-function StatItem({ label, value, sub, tone = "neutral" }: { label: string; value: string; sub: string; tone?: "neutral" | "positive" }) {
+function StatItem({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "positive" }) {
   return (
     <div className="border-b px-4 py-4 last:border-b-0 md:border-b-0">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className={cn("mt-2 text-2xl font-semibold tracking-tight", tone === "positive" && "text-emerald-600 dark:text-emerald-400")}>{value}</dd>
-      <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
     </div>
   );
 }

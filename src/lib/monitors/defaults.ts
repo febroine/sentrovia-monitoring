@@ -15,6 +15,7 @@ export function buildDefaultMonitorForm(settings: SettingsPayload | null) {
     intervalValue: interval.intervalValue,
     intervalUnit: interval.intervalUnit,
     timeout: settings.monitoring.timeout,
+    slowResponseThresholdMs: settings.monitoring.slowResponseThresholdMs,
     retries: settings.monitoring.retries,
     method: settings.monitoring.method as MonitorPayload["method"],
     responseMaxLength: settings.monitoring.responseMaxLength,

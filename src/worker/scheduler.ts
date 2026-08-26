@@ -14,6 +14,7 @@ import {
   getRecentMonitorEventMessage,
   isMonitorActive,
   recordMonitorResult,
+  refreshMonitorUptime,
   releaseMonitorLease,
   renewMonitorLease,
   updateWorkerState,
@@ -201,7 +202,6 @@ async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCy
     const recorded = await recordActiveMonitorResult(monitor, {
       status: "up",
       statusCode: result.statusCode,
-      uptime: "100%",
       lastCheckedAt: result.checkedAt,
       nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, checkCompletedAt),
       lastSuccessAt: result.checkedAt,
@@ -222,7 +222,6 @@ async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCy
     const recorded = await recordActiveMonitorResult(monitor, {
       status: "down",
       statusCode: result.statusCode,
-      uptime: "0%",
       lastCheckedAt: result.checkedAt,
       nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, checkCompletedAt),
       lastSuccessAt: monitor.lastSuccessAt,
@@ -248,7 +247,6 @@ async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCy
     const recorded = await recordActiveMonitorResult(monitor, {
       status: confirmedOutage ? "down" : "pending",
       statusCode: result.statusCode,
-      uptime: confirmedOutage ? "0%" : monitor.uptime,
       lastCheckedAt: result.checkedAt,
       nextCheckAt: confirmedOutage
         ? calculateNextCheckAt(monitor, result.checkedAt, checkCompletedAt)
@@ -292,7 +290,6 @@ async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCy
     const recorded = await recordActiveMonitorResult(monitor, {
       status: "pending",
       statusCode: result.statusCode,
-      uptime: monitor.uptime,
       lastCheckedAt: result.checkedAt,
       nextCheckAt: calculateVerificationCheckAt(result.checkedAt, checkCompletedAt),
       lastSuccessAt: monitor.lastSuccessAt,
@@ -340,6 +337,9 @@ async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCy
     latencyMs: result.latencyMs,
     createdAt: result.checkedAt,
   });
+  if (checkStatus !== "pending") {
+    await refreshMonitorUptimeSafely(monitor, result.checkedAt);
+  }
 
   if (result.ok) {
     if (wasVerifying && !hadConfirmedOutage) {
@@ -367,7 +367,7 @@ async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<MonitorCy
     const slowResponseMessage = buildSlowResponseMessage(monitor, result);
     if (slowResponseMessage) {
       await appendDetailedEvent(monitor, result, "latency", slowResponseMessage, rca, "up");
-      if (monitor.slowResponseAlertsEnabled && isRepeatedSlowResponse(monitor, result)) {
+      if (monitor.slowResponseAlertsEnabled && hasEnteredSlowResponseState(monitor, result)) {
         const notificationSent = await sendMonitorNotifications({
           kind: "latency",
           message: slowResponseMessage,
@@ -536,7 +536,6 @@ async function recordConfigurationFailure(
   const recorded = await recordActiveMonitorResult(monitor, {
     status: monitor.status === "down" ? "down" : "pending",
     statusCode: monitor.statusCode,
-    uptime: monitor.uptime,
     lastCheckedAt: result.checkedAt,
     nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, completedAt),
     lastSuccessAt: monitor.lastSuccessAt,
@@ -573,6 +572,14 @@ async function recordConfigurationFailure(
   );
 
   return { finalStatus: "pending", latencyMs: result.latencyMs };
+}
+
+async function refreshMonitorUptimeSafely(monitor: Monitor, checkedAt: Date) {
+  try {
+    await refreshMonitorUptime(monitor.userId, monitor.id, monitor.leaseToken, checkedAt);
+  } catch (error) {
+    console.error(`[sentrovia] Unable to refresh uptime for monitor ${monitor.id}.`, error);
+  }
 }
 
 async function retryTransitionNotifications(
@@ -807,18 +814,25 @@ function buildSlowResponseMessage(monitor: Monitor, result: Awaited<ReturnType<t
   return `Service is online but slow: ${result.latencyMs}ms exceeded the ${thresholdMs}ms threshold.`;
 }
 
-function isRepeatedSlowResponse(monitor: Monitor, result: Awaited<ReturnType<typeof checkMonitor>>) {
+function hasEnteredSlowResponseState(monitor: Monitor, result: Awaited<ReturnType<typeof checkMonitor>>) {
   if (
     !supportsSlowResponseThreshold(monitor)
-    || monitor.status !== "up"
-    || monitor.verificationMode
     || typeof result.latencyMs !== "number"
   ) {
     return false;
   }
 
   const thresholdMs = monitor.slowResponseThresholdMs;
-  return typeof thresholdMs === "number" && typeof monitor.latencyMs === "number" && monitor.latencyMs > thresholdMs;
+  if (typeof thresholdMs !== "number" || result.latencyMs <= thresholdMs) {
+    return false;
+  }
+
+  const wasAlreadySlow = monitor.status === "up"
+    && !monitor.verificationMode
+    && typeof monitor.latencyMs === "number"
+    && monitor.latencyMs > thresholdMs;
+
+  return !wasAlreadySlow;
 }
 
 function supportsSlowResponseThreshold(monitor: Monitor) {

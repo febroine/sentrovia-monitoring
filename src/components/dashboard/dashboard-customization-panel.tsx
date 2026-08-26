@@ -69,9 +69,7 @@ export function DashboardCustomizationPanel({
       <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
         <div>
           <CardTitle className="text-base">Customize dashboard</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Choose visible widgets, their order, and monitor scope.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Widgets, order, and monitor scope.</p>
         </div>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close dashboard customization" title="Close">
           <X className="h-4 w-4" />
@@ -112,7 +110,6 @@ export function DashboardCustomizationPanel({
                 {companyOptions.map((company) => <SelectItem key={company.id} value={company.id}>{company.name} ({company.monitorCount})</SelectItem>)}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">The selected scope is remembered for your next visit.</p>
           </div>
 
           <div className="space-y-2">
@@ -125,7 +122,6 @@ export function DashboardCustomizationPanel({
                 <SelectItem value="critical">Critical monitors</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Critical and favorite monitors lead; outage state breaks ties.</p>
           </div>
         </div>
       </CardContent>

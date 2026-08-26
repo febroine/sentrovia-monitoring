@@ -1,5 +1,8 @@
 import type { GeneratedReport } from "@/lib/reports/types";
 import {
+  formatMonitorAverageLatency,
+  formatMonitorP95Latency,
+  formatMonitorUptime,
   formatReportAverageLatency,
   formatReportFailureRate,
   formatReportHealthScore,
@@ -318,9 +321,9 @@ function renderMonitorBreakdownRow(monitor: GeneratedReport["monitorBreakdown"][
       <td>${escapeHtml(reportValue(monitor.companyName))}</td>
       <td><span class="status ${statusClass}">${escapeHtml(reportValue(monitor.status))}</span></td>
       <td>${escapeHtml(reportValue(monitor.currentStatusCode))}</td>
-      <td>${escapeHtml(`${monitor.uptimePct.toFixed(2)}%`)}</td>
-      <td>${escapeHtml(`${monitor.averageLatencyMs}ms`)}</td>
-      <td>${escapeHtml(`${monitor.p95LatencyMs}ms`)}</td>
+      <td>${escapeHtml(formatMonitorUptime(monitor))}</td>
+      <td>${escapeHtml(formatMonitorAverageLatency(monitor))}</td>
+      <td>${escapeHtml(formatMonitorP95Latency(monitor))}</td>
       <td>${escapeHtml(String(monitor.failures))}</td>
       <td>${escapeHtml(monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE)}</td>
     </tr>

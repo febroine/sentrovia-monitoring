@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyImportDefaults } from "@/lib/monitors/import-defaults";
+import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const intervalDefaults = { intervalValue: 5, intervalUnit: "dk" as const };
 
@@ -26,5 +27,16 @@ describe("applyImportDefaults", () => {
     expect(result.intervalValue).toBe(0);
     expect(result.timeout).toBe(0);
     expect(result.responseMaxLength).toBe(1024);
+  });
+
+  it("applies the workspace slow-response threshold when an import omits it", () => {
+    const settings = structuredClone(DEFAULT_SETTINGS);
+    settings.monitoring.slowResponseThresholdMs = 20_000;
+
+    const inherited = applyImportDefaults({}, settings, intervalDefaults);
+    const explicit = applyImportDefaults({ slowResponseThresholdMs: 12_000 }, settings, intervalDefaults);
+
+    expect(inherited.slowResponseThresholdMs).toBe(20_000);
+    expect(explicit.slowResponseThresholdMs).toBe(12_000);
   });
 });

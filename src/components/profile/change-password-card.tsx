@@ -113,7 +113,7 @@ function SecurityIntro() {
 
 function PasswordRequirements() {
   return (
-    <div className="mt-6 border-l-2 border-muted-foreground/30 pl-4 text-xs leading-5 text-muted-foreground">
+    <div className="mt-6 border-l-2 border-amber-500/60 pl-4 text-xs leading-5 text-muted-foreground">
       Use at least 12 characters with uppercase, lowercase, a number, and a special character.
     </div>
   );

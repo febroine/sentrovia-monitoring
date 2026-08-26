@@ -76,6 +76,8 @@ export function CompanyMonitorsPanel({
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const dailyPeriod = report?.periods[0];
+  const weeklyPeriod = report?.periods[1];
 
   return (
     <div className="space-y-5">
@@ -83,19 +85,19 @@ export function CompanyMonitorsPanel({
         <dl className="grid border-y md:grid-cols-3 md:divide-x">
           <MetricItem
             label="24h SLA"
-            value={`${report.periods[0]?.uptimePct.toFixed(2) ?? "100.00"}%`}
-            sub={`${report.periods[0]?.outages ?? 0} confirmed outages`}
-            tone="green"
+            value={formatSlaValue(dailyPeriod)}
+            sub={dailyPeriod?.hasData ? `${dailyPeriod.outages} confirmed outages` : "No completed checks"}
+            tone={dailyPeriod?.hasData ? "green" : "neutral"}
           />
           <MetricItem
             label="7d SLA"
-            value={`${report.periods[1]?.uptimePct.toFixed(2) ?? "100.00"}%`}
-            sub={`${report.averageLatencyMs}ms avg latency`}
-            tone="amber"
+            value={formatSlaValue(weeklyPeriod)}
+            sub={report.hasLatencySamples ? `${report.averageLatencyMs}ms recent avg latency` : "No latency samples"}
+            tone={weeklyPeriod?.hasData ? "amber" : "neutral"}
           />
           <MetricItem
             label="Status spread"
-            value={report.statusCodes[0] ? `HTTP ${report.statusCodes[0].statusCode}` : "Clean"}
+            value={report.statusCodes[0] ? `HTTP ${report.statusCodes[0].statusCode}` : "No HTTP data"}
             sub={report.statusCodes[0] ? `${report.statusCodes[0].count} recent hits` : "No recent codes"}
             tone="neutral"
           />
@@ -193,6 +195,10 @@ export function CompanyMonitorsPanel({
       </div>
     </div>
   );
+}
+
+function formatSlaValue(period: CompanySlaReport["periods"][number] | undefined) {
+  return period?.hasData ? `${period.uptimePct.toFixed(2)}%` : "No data";
 }
 
 function MetricItem({

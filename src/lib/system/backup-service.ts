@@ -20,12 +20,18 @@ import {
   monitorEvents,
   monitorOutages,
   monitors,
+  publicStatusPages,
   reportSchedules,
   userSettings,
 } from "@/lib/db/schema";
 import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { getWorkspaceRestoreRevision } from "@/lib/system/restore-approval";
+import { createPublicStatusPage, listPublicStatusPages } from "@/lib/public-status/pages-service";
+import {
+  publicStatusBackupPageSchema,
+  type PublicStatusBackupPage,
+} from "@/lib/public-status/schemas";
 
 type ExistingPostgresMonitorSecret = {
   monitorType: string;
@@ -34,10 +40,11 @@ type ExistingPostgresMonitorSecret = {
 };
 
 export async function buildWorkspaceBackupBundle(userId: string): Promise<WorkspaceBackupBundle> {
-  const [settings, companyRows, monitorRows] = await Promise.all([
+  const [settings, companyRows, monitorRows, publicStatusPageRows] = await Promise.all([
     getSettings(userId),
     listCompanies(userId),
     listMonitors(userId),
+    listPublicStatusPages(userId),
   ]);
 
   const exportedAt = new Date().toISOString();
@@ -55,6 +62,15 @@ export async function buildWorkspaceBackupBundle(userId: string): Promise<Worksp
     exportedAt,
     source: "sentrovia",
     publicStatusCompanyName: selectedPublicStatusCompany?.name ?? null,
+    publicStatusPages: publicStatusPageRows
+      .filter((page) => page.companyAvailable)
+      .map((page) => ({
+        companyName: page.companyName,
+        slug: page.slug,
+        title: page.title,
+        summary: page.summary,
+        isEnabled: page.isEnabled,
+      })),
     settings: {
       ...exportedSettings,
       data: {
@@ -65,6 +81,10 @@ export async function buildWorkspaceBackupBundle(userId: string): Promise<Worksp
     companies: companyRows.map((company) => ({
       name: company.name,
       description: company.description ?? "",
+      notificationEmailRecipients: company.notificationEmailRecipients.join(", "),
+      telegramBotToken: "",
+      telegramBotTokenConfigured: false,
+      telegramChatId: "",
       isActive: company.isActive,
     })),
     monitors: monitorRows.map((monitor) => redactMonitorExportSecrets(toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord))),
@@ -163,6 +183,7 @@ export async function restoreWorkspaceBackup(
     await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));
     await tx.delete(monitorOutages).where(eq(monitorOutages.userId, userId));
     await tx.delete(monitors).where(eq(monitors.userId, userId));
+    await tx.delete(publicStatusPages).where(eq(publicStatusPages.userId, userId));
     await tx.delete(companies).where(eq(companies.userId, userId));
 
     const restoredCompanies = await Promise.all(
@@ -176,6 +197,7 @@ export async function restoreWorkspaceBackup(
       companyIdByName
     );
     await upsertSettings(userId, restoredSettings, tx, true);
+    await restorePublicStatusPages(userId, validated.publicStatusPages, companyIdByName, tx);
     await remapReportScheduleCompanies(userId, scheduleCompanyMappings, companyIdByName, tx);
     const restoredMonitors = restorableMonitors.map((monitor) => ({
       ...monitor,
@@ -200,14 +222,16 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   const companies = companyInputSchema.array().parse(bundle.companies);
   const monitors = monitorInputSchema.array().parse(bundle.monitors);
   const publicStatusCompanyName = normalizeBackupCompanyName(bundle.publicStatusCompanyName);
+  const publicStatusPages = parseBackupPublicStatusPages(bundle, settings, publicStatusCompanyName);
 
   assertBackupItemCounts(companies.length, monitors.length);
   assertUniqueCompanyNames(companies);
   assertMonitorCompanyReferences(monitors, companies);
   assertUniqueMonitorTargets(monitors);
   assertPublicStatusCompanyReference(settings.publicStatus.companyId, publicStatusCompanyName, companies);
+  assertPublicStatusPageReferences(publicStatusPages, companies);
 
-  return { settings, companies, monitors, publicStatusCompanyName };
+  return { settings, companies, monitors, publicStatusCompanyName, publicStatusPages };
 }
 
 export function restorePostgresMonitorPasswords(
@@ -441,6 +465,55 @@ export function remapPublicStatusCompany(
   };
 }
 
+export function remapPublicStatusPages(
+  pages: PublicStatusBackupPage[],
+  companyIdByName: Map<string, string>
+) {
+  return pages.map((page) => ({
+    companyId: page.companyName
+      ? companyIdByName.get(normalizeCompanyName(page.companyName)) ?? null
+      : null,
+    slug: page.slug,
+    title: page.title,
+    summary: page.summary,
+    isEnabled: page.isEnabled,
+  }));
+}
+
+async function restorePublicStatusPages(
+  userId: string,
+  pages: PublicStatusBackupPage[],
+  companyIdByName: Map<string, string>,
+  database: DatabaseExecutor
+) {
+  const remappedPages = remapPublicStatusPages(pages, companyIdByName);
+  for (const page of remappedPages) {
+    await createPublicStatusPage(userId, page, database);
+  }
+}
+
+function parseBackupPublicStatusPages(
+  bundle: WorkspaceBackupBundle,
+  settings: ReturnType<typeof settingsSchema.parse>,
+  legacyCompanyName: string | null
+) {
+  if (Array.isArray(bundle.publicStatusPages)) {
+    return publicStatusBackupPageSchema.array().max(201).parse(bundle.publicStatusPages);
+  }
+
+  if (!settings.publicStatus.slug) {
+    return [];
+  }
+
+  return publicStatusBackupPageSchema.array().parse([{
+    companyName: legacyCompanyName,
+    slug: settings.publicStatus.slug,
+    title: settings.publicStatus.title,
+    summary: settings.publicStatus.summary,
+    isEnabled: settings.publicStatus.enabled,
+  }]);
+}
+
 function normalizeBackupCompanyName(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -459,6 +532,33 @@ function assertPublicStatusCompanyReference(
     && !backupCompanies.some((company) => normalizeCompanyName(company.name) === normalizeCompanyName(companyName))
   ) {
     throw new Error(`Public status references a missing company: ${companyName}`);
+  }
+}
+
+function assertPublicStatusPageReferences(
+  pages: PublicStatusBackupPage[],
+  backupCompanies: Array<{ name: string }>
+) {
+  const availableCompanies = new Set(
+    backupCompanies.map((company) => normalizeCompanyName(company.name))
+  );
+  const scopes = new Set<string>();
+  const slugs = new Set<string>();
+
+  for (const page of pages) {
+    const scope = page.companyName ? normalizeCompanyName(page.companyName) : "__workspace__";
+    if (page.companyName && !availableCompanies.has(scope)) {
+      throw new Error(`Public status references a missing company: ${page.companyName}`);
+    }
+    if (scopes.has(scope)) {
+      throw new Error(`Duplicate public status scope in backup: ${page.companyName ?? "workspace"}`);
+    }
+    if (slugs.has(page.slug)) {
+      throw new Error(`Duplicate public status slug in backup: ${page.slug}`);
+    }
+
+    scopes.add(scope);
+    slugs.add(page.slug);
   }
 }
 

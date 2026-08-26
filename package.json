@@ -21,6 +21,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:e2e:docker": "node tests/e2e/docker-runtime.mjs",
+    "test:e2e:ui": "node tests/e2e/ui-interactions.mjs",
     "typecheck": "tsc --noEmit",
     "docker:web": "node scripts/bootstrap-runtime.mjs web",
     "docker:worker": "node scripts/bootstrap-runtime.mjs worker",

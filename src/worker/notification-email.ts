@@ -8,7 +8,9 @@ interface NotificationEmailInput {
   eventState: string;
   checkedAt: string;
   status: string;
-  latency: string;
+  duration: string;
+  durationKind: "response" | "check";
+  hardTimeout: string;
   language: "en" | "tr";
   tone: "critical" | "healthy" | "warning";
 }
@@ -46,7 +48,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
           <p style="margin:0;font-size:14px;line-height:1.5;color:#64748b;word-break:break-word;">${escapeHtml(input.monitorTarget)}</p>
         </td></tr>
         <tr><td style="padding:0 28px 22px;">
-          ${renderSummary(input.checkedAt, input.status, input.latency, copy)}
+          ${renderSummary(input.checkedAt, input.status, input.duration, input.durationKind, input.hardTimeout, copy)}
         </td></tr>
         <tr><td style="border-top:1px solid #e2e8f0;padding:22px 28px 20px;">
           ${content}
@@ -64,17 +66,20 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
 function renderSummary(
   checkedAt: string,
   status: string,
-  latency: string,
+  duration: string,
+  durationKind: NotificationEmailInput["durationKind"],
+  hardTimeout: string,
   copy: ReturnType<typeof getEmailCopy>
 ) {
   const items = [
     [copy.checked, checkedAt],
     [copy.status, status],
-    [copy.response, latency],
+    [durationKind === "response" ? copy.response : copy.checkDuration, duration],
+    [copy.hardTimeout, hardTimeout],
   ];
 
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f8fafc" style="border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;">
-    <tr>${items.map(([label, value], index) => `<td class="summary-cell" width="33.33%" valign="top" style="padding:12px 14px;${index > 0 ? "border-left:1px solid #e2e8f0;" : ""}">
+    <tr>${items.map(([label, value], index) => `<td class="summary-cell" width="25%" valign="top" style="padding:12px 12px;${index > 0 ? "border-left:1px solid #e2e8f0;" : ""}">
       <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#64748b;">${label}</div>
       <div style="margin-top:5px;font-size:13px;font-weight:600;line-height:1.35;color:#0f172a;word-break:break-word;">${escapeHtml(value)}</div>
     </td>`).join("")}</tr>
@@ -87,6 +92,8 @@ function getEmailCopy(language: "en" | "tr") {
       checked: "Kontrol zamanı",
       status: "Durum",
       response: "Yanıt süresi",
+      checkDuration: "Kontrol süresi",
+      hardTimeout: "Kesin hata sınırı",
       footer: "Sentrovia izleme bildirimi",
     };
   }
@@ -94,7 +101,9 @@ function getEmailCopy(language: "en" | "tr") {
   return {
     checked: "Checked",
     status: "Status",
-    response: "Response",
+    response: "Response time",
+    checkDuration: "Check duration",
+    hardTimeout: "Hard timeout",
     footer: "Sentrovia monitoring notification",
   };
 }

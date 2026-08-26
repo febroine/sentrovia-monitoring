@@ -118,6 +118,11 @@ export const userSettings = pgTable(
     defaultEmailSubjectTemplate: text("default_email_subject_template"),
     defaultEmailBodyTemplate: text("default_email_body_template"),
     defaultTelegramTemplate: text("default_telegram_template"),
+    slowResponseEmailSubjectTemplate: text("slow_response_email_subject_template"),
+    slowResponseEmailBodyTemplate: text("slow_response_email_body_template"),
+    slowResponseTelegramTemplate: text("slow_response_telegram_template"),
+    defaultTelegramBotTokenEncrypted: text("default_telegram_bot_token_encrypted"),
+    defaultTelegramChatId: varchar("default_telegram_chat_id", { length: 120 }),
     recoveryEmailSubjectTemplate: text("recovery_email_subject_template"),
     recoveryEmailBodyTemplate: text("recovery_email_body_template"),
     recoveryTelegramTemplate: text("recovery_telegram_template"),
@@ -131,6 +136,7 @@ export const userSettings = pgTable(
       .default(sql`ARRAY[]::text[]`),
     monitoringInterval: varchar("monitoring_interval", { length: 16 }).default("5m").notNull(),
     monitoringTimeout: integer("monitoring_timeout").default(60000).notNull(),
+    monitoringSlowResponseThresholdMs: integer("monitoring_slow_response_threshold_ms"),
     monitoringRetries: integer("monitoring_retries").default(3).notNull(),
     monitoringMethod: varchar("monitoring_method", { length: 10 }).default("GET").notNull(),
     monitoringResponseMaxLength: integer("monitoring_response_max_length").default(1024).notNull(),
@@ -215,6 +221,12 @@ export const companies = pgTable(
     website: varchar("website", { length: 255 }),
     email: varchar("email", { length: 255 }),
     description: text("description"),
+    notificationEmailRecipients: text("notification_email_recipients")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    telegramBotTokenEncrypted: text("telegram_bot_token_encrypted"),
+    telegramChatId: varchar("telegram_chat_id", { length: 120 }),
     isActive: boolean("is_active").default(true).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     deletedWasActive: boolean("deleted_was_active"),
@@ -227,6 +239,35 @@ export const companies = pgTable(
       sql`lower(btrim(${table.name}))`
     ),
     index("companies_user_deleted_at_idx").on(table.userId, table.deletedAt),
+  ]
+);
+
+export const publicStatusPages = pgTable(
+  "public_status_pages",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    companyId: text("company_id").references(() => companies.id, { onDelete: "cascade" }),
+    slug: varchar("slug", { length: 120 }).notNull(),
+    title: varchar("title", { length: 160 }),
+    summary: text("summary"),
+    isEnabled: boolean("is_enabled").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("public_status_pages_slug_unique").on(table.slug),
+    uniqueIndex("public_status_pages_user_company_unique")
+      .on(table.userId, table.companyId)
+      .where(sql`${table.companyId} is not null`),
+    uniqueIndex("public_status_pages_user_workspace_unique")
+      .on(table.userId)
+      .where(sql`${table.companyId} is null`),
+    index("public_status_pages_user_created_idx").on(table.userId, table.createdAt),
   ]
 );
 
@@ -303,6 +344,9 @@ export const monitors = pgTable("monitors", {
   telegramTemplate: text("telegram_template"),
   emailSubject: text("email_subject"),
   emailBody: text("email_body"),
+  slowResponseEmailSubject: text("slow_response_email_subject"),
+  slowResponseEmailBody: text("slow_response_email_body"),
+  slowResponseTelegramTemplate: text("slow_response_telegram_template"),
   sendOutageScreenshot: boolean("send_outage_screenshot").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -347,7 +391,13 @@ export const monitorChecks = pgTable("monitor_checks", {
   statusCode: integer("status_code"),
   latencyMs: integer("latency_ms"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("monitor_checks_user_monitor_created_at_idx").on(
+    table.userId,
+    table.monitorId,
+    table.createdAt
+  ),
+]);
 
 export const monitorOutages = pgTable(
   "monitor_outages",

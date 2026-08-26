@@ -7,14 +7,12 @@ import type { LogRecord } from "@/lib/logs/types";
 export function SuggestionField({
   label,
   placeholder,
-  hint,
   value,
   suggestions,
   onChange,
 }: {
   label: string;
   placeholder: string;
-  hint: string;
   value: string;
   suggestions: string[];
   onChange: (value: string) => void;
@@ -30,7 +28,6 @@ export function SuggestionField({
           <option key={item} value={item} />
         ))}
       </datalist>
-      <p className="text-xs text-muted-foreground">{hint}</p>
     </div>
   );
 }
@@ -48,7 +45,6 @@ export function DateField({
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
       <Input type="date" value={value} onChange={(event) => onChange(event.target.value)} />
-      <p className="text-xs text-muted-foreground">Use the calendar picker to limit results to a specific time window.</p>
     </div>
   );
 }

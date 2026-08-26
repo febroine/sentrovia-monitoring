@@ -477,7 +477,7 @@ Sentrovia currently sends HTML reports only:
 - URL-first tables, readable failure details, and service snapshots
 - One browser-ready HTML attachment per delivery
 
-Public status pages can be workspace-wide or limited to one company in **Settings**. A company-scoped page uses the selected slug, such as `/status/holding`, prioritizes down services, and makes the monitored URLs prominent for wall displays.
+Public status pages can be created separately for each company, with an optional workspace-wide page in **Settings**. Every page has its own slug, title, summary, and publish state; a company-scoped page only exposes monitors assigned to that company.
 
 ## Tech Stack
 

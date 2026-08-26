@@ -31,6 +31,7 @@ import {
 } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
+import { getMonitorUptimeById, NO_MONITOR_UPTIME_DATA } from "@/lib/monitoring/uptime";
 import {
   decryptValueOrLegacyPlaintext,
   encryptValue,
@@ -62,11 +63,23 @@ export const SOFT_DELETE_UNDO_MS = 60_000;
 export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };
 
 export async function listMonitors(userId: string, database: DatabaseExecutor = db) {
-  return database
+  const monitorRows = await database
     .select()
     .from(monitors)
     .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)))
     .orderBy(desc(monitors.createdAt));
+
+  const uptimeByMonitorId = await getMonitorUptimeById(
+    userId,
+    monitorRows.map((monitor) => monitor.id),
+    new Date(),
+    database
+  );
+
+  return monitorRows.map((monitor) => ({
+    ...monitor,
+    uptime: uptimeByMonitorId.get(monitor.id) ?? NO_MONITOR_UPTIME_DATA,
+  }));
 }
 
 export async function createMonitor(userId: string, input: MonitorInput) {
@@ -146,12 +159,16 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
     const values = await buildMonitorValues(userId, input, existingMonitor, allowPrivateTargets, tx);
     await assertMonitorTargetAvailable(userId, values.monitorType, values.url, monitorId, tx);
     const now = new Date();
+    const targetChanged = hasMonitorTargetChanged(existingMonitor, values);
     const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
     const scheduleUpdate = buildConfigurationScheduleUpdate(
       existingMonitor.isActive,
       values.isActive,
       now
     );
+    const targetResetUpdate = targetChanged
+      ? buildMonitorTargetResetState(values.isActive, now)
+      : {};
     const [monitor] = await tx
       .update(monitors)
       .set({
@@ -160,6 +177,7 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
         leaseExpiresAt: null,
         ...activeStateUpdate,
         ...scheduleUpdate,
+        ...targetResetUpdate,
         userId,
         updatedAt: now,
       })
@@ -171,6 +189,14 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
     }
 
     await resolveOutageOnPause(existingMonitor, values.isActive, now, tx);
+    if (targetChanged && existingMonitor.isActive && values.isActive) {
+      await resolveOutage({
+        monitorId: existingMonitor.id,
+        userId: existingMonitor.userId,
+        checkedAt: now,
+        statusCode: existingMonitor.statusCode,
+      }, tx);
+    }
     return monitor;
   });
 }
@@ -283,6 +309,11 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
         tx
       );
       const now = new Date();
+      const scheduleUpdate = buildConfigurationScheduleUpdate(
+        existingMonitor.isActive,
+        values.isActive,
+        now
+      );
       const [monitor] = await tx
         .update(monitors)
         .set({
@@ -290,6 +321,7 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
           leaseToken: null,
           leaseExpiresAt: null,
           ...buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now),
+          ...scheduleUpdate,
           userId,
           updatedAt: now,
         })
@@ -443,6 +475,22 @@ export function buildRestoredMonitorState() {
     latencyMs: null,
     leaseToken: null,
     leaseExpiresAt: null,
+  };
+}
+
+export function hasMonitorTargetChanged(
+  existingMonitor: { monitorType: string; url: string },
+  nextMonitor: { monitorType: string; url: string }
+) {
+  return normalizeMonitorType(existingMonitor.monitorType) !== normalizeMonitorType(nextMonitor.monitorType)
+    || existingMonitor.url !== nextMonitor.url;
+}
+
+export function buildMonitorTargetResetState(isActive: boolean, now: Date) {
+  return {
+    ...buildRestoredMonitorState(),
+    lastSuccessAt: null,
+    nextCheckAt: isActive ? now : null,
   };
 }
 
@@ -777,7 +825,6 @@ export async function recordMonitorResult(
   update: {
     status: string;
     statusCode: number | null;
-    uptime: string;
     lastCheckedAt: Date;
     nextCheckAt: Date;
     lastSuccessAt?: Date | null;
@@ -817,6 +864,29 @@ export async function recordMonitorResult(
     .returning();
 
   return monitor;
+}
+
+export async function refreshMonitorUptime(
+  userId: string,
+  monitorId: string,
+  expectedLeaseToken: string | null,
+  now = new Date()
+) {
+  const uptimeByMonitorId = await getMonitorUptimeById(userId, [monitorId], now);
+  const uptime = uptimeByMonitorId.get(monitorId) ?? NO_MONITOR_UPTIME_DATA;
+  const [updated] = await db
+    .update(monitors)
+    .set({ uptime, updatedAt: new Date() })
+    .where(and(
+      eq(monitors.id, monitorId),
+      eq(monitors.userId, userId),
+      eq(monitors.isActive, true),
+      isNull(monitors.deletedAt),
+      expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
+    ))
+    .returning({ id: monitors.id });
+
+  return updated?.id === monitorId;
 }
 
 export async function renewMonitorLease(
@@ -1297,6 +1367,9 @@ async function buildMonitorValues(
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
     emailBody: input.emailBody,
+    slowResponseEmailSubject: input.slowResponseEmailSubject,
+    slowResponseEmailBody: input.slowResponseEmailBody,
+    slowResponseTelegramTemplate: input.slowResponseTelegramTemplate,
     sendOutageScreenshot: shouldPersistOutageScreenshot(monitorType, input.notificationPref, input.sendOutageScreenshot),
     isActive: input.isActive,
     publishOnStatusPage: input.publishOnStatusPage,

@@ -19,7 +19,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { createCompany } from "@/lib/companies/service";
+import {
+  createCompany,
+  resolveCompanyTelegramCredentials,
+  summarizeCompanyMonitorCounts,
+} from "@/lib/companies/service";
+import { decryptValue } from "@/lib/security/encryption";
 
 describe("company service", () => {
   const company = {
@@ -64,6 +69,10 @@ describe("company service", () => {
     const result = await createCompany("user-1", {
       name: "Operations",
       description: null,
+      notificationEmailRecipients: [],
+      telegramBotToken: "",
+      telegramBotTokenConfigured: false,
+      telegramChatId: "",
       isActive: true,
     });
 
@@ -81,6 +90,10 @@ describe("company service", () => {
     await createCompany("user-1", {
       name: "Operations",
       description: null,
+      notificationEmailRecipients: [],
+      telegramBotToken: "",
+      telegramBotTokenConfigured: false,
+      telegramChatId: "",
       isActive: true,
     });
 
@@ -89,5 +102,44 @@ describe("company service", () => {
       publicStatusCompanyId: null,
     }));
     expect(mocks.delete).toHaveBeenCalledOnce();
+  });
+});
+
+describe("company monitor counts", () => {
+  it("counts enabled monitors as active regardless of their current health", () => {
+    expect(summarizeCompanyMonitorCounts([
+      { isActive: true },
+      { isActive: true },
+      { isActive: false },
+    ])).toEqual({ total: 3, active: 2 });
+  });
+});
+
+describe("company Telegram credentials", () => {
+  const input = {
+    name: "Operations",
+    description: null,
+    notificationEmailRecipients: [],
+    telegramBotToken: "",
+    telegramBotTokenConfigured: true,
+    telegramChatId: "-1001234567890",
+    isActive: true,
+  };
+
+  it("does not retain a chat ID when a claimed existing token is missing", () => {
+    expect(resolveCompanyTelegramCredentials(input, null)).toEqual({
+      botTokenEncrypted: null,
+      chatId: null,
+    });
+  });
+
+  it("encrypts a replacement token and retains its chat ID", () => {
+    const resolved = resolveCompanyTelegramCredentials({
+      ...input,
+      telegramBotToken: "new-token",
+    }, "old-token");
+
+    expect(decryptValue(resolved.botTokenEncrypted)).toBe("new-token");
+    expect(resolved.chatId).toBe("-1001234567890");
   });
 });

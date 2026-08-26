@@ -17,16 +17,15 @@ export function AccountSettingsTab({
     <section className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12">
       <SectionIntro
         title="Identity details"
-        description="These details appear in ownership views, notifications, and report templates."
         metadata={buildProfileMetadata(settings.profile)}
       />
 
       <div className="border-y">
-        <FieldGroup title="Account" description="The information used to identify and contact you.">
+        <FieldGroup title="Account">
           <AccountFields profile={settings.profile} updateSetting={updateSetting} />
         </FieldGroup>
 
-        <FieldGroup title="Work details" description="Optional context used to organize workspace ownership.">
+        <FieldGroup title="Work details">
           <WorkFields profile={settings.profile} updateSetting={updateSetting} />
         </FieldGroup>
       </div>
@@ -70,17 +69,14 @@ function WorkFields({
 
 function SectionIntro({
   title,
-  description,
   metadata,
 }: {
   title: string;
-  description: string;
   metadata: Array<{ label: string; value: string }>;
 }) {
   return (
     <div>
       <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
       <dl className="mt-6 border-t text-xs">
         {metadata.map((item) => (
           <div key={item.label} className="flex justify-between gap-4 border-b py-3">
@@ -95,18 +91,15 @@ function SectionIntro({
 
 function FieldGroup({
   title,
-  description,
   children,
 }: {
   title: string;
-  description: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid gap-5 border-b py-6 last:border-b-0 xl:grid-cols-[160px_minmax(0,1fr)]">
       <div>
         <h3 className="text-sm font-medium">{title}</h3>
-        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{description}</p>
       </div>
       {children}
     </div>

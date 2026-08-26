@@ -9,6 +9,8 @@ import { sendEmailDelivery } from "@/lib/delivery/service";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
 import {
+  formatMonitorP95Latency,
+  formatMonitorUptime,
   formatReportAverageLatency,
   formatReportFailureRate,
   formatReportHealthScore,
@@ -784,6 +786,8 @@ function buildMonitorBreakdown(
       const failures = failuresByMonitor.get(monitor.id);
       const totalChecks = checks?.totalChecks ?? 0;
       const upChecks = checks?.upChecks ?? 0;
+      const hasCompletedChecks = totalChecks > 0;
+      const hasLatencySamples = (checks?.latencySamples ?? 0) > 0;
 
       return {
         monitorId: monitor.id,
@@ -801,7 +805,9 @@ function buildMonitorBreakdown(
               statusCode: monitor.statusCode,
             })
           : null,
-        uptimePct: totalChecks > 0 ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 100,
+        hasCompletedChecks,
+        hasLatencySamples,
+        uptimePct: hasCompletedChecks ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 0,
         averageLatencyMs: checks?.averageLatencyMs ?? 0,
         p95LatencyMs: checks?.p95LatencyMs ?? 0,
         totalChecks,
@@ -1262,8 +1268,8 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
         ["URL", "Uptime", "P95"],
         report.monitorBreakdown.slice(0, detailLimit).map((monitor) => [
           monitor.url,
-          `${monitor.uptimePct.toFixed(2)}%`,
-          `${monitor.p95LatencyMs}ms`,
+          formatMonitorUptime(monitor),
+          formatMonitorP95Latency(monitor),
         ])
       )
     );

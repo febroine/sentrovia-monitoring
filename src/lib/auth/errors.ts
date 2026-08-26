@@ -111,6 +111,13 @@ function mapUniqueConstraintError(error: DatabaseErrorShape) {
     return new AuthError("Public status slug is already in use.", 409);
   }
 
+  if (
+    constraint.includes("public_status_pages_user_company")
+    || constraint.includes("public_status_pages_user_workspace")
+  ) {
+    return new AuthError("A public status page already exists for this scope.", 409);
+  }
+
   if (constraint.includes("users_username")) {
     return new AuthError("An account with this username already exists.", 409);
   }

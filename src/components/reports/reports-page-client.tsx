@@ -1,11 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ElementType } from "react";
 import {
+  Activity,
+  CalendarClock,
   ChevronDown,
+  CircleCheckBig,
   Download,
+  FileChartColumn,
+  Gauge,
+  ScanLine,
   Search,
   Send,
+  TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +27,9 @@ import { cn } from "@/lib/utils";
 import type { CompanyRecord } from "@/lib/companies/types";
 import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
 import {
+  formatMonitorAverageLatency,
+  formatMonitorP95Latency,
+  formatMonitorUptime,
   formatReportAverageLatency,
   formatReportFailureRate,
   formatReportHealthScore,
@@ -435,17 +445,6 @@ export default function ReportsPageClient() {
     }
   }
 
-  function applyPreviewPreset(scope: ReportScope, template: ReportTemplateVariant) {
-    setPreviewDraft((current) => ({
-      ...current,
-      scope,
-      cadence: "weekly",
-      template,
-      companyId: scope === "global" ? "" : current.companyId,
-    }));
-    setActiveTab("preview");
-  }
-
   function loadScheduleIntoBuilder(schedule: ReportScheduleRecord) {
     setScheduleDraft({
       name: schedule.name,
@@ -485,12 +484,18 @@ export default function ReportsPageClient() {
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Reports</h1>
           <p className="text-sm text-muted-foreground">
-            Preview HTML reports, schedule recurring delivery, and review existing report plans.
+            Generate and schedule seven-day workspace reports.
           </p>
         </div>
-        <p className="text-sm text-muted-foreground md:text-right">
-          Next delivery: {activeSchedules[0] ? new Date(activeSchedules[0].nextRunAt).toLocaleString() : "No active schedule"}
-        </p>
+        <div className="flex items-center gap-2 text-sm md:justify-end">
+          <CalendarClock className={cn(
+            "size-4",
+            activeSchedules[0] ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+          )} />
+          <span className="text-muted-foreground">
+            Next delivery: {activeSchedules[0] ? new Date(activeSchedules[0].nextRunAt).toLocaleString() : "No active schedule"}
+          </span>
+        </div>
       </header>
 
       {message ? (
@@ -508,8 +513,20 @@ export default function ReportsPageClient() {
       ) : null}
 
       <div className="inline-flex w-full rounded-md border bg-muted/30 p-1 sm:w-auto">
-        <ReportModeButton active={activeTab === "preview"} title="Preview" onClick={() => setActiveTab("preview")} />
-        <ReportModeButton active={activeTab === "schedules"} title="Schedules" onClick={() => setActiveTab("schedules")} />
+        <ReportModeButton
+          active={activeTab === "preview"}
+          title="Preview"
+          icon={FileChartColumn}
+          tone="text-sky-600 dark:text-sky-400"
+          onClick={() => setActiveTab("preview")}
+        />
+        <ReportModeButton
+          active={activeTab === "schedules"}
+          title="Schedules"
+          icon={CalendarClock}
+          tone="text-violet-600 dark:text-violet-400"
+          onClick={() => setActiveTab("schedules")}
+        />
       </div>
 
       <div className="space-y-4">
@@ -517,10 +534,7 @@ export default function ReportsPageClient() {
             <>
           <Card className="overflow-hidden border-border/70">
             <CardHeader className="border-b pb-4">
-              <CardTitle>Generate manual report</CardTitle>
-              <CardDescription>
-                Preview a report instantly or send it to a hand-picked recipient list.
-              </CardDescription>
+              <CardTitle>Manual report</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -545,7 +559,7 @@ export default function ReportsPageClient() {
                   </Select>
                 </Field>
 
-                <InfoTile title="Period" detail="Every report uses the rolling last 7 days." />
+                <ReadOnlyField label="Period" value="Last 7 days" />
 
                 {previewDraft.scope === "company" ? (
                   <Field label="Company">
@@ -563,7 +577,7 @@ export default function ReportsPageClient() {
                     </Select>
                   </Field>
                 ) : (
-                  <InfoTile title="Coverage" detail="Global reports combine every monitor in the workspace into one overview." />
+                  <ReadOnlyField label="Company" value="All companies" />
                 )}
 
                 <Field label="Recipients">
@@ -619,10 +633,8 @@ export default function ReportsPageClient() {
             />
           ) : (
             <BuilderEmptyState
-              title="No report preview yet"
-              description="Choose the report settings, then generate a preview before sending it."
-              actionLabel="Use weekly workspace preset"
-              onAction={() => applyPreviewPreset("global", "operations")}
+              title="Preview not generated"
+              description="Generate a preview to review the report before sending."
             />
           )}
             </>
@@ -630,10 +642,7 @@ export default function ReportsPageClient() {
             <>
           <Card className="overflow-hidden border-border/70">
             <CardHeader className="border-b pb-4">
-              <CardTitle>Create scheduled report</CardTitle>
-              <CardDescription>
-                Save a recurring schedule, keep the same recipient list, and let the worker deliver it automatically.
-              </CardDescription>
+              <CardTitle>Scheduled report</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -693,7 +702,7 @@ export default function ReportsPageClient() {
                     </Select>
                   </Field>
                 ) : (
-                  <InfoTile title="Worker pickup" detail="Active schedules are collected automatically during the worker cycle." />
+                  <ReadOnlyField label="Company" value="All companies" />
                 )}
                 
                 <Field label="Recipients">
@@ -718,7 +727,7 @@ export default function ReportsPageClient() {
                     <div>
                       <p className="text-sm font-medium">Auto-send</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Pause the schedule now if you want to stage it before production use.
+                        Send reports when this schedule is due.
                       </p>
                     </div>
                     <Switch aria-label="Auto-send report" checked={scheduleDraft.isActive} onCheckedChange={(value) => setScheduleDraft((current) => ({ ...current, isActive: value }))} />
@@ -754,9 +763,6 @@ export default function ReportsPageClient() {
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <CardTitle>Scheduled reports</CardTitle>
-                  <CardDescription>
-                    Search, filter, pause, send, or load any schedule back into the builder.
-                  </CardDescription>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <div className="relative min-w-64">
@@ -783,8 +789,8 @@ export default function ReportsPageClient() {
                 <p className="text-sm text-muted-foreground">Loading report schedules...</p>
               ) : filteredSchedules.length === 0 ? (
                 <BuilderEmptyState
-                  title="No schedules match this view"
-                  description="Adjust your filters or create a new recurring report from the builder above."
+                  title={scheduleSearch.trim() || scheduleFilter !== "all" ? "No schedules match these filters" : "No report schedules yet"}
+                  description={scheduleSearch.trim() || scheduleFilter !== "all" ? "Change the search or status filter." : "Create a schedule to send reports automatically."}
                 />
               ) : (
                 filteredSchedules.map((schedule) => (
@@ -837,10 +843,14 @@ export default function ReportsPageClient() {
 
 function ReportModeButton({
   active,
+  icon: Icon,
+  tone,
   title,
   onClick,
 }: {
   active: boolean;
+  icon: ElementType;
+  tone: string;
   title: string;
   onClick: () => void;
 }) {
@@ -855,6 +865,7 @@ function ReportModeButton({
           : "text-muted-foreground hover:text-foreground"
       )}
     >
+      <Icon className={cn("mr-2 inline size-4", tone)} />
       {title}
     </button>
   );
@@ -1104,37 +1115,26 @@ function CompactToggle({
 function BuilderEmptyState({
   title,
   description,
-  actionLabel,
-  onAction,
 }: {
   title: string;
   description: string;
-  actionLabel?: string;
-  onAction?: () => void;
 }) {
   return (
-    <div className="flex flex-col items-start gap-3 border-y px-1 py-5">
-        <div className="space-y-1">
-          <p className="text-base font-semibold">{title}</p>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
-        </div>
-        {actionLabel && onAction ? (
-          <Button variant="outline" onClick={onAction}>
-            {actionLabel}
-          </Button>
-        ) : null}
+    <div className="border-y px-1 py-5">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
     </div>
   );
 }
 
 function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
   return (
-    <section className="border-y py-4">
-      <div className="pb-3">
-        <h2 className="text-base font-medium">Latest delivery result</h2>
-        <p className="text-sm text-muted-foreground">
-          Result from the most recent manual send.
-        </p>
+    <section className="border-y border-emerald-500/30 py-4">
+      <div className="flex items-start gap-3 pb-3">
+        <CircleCheckBig className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <div>
+          <h2 className="text-base font-medium text-emerald-700 dark:text-emerald-300">Latest delivery result</h2>
+        </div>
       </div>
       <div>
         <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
@@ -1151,11 +1151,11 @@ function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
   );
 }
 
-function InfoTile({ title, detail }: { title: string; detail: string }) {
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-l-2 border-border px-4 py-2">
-      <p className="text-sm font-medium">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <p className="min-h-9 py-2 text-sm text-muted-foreground">{value}</p>
     </div>
   );
 }
@@ -1170,9 +1170,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function RecipientHint({ count }: { count: number }) {
+  if (count === 0) {
+    return null;
+  }
+
   return (
     <p className="text-xs text-muted-foreground">
-      {count === 0 ? "No valid recipients parsed yet." : `${count} unique recipient${count === 1 ? "" : "s"} ready.`}
+      {count} unique recipient{count === 1 ? "" : "s"}
     </p>
   );
 }
@@ -1305,13 +1309,13 @@ function ReportPreviewPanel({
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
           <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
-            <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} />
-            <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} />
-            <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} />
-            <PreviewMetric label="P95 latency" value={formatReportP95Latency(report.summary)} detail={report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} avg` : "no latency samples"} />
-            <PreviewMetric label="Failure events" value={String(report.summary.failureEvents)} detail="confirmed down checks" />
-            <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failure events" />
-            <PreviewMetric label="Failure rate" value={formatReportFailureRate(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} />
+            <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} tone={healthScoreTone(report.summary.healthScore)} />
+            <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} tone="text-sky-600 dark:text-sky-400" />
+            <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={uptimeTone(report.summary.uptimePct, report.summary.hasCompletedChecks)} />
+            <PreviewMetric label="P95 latency" value={formatReportP95Latency(report.summary)} detail={report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} avg` : "no latency samples"} tone={report.summary.hasLatencySamples ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"} />
+            <PreviewMetric label="Failure events" value={String(report.summary.failureEvents)} detail="confirmed down checks" tone={riskCountTone(report.summary.failureEvents)} />
+            <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failure events" tone={riskCountTone(report.summary.impactedMonitors)} />
+            <PreviewMetric label="Failure rate" value={formatReportFailureRate(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={failureRateTone(report.summary.failureRatePct, report.summary.hasCompletedChecks)} />
           </dl>
 
           <dl className="grid border-y md:grid-cols-3 md:divide-x">
@@ -1325,8 +1329,10 @@ function ReportPreviewPanel({
 
       <section className="border-y py-4">
         <div>
-          <h3 className="text-base font-medium">Report findings</h3>
-          <p className="text-sm text-muted-foreground">Derived from status, failure frequency, and latency.</p>
+          <h3 className="flex items-center gap-2 text-base font-medium">
+            <ScanLine className="size-4 text-sky-600 dark:text-sky-400" />
+            Report findings
+          </h3>
         </div>
         <div className="divide-y pt-3">
           {report.recommendations.map((item, index) => (
@@ -1340,8 +1346,10 @@ function ReportPreviewPanel({
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <Card className="overflow-hidden border-border/70">
           <CardHeader className="border-b bg-muted/10">
-            <CardTitle className="text-base">Top failing monitors</CardTitle>
-            <CardDescription>Highest failure counts for the selected period.</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TriangleAlert className="size-4 text-rose-600 dark:text-rose-400" />
+              Top failing monitors
+            </CardTitle>
           </CardHeader>
           <CardContent className="divide-y pt-4">
             {report.failingMonitors.length === 0 ? (
@@ -1369,8 +1377,10 @@ function ReportPreviewPanel({
 
         <Card className="overflow-hidden border-border/70">
           <CardHeader className="border-b bg-muted/10">
-            <CardTitle className="text-base">Latency watchlist</CardTitle>
-            <CardDescription>Services with the highest average latency in the report window.</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Gauge className="size-4 text-amber-600 dark:text-amber-400" />
+              Latency watchlist
+            </CardTitle>
           </CardHeader>
           <CardContent className="divide-y pt-4">
             {report.slowMonitors.length === 0 ? (
@@ -1381,7 +1391,6 @@ function ReportPreviewPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Average latency in this report window</p>
                     </div>
                     <span className="text-xs font-medium text-muted-foreground">{monitor.averageLatencyMs}ms avg</span>
                   </div>
@@ -1394,7 +1403,10 @@ function ReportPreviewPanel({
 
       <section className="border-y py-4">
         <div>
-          <h3 className="text-base font-medium">Recent failure events</h3>
+          <h3 className="flex items-center gap-2 text-base font-medium">
+            <TriangleAlert className="size-4 text-rose-600 dark:text-rose-400" />
+            Recent failure events
+          </h3>
           <p className="text-sm text-muted-foreground">Latest failures included in the report.</p>
         </div>
         <div className="divide-y pt-3">
@@ -1423,7 +1435,10 @@ function ReportPreviewPanel({
 
       <section className="border-y py-4">
         <div>
-          <h3 className="text-base font-medium">Monitor breakdown</h3>
+          <h3 className="flex items-center gap-2 text-base font-medium">
+            <Activity className="size-4 text-emerald-600 dark:text-emerald-400" />
+            Monitor breakdown
+          </h3>
           <p className="text-sm text-muted-foreground">Ranked by failures, then average latency.</p>
         </div>
         <div className="divide-y pt-3">
@@ -1443,9 +1458,9 @@ function ReportPreviewPanel({
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>Uptime {monitor.uptimePct.toFixed(2)}%</span>
-                  <span>Avg latency {monitor.averageLatencyMs}ms</span>
-                  <span>P95 {monitor.p95LatencyMs}ms</span>
+                  <span>Uptime {formatMonitorUptime(monitor)}</span>
+                  <span>Avg latency {formatMonitorAverageLatency(monitor)}</span>
+                  <span>P95 {formatMonitorP95Latency(monitor)}</span>
                   <span>Last checked {monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : "N/A"}</span>
                 </div>
               </div>
@@ -1457,14 +1472,40 @@ function ReportPreviewPanel({
   );
 }
 
-function PreviewMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
+function PreviewMetric({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
   return (
-    <div className="border-b px-4 py-3 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+    <div className="border-b px-4 py-3 last:border-b-0 xl:[&:nth-last-child(-n+3)]:border-b-0">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-2 text-xl font-semibold tracking-tight">{value}</dd>
+      <dd className={cn("mt-2 text-xl font-semibold tracking-tight", tone)}>{value}</dd>
       {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
     </div>
   );
+}
+
+function healthScoreTone(score: number) {
+  if (score >= 90) return "text-emerald-600 dark:text-emerald-400";
+  if (score >= 70) return "text-amber-600 dark:text-amber-400";
+  return "text-rose-600 dark:text-rose-400";
+}
+
+function uptimeTone(uptimePct: number, hasCompletedChecks: boolean) {
+  if (!hasCompletedChecks) return "text-muted-foreground";
+  if (uptimePct >= 99) return "text-emerald-600 dark:text-emerald-400";
+  if (uptimePct >= 95) return "text-amber-600 dark:text-amber-400";
+  return "text-rose-600 dark:text-rose-400";
+}
+
+function riskCountTone(count: number) {
+  return count > 0
+    ? "text-rose-600 dark:text-rose-400"
+    : "text-emerald-600 dark:text-emerald-400";
+}
+
+function failureRateTone(rate: number, hasCompletedChecks: boolean) {
+  if (!hasCompletedChecks) return "text-muted-foreground";
+  if (rate === 0) return "text-emerald-600 dark:text-emerald-400";
+  if (rate < 5) return "text-amber-600 dark:text-amber-400";
+  return "text-rose-600 dark:text-rose-400";
 }
 
 function StateChip({

@@ -92,6 +92,8 @@ function buildSampleReport(): GeneratedReport {
         lastCheckedAt: "2026-05-05T07:30:00.000Z",
         lastFailureAt: "2026-05-05T07:30:00.000Z",
         lastErrorMessage: "The service did not accept a TCP connection before the timeout.",
+        hasCompletedChecks: true,
+        hasLatencySamples: true,
         uptimePct: 80,
         averageLatencyMs: 640,
         p95LatencyMs: 900,

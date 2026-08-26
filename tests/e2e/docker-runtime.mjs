@@ -25,7 +25,7 @@ if (!username || !password) {
 await waitForApplication();
 const browser = await chromium.launch({ headless: true });
 const adminContext = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1000 } });
-const cleanup = { companyId: null, memberIds: [], monitorId: null };
+const cleanup = { companyId: null, memberIds: [], monitorId: null, publicStatusPageIds: [] };
 
 try {
   const page = await adminContext.newPage();
@@ -33,6 +33,7 @@ try {
   await verifyAuthentication(page);
   const routeResults = await verifyApplicationRoutes(page);
   const mobileResult = await verifyMobileMonitoring(page);
+  const settingsResult = await verifySlowResponseSettings(adminContext.request);
   const workflowResult = await verifyCrudAndAuthorization(adminContext, cleanup);
   await verifyStoredTextRendering(page, workflowResult.companyName);
   const apiResults = await verifyReadApis(adminContext.request);
@@ -41,14 +42,69 @@ try {
   cleanup.companyId = null;
   cleanup.memberIds = [];
   cleanup.monitorId = null;
+  cleanup.publicStatusPageIds = [];
   await verifyLogout(page);
 
   assert.deepEqual(browserErrors, [], `Browser errors detected:\n${browserErrors.join("\n")}`);
-  console.log(JSON.stringify({ routeResults, mobileResult, workflowResult, apiResults, boundaryResults }, null, 2));
+  console.log(JSON.stringify({ routeResults, mobileResult, settingsResult, workflowResult, apiResults, boundaryResults }, null, 2));
 } finally {
   await cleanupResources(adminContext.request, cleanup);
   await adminContext.close();
   await browser.close();
+}
+
+async function verifySlowResponseSettings(request) {
+  const currentResponse = await request.get("/api/settings");
+  assert.equal(currentResponse.status(), 200);
+  const current = (await currentResponse.json()).settings;
+  const payload = {
+    ...current,
+    monitoring: {
+      ...current.monitoring,
+      timeout: 50_000,
+      slowResponseThresholdMs: 20_000,
+    },
+    notifications: {
+      ...current.notifications,
+      slowResponseEmailSubjectTemplate: "Workspace slow {domain} {latency_ms}/{hard_timeout_ms}",
+      slowResponseEmailBodyTemplate: "State: {event_state}\nResponse: {latency_ms}ms",
+      slowResponseTelegramTemplate: "SLOW {domain} {latency_ms}ms",
+    },
+  };
+  const saveResponse = await request.patch("/api/settings", { data: payload });
+  assert.equal(saveResponse.status(), 200);
+  const saved = (await saveResponse.json()).settings;
+  assert.equal(saved.monitoring.timeout, 50_000);
+  assert.equal(saved.monitoring.slowResponseThresholdMs, 20_000);
+  assert.equal(saved.notifications.slowResponseEmailSubjectTemplate, payload.notifications.slowResponseEmailSubjectTemplate);
+  assert.equal(saved.notifications.slowResponseTelegramTemplate, payload.notifications.slowResponseTelegramTemplate);
+
+  const reloadResponse = await request.get("/api/settings");
+  assert.equal(reloadResponse.status(), 200);
+  const reloaded = (await reloadResponse.json()).settings;
+  assert.equal(reloaded.monitoring.slowResponseThresholdMs, 20_000);
+  assert.equal(reloaded.notifications.slowResponseEmailBodyTemplate, payload.notifications.slowResponseEmailBodyTemplate);
+
+  const defaultedPayload = buildMonitorPayload(null, `defaults-${Date.now().toString(36)}`);
+  delete defaultedPayload.timeout;
+  delete defaultedPayload.slowResponseThresholdMs;
+  defaultedPayload.companyId = "";
+  defaultedPayload.isActive = false;
+  defaultedPayload.notificationPref = "none";
+  const monitorResponse = await request.post("/api/monitors", { data: defaultedPayload });
+  if (monitorResponse.status() !== 201) {
+    throw new Error(`Default monitor creation returned HTTP ${monitorResponse.status()}: ${await monitorResponse.text()}`);
+  }
+  const defaultedMonitor = (await monitorResponse.json()).monitor;
+  try {
+    assert.equal(defaultedMonitor.timeout, 50_000);
+    assert.equal(defaultedMonitor.slowResponseThresholdMs, 20_000);
+  } finally {
+    const deleteResponse = await request.delete(`/api/monitors/${defaultedMonitor.id}`);
+    assert.equal(deleteResponse.status(), 200);
+  }
+
+  return { saved: true, reloaded: true, inheritedByMonitor: true, thresholdMs: 20_000, hardTimeoutMs: 50_000 };
 }
 
 function collectBrowserErrors(page) {
@@ -113,6 +169,7 @@ async function verifyCrudAndAuthorization(adminContext, cleanupState) {
   cleanupState.companyId = company.id;
   const monitor = await createAndTestMonitor(adminContext.request, company.id, suffix);
   cleanupState.monitorId = monitor.id;
+  const publicStatusPages = await verifyPublicStatusPages(adminContext.request, company.id, suffix, cleanupState);
   const viewer = await createMember(adminContext.request, suffix, "viewer");
   const operator = await createMember(adminContext.request, suffix, "operator");
   cleanupState.memberIds.push(viewer.id, operator.id);
@@ -124,6 +181,7 @@ async function verifyCrudAndAuthorization(adminContext, cleanupState) {
     companyName: company.name,
     monitorCreated: true,
     monitorTested: true,
+    publicStatusPages,
     previewStatuses,
     viewerMutationStatus,
     operatorIsolationStatus,
@@ -152,7 +210,17 @@ async function verifyPreviews(request, monitorId, monitorPayload) {
   const notificationBody = await notification.json();
   assert.ok(notificationBody.preview);
   assert.ok(notificationBody.decision);
-  return { report: 200, notification: 200 };
+  const slowNotification = await request.post("/api/notifications/preview", {
+    data: { monitorId, scenario: "slow-response", payload: monitorPayload },
+  });
+  assert.equal(slowNotification.status(), 200);
+  const slowNotificationBody = await slowNotification.json();
+  assert.equal(slowNotificationBody.preview.subject, "Slow web: 4500/5000");
+  assert.match(slowNotificationBody.preview.textBody, /ONLINE · SLOW/);
+  assert.match(slowNotificationBody.preview.htmlBody, /Hard timeout/);
+  assert.match(slowNotificationBody.preview.telegramBody, /SLOW 4500ms/);
+  assert.equal(slowNotificationBody.decision.wouldNotify, true);
+  return { report: 200, notification: 200, slowNotification: 200 };
 }
 
 async function createCompany(request, suffix) {
@@ -161,6 +229,9 @@ async function createCompany(request, suffix) {
     data: {
       name,
       description: '<script>alert("stored-xss")</script>',
+      notificationEmailRecipients: `ops-${suffix}@example.test; NOC-${suffix}@example.test`,
+      telegramBotToken: `123456:${suffix}-docker-e2e-token`,
+      telegramChatId: "-1001234567890",
       isActive: true,
       userId: "00000000-0000-0000-0000-000000000000",
       role: "admin",
@@ -169,6 +240,13 @@ async function createCompany(request, suffix) {
   assert.equal(response.status(), 201);
   const company = (await response.json()).company;
   assert.notEqual(company.userId, "00000000-0000-0000-0000-000000000000");
+  assert.deepEqual(company.notificationEmailRecipients, [
+    `ops-${suffix}@example.test`,
+    `noc-${suffix}@example.test`,
+  ]);
+  assert.equal(company.telegramBotToken, "");
+  assert.equal(company.telegramBotTokenConfigured, true);
+  assert.equal(company.telegramChatId, "-1001234567890");
   const duplicate = await request.post("/api/companies", {
     data: { name, description: "Duplicate", isActive: true },
   });
@@ -187,6 +265,15 @@ async function createAndTestMonitor(request, companyId, suffix) {
   const monitor = (await createResponse.json()).monitor;
   assert.notEqual(monitor.userId, "00000000-0000-0000-0000-000000000000");
   assert.notEqual(monitor.status, "up");
+  assert.equal(monitor.notificationPref, "both");
+  assert.equal(monitor.notifEmail, `monitor-${suffix}@example.test`);
+  assert.equal(monitor.telegramBotToken, `123456:${suffix}-monitor-token`);
+  assert.equal(monitor.telegramChatId, "-1009876543210");
+  assert.equal(monitor.telegramTemplate, "Monitor {domain} is {event_state}");
+  assert.equal(monitor.emailSubject, "[{event_state}] {domain}");
+  assert.equal(monitor.slowResponseEmailSubject, "Slow {domain}: {latency_ms}/{hard_timeout_ms}");
+  assert.equal(monitor.slowResponseEmailBody, "State: ONLINE · SLOW\nResponse: {latency_ms}ms\nHard timeout: {hard_timeout_ms}ms");
+  assert.equal(monitor.slowResponseTelegramTemplate, "SLOW {latency_ms}ms / {hard_timeout_ms}ms");
   const duplicateResponse = await request.post("/api/monitors", { data: payload });
   await assertHttpStatus(duplicateResponse, 409);
 
@@ -208,8 +295,17 @@ function buildMonitorPayload(companyId, suffix) {
     monitorType: "http",
     url: `http://web:3000/api/health?e2e=${suffix}`,
     companyId,
-    notificationPref: "none",
+    notificationPref: "both",
     notificationLanguage: "default",
+    notifEmail: `monitor-${suffix}@example.test`,
+    telegramBotToken: `123456:${suffix}-monitor-token`,
+    telegramChatId: "-1009876543210",
+    telegramTemplate: "Monitor {domain} is {event_state}",
+    emailSubject: "[{event_state}] {domain}",
+    emailBody: "Monitor: {url_link}\nStatus: {status_label}",
+    slowResponseEmailSubject: "Slow {domain}: {latency_ms}/{hard_timeout_ms}",
+    slowResponseEmailBody: "State: ONLINE · SLOW\nResponse: {latency_ms}ms\nHard timeout: {hard_timeout_ms}ms",
+    slowResponseTelegramTemplate: "SLOW {latency_ms}ms / {hard_timeout_ms}ms",
     intervalValue: 5,
     intervalUnit: "dk",
     timeout: 5_000,
@@ -230,11 +326,54 @@ function buildMonitorPayload(companyId, suffix) {
     responseMaxLength: 2_000,
     sendOutageScreenshot: false,
     isActive: true,
-    publishOnStatusPage: false,
+    publishOnStatusPage: true,
     userId: "00000000-0000-0000-0000-000000000000",
     status: "up",
     consecutiveFailures: -10,
   };
+}
+
+async function verifyPublicStatusPages(request, companyId, suffix, cleanupState) {
+  const payloads = [
+    {
+      companyId,
+      slug: `docker-company-${suffix}`,
+      title: `Company status ${suffix}`,
+      summary: "Company-scoped status page",
+      isEnabled: true,
+    },
+    {
+      companyId: null,
+      slug: `docker-workspace-${suffix}`,
+      title: `Workspace status ${suffix}`,
+      summary: "Workspace-scoped status page",
+      isEnabled: true,
+    },
+  ];
+  const createdPages = [];
+  for (const payload of payloads) {
+    const response = await request.post("/api/public-status-pages", { data: payload });
+    assert.equal(response.status(), 201);
+    const page = (await response.json()).page;
+    cleanupState.publicStatusPageIds.push(page.id);
+    createdPages.push(page);
+  }
+
+  const listResponse = await request.get("/api/public-status-pages");
+  assert.equal(listResponse.status(), 200);
+  const listedIds = new Set((await listResponse.json()).pages.map((page) => page.id));
+  assert.ok(createdPages.every((page) => listedIds.has(page.id)));
+
+  const publicResponse = await request.get(`/status/${createdPages[0].slug}`);
+  assert.equal(publicResponse.status(), 200);
+  assert.match(await publicResponse.text(), new RegExp(payloads[0].title));
+
+  const updateResponse = await request.patch(`/api/public-status-pages/${createdPages[0].id}`, {
+    data: { ...payloads[0], summary: "Updated company status summary" },
+  });
+  assert.equal(updateResponse.status(), 200);
+  assert.equal((await updateResponse.json()).page.summary, "Updated company status summary");
+  return { created: 2, companyScoped: true, workspaceScoped: true, publicRoute: 200, updated: true };
 }
 
 async function createMember(request, suffix, role) {
@@ -361,6 +500,11 @@ async function verifyLogout(page) {
 }
 
 async function cleanupResources(request, cleanupState) {
+  for (const pageId of cleanupState.publicStatusPageIds) {
+    const response = await request.delete(`/api/public-status-pages/${pageId}`);
+    await assertHttpStatus(response, 200, "E2E public status page cleanup failed");
+  }
+  cleanupState.publicStatusPageIds = [];
   if (cleanupState.monitorId) {
     const response = await request.delete(`/api/monitors/${cleanupState.monitorId}`);
     await assertHttpStatus(response, 200, "E2E monitor cleanup failed");

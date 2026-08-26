@@ -7,6 +7,7 @@ import {
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
 import { countMonitorEvents, hasRecentMonitorEvent } from "@/lib/monitors/service";
+import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
 import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
@@ -20,7 +21,10 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     return false;
   }
 
-  const settings = await getSettings(context.monitor.userId);
+  const [settings, routing] = await Promise.all([
+    getSettings(context.monitor.userId),
+    getMonitorNotificationRouting(context.monitor.userId, context.monitor.id),
+  ]);
   if (!settings) {
     return false;
   }
@@ -35,7 +39,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
         userId: context.monitor.userId,
         kind: context.kind,
         monitorId: context.monitor.id,
-        destinationOverride: context.monitor.notifEmail,
+        destinationOverride: routing?.emailRecipients ?? context.monitor.notifEmail,
         subject: rendered.subject,
         textBody: rendered.textBody,
         htmlBody: rendered.htmlBody,
@@ -51,8 +55,8 @@ export async function sendMonitorNotifications(context: NotificationContext) {
         userId: context.monitor.userId,
         kind: context.kind,
         monitorId: context.monitor.id,
-        botToken: context.monitor.telegramBotToken ?? "",
-        chatId: context.monitor.telegramChatId ?? "",
+        botToken: routing?.telegramBotToken ?? context.monitor.telegramBotToken ?? "",
+        chatId: routing?.telegramChatId ?? context.monitor.telegramChatId ?? "",
         body: rendered.telegramBody,
         photo: context.emailAttachments?.[0],
         buildPhoto: context.emailAttachments ? undefined : () => resolveFirstScreenshotAttachment(getScreenshotAttachments),
@@ -118,9 +122,6 @@ export type NotificationDecision = {
 };
 
 export async function evaluateNotificationDecision(context: NotificationContext): Promise<NotificationDecision> {
-  if (context.monitor.notificationPref === "none") {
-    return suppress("Notifications are disabled for this monitor.");
-  }
   if (context.kind === "check") {
     return suppress("Routine checks do not generate notifications.");
   }

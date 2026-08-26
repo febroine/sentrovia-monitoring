@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { companies, monitors, reportSchedules, userSettings } from "@/lib/db/schema";
 import type { CompanyInput } from "@/lib/companies/schemas";
+import { decryptValueOrLegacyPlaintext, encryptValue } from "@/lib/security/encryption";
 
 export const COMPANY_SOFT_DELETE_UNDO_MS = 60_000;
 
@@ -24,12 +25,20 @@ export async function listCompanies(userId: string, database: DatabaseExecutor =
 
   return companyRows.map((company) => {
     const related = monitorRows.filter((monitor) => monitor.companyId === company.id);
+    const counts = summarizeCompanyMonitorCounts(related);
     return {
-      ...company,
-      monitorsCount: related.length,
-      activeMonitors: related.filter((monitor) => monitor.isActive && monitor.status === "up").length,
+      ...toCompanyOutput(company),
+      monitorsCount: counts.total,
+      activeMonitors: counts.active,
     };
   });
+}
+
+export function summarizeCompanyMonitorCounts(monitors: Array<{ isActive: boolean }>) {
+  return {
+    total: monitors.length,
+    active: monitors.filter((monitor) => monitor.isActive).length,
+  };
 }
 
 export async function createCompany(userId: string, input: CompanyInput, database?: DatabaseExecutor) {
@@ -42,18 +51,22 @@ export async function createCompany(userId: string, input: CompanyInput, databas
 
 async function persistCompany(userId: string, input: CompanyInput, database: DatabaseExecutor) {
   await releaseExpiredCompanyName(userId, input.name, database);
+  const telegram = resolveCompanyTelegramCredentials(input, null);
   const [company] = await database
     .insert(companies)
     .values({
       userId,
       name: input.name,
       description: input.description,
+      notificationEmailRecipients: input.notificationEmailRecipients,
+      telegramBotTokenEncrypted: telegram.botTokenEncrypted,
+      telegramChatId: telegram.chatId,
       isActive: input.isActive,
     })
     .returning();
 
   return {
-    ...company,
+    ...toCompanyOutput(company),
     monitorsCount: 0,
     activeMonitors: 0,
   };
@@ -116,11 +129,23 @@ export async function getCompanyById(userId: string, companyId: string, database
 export async function updateCompany(userId: string, companyId: string, input: CompanyInput) {
   const company = await db.transaction(async (tx) => {
     await releaseExpiredCompanyName(userId, input.name, tx);
+    const existing = await getCompanyById(userId, companyId, tx);
+    if (!existing) {
+      return null;
+    }
+    const telegram = resolveCompanyTelegramCredentials(
+      input,
+      existing.telegramBotTokenEncrypted
+    );
+
     const [updated] = await tx
       .update(companies)
       .set({
         name: input.name,
         description: input.description,
+        notificationEmailRecipients: input.notificationEmailRecipients,
+        telegramBotTokenEncrypted: telegram.botTokenEncrypted,
+        telegramChatId: telegram.chatId,
         isActive: input.isActive,
         updatedAt: new Date(),
       })
@@ -164,6 +189,29 @@ export async function deleteCompany(userId: string, companyId: string) {
     .returning({ id: companies.id, deletedAt: companies.deletedAt });
 
   return company ?? null;
+}
+
+export function resolveCompanyTelegramCredentials(input: CompanyInput, existingEncrypted: string | null) {
+  const botTokenEncrypted = input.telegramBotToken
+    ? encryptValue(input.telegramBotToken)
+    : input.telegramBotTokenConfigured
+      ? existingEncrypted
+      : null;
+
+  return {
+    botTokenEncrypted,
+    chatId: botTokenEncrypted ? input.telegramChatId : null,
+  };
+}
+
+function toCompanyOutput(company: typeof companies.$inferSelect) {
+  const { telegramBotTokenEncrypted, ...safeCompany } = company;
+  return {
+    ...safeCompany,
+    telegramBotToken: "",
+    telegramBotTokenConfigured: Boolean(decryptValueOrLegacyPlaintext(telegramBotTokenEncrypted)),
+    telegramChatId: company.telegramChatId ?? "",
+  };
 }
 
 export async function updateCompaniesActiveState(userId: string, ids: string[], isActive: boolean) {

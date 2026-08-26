@@ -6,13 +6,12 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  SearchX,
   Square,
 } from "lucide-react";
 import { LevelBadge } from "@/components/logs/log-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -55,12 +54,7 @@ export function LogsTable({
     <Card className="overflow-hidden border-border/80">
       <CardHeader className="border-b bg-muted/10 pb-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <CardTitle className="text-base">Log stream</CardTitle>
-            <CardDescription>
-              {total} event{total === 1 ? "" : "s"} matched. Healthy checks are merged into one active up-state row per monitor.
-            </CardDescription>
-          </div>
+          <p className="text-sm text-muted-foreground">{total} event{total === 1 ? "" : "s"}</p>
           <div className="flex items-center gap-2 self-start lg:self-auto">
             <span className="text-xs text-muted-foreground">Rows</span>
             <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
@@ -108,7 +102,7 @@ export function LogsTable({
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
                   Loading logs...
                 </TableCell>
               </TableRow>
@@ -117,9 +111,7 @@ export function LogsTable({
               <TableRow>
                 <TableCell colSpan={8}>
                   <EmptyState
-                    icon={SearchX}
-                    title="No logs found"
-                    description="Change the filters or refresh after new monitor checks run."
+                    title="No events match the current filters"
                   />
                 </TableCell>
               </TableRow>

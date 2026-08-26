@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
       from: searchParams.get("from") ?? "",
       to: searchParams.get("to") ?? "",
       statusCode: searchParams.get("statusCode") ?? "",
+      timezoneOffsetMinutes: Number(searchParams.get("timezoneOffsetMinutes") ?? "0"),
       page: Number(searchParams.get("page") ?? "1"),
       pageSize: Number(searchParams.get("pageSize") ?? "10"),
     });

@@ -21,10 +21,21 @@ export interface WorkspaceBackupBundle {
   exportedAt: string;
   source: "sentrovia";
   publicStatusCompanyName?: string | null;
+  publicStatusPages?: Array<{
+    companyName: string | null;
+    slug: string;
+    title: string;
+    summary: string;
+    isEnabled: boolean;
+  }>;
   settings: SettingsPayload;
   companies: Array<{
     name: string;
     description: string;
+    notificationEmailRecipients?: string;
+    telegramBotToken?: string;
+    telegramBotTokenConfigured?: boolean;
+    telegramChatId?: string;
     isActive: boolean;
   }>;
   monitors: MonitorPayload[];
@@ -90,6 +101,9 @@ export interface MonitorRecord {
   telegramTemplate: string | null;
   emailSubject: string | null;
   emailBody: string | null;
+  slowResponseEmailSubject: string | null;
+  slowResponseEmailBody: string | null;
+  slowResponseTelegramTemplate: string | null;
   sendOutageScreenshot: boolean;
 }
 
@@ -138,8 +152,10 @@ export interface CompanySlaReport {
   monitorCount: number;
   activeCount: number;
   averageLatencyMs: number;
+  hasLatencySamples: boolean;
   periods: Array<{
     label: string;
+    hasData: boolean;
     uptimePct: number;
     outages: number;
     totalChecks: number;
@@ -286,6 +302,9 @@ export interface MonitorPayload {
   telegramTemplate: string;
   emailSubject: string;
   emailBody: string;
+  slowResponseEmailSubject: string;
+  slowResponseEmailBody: string;
+  slowResponseTelegramTemplate: string;
   sendOutageScreenshot: boolean;
   isActive: boolean;
   publishOnStatusPage: boolean;
@@ -366,6 +385,9 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   telegramTemplate: "",
   emailSubject: "",
   emailBody: "",
+  slowResponseEmailSubject: "",
+  slowResponseEmailBody: "",
+  slowResponseTelegramTemplate: "",
   sendOutageScreenshot: true,
   isActive: true,
   publishOnStatusPage: false,

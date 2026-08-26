@@ -218,7 +218,7 @@ describe("http monitor checks", () => {
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.failureReason).toBe("timeout");
-    expect(result.errorMessage).toBe("Service did not respond within 20ms.");
+    expect(result.errorMessage).toBe("Service did not complete within the 20ms hard timeout.");
   });
 
   it("enforces the hard timeout across the complete response body", async () => {
@@ -242,7 +242,7 @@ describe("http monitor checks", () => {
 
     expect(result.ok).toBe(false);
     expect(result.failureReason).toBe("timeout");
-    expect(result.errorMessage).toBe("Service did not respond within 25ms.");
+    expect(result.errorMessage).toBe("Service did not complete within the 25ms hard timeout.");
   });
 
   it("applies a bounded safety limit when response length is configured as unlimited", async () => {
@@ -353,6 +353,9 @@ function buildHttpMonitor(overrides: Partial<Monitor> = {}): Monitor {
     telegramTemplate: null,
     emailSubject: null,
     emailBody: null,
+    slowResponseEmailSubject: null,
+    slowResponseEmailBody: null,
+    slowResponseTelegramTemplate: null,
     sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,

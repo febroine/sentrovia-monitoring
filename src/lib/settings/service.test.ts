@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decryptValue } from "@/lib/security/encryption";
-import { resolveSmtpPasswordEncrypted } from "@/lib/settings/service";
+import { resolveConfiguredSecretEncrypted, resolveSmtpPasswordEncrypted } from "@/lib/settings/service";
 
 describe("settings service", () => {
   it("keeps an existing SMTP password when the form leaves the password blank", () => {
@@ -16,5 +16,15 @@ describe("settings service", () => {
 
     expect(encrypted).not.toBe("old-secret");
     expect(decryptValue(encrypted)).toBe("new-secret");
+  });
+});
+
+describe("configured notification secrets", () => {
+  it("preserves, replaces, and clears encrypted workspace Telegram tokens", () => {
+    expect(resolveConfiguredSecretEncrypted("", true, "encrypted-token")).toBe("encrypted-token");
+    expect(resolveConfiguredSecretEncrypted("", false, "encrypted-token")).toBeNull();
+
+    const replacement = resolveConfiguredSecretEncrypted(" new-token ", true, "encrypted-token");
+    expect(decryptValue(replacement)).toBe("new-token");
   });
 });

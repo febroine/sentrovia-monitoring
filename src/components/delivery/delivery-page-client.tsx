@@ -1,7 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleX, Inbox, RefreshCw, RotateCcw, Send, Trash2, Webhook } from "lucide-react";
+import {
+  AlertTriangle,
+  ArchiveX,
+  BadgeCheck,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CircleX,
+  Clock3,
+  ListRestart,
+  MailCheck,
+  MessageCircle,
+  RefreshCw,
+  RotateCcw,
+  Send,
+  Trash2,
+  Webhook,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -53,26 +70,36 @@ export function DeliveryPageClient() {
         label: "Delivered",
         value: String(overview.summary.delivered),
         sub: "All completed deliveries",
+        tone: "text-emerald-600 dark:text-emerald-400",
+        icon: BadgeCheck,
       },
       {
-        label: "Retry Queue",
+        label: "Retry queue",
         value: String(overview.summary.pendingRetries),
         sub: "Delivery items waiting for retry",
+        tone: "text-sky-600 dark:text-sky-400",
+        icon: ListRestart,
       },
       {
         label: "Failed",
         value: String(overview.summary.failed),
         sub: "Review failed attempts",
+        tone: "text-rose-600 dark:text-rose-400",
+        icon: CircleX,
       },
       {
         label: "Retrying",
         value: String(overview.summary.retrying),
         sub: "Waiting for the next attempt",
+        tone: "text-amber-600 dark:text-amber-400",
+        icon: Clock3,
       },
       {
         label: "Dead-lettered",
         value: String(overview.summary.deadLettered),
         sub: "Exhausted or permanent failures",
+        tone: "text-rose-700 dark:text-rose-300",
+        icon: ArchiveX,
       },
     ],
     [overview.summary]
@@ -249,7 +276,7 @@ export function DeliveryPageClient() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Notification delivery</h1>
           <p className="text-sm text-muted-foreground">
-            Review delivery health, retry failed notifications, and verify that monitoring results reached their destination.
+            Channel health, delivery attempts, and retries.
           </p>
         </div>
         <Button variant="outline" onClick={() => void loadOverview(historyPage)} disabled={loading}>
@@ -274,8 +301,11 @@ export function DeliveryPageClient() {
       <dl className="grid border-y md:grid-cols-2 xl:grid-cols-5 xl:divide-x">
         {cards.map((card) => (
           <div key={card.label} className="border-b px-4 py-4 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
-              <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
-              <dd className="mt-2 text-xl font-semibold tracking-tight">{card.value}</dd>
+              <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <card.icon className={`size-3.5 ${card.tone}`} />
+                {card.label}
+              </dt>
+              <dd className={`mt-2 text-xl font-semibold tracking-tight ${card.tone}`}>{card.value}</dd>
               <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
           </div>
         ))}
@@ -284,7 +314,7 @@ export function DeliveryPageClient() {
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/15 pb-3">
           <CardTitle className="text-base">Channel health</CardTitle>
-          <CardDescription>Delivery attempts and error rates from the last 24 hours.</CardDescription>
+          <CardDescription>Attempts and failures from the last 24 hours.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y">
@@ -299,7 +329,7 @@ export function DeliveryPageClient() {
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/15 pb-3">
             <CardTitle className="text-base">Webhook endpoint</CardTitle>
-            <CardDescription>Store one outbound webhook and let Sentrovia retry failed posts.</CardDescription>
+            <CardDescription>Failed POST requests are retried automatically.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 p-5">
             <Field label="URL" id="webhook-url" value={webhookUrl} onChange={setWebhookUrl} placeholder="https://hooks.example.com/sentrovia" />
@@ -327,7 +357,6 @@ export function DeliveryPageClient() {
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/15 pb-3">
             <CardTitle className="text-base">Test delivery</CardTitle>
-            <CardDescription>Validate email and telegram routing before relying on alerts.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 p-5">
             {pendingAction ? <ActionProgress label={pendingAction} /> : null}
@@ -342,12 +371,15 @@ export function DeliveryPageClient() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void sendTest("email")} disabled={pendingAction !== null}>
+                <MailCheck className="size-4" />
                 Test email
               </Button>
               <Button variant="outline" onClick={() => void sendTest("telegram")} disabled={pendingAction !== null}>
+                <Send className="size-4 text-sky-600 dark:text-sky-400" />
                 Test Telegram
               </Button>
               <Button variant="outline" onClick={() => void sendTest("discord")} disabled={pendingAction !== null}>
+                <MessageCircle className="size-4 text-violet-600 dark:text-violet-400" />
                 Test Discord
               </Button>
             </div>
@@ -360,7 +392,7 @@ export function DeliveryPageClient() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1.5">
               <CardTitle className="text-base">Delivery history</CardTitle>
-              <CardDescription>Email, Telegram, Discord, and webhook attempts ordered from newest to oldest. Failed rows can be retried manually.</CardDescription>
+              <CardDescription>Newest attempts first. Failed deliveries can be retried.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -403,9 +435,8 @@ export function DeliveryPageClient() {
                 <TableRow>
                   <TableCell colSpan={7}>
                     <EmptyState
-                      icon={Inbox}
-                      title="No deliveries recorded yet"
-                      description="Delivery attempts will appear here after alerts, report sends, or test messages run."
+                      title="No deliveries yet"
+                      description="Alert, report, and test deliveries will appear here."
                     />
                   </TableCell>
                 </TableRow>

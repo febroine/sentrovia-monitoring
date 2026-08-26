@@ -545,7 +545,7 @@ export default function MonitoringPage() {
           <span className="text-sm font-medium">{selectedIds.size} monitor selected</span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)} disabled={Boolean(pendingBulkAction)}>
-              Bulk Edit
+              Bulk edit
             </Button>
             <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)} disabled={Boolean(pendingBulkAction)}>
               <Tags className="mr-1 size-3.5" />

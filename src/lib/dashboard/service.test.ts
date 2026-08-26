@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCompanyHealth,
   buildDashboardMonitorFocus,
+  calculateAverageLatency,
   calculateAverageIntervalMinutes,
   computeUptimePct,
+  countCertificatesExpiringSoon,
   loadDashboardSection,
 } from "@/lib/dashboard/service";
 
@@ -33,8 +35,22 @@ describe("dashboard service", () => {
     ).toBe(50);
   });
 
-  it("treats windows with only pending checks as fully available until settled", () => {
-    expect(computeUptimePct([{ status: "pending" }])).toBe(100);
+  it("marks windows with only pending checks as unavailable", () => {
+    expect(computeUptimePct([{ status: "pending" }])).toBeNull();
+  });
+
+  it("does not present missing latency samples as zero milliseconds", () => {
+    expect(calculateAverageLatency([{ latencyMs: null }])).toBeNull();
+    expect(calculateAverageLatency([{ latencyMs: 100 }, { latencyMs: null }, { latencyMs: 200 }])).toBe(150);
+  });
+
+  it("counts expiring certificates only when certificate monitoring is enabled", () => {
+    const now = new Date("2026-08-25T12:00:00.000Z");
+    expect(countCertificatesExpiringSoon([
+      { checkSslExpiry: true, sslExpiresAt: new Date("2026-09-01T12:00:00.000Z") },
+      { checkSslExpiry: false, sslExpiresAt: new Date("2026-09-01T12:00:00.000Z") },
+      { checkSslExpiry: true, sslExpiresAt: new Date("2026-10-01T12:00:00.000Z") },
+    ], now)).toBe(1);
   });
 
   it("keeps a company named Unassigned separate from monitors without a company", () => {

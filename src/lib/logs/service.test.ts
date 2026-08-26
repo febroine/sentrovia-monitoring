@@ -15,10 +15,14 @@ describe("log service filters", () => {
   });
 
   it("parses a valid local calendar date without changing the day", () => {
-    const parsed = parseDateFilter("2026-02-28");
+    const parsed = parseDateFilter("2026-02-28", 0);
 
-    expect(parsed?.getFullYear()).toBe(2026);
-    expect(parsed?.getMonth()).toBe(1);
-    expect(parsed?.getDate()).toBe(28);
+    expect(parsed).toEqual(new Date("2026-02-28T00:00:00.000Z"));
+  });
+
+  it("interprets calendar filters in the browser timezone", () => {
+    expect(parseDateFilter("2026-07-01", -180)).toEqual(
+      new Date("2026-06-30T21:00:00.000Z")
+    );
   });
 });

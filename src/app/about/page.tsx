@@ -29,7 +29,7 @@ const capabilities = [
 const runtime = [
   {
     title: "Web application",
-    description: "Stores monitor configuration, members, settings, reports, and public status page preferences.",
+    description: "Stores monitor configuration, members, settings, reports, and company-scoped public status pages.",
   },
   {
     title: "Worker",
@@ -46,7 +46,7 @@ const operatingRules = [
   "A successful response above the slow threshold stays up and can produce a separate latency notification.",
   "If every connectivity canary is unreachable, the worker pauses monitor checks, webhook retries, and scheduled reports without changing monitor states.",
   "Monitor-level notification language and templates override workspace defaults only for that monitor.",
-  "Public status pages publish active monitors from the selected company, or the full workspace when no company is selected.",
+  "Public status pages can be published separately for each company, plus an optional workspace-wide page.",
 ];
 
 const monitorTypes = [
@@ -68,13 +68,11 @@ const projectDetails = [
 
 export default function AboutPage() {
   return (
-    <div className="flex w-full flex-col gap-8">
-      <header className="flex flex-col gap-5 border-b pb-7 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex w-full flex-col gap-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">About Sentrovia</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Self-hosted monitoring for teams that need verifiable outages, clear delivery history, and company-level reporting.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Version, runtime, supported checks, and operating rules.</p>
         </div>
         <div className="flex gap-2">
           <Link href="/help" className={linkButtonClassName}>Open help</Link>
@@ -82,9 +80,8 @@ export default function AboutPage() {
       </header>
 
       <section aria-labelledby="capabilities-title">
-        <div className="mb-4">
+        <div className="mb-3">
           <h2 id="capabilities-title" className="text-base font-semibold">What Sentrovia does</h2>
-          <p className="mt-1 text-sm text-muted-foreground">The main workflows available in the current application.</p>
         </div>
         <div className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
           {capabilities.map((item) => (
@@ -97,24 +94,22 @@ export default function AboutPage() {
       </section>
 
       <section aria-labelledby="runtime-title">
-        <div className="mb-4">
+        <div className="mb-3">
           <h2 id="runtime-title" className="text-base font-semibold">Runtime architecture</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Three services share responsibility without hiding state in the browser.</p>
         </div>
-        <div className="grid border-y lg:grid-cols-3 lg:divide-x">
-          {runtime.map((item) => (
-            <div key={item.title} className="p-5 first:pl-0 last:pr-0">
+          <div className="grid border-y lg:grid-cols-3 lg:divide-x">
+            {runtime.map((item) => (
+              <div key={item.title} className="p-5 first:pl-0 last:pr-0">
               <h3 className="text-sm font-medium">{item.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.description}</p>
-            </div>
-          ))}
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.description}</p>
+              </div>
+            ))}
         </div>
       </section>
 
       <div className="grid gap-8 xl:grid-cols-[1.05fr_0.95fr]">
         <section aria-labelledby="rules-title">
           <h2 id="rules-title" className="text-base font-semibold">Important behavior</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Rules that affect status and notification decisions.</p>
           <ol className="mt-4 divide-y border-y">
             {operatingRules.map((rule, index) => (
               <li key={rule} className="flex gap-3 py-3 text-sm leading-6 text-muted-foreground">
@@ -127,7 +122,6 @@ export default function AboutPage() {
 
         <section aria-labelledby="monitor-types-title">
           <h2 id="monitor-types-title" className="text-base font-semibold">Monitor types</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Checks supported by the worker.</p>
           <dl className="mt-4 divide-y border-y">
             {monitorTypes.map(([name, description]) => (
               <div key={name} className="grid gap-1 py-3 sm:grid-cols-[110px_1fr]">
@@ -140,9 +134,8 @@ export default function AboutPage() {
       </div>
 
       <section aria-labelledby="project-title">
-        <div className="mb-4">
+        <div className="mb-3">
           <h2 id="project-title" className="text-base font-semibold">Project information</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Details for the version currently running.</p>
         </div>
         <dl className="grid border-y sm:grid-cols-2 xl:grid-cols-4 xl:divide-x">
           {projectDetails.map(([label, value]) => (

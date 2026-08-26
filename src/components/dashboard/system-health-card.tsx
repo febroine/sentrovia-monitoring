@@ -99,9 +99,6 @@ export function SystemHealthCard() {
                 {status}
               </Badge>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Worker, queue, connectivity, and notification delivery status.
-            </p>
           </div>
           <Button
             type="button"

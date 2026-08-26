@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, notInArray, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, ne, notInArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, monitorEvents, monitors } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
@@ -11,6 +11,7 @@ const WORKER_NOTIFICATION_MARKER_EVENTS: string[] = [...HIDDEN_NOTIFICATION_MARK
 const WARNING_EVENT_TYPES = ["ssl-expiry", "latency", "status-change"];
 const NON_ERROR_EVENT_TYPES = ["failure", "recovery", "check", ...WARNING_EVENT_TYPES];
 const LOG_LEVEL_FILTERS = new Set(["all", "info", "warning", "error", "critical"]);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function mapEventToLevel(eventType: string, status: string | null): LogLevel {
   if (eventType === "check") return "info";
@@ -31,6 +32,7 @@ export async function listLogs(
     from?: string;
     to?: string;
     statusCode?: string;
+    timezoneOffsetMinutes?: number;
     page?: number;
     pageSize?: number;
   }
@@ -42,8 +44,9 @@ export async function listLogs(
   ];
   const monitorConditions = [eq(monitors.userId, userId), isNull(monitors.deletedAt)];
 
-  const fromDate = parseDateFilter(filters.from);
-  const toDate = parseDateFilter(filters.to);
+  const timezoneOffsetMinutes = normalizeTimezoneOffset(filters.timezoneOffsetMinutes);
+  const fromDate = parseDateFilter(filters.from, timezoneOffsetMinutes);
+  const toDate = parseDateFilter(filters.to, timezoneOffsetMinutes);
   if (fromDate && toDate && fromDate > toDate) {
     throw new AuthError("The log start date must not be after the end date.", 400);
   }
@@ -54,10 +57,14 @@ export async function listLogs(
   }
 
   if (toDate) {
-    const end = new Date(toDate);
-    end.setHours(23, 59, 59, 999);
-    conditions.push(lte(monitorEvents.createdAt, end));
-    monitorConditions.push(lte(monitors.lastCheckedAt, end));
+    if (isCalendarDateInput(filters.to)) {
+      const toExclusive = new Date(toDate.getTime() + DAY_MS);
+      conditions.push(lt(monitorEvents.createdAt, toExclusive));
+      monitorConditions.push(lt(monitors.lastCheckedAt, toExclusive));
+    } else {
+      conditions.push(lte(monitorEvents.createdAt, toDate));
+      monitorConditions.push(lte(monitors.lastCheckedAt, toDate));
+    }
   }
 
   if (filters.companyQuery?.trim()) {
@@ -188,14 +195,14 @@ export async function listLogs(
   };
 }
 
-export function parseDateFilter(value: string | undefined) {
+export function parseDateFilter(value: string | undefined, timezoneOffsetMinutes = 0) {
   if (!value?.trim()) {
     return null;
   }
 
   const normalized = value.trim();
-  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(normalized)
-    ? parseLocalDateInput(normalized)
+  const parsed = isCalendarDateInput(normalized)
+    ? parseCalendarDateInput(normalized, normalizeTimezoneOffset(timezoneOffsetMinutes))
     : new Date(normalized);
   if (!parsed || Number.isNaN(parsed.getTime())) {
     throw new AuthError("Enter a valid log date.", 400);
@@ -204,19 +211,33 @@ export function parseDateFilter(value: string | undefined) {
   return parsed;
 }
 
-function parseLocalDateInput(value: string) {
+function parseCalendarDateInput(value: string, timezoneOffsetMinutes: number) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) {
     return null;
   }
 
   const [, year, month, day] = match;
-  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
-  return parsed.getFullYear() === Number(year)
-    && parsed.getMonth() === Number(month) - 1
-    && parsed.getDate() === Number(day)
-    ? parsed
+  const utcTimestamp = Date.UTC(Number(year), Number(month) - 1, Number(day));
+  const calendarDate = new Date(utcTimestamp);
+  const valid = calendarDate.getUTCFullYear() === Number(year)
+    && calendarDate.getUTCMonth() === Number(month) - 1
+    && calendarDate.getUTCDate() === Number(day);
+  return valid
+    ? new Date(utcTimestamp + timezoneOffsetMinutes * 60 * 1000)
     : null;
+}
+
+function isCalendarDateInput(value: string | undefined) {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()));
+}
+
+function normalizeTimezoneOffset(value: number | undefined) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(14 * 60, Math.max(-14 * 60, Math.trunc(value ?? 0)));
 }
 
 function toBoundedInteger(value: number | undefined, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER) {

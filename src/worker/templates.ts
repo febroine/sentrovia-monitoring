@@ -27,6 +27,7 @@ const LEGACY_DEFAULT_TELEGRAM_TEMPLATES = new Set([
     "{domain} ({url}) is now {event_state}\n\nTIME: {checked_at_local}\n\nSTATUS: {status_code} - {status_label}\nROOT CAUSE: {rca_summary}"
   ),
 ]);
+const NO_LEGACY_TEMPLATES = new Set<string>();
 
 export function renderNotificationTemplates(
   context: NotificationContext,
@@ -71,7 +72,9 @@ export function renderNotificationTemplates(
     "{status_code}": statusCode,
     "{status_label}": statusLabel,
     "{latency_ms}": String(context.result.latencyMs ?? "N/A"),
+    "{check_duration_ms}": String(context.result.latencyMs ?? "N/A"),
     "{slow_threshold_ms}": String(context.monitor.slowResponseThresholdMs ?? "N/A"),
+    "{hard_timeout_ms}": String(context.monitor.timeout),
     "{event_state}": eventState,
     "{checked_at}": context.result.checkedAt.toISOString(),
     "{checked_at_local}": localTime,
@@ -118,7 +121,9 @@ export function renderNotificationTemplates(
       eventState,
       checkedAt: localTime,
       status: `${statusCode} · ${statusLabel}`,
-      latency: context.result.latencyMs === null ? "N/A" : `${context.result.latencyMs} ms`,
+      duration: context.result.latencyMs === null ? "N/A" : `${context.result.latencyMs} ms`,
+      durationKind: context.result.statusCode !== null || context.result.ok ? "response" : "check",
+      hardTimeout: `${context.monitor.timeout} ms`,
       language,
       tone: resolveEmailTone(context),
     }),
@@ -138,6 +143,15 @@ function resolveSubjectTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
+  if (context.kind === "latency") {
+    const fallback = resolveLanguageDefault(
+      settings.notifications.slowResponseEmailSubjectTemplate,
+      "slowResponseEmailSubjectTemplate",
+      language
+    );
+    return resolveMonitorTemplate(context.monitor.slowResponseEmailSubject, fallback, NO_LEGACY_TEMPLATES);
+  }
+
   if (context.kind === "downtime-reminder") {
     return resolveLanguageDefault(
       settings.notifications.prolongedDowntimeEmailSubjectTemplate,
@@ -160,6 +174,15 @@ function resolveEmailBodyTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
+  if (context.kind === "latency") {
+    const fallback = resolveLanguageDefault(
+      settings.notifications.slowResponseEmailBodyTemplate,
+      "slowResponseEmailBodyTemplate",
+      language
+    );
+    return resolveMonitorTemplate(context.monitor.slowResponseEmailBody, fallback, NO_LEGACY_TEMPLATES);
+  }
+
   if (context.kind === "downtime-reminder") {
     return resolveLanguageDefault(
       settings.notifications.prolongedDowntimeEmailBodyTemplate,
@@ -182,6 +205,15 @@ function resolveTelegramTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
+  if (context.kind === "latency") {
+    const fallback = resolveLanguageDefault(
+      settings.notifications.slowResponseTelegramTemplate,
+      "slowResponseTelegramTemplate",
+      language
+    );
+    return resolveMonitorTemplate(context.monitor.slowResponseTelegramTemplate, fallback, NO_LEGACY_TEMPLATES);
+  }
+
   if (context.kind === "downtime-reminder") {
     return resolveLanguageDefault(
       settings.notifications.prolongedDowntimeTelegramTemplate,
@@ -320,6 +352,18 @@ function translateTurkishPatternMessage(message: string) {
   const timeoutMatch = message.match(/^Service did not respond within (.+)\.$/);
   if (timeoutMatch) {
     return `Servis ${timeoutMatch[1]} içinde yanıt vermedi.`;
+  }
+
+  const hardTimeoutMatch = message.match(/^Service did not complete within the (.+) hard timeout\.$/);
+  if (hardTimeoutMatch) {
+    return `Servis ${hardTimeoutMatch[1]} kesin hata zaman aşımı içinde tamamlanmadı.`;
+  }
+
+  const networkTimeoutMatch = message.match(
+    /^A network operation timed out after (.+); the configured hard timeout is (.+)\.$/
+  );
+  if (networkTimeoutMatch) {
+    return `Ağ işlemi ${networkTimeoutMatch[1]} sonra zaman aşımına uğradı; yapılandırılan kesin hata sınırı ${networkTimeoutMatch[2]}.`;
   }
 
   const tcpTimeoutMatch = message.match(/^TCP service did not respond within (.+)\.$/);

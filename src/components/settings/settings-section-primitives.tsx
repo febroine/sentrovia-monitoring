@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { SettingsSaveSection } from "@/lib/settings/section-save";
+import { cn } from "@/lib/utils";
 
 export function useSectionSave(saveSettings: (section?: SettingsSaveSection) => Promise<void>) {
   const [savingSection, setSavingSection] = useState<string | null>(null);
@@ -58,24 +59,31 @@ export function SectionCard({
   description,
   children,
   action,
+  icon: Icon,
+  iconClassName,
 }: {
   title: string;
   description: string;
   children: ReactNode;
   action?: ReactNode;
+  icon?: LucideIcon;
+  iconClassName?: string;
 }) {
   return (
     <Card>
-      <CardHeader className="border-b bg-muted/20 px-6 py-5">
+      <CardHeader className="border-b px-4 py-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-base">{title}</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              {Icon ? <Icon aria-hidden="true" className={cn("size-4 shrink-0", iconClassName)} /> : null}
+              <span>{title}</span>
+            </CardTitle>
             <CardDescription>{description}</CardDescription>
           </div>
           {action ? <div className="sm:pt-0.5">{action}</div> : null}
         </div>
       </CardHeader>
-      <CardContent className="space-y-5 p-6 md:p-7">{children}</CardContent>
+      <CardContent className="space-y-5 p-4 md:p-5">{children}</CardContent>
     </Card>
   );
 }

@@ -1,4 +1,4 @@
-import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Power, SearchX, Send, Settings2, Square, Star, XCircle } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Power, Send, Settings2, Square, Star, XCircle } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,11 @@ function StatusBadge({
 
   if (verificationMode) {
     return (
-      <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400">
+      <Badge
+        variant="outline"
+        className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400"
+        aria-label={`Verifying monitor failure, attempt ${verificationFailureCount} of ${threshold}`}
+      >
         <Clock className="size-3" />
         VERIFYING · {verificationFailureCount}/{threshold}
       </Badge>
@@ -41,9 +45,13 @@ function StatusBadge({
 
   if (slow) {
     return (
-      <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400">
+      <Badge
+        variant="outline"
+        className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400"
+        aria-label="Online, slow response"
+      >
         <Clock className="size-3" />
-        SLOW
+        ONLINE · SLOW
       </Badge>
     );
   }
@@ -147,15 +155,13 @@ export function MonitorTable({
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={14} className="py-12 text-center text-sm text-muted-foreground">Loading monitors...</TableCell>
+              <TableCell colSpan={14} className="py-8 text-center text-sm text-muted-foreground">Loading monitors...</TableCell>
             </TableRow>
           ) : monitors.length === 0 ? (
             <TableRow>
               <TableCell colSpan={14}>
                 <EmptyState
-                  icon={SearchX}
-                  title="No monitors found"
-                  description="Adjust the filters or add a monitor to start collecting uptime checks."
+                  title="No monitors in this view"
                 />
               </TableCell>
             </TableRow>
@@ -335,16 +341,14 @@ function MobileMonitorList({
   onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
 }) {
   if (loading) {
-    return <div className="rounded-lg border border-border px-4 py-10 text-center text-sm text-muted-foreground md:hidden">Loading monitors...</div>;
+    return <div className="border-y border-border px-4 py-8 text-center text-sm text-muted-foreground md:hidden">Loading monitors...</div>;
   }
 
   if (monitors.length === 0) {
     return (
       <div className="md:hidden">
         <EmptyState
-          icon={SearchX}
-          title="No monitors found"
-          description="Adjust the filters or add a monitor to start collecting uptime checks."
+          title="No monitors in this view"
         />
       </div>
     );

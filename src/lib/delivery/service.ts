@@ -3,8 +3,9 @@ import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
 import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { deliveryEvents, monitors, webhookEndpoints } from "@/lib/db/schema";
+import { deliveryEvents, webhookEndpoints } from "@/lib/db/schema";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
+import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
 import {
   decryptValue,
   decryptValueOrLegacyPlaintext,
@@ -949,12 +950,14 @@ async function createSafeSmtpTransport(
 }
 
 async function deliverClaimedTelegram(event: DeliveryEventRow) {
-  const monitor = await getMonitorNotificationTarget(event);
-  if (!monitor?.telegramBotToken || !monitor.telegramChatId) {
+  const routing = event.monitorId
+    ? await getMonitorNotificationRouting(event.userId, event.monitorId)
+    : null;
+  if (!routing?.telegramBotToken || !routing.telegramChatId) {
     return markDeliveryFailed(
       event.id,
       null,
-      "The monitor Telegram credentials are no longer configured.",
+      "Telegram credentials are no longer configured for the monitor, company, or workspace.",
       event.attempts + 1,
       event.claimToken
     );
@@ -972,7 +975,7 @@ async function deliverClaimedTelegram(event: DeliveryEventRow) {
   }
 
   try {
-    const response = await postTelegramMessage(monitor.telegramBotToken, monitor.telegramChatId, body);
+    const response = await postTelegramMessage(routing.telegramBotToken, routing.telegramChatId, body);
     const telegramFailure = await readTelegramResponseFailure(response);
     if (telegramFailure) {
       return isRetryableHttpStatus(telegramFailure.status)
@@ -1019,23 +1022,6 @@ async function deliverClaimedDiscord(event: DeliveryEventRow) {
       ? markDeliveryRetryable(event.id, event.attempts + 1, null, toMessage(error), event.claimToken)
       : markDeliveryFailed(event.id, null, toMessage(error), event.attempts + 1, event.claimToken);
   }
-}
-
-async function getMonitorNotificationTarget(event: DeliveryEventRow) {
-  if (!event.monitorId) return null;
-
-  const [monitor] = await db
-    .select({ telegramBotToken: monitors.telegramBotToken, telegramChatId: monitors.telegramChatId })
-    .from(monitors)
-    .where(and(eq(monitors.id, event.monitorId), eq(monitors.userId, event.userId)))
-    .limit(1);
-
-  return monitor
-    ? {
-      ...monitor,
-      telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
-    }
-    : null;
 }
 
 async function markDeliveryDelivered(
