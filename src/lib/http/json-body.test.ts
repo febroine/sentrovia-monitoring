@@ -49,11 +49,27 @@ describe("limited JSON body reader", () => {
       body: "{}",
       headers: {
         "content-type": "application/json",
+        host: "sentrovia.test",
         origin: "https://attacker.sentrovia.test",
         "sec-fetch-site": "same-site",
       },
     });
 
     await expect(readJsonBody(request, 128)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("allows a LAN origin that matches the direct request host", async () => {
+    const request = new Request("http://localhost:3000/api/settings", {
+      method: "POST",
+      body: "{}",
+      headers: {
+        "content-type": "application/json",
+        host: "192.168.1.50:3000",
+        origin: "http://192.168.1.50:3000",
+        "sec-fetch-site": "same-origin",
+      },
+    });
+
+    await expect(readJsonBody(request, 128)).resolves.toEqual({});
   });
 });
