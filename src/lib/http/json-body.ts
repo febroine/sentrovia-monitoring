@@ -35,20 +35,45 @@ export function assertSameOriginMutation(request: Request) {
     return;
   }
 
-  let allowedOrigins: Set<string>;
   let suppliedOrigin: string;
   try {
-    allowedOrigins = new Set([
-      new URL(request.url).origin,
-      new URL(env.appUrl).origin,
-    ]);
     suppliedOrigin = new URL(origin).origin;
   } catch {
     throw new AuthError("Request origin is invalid.", 403);
   }
 
+  const allowedOrigins = getAllowedMutationOrigins(request);
   if (!allowedOrigins.has(suppliedOrigin)) {
     throw new AuthError("Cross-origin requests are not allowed.", 403);
+  }
+}
+
+function getAllowedMutationOrigins(request: Request) {
+  const requestUrl = new URL(request.url);
+  const allowedOrigins = new Set([
+    requestUrl.origin,
+    new URL(env.appUrl).origin,
+  ]);
+  const hostOrigin = buildHostOrigin(request.headers.get("host"), requestUrl.protocol);
+
+  if (hostOrigin) {
+    allowedOrigins.add(hostOrigin);
+  }
+
+  return allowedOrigins;
+}
+
+function buildHostOrigin(host: string | null, protocol: string) {
+  if (!host?.trim()) {
+    return null;
+  }
+
+  try {
+    const url = new URL(`${protocol}//${host.trim()}`);
+    const isOriginOnly = url.pathname === "/" && !url.search && !url.hash;
+    return isOriginOnly && !url.username && !url.password ? url.origin : null;
+  } catch {
+    return null;
   }
 }
 
