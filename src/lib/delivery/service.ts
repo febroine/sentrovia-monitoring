@@ -4,6 +4,7 @@ import type Mail from "nodemailer/lib/mailer";
 import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, webhookEndpoints } from "@/lib/db/schema";
+import { escapeHtml } from "@/lib/html";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
 import {
@@ -32,15 +33,24 @@ import type {
   DeliveryTestInput,
   WebhookSettingsInput,
 } from "@/lib/delivery/types";
+import {
+  buildDeliveryAbortSignal,
+  DELIVERY_REQUEST_TIMEOUT_MS,
+  readLimitedResponseText,
+  safeJsonParse,
+} from "@/lib/delivery/transport-utils";
+import {
+  normalizeTelegramMessage,
+  postTelegramMessage,
+  readTelegramResponseFailure,
+  resolveTelegramPhoto,
+  sendTelegramPhotoWithoutBlockingMessage,
+  toTelegramErrorMessage,
+} from "@/lib/delivery/telegram-delivery";
 
 const DELIVERY_HISTORY_PAGE_SIZE = 10;
 const MAX_DELIVERY_ATTEMPTS = 5;
 const DELIVERY_RETRY_DELAY_MS = 5 * 60 * 1000;
-const DELIVERY_REQUEST_TIMEOUT_MS = 15_000;
-const DELIVERY_RESPONSE_BODY_LIMIT_BYTES = 4_000;
-const TELEGRAM_MESSAGE_LIMIT = 4096;
-const TELEGRAM_TRUNCATION_SUFFIX = "\n\n...[truncated]";
-const TELEGRAM_PHOTO_CAPTION_LIMIT = 1024;
 const DELIVERY_CLAIM_LEASE_MS = 2 * 60 * 1000;
 const DELIVERY_QUEUE_STATUSES = ["pending", "retrying", "processing"] as const;
 const DELIVERY_HISTORY_DELETABLE_STATUSES = ["delivered", "failed"];
@@ -1122,55 +1132,6 @@ function deliveryClaimWhere(eventId: string, claimToken?: string | null) {
   );
 }
 
-export async function readLimitedResponseText(
-  response: Response,
-  maxBytes = DELIVERY_RESPONSE_BODY_LIMIT_BYTES
-) {
-  if (!response.body || maxBytes <= 0) {
-    return "";
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let receivedBytes = 0;
-  let truncated = false;
-
-  try {
-    while (receivedBytes < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done || !value) {
-        break;
-      }
-
-      const remainingBytes = maxBytes - receivedBytes;
-      if (value.byteLength > remainingBytes) {
-        chunks.push(value.slice(0, remainingBytes));
-        receivedBytes = maxBytes;
-        truncated = true;
-        await reader.cancel().catch(() => undefined);
-        break;
-      }
-
-      if (value.byteLength === remainingBytes) {
-        chunks.push(value);
-        receivedBytes = maxBytes;
-        const next = await reader.read();
-        truncated = !next.done;
-        await reader.cancel().catch(() => undefined);
-        break;
-      }
-
-      chunks.push(value);
-      receivedBytes += value.byteLength;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const text = new TextDecoder().decode(Buffer.concat(chunks));
-  return truncated ? `${text}... [truncated]` : text;
-}
-
 function buildWebhookHeaders(body: string, secret: string | null) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -1217,38 +1178,8 @@ function isRetryableDeliveryError(error: unknown) {
   return !["EAUTH", "EENVELOPE", "EINVALID", "ERR_TLS_CERT_ALTNAME_INVALID"].includes(code);
 }
 
-function safeJsonParse(value: string) {
-  try {
-    return JSON.parse(value) as Record<string, unknown>;
-  } catch {
-    return { raw: value };
-  }
-}
-
 function toMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unexpected delivery failure.";
-}
-
-function toTelegramErrorMessage(error: unknown, botToken: string) {
-  const message = toMessage(error);
-  return botToken ? message.replaceAll(botToken, "[redacted]") : message;
-}
-
-function escapeHtml(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
-
-function postTelegramMessage(botToken: string, chatId: string, body: string) {
-  return fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: buildDeliveryAbortSignal(),
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: body,
-      disable_web_page_preview: false,
-    }),
-  });
 }
 
 type StoredEmailAttachment = {
@@ -1314,135 +1245,9 @@ function isStoredEmailAttachment(value: unknown): value is StoredEmailAttachment
     && (candidate.encoding === "utf8" || candidate.encoding === "base64");
 }
 
-async function readTelegramResponseFailure(response: Response) {
-  const responseBody = await readLimitedResponseText(response);
-  return parseTelegramResponseFailure(responseBody, response.status, response.ok);
-}
-
-function parseTelegramResponseFailure(body: string, responseStatus: number, responseOk: boolean) {
-  const parsed = safeJsonParse(body);
-  const apiFailed = parsed.ok === false;
-  if (responseOk && !apiFailed) {
-    return null;
-  }
-
-  const apiStatus = typeof parsed.error_code === "number" ? parsed.error_code : responseStatus;
-  const description = typeof parsed.description === "string" ? parsed.description : "";
-  return {
-    status: apiStatus,
-    message: description || body || "Telegram delivery failed.",
-  };
-}
-
 function readPayloadString(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === "string" ? value : "";
 }
 
-async function resolveTelegramPhoto(input: {
-  photo?: Mail.Attachment;
-  buildPhoto?: () => Promise<Mail.Attachment | null | undefined>;
-}) {
-  if (input.photo) {
-    return input.photo;
-  }
-
-  if (!input.buildPhoto) {
-    return null;
-  }
-
-  try {
-    return (await input.buildPhoto()) ?? null;
-  } catch (error) {
-    console.warn(`[sentrovia] Telegram screenshot skipped: ${toMessage(error)}`);
-    return null;
-  }
-}
-
-async function sendTelegramPhotoWithoutBlockingMessage(
-  botToken: string,
-  chatId: string,
-  body: string,
-  photo: Mail.Attachment
-) {
-  try {
-    const response = await postTelegramPhoto(botToken, chatId, body, photo);
-    const responseBody = await readLimitedResponseText(response);
-    const failure = parseTelegramResponseFailure(responseBody, response.status, response.ok);
-    if (failure) {
-      console.warn(`[sentrovia] Telegram screenshot skipped: ${failure.message}`);
-    }
-  } catch (error) {
-    console.warn(`[sentrovia] Telegram screenshot skipped: ${toTelegramErrorMessage(error, botToken)}`);
-  }
-}
-
-function postTelegramPhoto(botToken: string, chatId: string, body: string, photo: Mail.Attachment) {
-  const content = getTelegramPhotoContent(photo);
-  if (!content) {
-    throw new Error("Telegram screenshot content is not available.");
-  }
-
-  const formData = new FormData();
-  formData.set("chat_id", chatId);
-  formData.set("caption", truncateTelegramCaption(body));
-  formData.set("photo", buildTelegramPhotoBlob(content, photo.contentType), getTelegramPhotoFilename(photo));
-
-  return fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-    method: "POST",
-    signal: buildDeliveryAbortSignal(),
-    body: formData,
-  });
-}
-
-function getTelegramPhotoContent(photo: Mail.Attachment) {
-  const content = photo.content;
-  if (typeof content === "string" || Buffer.isBuffer(content) || content instanceof Uint8Array) {
-    return content;
-  }
-
-  return null;
-}
-
-function getTelegramPhotoFilename(photo: Mail.Attachment) {
-  return typeof photo.filename === "string" && photo.filename.trim().length > 0
-    ? photo.filename
-    : "sentrovia-screenshot.jpg";
-}
-
-function buildTelegramPhotoBlob(content: string | Buffer | Uint8Array, contentType?: string) {
-  const blobPart = typeof content === "string" ? content : new Uint8Array(content);
-  return new Blob([blobPart], { type: contentType || "image/jpeg" });
-}
-
-function truncateTelegramCaption(body: string) {
-  if (body.length <= TELEGRAM_PHOTO_CAPTION_LIMIT) {
-    return body;
-  }
-
-  const suffix = "\n...[truncated]";
-  return `${body.slice(0, TELEGRAM_PHOTO_CAPTION_LIMIT - suffix.length).trimEnd()}${suffix}`;
-}
-
-function normalizeTelegramMessage(body: string) {
-  if (body.length <= TELEGRAM_MESSAGE_LIMIT) {
-    return body;
-  }
-
-  const availableLength = TELEGRAM_MESSAGE_LIMIT - TELEGRAM_TRUNCATION_SUFFIX.length;
-  return `${body.slice(0, availableLength).trimEnd()}${TELEGRAM_TRUNCATION_SUFFIX}`;
-}
-
-function buildDeliveryAbortSignal() {
-  const timeout = (AbortSignal as typeof AbortSignal & {
-    timeout?: (milliseconds: number) => AbortSignal;
-  }).timeout;
-
-  if (timeout) {
-    return timeout(DELIVERY_REQUEST_TIMEOUT_MS);
-  }
-
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), DELIVERY_REQUEST_TIMEOUT_MS);
-  return controller.signal;
-}
+export { readLimitedResponseText };

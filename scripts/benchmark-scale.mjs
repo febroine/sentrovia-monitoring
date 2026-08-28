@@ -2,6 +2,7 @@ import nextEnv from "@next/env";
 import postgres from "postgres";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { resolveDatabaseUrl } from "./database-url.mjs";
 
 const { loadEnvConfig } = nextEnv;
 
@@ -27,15 +28,11 @@ export function percentile(values, percentileValue) {
 }
 
 export function resolveBenchmarkDatabaseUrl(environment = process.env) {
-  if (environment.DATABASE_URL?.trim()) return environment.DATABASE_URL.trim();
-  if (!environment.POSTGRES_PASSWORD) return null;
-
-  const user = encodeURIComponent(environment.POSTGRES_USER || "postgres");
-  const password = encodeURIComponent(environment.POSTGRES_PASSWORD);
-  const host = environment.POSTGRES_HOST || "localhost";
-  const port = environment.POSTGRES_PORT || "5432";
-  const database = encodeURIComponent(environment.POSTGRES_DB || "uptimemonitoring");
-  return `postgresql://${user}:${password}@${host}:${port}/${database}`;
+  return resolveDatabaseUrl(environment, {
+    defaultUser: "postgres",
+    defaultDatabase: "uptimemonitoring",
+    protocol: "postgresql",
+  });
 }
 
 export async function runScaleBenchmark(databaseUrl, options = parseBenchmarkOptions()) {

@@ -4,6 +4,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import nextEnv from "@next/env";
 import postgres from "postgres";
+import { resolveDatabaseUrl } from "./database-url.mjs";
 
 const { loadEnvConfig } = nextEnv;
 const CORE_TABLES = ["users", "monitors", "user_settings"];
@@ -42,7 +43,7 @@ export function resolveSchemaSteps(tablePresence) {
 
 async function main() {
   loadEnvConfig(process.cwd());
-  const databaseUrl = resolveDatabaseUrl();
+  const databaseUrl = resolveDatabaseUrl(process.env);
   if (!databaseUrl) {
     throw new Error("Database connection is not configured.");
   }
@@ -67,23 +68,6 @@ async function main() {
     }
     await sql.end({ timeout: 1 }).catch(() => undefined);
   }
-}
-
-function resolveDatabaseUrl() {
-  if (process.env.DATABASE_URL?.trim()) {
-    return process.env.DATABASE_URL;
-  }
-
-  const host = process.env.POSTGRES_HOST || "localhost";
-  const port = process.env.POSTGRES_PORT || "5432";
-  const user = process.env.POSTGRES_USER;
-  const password = process.env.POSTGRES_PASSWORD;
-  const database = process.env.POSTGRES_DB;
-  if (!user || !password || !database) {
-    return null;
-  }
-
-  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
 }
 
 async function acquireSchemaLock(sql) {

@@ -1,24 +1,14 @@
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
-  outageEvents,
-  monitorChecks,
-  monitorDiagnostics,
-  monitorEvents,
   monitors,
-  userSettings,
-  users,
-  workerState,
-  type Monitor,
 } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import { recordAuditEventSafely } from "@/lib/audit/service";
-import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
-import { env } from "@/lib/env";
 import { MAX_MONITORS_PER_USER } from "@/lib/import-limits";
 import { resolveOutage } from "@/lib/outages/service";
-import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import {
   buildCanonicalMonitorTarget,
@@ -30,18 +20,44 @@ import {
   parsePostgresMonitorTarget,
 } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
-import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
 import { getMonitorUptimeById, NO_MONITOR_UPTIME_DATA } from "@/lib/monitoring/uptime";
 import {
   decryptValueOrLegacyPlaintext,
   encryptValue,
   hashSecretValue,
-  isEncryptedValue,
 } from "@/lib/security/encryption";
 import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
-import { WORKER_STATE_ID } from "@/lib/worker/constants";
+import { assertHeartbeatTokenAvailable } from "@/lib/monitors/heartbeat-secrets";
+import type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
+export {
+  normalizeHeartbeatTokenInput,
+  receiveHeartbeat,
+} from "@/lib/monitors/heartbeat-service";
+export {
+  calculateMonitorLeaseMs,
+  claimDueMonitors,
+  countDueMonitors,
+  isMonitorActive,
+  recordMonitorResult,
+  refreshMonitorUptime,
+  releaseMonitorLease,
+  renewMonitorLease,
+} from "@/lib/monitors/runtime-service";
+export type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
+export {
+  appendMonitorCheck,
+  appendMonitorDiagnostic,
+  appendMonitorEvent,
+  appendOutageEvent,
+  countMonitorEvents,
+  getRecentMonitorEventMessage,
+  getWorkerState,
+  hasRecentMonitorEvent,
+  incrementWorkerCheckedCount,
+  updateWorkerState,
+} from "@/lib/monitors/runtime-store";
 export {
   getCompanyMonthlyUptimeReport,
   getCompanySlaReport,
@@ -53,14 +69,9 @@ export {
 
 const WORKER_CONTROL_ADVISORY_LOCK_KEY = 51_772_903;
 const MONITOR_TARGET_LOCK_PREFIX = "sentrovia:monitor-targets:";
-const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
-const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
-const MAX_DUE_USERS_PER_CYCLE = 100;
-const DUE_USER_QUERY_CONCURRENCY = 10;
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 export const SOFT_DELETE_UNDO_MS = 60_000;
-export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };
 
 export async function listMonitors(userId: string, database: DatabaseExecutor = db) {
   const monitorRows = await database
@@ -672,615 +683,7 @@ async function resolveOutageOnPause(
   }, database);
 }
 
-export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
-  const dueUsers = await db
-    .select({ userId: monitors.userId })
-    .from(monitors)
-    .where(buildDueMonitorPredicate(now))
-    .groupBy(monitors.userId)
-    .orderBy(asc(sql`min(coalesce(${monitors.nextCheckAt}, ${monitors.createdAt}))`))
-    .limit(MAX_DUE_USERS_PER_CYCLE);
 
-  if (dueUsers.length === 0) {
-    return [];
-  }
-
-  const userIds = dueUsers.map((row) => row.userId);
-  const settingsRows = await db
-    .select({ userId: userSettings.userId, batchSize: userSettings.monitoringBatchSize })
-    .from(userSettings)
-    .where(inArray(userSettings.userId, userIds));
-
-  const batchSizeMap = new Map(
-    settingsRows.map((item) => [item.userId, item.batchSize ?? DEFAULT_SETTINGS.monitoring.batchSize])
-  );
-  const selectedRows = (await mapWithConcurrency(
-    userIds,
-    DUE_USER_QUERY_CONCURRENCY,
-    (userId) => db
-      .select()
-      .from(monitors)
-      .where(and(eq(monitors.userId, userId), buildDueMonitorPredicate(now)))
-      .orderBy(desc(monitors.verificationMode), asc(monitors.nextCheckAt), asc(monitors.createdAt))
-      .limit(batchSizeMap.get(userId) ?? DEFAULT_SETTINGS.monitoring.batchSize)
-  )).flat();
-
-  if (selectedRows.length === 0) {
-    return [];
-  }
-
-  const leaseToken = crypto.randomUUID();
-  const leaseDurationMs = calculateMonitorLeaseMs(selectedRows);
-  const claimed = await db
-    .update(monitors)
-    .set({
-      leaseToken,
-      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        inArray(
-          monitors.id,
-          selectedRows.map((monitor) => monitor.id)
-        ),
-        eq(monitors.isActive, true),
-        isNull(monitors.deletedAt),
-        or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
-        or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
-      )
-    )
-    .returning();
-
-  const claimedUserIds = Array.from(new Set(claimed.map((monitor) => monitor.userId)));
-  const roleRows = await db
-    .select({ id: users.id, role: users.role })
-    .from(users)
-    .where(inArray(users.id, claimedUserIds));
-  const privateTargetUsers = new Set(
-    roleRows.filter((user) => user.role === "admin").map((user) => user.id)
-  );
-
-  await encryptLegacyClaimedSecrets(claimed);
-
-  return claimed.map((monitor): ClaimedMonitor => ({
-    ...monitor,
-    heartbeatToken: decryptValueOrLegacyPlaintext(monitor.heartbeatToken),
-    telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
-    allowPrivateTargets: env.monitorAllowPrivateTargets && privateTargetUsers.has(monitor.userId),
-  }));
-}
-
-async function mapWithConcurrency<T, TResult>(
-  items: T[],
-  concurrency: number,
-  task: (item: T) => Promise<TResult>
-) {
-  const results = new Array<TResult>(items.length);
-  let nextIndex = 0;
-  const workerCount = Math.min(Math.max(1, concurrency), items.length);
-
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await task(items[index]);
-    }
-  }));
-
-  return results;
-}
-
-export async function countDueMonitors(now: Date) {
-  const [row] = await db
-    .select({ total: count() })
-    .from(monitors)
-    .where(buildDueMonitorPredicate(now));
-
-  return Number(row?.total ?? 0);
-}
-
-function buildDueMonitorPredicate(now: Date) {
-  return and(
-    eq(monitors.isActive, true),
-    isNull(monitors.deletedAt),
-    or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
-    or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
-  );
-}
-
-export function calculateMonitorLeaseMs(
-  rows: Array<{ timeout: number; verificationMode?: boolean }>,
-  concurrencyLimit = env.workerConcurrency
-) {
-  const concurrency = Math.max(1, concurrencyLimit);
-  const maximumCheckBudgetMs = rows.reduce(
-    (maximum, row) => {
-      const timeoutMs = Math.max(0, row.timeout);
-      const checkBudgetMs = row.verificationMode
-        ? calculateVerificationLeaseBudgetMs(timeoutMs)
-        : timeoutMs;
-      return Math.max(maximum, checkBudgetMs);
-    },
-    0
-  );
-  const processingWaves = Math.max(1, Math.ceil(rows.length / concurrency));
-  const batchProcessingBudgetMs = maximumCheckBudgetMs * processingWaves;
-
-  return Math.max(MONITOR_LEASE_MS, batchProcessingBudgetMs + MONITOR_LEASE_SAFETY_MS);
-}
-
-export async function isMonitorActive(monitorId: string) {
-  const [monitor] = await db
-    .select({ isActive: monitors.isActive })
-    .from(monitors)
-    .where(and(eq(monitors.id, monitorId), isNull(monitors.deletedAt)))
-    .limit(1);
-
-  return monitor?.isActive === true;
-}
-
-export async function recordMonitorResult(
-  monitorId: string,
-  update: {
-    status: string;
-    statusCode: number | null;
-    lastCheckedAt: Date;
-    nextCheckAt: Date;
-    lastSuccessAt?: Date | null;
-    lastFailureAt?: Date | null;
-    sslExpiresAt?: Date | null;
-    lastErrorMessage?: string | null;
-    consecutiveFailures: number;
-    verificationMode: boolean;
-    verificationFailureCount: number;
-    latencyMs?: number | null;
-  },
-  expectedLeaseToken?: string | null
-) {
-  const extendedLeaseTimestamp = new Date(Date.now() + MONITOR_LEASE_MS).toISOString();
-  const [monitor] = await db
-    .update(monitors)
-    .set({
-      ...update,
-      ...(expectedLeaseToken
-        ? {
-            leaseExpiresAt: sql`greatest(
-              coalesce(${monitors.leaseExpiresAt}, now()),
-              (${extendedLeaseTimestamp})::timestamptz
-            )`,
-          }
-        : {}),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(monitors.id, monitorId),
-        eq(monitors.isActive, true),
-        isNull(monitors.deletedAt),
-        expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
-      )
-    )
-    .returning();
-
-  return monitor;
-}
-
-export async function refreshMonitorUptime(
-  userId: string,
-  monitorId: string,
-  expectedLeaseToken: string | null,
-  now = new Date()
-) {
-  const uptimeByMonitorId = await getMonitorUptimeById(userId, [monitorId], now);
-  const uptime = uptimeByMonitorId.get(monitorId) ?? NO_MONITOR_UPTIME_DATA;
-  const [updated] = await db
-    .update(monitors)
-    .set({ uptime, updatedAt: new Date() })
-    .where(and(
-      eq(monitors.id, monitorId),
-      eq(monitors.userId, userId),
-      eq(monitors.isActive, true),
-      isNull(monitors.deletedAt),
-      expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
-    ))
-    .returning({ id: monitors.id });
-
-  return updated?.id === monitorId;
-}
-
-export async function renewMonitorLease(
-  monitorId: string,
-  expectedLeaseToken: string | null,
-  monitor: Pick<typeof monitors.$inferSelect, "timeout" | "verificationMode">
-) {
-  if (!expectedLeaseToken) {
-    return false;
-  }
-
-  const leaseDurationMs = calculateMonitorLeaseMs([monitor]);
-  const extendedLeaseTimestamp = new Date(Date.now() + leaseDurationMs).toISOString();
-  const [updated] = await db
-    .update(monitors)
-    .set({
-      leaseExpiresAt: sql`greatest(
-        coalesce(${monitors.leaseExpiresAt}, now()),
-        (${extendedLeaseTimestamp})::timestamptz
-      )`,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(monitors.id, monitorId),
-        eq(monitors.isActive, true),
-        isNull(monitors.deletedAt),
-        eq(monitors.leaseToken, expectedLeaseToken)
-      )
-    )
-    .returning({ id: monitors.id });
-
-  return Boolean(updated);
-}
-
-export async function releaseMonitorLease(monitorId: string, expectedLeaseToken: string | null) {
-  if (!expectedLeaseToken) {
-    return false;
-  }
-
-  const [monitor] = await db
-    .update(monitors)
-    .set({
-      leaseToken: null,
-      leaseExpiresAt: null,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(monitors.id, monitorId), eq(monitors.leaseToken, expectedLeaseToken)))
-    .returning({ id: monitors.id });
-
-  return Boolean(monitor);
-}
-
-export async function receiveHeartbeat(token: string, receivedAt = new Date()) {
-  const normalizedToken = normalizeHeartbeatTokenInput(token);
-  if (!normalizedToken) {
-    return null;
-  }
-
-  return db.transaction(async (tx) => {
-    const tokenHash = hashSecretValue("heartbeat-token", normalizedToken);
-    const [legacyMonitor] = await tx
-      .select()
-      .from(monitors)
-      .where(and(
-        eq(monitors.monitorType, "heartbeat"),
-        eq(monitors.heartbeatToken, normalizedToken),
-        isNull(monitors.deletedAt)
-      ))
-      .limit(1);
-    const [hashedMonitor] = await tx
-      .select()
-      .from(monitors)
-      .where(and(
-        eq(monitors.monitorType, "heartbeat"),
-        eq(monitors.heartbeatTokenHash, tokenHash),
-        isNull(monitors.deletedAt)
-      ))
-      .limit(1);
-    const foundMonitor = legacyMonitor ?? hashedMonitor;
-
-    if (!foundMonitor) {
-      return null;
-    }
-
-    const hasLegacyHashConflict = Boolean(
-      legacyMonitor && hashedMonitor && legacyMonitor.id !== hashedMonitor.id
-    );
-    const [migratedMonitor] = hasLegacyHashConflict
-      ? []
-      : await tx
-        .update(monitors)
-        .set({
-          heartbeatToken: encryptValue(normalizedToken),
-          heartbeatTokenHash: tokenHash,
-          url: buildHeartbeatMonitorTarget(tokenHash),
-          updatedAt: new Date(),
-        })
-        .where(eq(monitors.id, foundMonitor.id))
-        .returning();
-    const existingMonitor = migratedMonitor ?? foundMonitor;
-
-    if (!existingMonitor.isActive) {
-      return {
-        accepted: false,
-        paused: true,
-        monitor: existingMonitor,
-        receivedAt,
-      };
-    }
-
-    const [monitor] = await tx
-      .update(monitors)
-      .set({
-        heartbeatLastReceivedAt: receivedAt,
-        nextCheckAt: receivedAt,
-        leaseToken: null,
-        leaseExpiresAt: null,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(monitors.id, existingMonitor.id),
-        eq(monitors.isActive, true),
-        isNull(monitors.deletedAt),
-        or(
-          isNull(monitors.heartbeatLastReceivedAt),
-          lte(monitors.heartbeatLastReceivedAt, receivedAt)
-        )
-      ))
-      .returning();
-
-    if (!monitor) {
-      const [currentMonitor] = await tx
-        .select()
-        .from(monitors)
-        .where(and(
-          eq(monitors.id, existingMonitor.id),
-          or(
-            eq(monitors.heartbeatTokenHash, tokenHash),
-            eq(monitors.heartbeatToken, normalizedToken)
-          ),
-          isNull(monitors.deletedAt)
-        ))
-        .limit(1);
-
-      return currentMonitor?.isActive
-        ? { accepted: true, paused: false, monitor: currentMonitor, receivedAt }
-        : { accepted: false, paused: true, monitor: currentMonitor ?? existingMonitor, receivedAt };
-    }
-
-    await appendMonitorEvent({
-      monitorId: monitor.id,
-      userId: monitor.userId,
-      eventType: "heartbeat-received",
-      status: monitor.status,
-      statusCode: monitor.statusCode,
-      latencyMs: null,
-      message: "Heartbeat ping received from the external job.",
-    }, tx);
-
-    return {
-      accepted: true,
-      paused: false,
-      monitor,
-      receivedAt,
-    };
-  });
-}
-
-export function normalizeHeartbeatTokenInput(token: string) {
-  const normalized = token.trim();
-  if (
-    normalized.length < MIN_HEARTBEAT_TOKEN_LENGTH ||
-    normalized.length > MAX_HEARTBEAT_TOKEN_LENGTH
-  ) {
-    return null;
-  }
-
-  return normalized;
-}
-
-export async function appendMonitorEvent(input: {
-  monitorId: string;
-  userId: string;
-  eventType: string;
-  status?: string | null;
-  statusCode?: number | null;
-  latencyMs?: number | null;
-  message?: string | null;
-  rcaType?: string | null;
-  rcaTitle?: string | null;
-  rcaSummary?: string | null;
-}, database: DatabaseExecutor = db) {
-  await database.insert(monitorEvents).values({
-    monitorId: input.monitorId,
-    userId: input.userId,
-    eventType: input.eventType,
-    status: input.status ?? null,
-    statusCode: input.statusCode ?? null,
-    latencyMs: input.latencyMs ?? null,
-    message: input.message ?? null,
-    rcaType: input.rcaType ?? null,
-    rcaTitle: input.rcaTitle ?? null,
-    rcaSummary: input.rcaSummary ?? null,
-  });
-}
-
-export async function hasRecentMonitorEvent(input: {
-  monitorId: string;
-  eventType: string;
-  since: Date;
-  before: Date;
-}) {
-  const [event] = await db
-    .select({ id: monitorEvents.id })
-    .from(monitorEvents)
-    .where(
-      and(
-        eq(monitorEvents.monitorId, input.monitorId),
-        eq(monitorEvents.eventType, input.eventType),
-        gte(monitorEvents.createdAt, input.since),
-        lte(monitorEvents.createdAt, input.before)
-      )
-    )
-    .orderBy(desc(monitorEvents.createdAt))
-    .limit(1);
-
-  return Boolean(event);
-}
-
-export async function getRecentMonitorEventMessage(input: {
-  monitorId: string;
-  eventType: string;
-  since: Date;
-  before: Date;
-}) {
-  const [event] = await db
-    .select({ message: monitorEvents.message })
-    .from(monitorEvents)
-    .where(
-      and(
-        eq(monitorEvents.monitorId, input.monitorId),
-        eq(monitorEvents.eventType, input.eventType),
-        gte(monitorEvents.createdAt, input.since),
-        lte(monitorEvents.createdAt, input.before)
-      )
-    )
-    .orderBy(desc(monitorEvents.createdAt))
-    .limit(1);
-
-  return event?.message ?? null;
-}
-
-export async function countMonitorEvents(input: {
-  monitorId: string;
-  eventType: string;
-  since: Date;
-  before: Date;
-}) {
-  const [row] = await db
-    .select({ total: count() })
-    .from(monitorEvents)
-    .where(
-      and(
-        eq(monitorEvents.monitorId, input.monitorId),
-        eq(monitorEvents.eventType, input.eventType),
-        gte(monitorEvents.createdAt, input.since),
-        lte(monitorEvents.createdAt, input.before)
-      )
-    );
-
-  return row?.total ?? 0;
-}
-
-export async function appendMonitorCheck(input: {
-  monitorId: string;
-  userId: string;
-  status: "up" | "down" | "pending";
-  statusCode?: number | null;
-  latencyMs?: number | null;
-  createdAt: Date;
-}) {
-  await db.insert(monitorChecks).values({
-    monitorId: input.monitorId,
-    userId: input.userId,
-    status: input.status,
-    statusCode: input.statusCode ?? null,
-    latencyMs: input.latencyMs ?? null,
-    createdAt: input.createdAt,
-  });
-}
-
-export async function appendMonitorDiagnostic(input: {
-  monitorId: string;
-  userId: string;
-  diagnostic: MonitorDiagnosticResult;
-}) {
-  await db.insert(monitorDiagnostics).values({
-    monitorId: input.monitorId,
-    userId: input.userId,
-    status: input.diagnostic.status,
-    failedPhase: input.diagnostic.failedPhase,
-    failureCategory: input.diagnostic.failureCategory,
-    summary: input.diagnostic.summary,
-    dnsStatus: input.diagnostic.dnsStatus,
-    resolvedIps: input.diagnostic.resolvedIps,
-    tcpStatus: input.diagnostic.tcpStatus,
-    tlsStatus: input.diagnostic.tlsStatus,
-    httpStatus: input.diagnostic.httpStatus,
-    httpStatusCode: input.diagnostic.httpStatusCode,
-    responseTimeMs: input.diagnostic.responseTimeMs,
-    timeoutMs: input.diagnostic.timeoutMs,
-    errorMessage: input.diagnostic.errorMessage,
-    createdAt: input.diagnostic.createdAt,
-  });
-}
-
-export async function appendOutageEvent(input: {
-  outageId?: string | null;
-  monitorId: string;
-  userId: string;
-  eventType: string;
-  title: string;
-  detail?: string | null;
-  metadata?: Record<string, unknown> | null;
-  createdAt?: Date;
-}) {
-  await db.insert(outageEvents).values({
-    outageId: input.outageId ?? null,
-    monitorId: input.monitorId,
-    userId: input.userId,
-    eventType: input.eventType,
-    title: input.title,
-    detail: input.detail ?? null,
-    metadataJson: input.metadata ? JSON.stringify(input.metadata) : null,
-    createdAt: input.createdAt ?? new Date(),
-  });
-}
-
-export async function getWorkerState() {
-  const [state] = await db.select().from(workerState).where(eq(workerState.id, WORKER_STATE_ID));
-
-  if (state) {
-    return state;
-  }
-
-  const [created] = await db
-    .insert(workerState)
-    .values({ id: WORKER_STATE_ID, desiredState: "stopped", running: false })
-    .onConflictDoNothing({ target: workerState.id })
-    .returning();
-
-  if (created) {
-    return created;
-  }
-
-  const [existing] = await db.select().from(workerState).where(eq(workerState.id, WORKER_STATE_ID));
-  if (!existing) {
-    throw new Error("Worker state could not be initialized.");
-  }
-
-  return existing;
-}
-
-export async function updateWorkerState(values: Partial<typeof workerState.$inferInsert>) {
-  await getWorkerState();
-
-  const [state] = await db
-    .update(workerState)
-    .set({
-      ...values,
-      updatedAt: new Date(),
-    })
-    .where(eq(workerState.id, WORKER_STATE_ID))
-    .returning();
-
-  return state;
-}
-
-export async function incrementWorkerCheckedCount(amount = 1) {
-  await getWorkerState();
-
-  const increment = Math.max(0, amount);
-  const [state] = await db
-    .update(workerState)
-    .set({
-      checkedCount: sql`${workerState.checkedCount} + ${increment}`,
-      updatedAt: new Date(),
-    })
-    .where(eq(workerState.id, WORKER_STATE_ID))
-    .returning();
-
-  return state;
-}
 
 async function buildMonitorValues(
   userId: string,
@@ -1289,63 +692,99 @@ async function buildMonitorValues(
   allowPrivateTargets: boolean,
   database: DatabaseExecutor = db
 ) {
-  const companyRecord =
-    input.companyId && input.companyId.length > 0 ? await getCompanyById(userId, input.companyId, database) : null;
-  const monitorType = normalizeMonitorType(input.monitorType);
-  const heartbeatToken =
-    monitorType === "heartbeat" ? resolveHeartbeatToken(input, existingMonitor) : null;
-  const heartbeatTokenHash = heartbeatToken
-    ? hashSecretValue("heartbeat-token", heartbeatToken)
-    : null;
-  if (monitorType === "heartbeat" && heartbeatToken && heartbeatTokenHash) {
-    await assertHeartbeatTokenAvailable(
-      heartbeatToken,
-      heartbeatTokenHash,
-      existingMonitor?.id ?? null,
-      database
-    );
-  }
-  const url = monitorType === "heartbeat"
-    ? buildHeartbeatMonitorTarget(heartbeatTokenHash ?? "")
-    : buildCanonicalMonitorTarget({
-      ...input,
-      heartbeatToken: heartbeatToken ?? input.heartbeatToken,
-    });
+  const identity = await resolveMonitorIdentity(userId, input, existingMonitor, database);
   try {
-    await assertMonitorNetworkTargetAllowed(monitorType, url, allowPrivateTargets);
+    await assertMonitorNetworkTargetAllowed(identity.monitorType, identity.url, allowPrivateTargets);
   } catch (error) {
-    await recordBlockedMonitorTarget(userId, input.name, monitorType);
+    await recordBlockedMonitorTarget(userId, input.name, identity.monitorType);
     throw error;
   }
   const databasePasswordEncrypted =
-    monitorType === "postgres"
+    identity.monitorType === "postgres"
       ? resolveDatabasePassword(input, existingMonitor)
       : null;
 
   return {
+    ...buildCommonMonitorValues(userId, input, identity),
+    ...buildTypeSpecificMonitorValues(input, existingMonitor, identity, databasePasswordEncrypted),
+  };
+}
+
+async function resolveMonitorIdentity(
+  userId: string,
+  input: MonitorInput,
+  existingMonitor: typeof monitors.$inferSelect | null,
+  database: DatabaseExecutor
+) {
+  const companyRecord = input.companyId
+    ? await getCompanyById(userId, input.companyId, database)
+    : null;
+  const monitorType = normalizeMonitorType(input.monitorType);
+  const heartbeatToken = monitorType === "heartbeat" ? resolveHeartbeatToken(input, existingMonitor) : null;
+  const heartbeatTokenHash = heartbeatToken ? hashSecretValue("heartbeat-token", heartbeatToken) : null;
+  if (monitorType === "heartbeat" && heartbeatToken && heartbeatTokenHash) {
+    await assertHeartbeatTokenAvailable(heartbeatToken, heartbeatTokenHash, existingMonitor?.id ?? null, database);
+  }
+  const url = monitorType === "heartbeat"
+    ? buildHeartbeatMonitorTarget(heartbeatTokenHash ?? "")
+    : buildCanonicalMonitorTarget({ ...input, heartbeatToken: heartbeatToken ?? input.heartbeatToken });
+  return { companyRecord, heartbeatToken, heartbeatTokenHash, monitorType, url };
+}
+
+type MonitorIdentity = Awaited<ReturnType<typeof resolveMonitorIdentity>>;
+
+function buildCommonMonitorValues(userId: string, input: MonitorInput, identity: MonitorIdentity) {
+  return {
     userId,
     name: input.name,
-    monitorType,
-    url,
-    companyId: companyRecord?.id ?? null,
-    company: companyRecord?.name ?? input.company,
+    monitorType: identity.monitorType,
+    url: identity.url,
+    companyId: identity.companyRecord?.id ?? null,
+    company: identity.companyRecord?.name ?? input.company,
     notificationPref: input.notificationPref,
     notificationLanguage: input.notificationLanguage,
     notifEmail: input.notifEmail,
     telegramBotToken: input.telegramBotToken ? encryptValue(input.telegramBotToken) : null,
     telegramChatId: input.telegramChatId,
-    heartbeatToken: heartbeatToken ? encryptValue(heartbeatToken) : null,
-    heartbeatTokenHash,
-    heartbeatLastReceivedAt:
-      monitorType === "heartbeat" ? existingMonitor?.heartbeatLastReceivedAt ?? null : null,
     intervalValue: input.intervalValue,
     intervalUnit: input.intervalUnit,
     timeout: input.timeout,
+    retries: input.retries,
+    tags: input.tags,
+    renotifyCount: input.renotifyCount,
+    telegramTemplate: input.telegramTemplate,
+    emailSubject: input.emailSubject,
+    emailBody: input.emailBody,
+    slowResponseEmailSubject: input.slowResponseEmailSubject,
+    slowResponseEmailBody: input.slowResponseEmailBody,
+    slowResponseTelegramTemplate: input.slowResponseTelegramTemplate,
+    sendOutageScreenshot: shouldPersistOutageScreenshot(
+      identity.monitorType,
+      input.notificationPref,
+      input.sendOutageScreenshot
+    ),
+    isActive: input.isActive,
+    publishOnStatusPage: input.publishOnStatusPage,
+  };
+}
+
+function buildTypeSpecificMonitorValues(
+  input: MonitorInput,
+  existingMonitor: typeof monitors.$inferSelect | null,
+  identity: MonitorIdentity,
+  databasePasswordEncrypted: string | null
+) {
+  const { heartbeatToken, heartbeatTokenHash, monitorType } = identity;
+  const supportsHttpOptions = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
+  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat";
+  return {
+    heartbeatToken: heartbeatToken ? encryptValue(heartbeatToken) : null,
+    heartbeatTokenHash,
+    heartbeatLastReceivedAt: monitorType === "heartbeat" ? existingMonitor?.heartbeatLastReceivedAt ?? null : null,
     slowResponseThresholdMs: shouldPersistSlowResponseThreshold(monitorType, input.slowResponseThresholdMs),
     slowResponseAlertsEnabled: shouldPersistSlowResponseAlerts(monitorType, input.slowResponseAlertsEnabled),
     expectedStatusCodes: shouldPersistExpectedStatusCodes(monitorType, input.expectedStatusCodes),
-    retries: input.retries,
-    method: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? "GET" : input.method,
+    method: usesSyntheticGet ? "GET" : input.method,
     databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
     databaseTlsVerify: monitorType === "postgres" ? input.databaseTlsVerify : true,
     databasePasswordEncrypted,
@@ -1354,25 +793,14 @@ async function buildMonitorValues(
     jsonPath: monitorType === "json" ? input.jsonPath.trim() : null,
     jsonExpectedValue: monitorType === "json" ? input.jsonExpectedValue.trim() : null,
     jsonMatchMode: monitorType === "json" ? input.jsonMatchMode : "equals",
-    tags: input.tags,
-    renotifyCount: input.renotifyCount,
-    maxRedirects: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? 0 : input.maxRedirects,
+    maxRedirects: usesSyntheticGet ? 0 : input.maxRedirects,
     ipFamily: monitorType === "postgres" || monitorType === "heartbeat" ? "auto" : input.ipFamily,
-    checkSslExpiry: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.checkSslExpiry : false,
-    ignoreSslErrors: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.ignoreSslErrors : false,
-    cacheBuster: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.cacheBuster : false,
-    saveErrorPages: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.saveErrorPages : false,
-    saveSuccessPages: monitorType === "http" || monitorType === "keyword" || monitorType === "json" ? input.saveSuccessPages : false,
-    responseMaxLength: monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat" ? 0 : input.responseMaxLength,
-    telegramTemplate: input.telegramTemplate,
-    emailSubject: input.emailSubject,
-    emailBody: input.emailBody,
-    slowResponseEmailSubject: input.slowResponseEmailSubject,
-    slowResponseEmailBody: input.slowResponseEmailBody,
-    slowResponseTelegramTemplate: input.slowResponseTelegramTemplate,
-    sendOutageScreenshot: shouldPersistOutageScreenshot(monitorType, input.notificationPref, input.sendOutageScreenshot),
-    isActive: input.isActive,
-    publishOnStatusPage: input.publishOnStatusPage,
+    checkSslExpiry: supportsHttpOptions ? input.checkSslExpiry : false,
+    ignoreSslErrors: supportsHttpOptions ? input.ignoreSslErrors : false,
+    cacheBuster: supportsHttpOptions ? input.cacheBuster : false,
+    saveErrorPages: supportsHttpOptions ? input.saveErrorPages : false,
+    saveSuccessPages: supportsHttpOptions ? input.saveSuccessPages : false,
+    responseMaxLength: usesSyntheticGet ? 0 : input.responseMaxLength,
   };
 }
 
@@ -1392,61 +820,6 @@ async function recordBlockedMonitorTarget(
   });
 }
 
-async function encryptLegacyClaimedSecrets(claimed: Monitor[]) {
-  const legacyTelegramTokens = claimed.filter((monitor) =>
-    monitor.telegramBotToken && !isEncryptedValue(monitor.telegramBotToken)
-  );
-  const legacyHeartbeatTokens = claimed.filter((monitor) =>
-    monitor.monitorType === "heartbeat"
-    && monitor.heartbeatToken
-    && !isEncryptedValue(monitor.heartbeatToken)
-  );
-
-  await Promise.all(legacyTelegramTokens.map((monitor) =>
-    db
-      .update(monitors)
-      .set({ telegramBotToken: encryptValue(monitor.telegramBotToken as string) })
-      .where(eq(monitors.id, monitor.id))
-  ));
-  await Promise.all(legacyHeartbeatTokens.map(migrateLegacyHeartbeatToken));
-}
-
-async function migrateLegacyHeartbeatToken(monitor: Monitor) {
-  const token = monitor.heartbeatToken as string;
-  const tokenHash = hashSecretValue("heartbeat-token", token);
-  try {
-    await db
-      .update(monitors)
-      .set({
-        heartbeatToken: encryptValue(token),
-        heartbeatTokenHash: tokenHash,
-        url: buildHeartbeatMonitorTarget(tokenHash),
-      })
-      .where(eq(monitors.id, monitor.id));
-  } catch (error) {
-    console.error(`[sentrovia] Legacy heartbeat token migration deferred for monitor ${monitor.id}.`, error);
-  }
-}
-
-async function assertHeartbeatTokenAvailable(
-  token: string,
-  tokenHash: string,
-  existingMonitorId: string | null,
-  database: DatabaseExecutor
-) {
-  const [conflict] = await database
-    .select({ id: monitors.id })
-    .from(monitors)
-    .where(and(
-      eq(monitors.monitorType, "heartbeat"),
-      or(eq(monitors.heartbeatTokenHash, tokenHash), eq(monitors.heartbeatToken, token)),
-      existingMonitorId ? ne(monitors.id, existingMonitorId) : undefined
-    ))
-    .limit(1);
-  if (conflict) {
-    throw new AuthError("This heartbeat token is already assigned to another monitor.", 409);
-  }
-}
 
 async function getMonitorById(userId: string, monitorId: string, database: DatabaseExecutor = db) {
   const [monitor] = await database

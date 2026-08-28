@@ -4,6 +4,7 @@ import {
   buildReportMessage,
   calculateReportSummaryMetrics,
   normalizeReportStatus,
+  resolveReportFailureStats,
   resolveReportPeriod,
   resolveReportTitle,
   scheduleNextRunAfter,
@@ -100,6 +101,24 @@ describe("report summary metrics", () => {
       healthStatus: "No data",
       uptimePct: 0,
       failureRatePct: 0,
+    });
+  });
+});
+
+describe("report failure statistics", () => {
+  it("uses confirmed down checks and their in-window timestamp", () => {
+    const lastFailureAt = new Date("2026-08-13T10:15:00.000Z");
+
+    expect(resolveReportFailureStats({ downChecks: 3, lastFailureAt })).toEqual({
+      failures: 3,
+      lastFailureAt: lastFailureAt.toISOString(),
+    });
+  });
+
+  it("returns an empty result when a monitor has no checks in the report window", () => {
+    expect(resolveReportFailureStats(undefined)).toEqual({
+      failures: 0,
+      lastFailureAt: null,
     });
   });
 });

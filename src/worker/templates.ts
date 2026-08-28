@@ -1,4 +1,5 @@
 import { getHttpStatusMeta } from "@/lib/http/status-codes";
+import { escapeHtml } from "@/lib/html";
 import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 import {
   DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE,
@@ -35,10 +36,7 @@ export function renderNotificationTemplates(
   appUrl: string
 ) {
   const statusMeta = getHttpStatusMeta(context.result.statusCode);
-  const language = resolveNotificationLanguage(
-    context.monitor.notificationLanguage,
-    settings.notifications.notificationLanguage
-  );
+  const language = resolveNotificationLanguage(context.monitor.notificationLanguage, settings.notifications.notificationLanguage);
   const domain = getDomain(context.monitor.url);
   const displayTarget = getMonitorTargetDisplay(context.monitor);
   const organization = settings.profile.organization || "Sentrovia Monitoring";
@@ -57,43 +55,26 @@ export function renderNotificationTemplates(
   const rcaSummary = localizeRcaSummary(language, context);
   const htmlUrlPlaceholder = "__SENTROVIA_URL_LINK__";
   const htmlDashboardPlaceholder = "__SENTROVIA_DASHBOARD_LINK__";
-  const monitorLink =
-    context.monitor.monitorType === "http"
-      ? buildSafeAnchor(displayTarget, displayTarget)
-      : escapeHtml(displayTarget);
-  const dashboardLink = buildSafeAnchor(buildAppRouteUrl(appUrl, "/monitoring"), domain);
+  const links = buildNotificationLinks(context, appUrl, displayTarget, domain);
 
-  const textReplacements = {
-    "{name}": context.monitor.name,
-    "{url}": displayTarget,
-    "{url_link}": displayTarget,
-    "{domain}": domain,
-    "{dashboard_link}": `${appUrl}/monitoring`,
-    "{status_code}": statusCode,
-    "{status_label}": statusLabel,
-    "{latency_ms}": String(context.result.latencyMs ?? "N/A"),
-    "{check_duration_ms}": String(context.result.latencyMs ?? "N/A"),
-    "{slow_threshold_ms}": String(context.monitor.slowResponseThresholdMs ?? "N/A"),
-    "{hard_timeout_ms}": String(context.monitor.timeout),
-    "{event_state}": eventState,
-    "{checked_at}": context.result.checkedAt.toISOString(),
-    "{checked_at_local}": localTime,
-    "{downtime_started_at}": downtimeStartedAt.toISOString(),
-    "{downtime_started_at_local}": formatLocalDateTime(
-      downtimeStartedAt,
-      settings.appearance.timeZone,
-      settings.appearance.use24HourClock
-    ),
-    "{downtime_duration}": downtimeDuration,
-    "{downtime_minutes}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 60_000))),
-    "{downtime_hours}": String(Math.max(0, Math.floor((context.result.checkedAt.getTime() - downtimeStartedAt.getTime()) / 3_600_000))),
-    "{message}": message,
-    "{failure_reason}": localizeFailureReason(language, context.result.failureReason),
-    "{rca_type}": context.rca.type,
-    "{rca_title}": rcaTitle,
-    "{rca_summary}": rcaSummary,
-    "{organization}": organization,
-  };
+  const textReplacements = buildTemplateReplacements({
+    appUrl,
+    context,
+    displayTarget,
+    domain,
+    downtimeDuration,
+    downtimeStartedAt,
+    eventState,
+    language,
+    localTime,
+    message,
+    organization,
+    rcaSummary,
+    rcaTitle,
+    settings,
+    statusCode,
+    statusLabel,
+  });
 
   const subjectTemplate = resolveSubjectTemplate(context, settings, language);
   const bodyTemplate = normalizeTemplate(resolveEmailBodyTemplate(context, settings, language));
@@ -111,8 +92,8 @@ export function renderNotificationTemplates(
     htmlBody: renderNotificationEmailHtml({
       body: renderedHtmlSource,
       htmlFragments: {
-        [htmlUrlPlaceholder]: monitorLink,
-        [htmlDashboardPlaceholder]: dashboardLink,
+        [htmlUrlPlaceholder]: links.monitor,
+        [htmlDashboardPlaceholder]: links.dashboard,
       },
       brandName: settings.notifications.notificationEmailBrandName,
       footerText: settings.notifications.notificationEmailFooterText,
@@ -131,6 +112,75 @@ export function renderNotificationTemplates(
   };
 }
 
+function buildNotificationLinks(
+  context: NotificationContext,
+  appUrl: string,
+  displayTarget: string,
+  domain: string
+) {
+  return {
+    monitor: context.monitor.monitorType === "http"
+      ? buildSafeAnchor(displayTarget, displayTarget)
+      : escapeHtml(displayTarget),
+    dashboard: buildSafeAnchor(buildAppRouteUrl(appUrl, "/monitoring"), domain),
+  };
+}
+
+type TemplateReplacementInput = {
+  appUrl: string;
+  context: NotificationContext;
+  displayTarget: string;
+  domain: string;
+  downtimeDuration: string;
+  downtimeStartedAt: Date;
+  eventState: string;
+  language: NotificationLanguage;
+  localTime: string;
+  message: string;
+  organization: string;
+  rcaSummary: string;
+  rcaTitle: string;
+  settings: SettingsPayload;
+  statusCode: string;
+  statusLabel: string;
+};
+
+function buildTemplateReplacements(input: TemplateReplacementInput) {
+  const { context, downtimeStartedAt, settings } = input;
+  const downtimeMs = Math.max(0, context.result.checkedAt.getTime() - downtimeStartedAt.getTime());
+  return {
+    "{name}": context.monitor.name,
+    "{url}": input.displayTarget,
+    "{url_link}": input.displayTarget,
+    "{domain}": input.domain,
+    "{dashboard_link}": `${input.appUrl}/monitoring`,
+    "{status_code}": input.statusCode,
+    "{status_label}": input.statusLabel,
+    "{latency_ms}": String(context.result.latencyMs ?? "N/A"),
+    "{check_duration_ms}": String(context.result.latencyMs ?? "N/A"),
+    "{slow_threshold_ms}": String(context.monitor.slowResponseThresholdMs ?? "N/A"),
+    "{hard_timeout_ms}": String(context.monitor.timeout),
+    "{event_state}": input.eventState,
+    "{checked_at}": context.result.checkedAt.toISOString(),
+    "{checked_at_local}": input.localTime,
+    "{downtime_started_at}": downtimeStartedAt.toISOString(),
+    "{downtime_started_at_local}": formatLocalDateTime(
+      downtimeStartedAt,
+      settings.appearance.timeZone,
+      settings.appearance.use24HourClock
+    ),
+    "{downtime_duration}": input.downtimeDuration,
+    "{downtime_minutes}": String(Math.floor(downtimeMs / 60_000)),
+    "{downtime_hours}": String(Math.floor(downtimeMs / 3_600_000)),
+    "{message}": input.message,
+    "{failure_reason}": localizeFailureReason(input.language, context.result.failureReason),
+    "{rca_type}": context.rca.type,
+    "{rca_title}": input.rcaTitle,
+    "{rca_summary}": input.rcaSummary,
+    "{organization}": input.organization,
+  };
+}
+
 function resolveNotificationLanguage(
   monitorLanguage: string | null | undefined,
   workspaceLanguage: NotificationLanguage
@@ -138,35 +188,44 @@ function resolveNotificationLanguage(
   return monitorLanguage === "en" || monitorLanguage === "tr" ? monitorLanguage : workspaceLanguage;
 }
 
+type NotificationTemplateKey =
+  | "defaultEmailSubjectTemplate"
+  | "recoveryEmailSubjectTemplate"
+  | "slowResponseEmailSubjectTemplate"
+  | "prolongedDowntimeEmailSubjectTemplate"
+  | "defaultEmailBodyTemplate"
+  | "recoveryEmailBodyTemplate"
+  | "slowResponseEmailBodyTemplate"
+  | "prolongedDowntimeEmailBodyTemplate"
+  | "defaultTelegramTemplate"
+  | "recoveryTelegramTemplate"
+  | "slowResponseTelegramTemplate"
+  | "prolongedDowntimeTelegramTemplate";
+
+type EventTemplateSources = {
+  defaultKey: NotificationTemplateKey;
+  recoveryKey: NotificationTemplateKey;
+  latencyKey: NotificationTemplateKey;
+  reminderKey: NotificationTemplateKey;
+  monitorDefault: string | null;
+  monitorLatency: string | null;
+  defaultLegacy: Set<string>;
+};
+
 function resolveSubjectTemplate(
   context: NotificationContext,
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
-  if (context.kind === "latency") {
-    const fallback = resolveLanguageDefault(
-      settings.notifications.slowResponseEmailSubjectTemplate,
-      "slowResponseEmailSubjectTemplate",
-      language
-    );
-    return resolveMonitorTemplate(context.monitor.slowResponseEmailSubject, fallback, NO_LEGACY_TEMPLATES);
-  }
-
-  if (context.kind === "downtime-reminder") {
-    return resolveLanguageDefault(
-      settings.notifications.prolongedDowntimeEmailSubjectTemplate,
-      "prolongedDowntimeEmailSubjectTemplate",
-      language
-    );
-  }
-
-  const fallbackKey =
-    context.kind === "recovery"
-      ? "recoveryEmailSubjectTemplate"
-      : "defaultEmailSubjectTemplate";
-  const fallback = resolveLanguageDefault(settings.notifications[fallbackKey], fallbackKey, language);
-
-  return resolveMonitorTemplate(context.monitor.emailSubject, fallback, LEGACY_DEFAULT_EMAIL_SUBJECTS);
+  return resolveEventTemplate(context, settings, language, {
+    defaultKey: "defaultEmailSubjectTemplate",
+    recoveryKey: "recoveryEmailSubjectTemplate",
+    latencyKey: "slowResponseEmailSubjectTemplate",
+    reminderKey: "prolongedDowntimeEmailSubjectTemplate",
+    monitorDefault: context.monitor.emailSubject,
+    monitorLatency: context.monitor.slowResponseEmailSubject,
+    defaultLegacy: LEGACY_DEFAULT_EMAIL_SUBJECTS,
+  });
 }
 
 function resolveEmailBodyTemplate(
@@ -174,30 +233,15 @@ function resolveEmailBodyTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
-  if (context.kind === "latency") {
-    const fallback = resolveLanguageDefault(
-      settings.notifications.slowResponseEmailBodyTemplate,
-      "slowResponseEmailBodyTemplate",
-      language
-    );
-    return resolveMonitorTemplate(context.monitor.slowResponseEmailBody, fallback, NO_LEGACY_TEMPLATES);
-  }
-
-  if (context.kind === "downtime-reminder") {
-    return resolveLanguageDefault(
-      settings.notifications.prolongedDowntimeEmailBodyTemplate,
-      "prolongedDowntimeEmailBodyTemplate",
-      language
-    );
-  }
-
-  const fallbackKey =
-    context.kind === "recovery"
-      ? "recoveryEmailBodyTemplate"
-      : "defaultEmailBodyTemplate";
-  const fallback = resolveLanguageDefault(settings.notifications[fallbackKey], fallbackKey, language);
-
-  return resolveMonitorTemplate(context.monitor.emailBody, fallback, LEGACY_DEFAULT_EMAIL_BODIES);
+  return resolveEventTemplate(context, settings, language, {
+    defaultKey: "defaultEmailBodyTemplate",
+    recoveryKey: "recoveryEmailBodyTemplate",
+    latencyKey: "slowResponseEmailBodyTemplate",
+    reminderKey: "prolongedDowntimeEmailBodyTemplate",
+    monitorDefault: context.monitor.emailBody,
+    monitorLatency: context.monitor.slowResponseEmailBody,
+    defaultLegacy: LEGACY_DEFAULT_EMAIL_BODIES,
+  });
 }
 
 function resolveTelegramTemplate(
@@ -205,75 +249,78 @@ function resolveTelegramTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
+  return resolveEventTemplate(context, settings, language, {
+    defaultKey: "defaultTelegramTemplate",
+    recoveryKey: "recoveryTelegramTemplate",
+    latencyKey: "slowResponseTelegramTemplate",
+    reminderKey: "prolongedDowntimeTelegramTemplate",
+    monitorDefault: context.monitor.telegramTemplate,
+    monitorLatency: context.monitor.slowResponseTelegramTemplate,
+    defaultLegacy: LEGACY_DEFAULT_TELEGRAM_TEMPLATES,
+  });
+}
+
+function resolveEventTemplate(
+  context: NotificationContext,
+  settings: SettingsPayload,
+  language: NotificationLanguage,
+  sources: EventTemplateSources
+) {
   if (context.kind === "latency") {
     const fallback = resolveLanguageDefault(
-      settings.notifications.slowResponseTelegramTemplate,
-      "slowResponseTelegramTemplate",
+      settings.notifications[sources.latencyKey],
+      sources.latencyKey,
       language
     );
-    return resolveMonitorTemplate(context.monitor.slowResponseTelegramTemplate, fallback, NO_LEGACY_TEMPLATES);
+    return resolveMonitorTemplate(sources.monitorLatency, fallback, NO_LEGACY_TEMPLATES);
   }
 
   if (context.kind === "downtime-reminder") {
     return resolveLanguageDefault(
-      settings.notifications.prolongedDowntimeTelegramTemplate,
-      "prolongedDowntimeTelegramTemplate",
+      settings.notifications[sources.reminderKey],
+      sources.reminderKey,
       language
     );
   }
 
-  const fallbackKey =
-    context.kind === "recovery"
-      ? "recoveryTelegramTemplate"
-      : "defaultTelegramTemplate";
-  const fallback = resolveLanguageDefault(settings.notifications[fallbackKey], fallbackKey, language);
-
-  return resolveMonitorTemplate(context.monitor.telegramTemplate, fallback, LEGACY_DEFAULT_TELEGRAM_TEMPLATES);
+  const key = context.kind === "recovery" ? sources.recoveryKey : sources.defaultKey;
+  const fallback = resolveLanguageDefault(settings.notifications[key], key, language);
+  return resolveMonitorTemplate(sources.monitorDefault, fallback, sources.defaultLegacy);
 }
 
+
+const EVENT_STATE_BY_LANGUAGE = {
+  en: {
+    "downtime-reminder": "DOWN",
+    latency: "SLOW",
+    "ssl-expiry": "SSL EXPIRING",
+  },
+  tr: {
+    "downtime-reminder": "ERİŞİLEMİYOR",
+    latency: "YAVAŞ",
+    "ssl-expiry": "SSL SÜRESİ DOLUYOR",
+  },
+} as const;
+
 function resolveEventState(context: NotificationContext, language: NotificationLanguage) {
-  if (language === "tr") {
-    return resolveTurkishEventState(context);
-  }
-
-  if (context.kind === "downtime-reminder") {
-    return "DOWN";
-  }
-
-  if (context.kind === "latency") {
-    return "SLOW";
-  }
-
-  if (context.kind === "ssl-expiry") {
-    return "SSL EXPIRING";
-  }
-
   if (context.kind === "failure" && context.result.failureReason === "timeout") {
-    return "TIMEOUT";
+    return language === "tr" ? "ZAMAN AŞIMI" : "TIMEOUT";
+  }
+
+  const configuredState = EVENT_STATE_BY_LANGUAGE[language][
+    context.kind as keyof (typeof EVENT_STATE_BY_LANGUAGE)[typeof language]
+  ];
+  if (configuredState) {
+    return configuredState;
+  }
+
+  if (language === "tr") {
+    return context.result.status === "up" ? "ERİŞİLEBİLİR" : "ERİŞİLEMİYOR";
   }
 
   return context.result.status === "up" ? "UP" : "DOWN";
 }
 
-function resolveTurkishEventState(context: NotificationContext) {
-  if (context.kind === "downtime-reminder") {
-    return "ERİŞİLEMİYOR";
-  }
-
-  if (context.kind === "latency") {
-    return "YAVAŞ";
-  }
-
-  if (context.kind === "ssl-expiry") {
-    return "SSL SÜRESİ DOLUYOR";
-  }
-
-  if (context.kind === "failure" && context.result.failureReason === "timeout") {
-    return "ZAMAN AŞIMI";
-  }
-
-  return context.result.status === "up" ? "ERİŞİLEBİLİR" : "ERİŞİLEMİYOR";
-}
 
 function localizeStatusLabel(
   language: NotificationLanguage,
@@ -308,34 +355,27 @@ function localizeStatusLabel(
   return fallbackLabel ?? "Ulaşılamıyor";
 }
 
+const TURKISH_FAILURE_REASON_LABELS: Record<string, string> = {
+  timeout: "zaman aşımı",
+  http_status: "http durum kodu",
+  dns: "dns",
+  tls: "tls sertifika",
+  connection: "bağlantı",
+  assertion: "içerik doğrulama",
+  redirect: "yönlendirme",
+  database: "veritabanı",
+  network: "ağ",
+  configuration: "yapılandırma",
+};
+
 function localizeFailureReason(language: NotificationLanguage, reason: string | null | undefined) {
   if (language !== "tr") {
     return reason ?? "none";
   }
 
-  switch (reason) {
-    case "timeout":
-      return "zaman aşımı";
-    case "http_status":
-      return "http durum kodu";
-    case "dns":
-      return "dns";
-    case "tls":
-      return "tls sertifika";
-    case "connection":
-      return "bağlantı";
-    case "assertion":
-      return "içerik doğrulama";
-    case "redirect":
-      return "yönlendirme";
-    case "database":
-      return "veritabanı";
-    case "network":
-      return "ağ";
-    default:
-      return "yok";
-  }
+  return reason ? TURKISH_FAILURE_REASON_LABELS[reason] ?? "yok" : "yok";
 }
+
 
 function localizeMessage(language: NotificationLanguage, context: NotificationContext) {
   if (language !== "tr") {
@@ -409,73 +449,52 @@ function translateTurkishPatternMessage(message: string) {
   return null;
 }
 
+const TURKISH_STATIC_MESSAGES: Record<string, string> = {
+  "Service recovered and is responding again.": "Servis düzeldi ve yeniden yanıt veriyor.",
+  "DNS resolution failed for the monitored target.": "İzlenen hedef için DNS çözümlemesi başarısız oldu.",
+  "TLS or certificate validation failed for the monitored target.": "İzlenen hedef için TLS veya sertifika doğrulaması başarısız oldu.",
+  "Connection failed before the service returned a response.": "Servis yanıt döndürmeden önce bağlantı başarısız oldu.",
+  "Response assertion failed.": "Yanıt doğrulaması başarısız oldu.",
+  "Health check failed.": "Sağlık kontrolü başarısız oldu.",
+};
+
 function translateTurkishStaticMessage(message: string) {
-  if (message === "Service recovered and is responding again.") {
-    return "Servis düzeldi ve yeniden yanıt veriyor.";
-  }
-
-  if (message === "DNS resolution failed for the monitored target.") {
-    return "İzlenen hedef için DNS çözümlemesi başarısız oldu.";
-  }
-
-  if (message === "TLS or certificate validation failed for the monitored target.") {
-    return "İzlenen hedef için TLS veya sertifika doğrulaması başarısız oldu.";
-  }
-
-  if (message === "Connection failed before the service returned a response.") {
-    return "Servis yanıt döndürmeden önce bağlantı başarısız oldu.";
-  }
-
-  if (message === "Response assertion failed.") {
-    return "Yanıt doğrulaması başarısız oldu.";
-  }
-
-  if (message === "Health check failed.") {
-    return "Sağlık kontrolü başarısız oldu.";
-  }
-
-  return null;
+  return TURKISH_STATIC_MESSAGES[message] ?? null;
 }
+
+
+const TURKISH_REASON_MESSAGES: Record<string, string> = {
+  timeout: "Servis yapılandırılan timeout süresi içinde yanıt vermedi.",
+  dns: "İzlenen hedef için DNS çözümlemesi başarısız oldu.",
+  tls: "İzlenen hedef için TLS veya sertifika doğrulaması başarısız oldu.",
+  connection: "Servis yanıt döndürmeden önce bağlantı başarısız oldu.",
+  assertion: "Yanıt doğrulaması başarısız oldu.",
+  database: "Veritabanı kontrolü başarısız oldu.",
+};
 
 function translateTurkishReasonMessage(context: NotificationContext) {
-  switch (context.result.failureReason) {
-    case "timeout":
-      return "Servis yapılandırılan timeout süresi içinde yanıt vermedi.";
-    case "dns":
-      return "İzlenen hedef için DNS çözümlemesi başarısız oldu.";
-    case "tls":
-      return "İzlenen hedef için TLS veya sertifika doğrulaması başarısız oldu.";
-    case "connection":
-      return "Servis yanıt döndürmeden önce bağlantı başarısız oldu.";
-    case "assertion":
-      return "Yanıt doğrulaması başarısız oldu.";
-    case "database":
-      return "Veritabanı kontrolü başarısız oldu.";
-    default:
-      return null;
-  }
+  const reason = context.result.failureReason;
+  return reason ? TURKISH_REASON_MESSAGES[reason] ?? null : null;
 }
+
+
+const TURKISH_RCA_TITLES: Record<string, string> = {
+  timeout: "Zaman Aşımı",
+  dns: "DNS Çözümleme Hatası",
+  tls: "TLS/Sertifika Hatası",
+  connection: "Bağlantı Hatası",
+  assertion: "Doğrulama Hatası",
+  database: "Veritabanı Bağlantı Hatası",
+};
 
 function localizeRcaTitle(language: NotificationLanguage, context: NotificationContext) {
   if (language !== "tr") {
     return context.rca.title;
   }
 
-  switch (context.result.failureReason) {
-    case "timeout":
-      return "Zaman Aşımı";
-    case "dns":
-      return "DNS Çözümleme Hatası";
-    case "tls":
-      return "TLS/Sertifika Hatası";
-    case "connection":
-      return "Bağlantı Hatası";
-    case "assertion":
-      return "Doğrulama Hatası";
-    case "database":
-      return "Veritabanı Bağlantı Hatası";
-    default:
-      break;
+  const reason = context.result.failureReason;
+  if (reason && TURKISH_RCA_TITLES[reason]) {
+    return TURKISH_RCA_TITLES[reason];
   }
 
   if (context.result.statusCode && context.result.statusCode >= 500) {
@@ -489,26 +508,24 @@ function localizeRcaTitle(language: NotificationLanguage, context: NotificationC
   return context.result.ok ? "Sağlıklı Yanıt" : "Ağ Hatası";
 }
 
+
+const TURKISH_RCA_SUMMARIES: Record<string, string> = {
+  timeout: "Servis yapılandırılan timeout süresi içinde yanıt vermedi.",
+  dns: "Worker hedef host adını IP adresine çözümleyemedi.",
+  tls: "İstek TLS el sıkışması veya sertifika doğrulaması sırasında başarısız oldu.",
+  connection: "Hedefe bağlantı kurulmadan veya yanıt alınmadan önce bağlantı başarısız oldu.",
+  assertion: "Servis yanıt verdi ancak beklenen içerik veya JSON koşulu sağlanmadı.",
+  database: "Veritabanı bağlantısı veya doğrulama sorgusu başarısız oldu.",
+};
+
 function localizeRcaSummary(language: NotificationLanguage, context: NotificationContext) {
   if (language !== "tr") {
     return context.rca.summary;
   }
 
-  switch (context.result.failureReason) {
-    case "timeout":
-      return "Servis yapılandırılan timeout süresi içinde yanıt vermedi.";
-    case "dns":
-      return "Worker hedef host adını IP adresine çözümleyemedi.";
-    case "tls":
-      return "İstek TLS el sıkışması veya sertifika doğrulaması sırasında başarısız oldu.";
-    case "connection":
-      return "Hedefe bağlantı kurulmadan veya yanıt alınmadan önce bağlantı başarısız oldu.";
-    case "assertion":
-      return "Servis yanıt verdi ancak beklenen içerik veya JSON koşulu sağlanmadı.";
-    case "database":
-      return "Veritabanı bağlantısı veya doğrulama sorgusu başarısız oldu.";
-    default:
-      break;
+  const reason = context.result.failureReason;
+  if (reason && TURKISH_RCA_SUMMARIES[reason]) {
+    return TURKISH_RCA_SUMMARIES[reason];
   }
 
   if (context.result.statusCode && context.result.statusCode >= 500) {
@@ -523,6 +540,7 @@ function localizeRcaSummary(language: NotificationLanguage, context: Notificatio
     ? "Endpoint beklenen başarı aralığında yanıt verdi."
     : "Geçerli bir uygulama yanıtı alınmadan önce ağ katmanında hata oluştu.";
 }
+
 
 function resolveLanguageDefault(
   template: string,
@@ -649,12 +667,4 @@ function formatLocalDateTime(date: Date, timeZone: string, use24HourClock: boole
   } catch {
     return date.toISOString();
   }
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

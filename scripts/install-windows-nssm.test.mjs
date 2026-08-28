@@ -6,7 +6,11 @@ import { describe, expect, it } from "vitest";
 const projectRoot = resolve(import.meta.dirname, "..");
 const manifestPath = resolve(projectRoot, "scripts", "retired-project-paths.json");
 const installerPath = resolve(projectRoot, "scripts", "install-windows-nssm.ps1");
+const environmentModulePath = resolve(projectRoot, "scripts", "nssm-environment.ps1");
+const serviceModulePath = resolve(projectRoot, "scripts", "nssm-service.ps1");
+const updateStateModulePath = resolve(projectRoot, "scripts", "nssm-update-state.ps1");
 const installerSource = readFileSync(installerPath, "utf8");
+const serviceModuleSource = readFileSync(serviceModulePath, "utf8");
 
 function normalizePath(value) {
   return value.trim().replaceAll("\\", "/");
@@ -32,11 +36,17 @@ function readCurrentReleasePaths() {
 }
 
 describe("Windows NSSM update cleanup", () => {
+  it("loads the installer responsibilities from focused helper scripts", () => {
+    for (const modulePath of [environmentModulePath, serviceModulePath, updateStateModulePath]) {
+      expect(installerSource).toContain(`. (Join-Path $PSScriptRoot "${modulePath.split(/[\\/]/).at(-1)}")`);
+    }
+  });
+
   it("uses Windows service controls for start transitions", () => {
-    expect(installerSource).toContain("Start-Service -Name $Name -ErrorAction Stop");
-    expect(installerSource).toContain("Resume-Service -Name $Name -ErrorAction Stop");
-    expect(installerSource).toContain('@("Running", "StartPending")');
-    expect(installerSource).not.toContain('Invoke-NssmCommand -Arguments @($Action, $Name)');
+    expect(serviceModuleSource).toContain("Start-Service -Name $Name -ErrorAction Stop");
+    expect(serviceModuleSource).toContain("Resume-Service -Name $Name -ErrorAction Stop");
+    expect(serviceModuleSource).toContain('@("Running", "StartPending")');
+    expect(serviceModuleSource).not.toContain('Invoke-NssmCommand -Arguments @($Action, $Name)');
   });
 
   it("covers every file removed from the repository", () => {
@@ -73,12 +83,10 @@ describe("Windows NSSM update cleanup", () => {
 
 describe("Windows NSSM worker recovery", () => {
   it("applies automatic restart settings to new and existing services", () => {
-    const installer = readFileSync(installerPath, "utf8");
-
-    expect(installer).toContain('Set-NssmOption $Name "Start" @("SERVICE_AUTO_START")');
-    expect(installer).toContain('Set-NssmOption $Name "AppExit" @("Default", "Restart")');
-    expect(installer).toContain('Set-NssmOption $Name "AppRestartDelay" @(5000)');
-    expect(installer).toMatch(
+    expect(serviceModuleSource).toContain('Set-NssmOption $Name "Start" @("SERVICE_AUTO_START")');
+    expect(serviceModuleSource).toContain('Set-NssmOption $Name "AppExit" @("Default", "Restart")');
+    expect(serviceModuleSource).toContain('Set-NssmOption $Name "AppRestartDelay" @(5000)');
+    expect(installerSource).toMatch(
       /foreach \(\$Name in \$ServiceNames\) \{\s+Set-NssmServiceRecovery -Name \$Name\s+\}/,
     );
   });

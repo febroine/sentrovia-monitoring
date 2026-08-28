@@ -1,82 +1,33 @@
 "use client";
 
-import Link from "next/link";
 import { SentroviaMark } from "@/components/brand/sentrovia-mark";
-import { cn } from "@/lib/utils";
-
-type AuthShellTone = "primary" | "emerald";
-
-type AuthShowcaseCard = {
-  title: string;
-  description: string;
-};
-
-const toneClasses: Record<AuthShellTone, { accent: string; link: string }> = {
-  primary: {
-    accent: "text-primary",
-    link: "text-primary hover:text-primary/80",
-  },
-  emerald: {
-    accent: "text-emerald-500 dark:text-emerald-400",
-    link: "text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300",
-  },
-};
 
 export function AuthShell({
-  tone,
-  heroTitle,
-  heroDescription,
-  showcaseCards,
   formTitle,
   formDescription,
-  footerPrompt,
-  footerHref,
-  footerLabel,
   children,
 }: {
-  tone: AuthShellTone;
-  heroTitle: string;
-  heroDescription: string;
-  showcaseCards: AuthShowcaseCard[];
   formTitle: string;
   formDescription: string;
-  footerPrompt?: string;
-  footerHref?: string;
-  footerLabel?: string;
   children: React.ReactNode;
 }) {
-  const palette = toneClasses[tone];
-
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="grid min-h-screen lg:grid-cols-[minmax(380px,0.82fr)_minmax(480px,1.18fr)]">
-        <ProductContext
-          accentClassName={palette.accent}
-          heroTitle={heroTitle}
-          heroDescription={heroDescription}
-          showcaseCards={showcaseCards}
-        />
+    <main className="min-h-svh bg-background text-foreground">
+      <div className="grid min-h-svh lg:grid-cols-[minmax(0,1.06fr)_minmax(440px,0.94fr)]">
+        <ProductContext />
 
-        <section className="auth-panel-enter flex min-h-screen bg-background px-5 py-6 sm:px-10 lg:px-12 xl:px-20">
-          <div className="mx-auto flex w-full max-w-[440px] flex-col">
+        <section className="flex min-h-svh bg-[#0d0e10] px-5 py-6 sm:px-10 lg:px-12 xl:px-16">
+          <div className="mx-auto flex w-full max-w-[410px] flex-col">
             <MobileBrand />
-            <div className="my-auto py-10 sm:py-12">
-              <div className="auth-reveal auth-delay-1 mb-8 border-b pb-6">
-                <h2 className="text-2xl font-semibold tracking-tight">
+            <div className="my-auto py-10 sm:py-14">
+              <div className="auth-reveal mb-8">
+                <h2 className="text-[1.7rem] font-semibold tracking-[-0.025em]">
                   {formTitle}
                 </h2>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">{formDescription}</p>
+                <p className="mt-2.5 max-w-sm text-sm leading-6 text-muted-foreground">{formDescription}</p>
               </div>
 
-              <div className="auth-reveal auth-delay-2">{children}</div>
-
-              <AuthFooter
-                prompt={footerPrompt}
-                href={footerHref}
-                label={footerLabel}
-                linkClassName={palette.link}
-              />
-
+              <div className="auth-reveal auth-delay-1">{children}</div>
             </div>
           </div>
         </section>
@@ -85,61 +36,55 @@ export function AuthShell({
   );
 }
 
-function ProductContext({
-  accentClassName,
-  heroTitle,
-  heroDescription,
-  showcaseCards,
-}: {
-  accentClassName: string;
-  heroTitle: string;
-  heroDescription: string;
-  showcaseCards: AuthShowcaseCard[];
-}) {
+function ProductContext() {
   return (
-    <section className="hidden min-h-screen border-r bg-card/30 lg:flex">
-      <div className="mx-auto flex w-full max-w-2xl flex-col px-10 py-8 xl:px-14 xl:py-10">
-        <Brand accentClassName={accentClassName} />
+    <section className="hidden min-h-svh border-r border-white/[0.08] bg-[#090a0c] lg:flex">
+      <div className="mx-auto flex w-full max-w-[760px] flex-col px-12 py-10 xl:px-16 xl:py-12">
+        <Brand />
 
-        <div className="my-auto py-10">
-          <h1 className="auth-reveal auth-delay-1 max-w-xl text-3xl leading-tight font-semibold tracking-tight text-balance xl:text-4xl">
-            {heroTitle}
+        <div className="my-auto max-w-[620px] py-12">
+          <h1 className="auth-reveal max-w-xl text-[2.25rem] leading-[1.12] font-semibold tracking-[-0.035em] text-balance xl:text-[2.75rem]">
+            Verification before notification.
           </h1>
-          <p className="auth-reveal auth-delay-2 mt-4 max-w-xl text-sm leading-6 text-muted-foreground xl:text-base xl:leading-7">
-            {heroDescription}
+          <p className="auth-reveal auth-delay-1 mt-5 max-w-[560px] text-[0.95rem] leading-7 text-zinc-400 xl:text-base">
+            Sentrovia records the first failure, confirms the outage, and keeps the evidence with the alert.
           </p>
 
-          <div className="auth-reveal auth-delay-3 mt-9 border-y">
-            {showcaseCards.map((item) => (
-              <ProductFact key={item.title} item={item} />
-            ))}
-          </div>
+          <IncidentSequence />
         </div>
       </div>
     </section>
   );
 }
 
-function ProductFact({
-  item,
-}: {
-  item: AuthShowcaseCard;
-}) {
+const incidentSequence = [
+  { time: "11:42:06", label: "Initial failure", detail: "HTTP 502", tone: "text-red-400" },
+  { time: "11:43:06", label: "Verification", detail: "2 of 3 failed", tone: "text-amber-300" },
+  { time: "11:44:07", label: "Incident confirmed", detail: "Delivery queued", tone: "text-emerald-400" },
+];
+
+function IncidentSequence() {
   return (
-    <div className="grid gap-1 border-b py-4 last:border-b-0 sm:grid-cols-[140px_minmax(0,1fr)] sm:gap-5">
-      <h2 className="text-sm font-medium">{item.title}</h2>
-      <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
+    <div className="auth-reveal auth-delay-2 mt-12 max-w-[580px] border-y border-white/[0.09]">
+      {incidentSequence.map((item) => (
+        <div
+          key={item.label}
+          className="grid grid-cols-[76px_minmax(0,1fr)_auto] items-center gap-5 border-b border-white/[0.07] py-4 last:border-b-0"
+        >
+          <time className="font-mono text-[0.72rem] tabular-nums text-zinc-600">{item.time}</time>
+          <span className="text-sm font-medium text-zinc-200">{item.label}</span>
+          <span className={`text-xs font-medium tabular-nums ${item.tone}`}>{item.detail}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-function Brand({ accentClassName }: { accentClassName: string }) {
+function Brand() {
   return (
     <header className="auth-reveal flex items-center gap-3">
-      <SentroviaMark className={cn("auth-mark-enter size-8 shrink-0", accentClassName)} />
-      <div>
-        <p className="text-[1.1rem] font-semibold tracking-tight">Sentrovia</p>
-      </div>
+      <SentroviaMark className="size-8 shrink-0 text-primary" />
+      <p className="text-[1.05rem] font-semibold tracking-[-0.02em]">Sentrovia</p>
     </header>
   );
 }
@@ -147,35 +92,8 @@ function Brand({ accentClassName }: { accentClassName: string }) {
 function MobileBrand() {
   return (
     <div className="auth-reveal flex items-center gap-3 lg:hidden">
-      <SentroviaMark className="auth-mark-enter size-8 shrink-0 text-primary" />
-      <div>
-        <p className="text-[1.1rem] font-semibold tracking-tight">Sentrovia</p>
-      </div>
-    </div>
-  );
-}
-
-function AuthFooter({
-  prompt,
-  href,
-  label,
-  linkClassName,
-}: {
-  prompt?: string;
-  href?: string;
-  label?: string;
-  linkClassName: string;
-}) {
-  if (!prompt || !href || !label) {
-    return null;
-  }
-
-  return (
-    <div className="mt-8 flex items-center justify-between gap-4 border-t pt-6 text-sm">
-      <p className="text-muted-foreground">{prompt}</p>
-      <Link href={href} className={cn("inline-flex items-center gap-2 font-medium transition-colors", linkClassName)}>
-        {label}
-      </Link>
+      <SentroviaMark className="size-8 shrink-0 text-primary" />
+      <p className="text-[1.05rem] font-semibold tracking-[-0.02em]">Sentrovia</p>
     </div>
   );
 }
