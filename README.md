@@ -274,12 +274,15 @@ npm run worker:dev
 npm run worker:start
 npm run lint
 npm run test
+npm run test:e2e:dynamic
 npm run db:sync
 npm run db:push
 npm run db:manual
 npm run benchmark:scale
 npm run backup:restore -- --help
 ```
+
+`npm run test:e2e:dynamic` exercises the running Docker deployment with an isolated temporary administrator. It covers authenticated routes, core UI interactions, API boundaries, responsive overflow, reports, status pages, and notification previews, then removes the temporary test data even when a check fails.
 
 Use the schema synchronizer during normal installations and updates:
 
@@ -452,6 +455,9 @@ Evidence features:
 - Delivery assurance with bounded retries across every channel, dead-letter visibility, manual resend, and 24-hour channel health summaries
 - Recovery, status-change, latency, and prolonged-downtime templates
 - Workspace-level templates with monitor-level overrides
+- Workspace defaults for email and Telegram, plus company-specific recipients and Telegram credentials
+
+Notification routing follows a predictable fallback: monitor-specific settings take precedence, then the monitor's company settings, then workspace defaults. Telegram bot tokens are encrypted before storage and are not returned through configuration exports.
 
 Screenshots are best effort. Alerts still send if Chromium cannot capture a page.
 
