@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { toAuthError } from "@/lib/auth/errors";
+import { apiErrorResponse, requireMutationSession } from "@/lib/http/api-route";
 import { sendReportScheduleNow } from "@/lib/reports/service";
-import { assertSameOriginMutation } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -10,11 +8,7 @@ type Params = Promise<{ id: string }>;
 
 export async function POST(request: NextRequest, context: { params: Params }) {
   try {
-    assertSameOriginMutation(request);
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const session = await requireMutationSession(request);
 
     const { id } = await context.params;
     const result = await sendReportScheduleNow(session.id, id);
@@ -28,7 +22,6 @@ export async function POST(request: NextRequest, context: { params: Params }) {
 
     return NextResponse.json(result);
   } catch (error) {
-    const authError = toAuthError(error, "Unable to send the scheduled report right now.");
-    return NextResponse.json({ message: authError.message }, { status: authError.status });
+    return apiErrorResponse(error, "Unable to send the scheduled report right now.");
   }
 }

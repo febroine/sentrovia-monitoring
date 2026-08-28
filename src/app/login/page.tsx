@@ -15,7 +15,7 @@ import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 
 const inputClassName =
-  "h-12 rounded-md border-border/80 bg-surface-low/80 text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
+  "h-12 rounded-md border-white/10 bg-[#090a0c] px-3.5 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-zinc-600 hover:border-white/15 focus-visible:border-primary/70 focus-visible:bg-[#0b0c0e] focus-visible:ring-2 focus-visible:ring-primary/20";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -95,27 +95,10 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      tone="primary"
-      heroTitle="Monitor failures with a clear audit trail."
-      heroDescription="Review checks, verification attempts, and notification outcomes in one workspace."
-      showcaseCards={[
-        {
-          title: "Failure verification",
-          description: "Confirm failures before notifying the team.",
-        },
-        {
-          title: "Delivery evidence",
-          description: "See which channels accepted, retried, or rejected an alert.",
-        },
-        {
-          title: "Company scope",
-          description: "Group monitors, recipients, status pages, and reports by company.",
-        },
-      ]}
-      formTitle="Welcome back"
-      formDescription="Sign in with your workspace email or username."
+      formTitle="Sign in"
+      formDescription="Use your workspace email or username to continue."
     >
-      <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit}>
+      <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit} aria-describedby={error ? "login-error" : undefined}>
         <FieldBlock label="Email or username" htmlFor="identifier">
           <Input
             id="identifier"
@@ -126,8 +109,9 @@ export default function LoginPage() {
             autoCorrect="off"
             spellCheck={false}
             required
-            placeholder="name@company.com or username"
+            placeholder="name@company.com"
             className={inputClassName}
+            aria-invalid={Boolean(error)}
           />
         </FieldBlock>
 
@@ -146,14 +130,16 @@ export default function LoginPage() {
               required
               placeholder="Enter your password"
               className={cn(inputClassName, "pr-12")}
+              aria-invalid={Boolean(error)}
             />
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
               onClick={() => setShowPassword((value) => !value)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm text-zinc-500 transition-colors hover:bg-white/[0.05] hover:text-zinc-200"
               aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
             >
               {showPassword ? <Eye /> : <EyeOff />}
             </Button>
@@ -161,12 +147,22 @@ export default function LoginPage() {
         </FieldBlock>
 
         {error ? (
-          <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive-foreground">
+          <div
+            id="login-error"
+            role="alert"
+            aria-live="assertive"
+            className="rounded-sm border border-red-500/25 bg-red-500/[0.06] px-3.5 py-3 text-sm leading-5 text-red-200"
+          >
             {error}
           </div>
         ) : null}
 
-        <Button type="submit" size="lg" disabled={busy} className="h-12 rounded-md">
+        <Button
+          type="submit"
+          size="lg"
+          disabled={busy}
+          className="h-12 rounded-md bg-primary font-semibold shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_8px_24px_rgba(79,70,229,0.16)] transition-[background-color,transform,box-shadow] duration-150 hover:bg-primary/90 hover:shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_28px_rgba(79,70,229,0.22)] active:translate-y-px active:shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
+        >
           {busy ? (
             <>
               <LoaderCircle data-icon="inline-start" className="animate-spin" />
@@ -179,8 +175,8 @@ export default function LoginPage() {
           )}
         </Button>
 
-        <p className="text-center text-xs text-muted-foreground">
-          Forgot password? Contact your workspace admin.
+        <p className="pt-1 text-center text-xs leading-5 text-zinc-500">
+          Trouble signing in? <span className="text-zinc-300">Contact your workspace administrator.</span>
         </p>
       </form>
     </AuthShell>
@@ -208,8 +204,8 @@ function FieldBlock({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2.5">
-      <Label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">{label}</Label>
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={htmlFor} className="text-[0.78rem] font-medium text-zinc-300">{label}</Label>
       {children}
     </div>
   );

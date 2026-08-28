@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { toAuthError } from "@/lib/auth/errors";
-import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
+import { apiErrorResponse, parseJsonRequest, requireMutationSession } from "@/lib/http/api-route";
 import { monitorBulkDeleteSchema } from "@/lib/monitors/schemas";
 import { restoreMonitors } from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
@@ -10,25 +8,18 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
-
-    const parsed = monitorBulkDeleteSchema.safeParse(
-      await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES)
+    const session = await requireMutationSession(request);
+    const input = await parseJsonRequest(
+      request,
+      monitorBulkDeleteSchema,
+      "Select at least one monitor to restore."
     );
-    if (!parsed.success) {
-      return NextResponse.json({ message: "Select at least one monitor to restore." }, { status: 400 });
-    }
-
-    const restored = await restoreMonitors(session.id, parsed.data.ids);
+    const restored = await restoreMonitors(session.id, input.ids);
     if (restored.length === 0) {
       return NextResponse.json({ message: "The monitor restore window has expired." }, { status: 409 });
     }
     return NextResponse.json({ monitors: restored.map(serializeMonitorRecord) });
   } catch (error) {
-    const authError = toAuthError(error, "Unable to restore monitors right now.");
-    return NextResponse.json({ message: authError.message }, { status: authError.status });
+    return apiErrorResponse(error, "Unable to restore monitors right now.");
   }
 }

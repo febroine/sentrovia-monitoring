@@ -1,3 +1,5 @@
+import { escapeHtml } from "@/lib/html";
+
 interface NotificationEmailInput {
   body: string;
   htmlFragments: Record<string, string>;
@@ -182,12 +184,4 @@ function applyInlineFormatting(value: string) {
   return value
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/_(.+?)_/g, "<em>$1</em>");
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import nextEnv from "@next/env";
 import postgres from "postgres";
-import { resolveDatabaseUrl } from "./repair-database.mjs";
+import { resolveDatabaseUrl } from "./database-url.mjs";
 
 const ONBOARDING_ADVISORY_LOCK_KEY = 77_481_307;
 const ADMIN_MEMBERSHIP_ADVISORY_LOCK_KEY = 63_194_207;

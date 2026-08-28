@@ -25,7 +25,13 @@ if (!username || !password) {
 await waitForApplication();
 const browser = await chromium.launch({ headless: true });
 const adminContext = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1000 } });
-const cleanup = { companyId: null, memberIds: [], monitorId: null, publicStatusPageIds: [] };
+const cleanup = {
+  companyId: null,
+  memberIds: [],
+  monitorId: null,
+  publicStatusPageIds: [],
+  reportScheduleIds: [],
+};
 
 try {
   const page = await adminContext.newPage();
@@ -43,6 +49,7 @@ try {
   cleanup.memberIds = [];
   cleanup.monitorId = null;
   cleanup.publicStatusPageIds = [];
+  cleanup.reportScheduleIds = [];
   await verifyLogout(page);
 
   assert.deepEqual(browserErrors, [], `Browser errors detected:\n${browserErrors.join("\n")}`);
@@ -170,6 +177,7 @@ async function verifyCrudAndAuthorization(adminContext, cleanupState) {
   const monitor = await createAndTestMonitor(adminContext.request, company.id, suffix);
   cleanupState.monitorId = monitor.id;
   const publicStatusPages = await verifyPublicStatusPages(adminContext.request, company.id, suffix, cleanupState);
+  const reportSchedules = await verifyReportScheduleCrud(adminContext.request, company.id, suffix, cleanupState);
   const viewer = await createMember(adminContext.request, suffix, "viewer");
   const operator = await createMember(adminContext.request, suffix, "operator");
   cleanupState.memberIds.push(viewer.id, operator.id);
@@ -182,10 +190,63 @@ async function verifyCrudAndAuthorization(adminContext, cleanupState) {
     monitorCreated: true,
     monitorTested: true,
     publicStatusPages,
+    reportSchedules,
     previewStatuses,
     viewerMutationStatus,
     operatorIsolationStatus,
   };
+}
+
+async function verifyReportScheduleCrud(request, companyId, suffix, cleanupState) {
+  const payload = {
+    name: `Docker E2E schedule ${suffix}`,
+    scope: "company",
+    cadence: "weekly",
+    template: "operations",
+    companyId,
+    recipientEmails: [`reports-${suffix}@example.test`],
+    isActive: false,
+    nextRunAt: null,
+    deliveryDetailLevel: "standard",
+    includeOutageSummary: true,
+    includeMonitorBreakdown: true,
+    emailSubjectTemplate: "Docker {report_title}",
+    emailIntroTemplate: null,
+    reportBrandName: "Docker E2E",
+  };
+  const createResponse = await request.post("/api/reports", { data: payload });
+  assert.equal(createResponse.status(), 201);
+  const created = (await createResponse.json()).schedule;
+  cleanupState.reportScheduleIds.push(created.id);
+  assert.equal(created.companyId, companyId);
+  assert.deepEqual(created.recipientEmails, payload.recipientEmails);
+
+  const updateResponse = await request.patch(`/api/reports/${created.id}`, {
+    data: { name: `${payload.name} updated`, isActive: false },
+  });
+  assert.equal(updateResponse.status(), 200);
+  assert.equal((await updateResponse.json()).schedule.name, `${payload.name} updated`);
+
+  const duplicateResponse = await request.post(`/api/reports/${created.id}/duplicate`);
+  assert.equal(duplicateResponse.status(), 201);
+  const duplicate = (await duplicateResponse.json()).schedule;
+  cleanupState.reportScheduleIds.push(duplicate.id);
+  assert.notEqual(duplicate.id, created.id);
+  assert.equal(duplicate.companyId, companyId);
+
+  const listResponse = await request.get("/api/reports");
+  assert.equal(listResponse.status(), 200);
+  const listedIds = new Set((await listResponse.json()).schedules.map((schedule) => schedule.id));
+  assert.equal(listedIds.has(created.id), true);
+  assert.equal(listedIds.has(duplicate.id), true);
+
+  for (const scheduleId of [duplicate.id, created.id]) {
+    const deleteResponse = await request.delete(`/api/reports/${scheduleId}`);
+    assert.equal(deleteResponse.status(), 200);
+    cleanupState.reportScheduleIds = cleanupState.reportScheduleIds.filter((id) => id !== scheduleId);
+  }
+
+  return { created: true, updated: true, duplicated: true, listed: true, deleted: 2 };
 }
 
 async function verifyPreviews(request, monitorId, monitorPayload) {
@@ -484,10 +545,41 @@ async function verifyInputBoundaries(request) {
   const oversized = await request.post("/api/companies", {
     data: { name: "A".repeat(130_000), isActive: true },
   });
+  const crossOriginMutationCount = await verifyCrossOriginMutationGuards(request);
   await assertHttpStatus(malformed, 400);
   await assertHttpStatus(crossOrigin, 403);
   await assertHttpStatus(oversized, 413);
-  return { malformed: 400, crossOrigin: 403, oversized: 413 };
+  return { malformed: 400, crossOrigin: 403, crossOriginMutationCount, oversized: 413 };
+}
+
+async function verifyCrossOriginMutationGuards(request) {
+  const missingId = "00000000-0000-0000-0000-000000000000";
+  const mutations = [
+    { method: "POST", url: "/api/reports", data: {} },
+    { method: "POST", url: "/api/reports/preview", data: {} },
+    { method: "POST", url: "/api/reports/send", data: {} },
+    { method: "PATCH", url: `/api/reports/${missingId}`, data: {} },
+    { method: "DELETE", url: `/api/reports/${missingId}`, data: null },
+    { method: "POST", url: `/api/reports/${missingId}/duplicate`, data: {} },
+    { method: "POST", url: `/api/reports/${missingId}/send`, data: {} },
+    { method: "POST", url: "/api/companies/restore", data: { ids: [missingId] } },
+    { method: "POST", url: "/api/monitors/restore", data: { ids: [missingId] } },
+  ];
+
+  for (const mutation of mutations) {
+    const response = await request.fetch(mutation.url, {
+      method: mutation.method,
+      headers: {
+        "content-type": "application/json",
+        origin: "https://attacker.example.test",
+        "sec-fetch-site": "cross-site",
+      },
+      data: mutation.data === null ? undefined : JSON.stringify(mutation.data),
+    });
+    await assertHttpStatus(response, 403, `${mutation.method} ${mutation.url} accepted a cross-origin request`);
+  }
+
+  return mutations.length;
 }
 
 async function verifyLogout(page) {
@@ -500,6 +592,11 @@ async function verifyLogout(page) {
 }
 
 async function cleanupResources(request, cleanupState) {
+  for (const scheduleId of cleanupState.reportScheduleIds) {
+    const response = await request.delete(`/api/reports/${scheduleId}`);
+    await assertHttpStatus(response, 200, "E2E report schedule cleanup failed");
+  }
+  cleanupState.reportScheduleIds = [];
   for (const pageId of cleanupState.publicStatusPageIds) {
     const response = await request.delete(`/api/public-status-pages/${pageId}`);
     await assertHttpStatus(response, 200, "E2E public status page cleanup failed");

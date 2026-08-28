@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { toAuthError } from "@/lib/auth/errors";
-import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
+import { requireSession } from "@/lib/auth/authorization";
+import { apiErrorResponse, parseJsonRequest, requireMutationSession } from "@/lib/http/api-route";
 import { reportScheduleSchema } from "@/lib/reports/schemas";
 import { createReportSchedule, listReportSchedules } from "@/lib/reports/service";
 
@@ -9,35 +8,22 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const session = await requireSession();
 
     const schedules = await listReportSchedules(session.id);
     return NextResponse.json({ schedules });
   } catch (error) {
-    const authError = toAuthError(error, "Unable to load reports right now.");
-    return NextResponse.json({ message: authError.message }, { status: authError.status });
+    return apiErrorResponse(error, "Unable to load reports right now.");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
-
-    const parsed = reportScheduleSchema.safeParse(await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES));
-    if (!parsed.success) {
-      return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid report schedule payload." }, { status: 400 });
-    }
-
-    const schedule = await createReportSchedule(session.id, parsed.data);
+    const session = await requireMutationSession(request);
+    const input = await parseJsonRequest(request, reportScheduleSchema, "Invalid report schedule payload.");
+    const schedule = await createReportSchedule(session.id, input);
     return NextResponse.json({ schedule }, { status: 201 });
   } catch (error) {
-    const authError = toAuthError(error, "Unable to create the report schedule right now.");
-    return NextResponse.json({ message: authError.message }, { status: authError.status });
+    return apiErrorResponse(error, "Unable to create the report schedule right now.");
   }
 }

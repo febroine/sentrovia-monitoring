@@ -51,7 +51,7 @@ async function verifyRejectedLogin(browserInstance) {
     const responsePromise = page.waitForResponse((response) => response.url().endsWith("/api/auth/login"));
     await page.locator('button[type="submit"]').click();
     assert.equal((await responsePromise).status(), 401);
-    await assertVisible(page.getByRole("alert"), "Rejected-login alert");
+    await assertVisible(page.locator("#login-error"), "Rejected-login alert");
   } finally {
     await context.close();
   }

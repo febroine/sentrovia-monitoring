@@ -1,4 +1,6 @@
 import type { GeneratedReport } from "@/lib/reports/types";
+import { escapeHtml } from "@/lib/html";
+import { buildReportSnapshotRows } from "@/lib/reports/presentation";
 import {
   formatMonitorAverageLatency,
   formatMonitorP95Latency,
@@ -17,6 +19,138 @@ export function buildReportFileSlug(report: GeneratedReport) {
   return slugify(`${report.title} ${generatedDate}`);
 }
 
+const PRINTABLE_REPORT_STYLES = `
+  :root {
+    color-scheme: light;
+    --bg: #f6f8fb;
+    --surface: #ffffff;
+    --surface-soft: #f8fafc;
+    --ink: #111827;
+    --muted: #64748b;
+    --line: #dbe3ef;
+    --accent: #2563eb;
+    --good: #059669;
+    --warn: #d97706;
+    --bad: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    -webkit-locale: "en";
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 36px 28px 48px; }
+  .report-shell { display: grid; gap: 22px; }
+  .hero {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: linear-gradient(135deg, #0f172a 0%, #172554 58%, #1e3a8a 100%);
+    color: #fff;
+    padding: 28px;
+  }
+  .hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .period-chip {
+    border: 1px solid #3b82f6;
+    border-radius: 999px;
+    color: #bfdbfe;
+    padding: 5px 9px;
+    font-size: 11px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+  .report-type, .stat-label, th {
+    -webkit-locale: "en";
+    font-feature-settings: "locl" 0;
+    letter-spacing: 0;
+  }
+  .report-type { color: #bfdbfe; font-size: 13px; font-weight: 700; }
+  h1 { margin: 10px 0 0; font-size: 30px; line-height: 1.12; letter-spacing: 0; }
+  .summary { margin: 12px 0 0; color: #dbeafe; font-size: 14px; line-height: 1.6; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .stat {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+    padding: 16px;
+    min-height: 104px;
+  }
+  .stat.emphasis { border-color: #93c5fd; background: #eff6ff; }
+  .stat-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+  .stat-value { margin-top: 8px; font-size: 26px; line-height: 1.1; font-weight: 750; }
+  .stat-note { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-soft);
+    padding: 18px 20px;
+  }
+  .panel-title { margin: 0; font-size: 17px; font-weight: 750; }
+  .panel-note { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .panel-body { padding: 18px 20px; }
+  .recommendations {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .recommendations li {
+    border: 1px solid #bfdbfe;
+    border-radius: 14px;
+    background: #eff6ff;
+    color: #1e3a8a;
+    padding: 13px 14px;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .grid-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid var(--line); padding: 12px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-size: 12px; font-weight: 750; }
+  td { color: #334155; font-size: 13px; line-height: 1.5; }
+  tr:last-child td { border-bottom: 0; }
+  .url { color: #0f172a; font-weight: 650; overflow-wrap: anywhere; }
+  .muted { color: var(--muted); }
+  .status { display: inline-block; border-radius: 999px; padding: 4px 9px; font-size: 11px; font-weight: 700; }
+  .status-up { background: #dcfce7; color: #166534; }
+  .status-down { background: #fee2e2; color: #991b1b; }
+  .status-pending { background: #fef3c7; color: #92400e; }
+  .empty-state {
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    background: var(--surface-soft);
+    color: var(--muted);
+    padding: 14px;
+    font-size: 13px;
+  }
+  .report-footer { color: var(--muted); font-size: 12px; line-height: 1.5; text-align: right; }
+  @media (max-width: 820px) {
+    main { padding: 18px 12px 28px; }
+    .stats, .grid-two, .recommendations { grid-template-columns: 1fr; }
+    .panel-header { display: block; }
+    .hero-top { display: block; }
+    .period-chip { display: inline-block; margin-top: 14px; }
+    table { display: block; overflow-x: auto; white-space: nowrap; }
+  }
+  @media print {
+    body { background: #fff; }
+    main { padding: 12px; max-width: none; }
+    .panel, .stat, .hero { break-inside: avoid; }
+  }
+`;
+
 export function buildPrintableReportHtml(
   report: GeneratedReport,
   options: { autoPrint?: boolean } = {}
@@ -25,286 +159,148 @@ export function buildPrintableReportHtml(
   const recentFailureRows = buildRecentFailureRows(report).map(renderRecentFailureRow).join("");
   const slowMonitorRows = buildSlowMonitorRows(report).map(renderTwoColumnRow).join("");
   const failingMonitorRows = buildFailingMonitorRows(report).map(renderThreeColumnRow).join("");
-  const snapshotRows = buildServiceSnapshotRows(report).map(renderSnapshotRow).join("");
-  const autoPrintScript = options.autoPrint
-    ? `
-        <script>
-          window.addEventListener("load", () => {
-            window.setTimeout(() => window.print(), 150);
-          });
-        </script>
-      `
-    : "";
+  const snapshotRows = buildReportSnapshotRows(report).map(renderSnapshotRow).join("");
 
+  return [
+    renderPrintableDocumentStart(report, options.autoPrint === true),
+    renderPrintableHero(report),
+    renderPrintableStats(report),
+    renderReportTablePanel("Service snapshot", "The key context for reading this report.", ["Item", "Detail"], snapshotRows),
+    renderPrintableRecommendations(report),
+    renderPrintableWatchlists(failingMonitorRows, slowMonitorRows),
+    renderReportTablePanel("Failure details", "Recent failures with readable network context.", ["URL", "Code", "Time", "Detail"], recentFailureRows),
+    renderReportTablePanel(
+      "URL breakdown",
+      "Ranked by failures first, then latency.",
+      ["URL", "Company", "Status", "Code", "Uptime", "Avg latency", "P95", "Failures", "Last failure"],
+      breakdownRows
+    ),
+    `<div class="report-footer">${escapeHtml(report.workspaceName)} &middot; ${escapeHtml(report.periodLabel)} &middot; HTML report</div>`,
+    renderPrintableDocumentEnd(),
+  ].join("");
+}
+
+function renderPrintableDocumentStart(report: GeneratedReport, autoPrint: boolean) {
+  const autoPrintScript = autoPrint
+    ? `<script>window.addEventListener("load",()=>{window.setTimeout(()=>window.print(),150);});</script>`
+    : "";
   return `
     <!DOCTYPE html>
     <html lang="en">
       <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(report.title)}</title>
-        <style>
-          :root {
-            color-scheme: light;
-            --bg: #f6f8fb;
-            --surface: #ffffff;
-            --surface-soft: #f8fafc;
-            --ink: #111827;
-            --muted: #64748b;
-            --line: #dbe3ef;
-            --accent: #2563eb;
-            --good: #059669;
-            --warn: #d97706;
-            --bad: #dc2626;
-          }
-          * { box-sizing: border-box; }
-          body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--ink);
-            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-            -webkit-locale: "en";
-          }
-          main { max-width: 1120px; margin: 0 auto; padding: 36px 28px 48px; }
-          .report-shell { display: grid; gap: 22px; }
-          .hero {
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            background: linear-gradient(135deg, #0f172a 0%, #172554 58%, #1e3a8a 100%);
-            color: #fff;
-            padding: 28px;
-          }
-          .hero-top {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 16px;
-          }
-          .period-chip {
-            border: 1px solid #3b82f6;
-            border-radius: 999px;
-            color: #bfdbfe;
-            padding: 5px 9px;
-            font-size: 11px;
-            font-weight: 750;
-            white-space: nowrap;
-          }
-          .report-type, .stat-label, th {
-            -webkit-locale: "en";
-            font-feature-settings: "locl" 0;
-            letter-spacing: 0;
-          }
-          .report-type { color: #bfdbfe; font-size: 13px; font-weight: 700; }
-          h1 { margin: 10px 0 0; font-size: 30px; line-height: 1.12; letter-spacing: 0; }
-          .summary { margin: 12px 0 0; color: #dbeafe; font-size: 14px; line-height: 1.6; }
-          .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-          .stat {
-            border: 1px solid var(--line);
-            border-radius: 16px;
-            background: var(--surface);
-            padding: 16px;
-            min-height: 104px;
-          }
-          .stat.emphasis { border-color: #93c5fd; background: #eff6ff; }
-          .stat-label { color: var(--muted); font-size: 12px; font-weight: 700; }
-          .stat-value { margin-top: 8px; font-size: 26px; line-height: 1.1; font-weight: 750; }
-          .stat-note { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.45; }
-          .panel {
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            background: var(--surface);
-            overflow: hidden;
-          }
-          .panel-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 18px;
-            border-bottom: 1px solid var(--line);
-            background: var(--surface-soft);
-            padding: 18px 20px;
-          }
-          .panel-title { margin: 0; font-size: 17px; font-weight: 750; }
-          .panel-note { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-          .panel-body { padding: 18px 20px; }
-          .recommendations {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-            margin: 0;
-            padding: 0;
-            list-style: none;
-          }
-          .recommendations li {
-            border: 1px solid #bfdbfe;
-            border-radius: 14px;
-            background: #eff6ff;
-            color: #1e3a8a;
-            padding: 13px 14px;
-            font-size: 13px;
-            line-height: 1.55;
-          }
-          .grid-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border-bottom: 1px solid var(--line); padding: 12px 10px; text-align: left; vertical-align: top; }
-          th { color: var(--muted); font-size: 12px; font-weight: 750; }
-          td { color: #334155; font-size: 13px; line-height: 1.5; }
-          tr:last-child td { border-bottom: 0; }
-          .url { color: #0f172a; font-weight: 650; overflow-wrap: anywhere; }
-          .muted { color: var(--muted); }
-          .status { display: inline-block; border-radius: 999px; padding: 4px 9px; font-size: 11px; font-weight: 700; }
-          .status-up { background: #dcfce7; color: #166534; }
-          .status-down { background: #fee2e2; color: #991b1b; }
-          .status-pending { background: #fef3c7; color: #92400e; }
-          .empty-state {
-            border: 1px dashed var(--line);
-            border-radius: 12px;
-            background: var(--surface-soft);
-            color: var(--muted);
-            padding: 14px;
-            font-size: 13px;
-          }
-          .report-footer {
-            color: var(--muted);
-            font-size: 12px;
-            line-height: 1.5;
-            text-align: right;
-          }
-          @media (max-width: 820px) {
-            main { padding: 18px 12px 28px; }
-            .stats, .grid-two, .recommendations { grid-template-columns: 1fr; }
-            .panel-header { display: block; }
-            .hero-top { display: block; }
-            .period-chip { display: inline-block; margin-top: 14px; }
-            table { display: block; overflow-x: auto; white-space: nowrap; }
-          }
-          @media print {
-            body { background: #fff; }
-            main { padding: 12px; max-width: none; }
-            .panel, .stat, .hero { break-inside: avoid; }
-          }
-        </style>
+        <style>${PRINTABLE_REPORT_STYLES}</style>
         ${autoPrintScript}
       </head>
       <body>
         <main>
-          <div class="report-shell">
-            <section class="hero">
-              <div class="hero-top">
-                <div class="report-type">${escapeHtml(report.workspaceName)} / ${escapeHtml(report.templateLabel)}</div>
-                <span class="period-chip">${escapeHtml(report.periodLabel)}</span>
-              </div>
-              <h1>${escapeHtml(report.title)}</h1>
-              <p class="summary">${escapeHtml(report.scope === "company" ? report.companyName ?? "Company" : "Workspace")} &middot; ${escapeHtml(
-                new Date(report.periodStartedAt).toLocaleString()
-              )} - ${escapeHtml(new Date(report.periodEndedAt).toLocaleString())} &middot; Generated ${escapeHtml(
-                new Date(report.generatedAt).toLocaleString()
-              )}</p>
-            </section>
+          <div class="report-shell">`;
+}
 
-            <section class="stats">
-              <article class="stat emphasis"><div class="stat-label">Health</div><div class="stat-value">${escapeHtml(formatReportHealthScore(report.summary))}</div><div class="stat-note">${escapeHtml(report.summary.healthStatus)}</div></article>
-              <article class="stat"><div class="stat-label">URLs tracked</div><div class="stat-value">${report.summary.monitorCount}</div><div class="stat-note">${report.summary.currentlyDown} down now</div></article>
-              <article class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${escapeHtml(formatReportUptime(report.summary))}</div><div class="stat-note">${report.summary.hasCompletedChecks ? "Availability for this period" : "No completed checks in this period"}</div></article>
-              <article class="stat"><div class="stat-label">P95 latency</div><div class="stat-value">${escapeHtml(formatReportP95Latency(report.summary))}</div><div class="stat-note">${report.summary.hasLatencySamples ? `${escapeHtml(formatReportAverageLatency(report.summary))} average` : "No latency samples in this period"}</div></article>
-              <article class="stat"><div class="stat-label">Failure events</div><div class="stat-value">${report.summary.failureEvents}</div><div class="stat-note">${report.summary.impactedMonitors} impacted URLs</div></article>
-              <article class="stat"><div class="stat-label">Failure rate</div><div class="stat-value">${escapeHtml(formatReportFailureRate(report.summary))}</div><div class="stat-note">${report.summary.hasCompletedChecks ? "Share of completed checks that were down" : "No completed checks in this period"}</div></article>
-              <article class="stat"><div class="stat-label">Up now</div><div class="stat-value">${report.summary.currentlyUp}</div><div class="stat-note">Currently healthy URLs</div></article>
-              <article class="stat"><div class="stat-label">Pending now</div><div class="stat-value">${report.summary.currentlyPending}</div><div class="stat-note">Awaiting confirmation</div></article>
-            </section>
+function renderPrintableHero(report: GeneratedReport) {
+  const scope = report.scope === "company" ? report.companyName ?? "Company" : "Workspace";
+  const startedAt = new Date(report.periodStartedAt).toLocaleString();
+  const endedAt = new Date(report.periodEndedAt).toLocaleString();
+  const generatedAt = new Date(report.generatedAt).toLocaleString();
+  return `
+    <section class="hero">
+      <div class="hero-top">
+        <div class="report-type">${escapeHtml(report.workspaceName)} / ${escapeHtml(report.templateLabel)}</div>
+        <span class="period-chip">${escapeHtml(report.periodLabel)}</span>
+      </div>
+      <h1>${escapeHtml(report.title)}</h1>
+      <p class="summary">${escapeHtml(scope)} &middot; ${escapeHtml(startedAt)} - ${escapeHtml(endedAt)} &middot; Generated ${escapeHtml(generatedAt)}</p>
+    </section>`;
+}
 
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">Service snapshot</h2>
-                  <p class="panel-note">The key context for reading this report.</p>
-                </div>
-              </div>
-              <div class="panel-body">
-                <table>
-                  <thead><tr><th>Item</th><th>Detail</th></tr></thead>
-                  <tbody>${snapshotRows}</tbody>
-                </table>
-              </div>
-            </section>
+function renderPrintableStats(report: GeneratedReport) {
+  const summary = report.summary;
+  const stats = [
+    ["Health", formatReportHealthScore(summary), summary.healthStatus, true],
+    ["URLs tracked", String(summary.monitorCount), `${summary.currentlyDown} down now`, false],
+    ["Uptime", formatReportUptime(summary), summary.hasCompletedChecks ? "Availability for this period" : "No completed checks in this period", false],
+    ["P95 latency", formatReportP95Latency(summary), summary.hasLatencySamples ? `${formatReportAverageLatency(summary)} average` : "No latency samples in this period", false],
+    ["Failure events", String(summary.failureEvents), `${summary.impactedMonitors} impacted URLs`, false],
+    ["Failure rate", formatReportFailureRate(summary), summary.hasCompletedChecks ? "Share of completed checks that were down" : "No completed checks in this period", false],
+    ["Up now", String(summary.currentlyUp), "Currently healthy URLs", false],
+    ["Pending now", String(summary.currentlyPending), "Awaiting confirmation", false],
+  ] as const;
+  return `<section class="stats">${stats.map(renderPrintableStat).join("")}</section>`;
+}
 
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">What needs attention</h2>
-                  <p class="panel-note">Practical items to review from this period.</p>
-                </div>
-              </div>
-              <div class="panel-body">
-                <ul class="recommendations">
-                  ${report.recommendations.length > 0
-                    ? report.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
-                    : '<li class="empty-state">No immediate action items were identified in this period.</li>'}
-                </ul>
-              </div>
-            </section>
+function renderPrintableStat([label, value, note, emphasis]: readonly [string, string, string, boolean]) {
+  return `
+    <article class="stat${emphasis ? " emphasis" : ""}">
+      <div class="stat-label">${escapeHtml(label)}</div>
+      <div class="stat-value">${escapeHtml(value)}</div>
+      <div class="stat-note">${escapeHtml(note)}</div>
+    </article>`;
+}
 
-            <section class="grid-two">
-              <article class="panel">
-                <div class="panel-header">
-                  <div>
-                    <h2 class="panel-title">Top failing URLs</h2>
-                    <p class="panel-note">The URLs that failed most often in this period.</p>
-                  </div>
-                </div>
-                <div class="panel-body">
-                  <table>
-                    <thead><tr><th>URL</th><th>Failures</th><th>Last failure</th></tr></thead>
-                    <tbody>${failingMonitorRows}</tbody>
-                  </table>
-                </div>
-              </article>
+function renderPrintableRecommendations(report: GeneratedReport) {
+  const items = report.recommendations.length > 0
+    ? report.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+    : '<li class="empty-state">No immediate action items were identified in this period.</li>';
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">What needs attention</h2>
+          <p class="panel-note">Practical items to review from this period.</p>
+        </div>
+      </div>
+      <div class="panel-body"><ul class="recommendations">${items}</ul></div>
+    </section>`;
+}
 
-              <article class="panel">
-                <div class="panel-header">
-                  <div>
-                    <h2 class="panel-title">Latency watchlist</h2>
-                    <p class="panel-note">The slowest URLs by average response time.</p>
-                  </div>
-                </div>
-                <div class="panel-body">
-                  <table>
-                    <thead><tr><th>URL</th><th>Average latency</th></tr></thead>
-                    <tbody>${slowMonitorRows}</tbody>
-                  </table>
-                </div>
-              </article>
-            </section>
+function renderPrintableWatchlists(failingRows: string, slowRows: string) {
+  return `
+    <section class="grid-two">
+      ${renderReportTablePanel(
+        "Top failing URLs",
+        "The URLs that failed most often in this period.",
+        ["URL", "Failures", "Last failure"],
+        failingRows,
+        "article"
+      )}
+      ${renderReportTablePanel(
+        "Latency watchlist",
+        "The slowest URLs by average response time.",
+        ["URL", "Average latency"],
+        slowRows,
+        "article"
+      )}
+    </section>`;
+}
 
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">Failure details</h2>
-                  <p class="panel-note">Recent failures with readable network context.</p>
-                </div>
-              </div>
-              <div class="panel-body">
-                <table>
-                  <thead><tr><th>URL</th><th>Code</th><th>Time</th><th>Detail</th></tr></thead>
-                  <tbody>${recentFailureRows}</tbody>
-                </table>
-              </div>
-            </section>
+function renderReportTablePanel(
+  title: string,
+  note: string,
+  headers: string[],
+  rows: string,
+  element: "section" | "article" = "section"
+) {
+  const headerCells = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+  return `
+    <${element} class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">${escapeHtml(title)}</h2>
+          <p class="panel-note">${escapeHtml(note)}</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <table>
+          <thead><tr>${headerCells}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </${element}>`;
+}
 
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">URL breakdown</h2>
-                  <p class="panel-note">Ranked by failures first, then latency.</p>
-                </div>
-              </div>
-              <div class="panel-body">
-                <table>
-                  <thead><tr><th>URL</th><th>Company</th><th>Status</th><th>Code</th><th>Uptime</th><th>Avg latency</th><th>P95</th><th>Failures</th><th>Last failure</th></tr></thead>
-                  <tbody>${breakdownRows}</tbody>
-                </table>
-              </div>
-            </section>
-            <div class="report-footer">${escapeHtml(report.workspaceName)} &middot; ${escapeHtml(report.periodLabel)} &middot; HTML report</div>
+function renderPrintableDocumentEnd() {
+  return `
           </div>
         </main>
       </body>
@@ -369,27 +365,6 @@ function renderThreeColumnRow([first, second, third]: string[]) {
   `;
 }
 
-function buildServiceSnapshotRows(report: GeneratedReport) {
-  const generatedAt = new Date(report.generatedAt).toLocaleString();
-  const scopeLabel = report.scope === "company" ? report.companyName ?? "Company" : "Workspace";
-  const topFailingUrl = report.failingMonitors[0]?.url ?? "No failing URL in this period";
-  const slowestUrl = report.slowMonitors[0]
-    ? `${report.slowMonitors[0].url} (${report.slowMonitors[0].averageLatencyMs}ms avg)`
-    : "No latency data in this period";
-
-  return [
-    ["Reporting window", report.periodLabel],
-    ["Generated", generatedAt],
-    ["Scope", scopeLabel],
-    [
-      "Current state",
-      `${report.summary.currentlyUp} up, ${report.summary.currentlyDown} down, ${report.summary.currentlyPending} pending`,
-    ],
-    ["Most affected URL", topFailingUrl],
-    ["Slowest URL", slowestUrl],
-  ];
-}
-
 function buildSlowMonitorRows(report: GeneratedReport) {
   if (report.slowMonitors.length === 0) {
     return [["No data", "0ms"]];
@@ -432,14 +407,6 @@ function reportValue(value: string | number | null | undefined) {
   }
 
   return String(value);
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 function slugify(value: string) {

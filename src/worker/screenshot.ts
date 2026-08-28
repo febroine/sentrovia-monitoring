@@ -2,6 +2,7 @@ import type Mail from "nodemailer/lib/mailer";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { escapeHtml } from "@/lib/html";
 import {
   normalizeNetworkHostname,
   resolveMonitorNetworkTargetWithTimeout,
@@ -398,12 +399,4 @@ function renderUnavailableTargetPage(monitor: Monitor) {
     .status{margin:28px 0 16px;color:#991b1b;font-size:13px;font-weight:700;letter-spacing:.06em}
     p{font-size:16px;line-height:1.6}
   </style></head><body><main><div class="status">SCREENSHOT UNAVAILABLE</div><h1>${escapeHtml(monitor.name)}</h1><p class="target">${escapeHtml(monitor.url)}</p><p>The worker could not resolve this hostname, so no remote page was loaded.</p></main></body></html>`;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

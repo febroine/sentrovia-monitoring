@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import nextEnv from "@next/env";
 import postgres from "postgres";
+import { resolveDatabaseUrl } from "./database-url.mjs";
 
 const { loadEnvConfig } = nextEnv;
 
@@ -14,7 +15,7 @@ const SCHEMA_LOCK_HELD_ENV = "SENTROVIA_SCHEMA_LOCK_HELD";
 loadEnvConfig(process.cwd());
 
 const options = parseOptions(process.argv.slice(2));
-const databaseUrl = resolveDatabaseUrl();
+const databaseUrl = resolveDatabaseUrl(process.env);
 const migrationsDir = path.join(process.cwd(), "drizzle");
 
 if (!databaseUrl) {
@@ -69,24 +70,6 @@ function parseOptions(args) {
     baseline: args.includes("--baseline"),
     dryRun: args.includes("--dry-run"),
   };
-}
-
-function resolveDatabaseUrl() {
-  if (process.env.DATABASE_URL?.trim()) {
-    return process.env.DATABASE_URL;
-  }
-
-  const host = process.env.POSTGRES_HOST || "localhost";
-  const port = process.env.POSTGRES_PORT || "5432";
-  const user = process.env.POSTGRES_USER;
-  const password = process.env.POSTGRES_PASSWORD;
-  const database = process.env.POSTGRES_DB;
-
-  if (!user || !password || !database) {
-    return null;
-  }
-
-  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
 }
 
 function listManualMigrations(directory) {

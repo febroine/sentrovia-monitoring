@@ -3,6 +3,9 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import nextEnv from "@next/env";
 import postgres from "postgres";
+import { resolveDatabaseUrl } from "./database-url.mjs";
+
+export { resolveDatabaseUrl };
 
 const { loadEnvConfig } = nextEnv;
 const MAINTENANCE_LOCK_KEYS = [728_551, 493_028];
@@ -284,23 +287,6 @@ function retentionDelete(table, settingColumn, fallbackDays) {
 
 export function parseOptions(args) {
   return { dryRun: args.includes("--dry-run") };
-}
-
-export function resolveDatabaseUrl(environment) {
-  if (environment.DATABASE_URL?.trim()) {
-    return environment.DATABASE_URL.trim();
-  }
-
-  const user = environment.POSTGRES_USER;
-  const password = environment.POSTGRES_PASSWORD;
-  const database = environment.POSTGRES_DB;
-  if (!user || !password || !database) {
-    return null;
-  }
-
-  const host = environment.POSTGRES_HOST || "localhost";
-  const port = environment.POSTGRES_PORT || "5432";
-  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}`;
 }
 
 async function runOperations(sql, dryRun, workerLockAcquired) {

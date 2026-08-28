@@ -1,121 +1,45 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ElementType } from "react";
+import type { ElementType } from "react";
 import {
-  Activity,
   CalendarClock,
   ChevronDown,
   CircleCheckBig,
-  Download,
   FileChartColumn,
-  Gauge,
-  ScanLine,
   Search,
   Send,
-  TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TemplateEditor } from "@/components/settings/template-editor";
+import { ReportPreviewPanel } from "@/components/reports/report-preview-panel";
+import { useReportsPageState } from "@/components/reports/use-reports-page-state";
+import {
+  buildDraftReportTitle,
+  buildSchedulePackageLabel,
+  EMPTY_REPORT_DRAFT,
+  EMPTY_SCHEDULE_DRAFT,
+  getCadenceLabel,
+  getScheduleDeliveryStatusLabel,
+  resolveDraftPeriodLabel,
+  resolveDraftScopeLabel,
+  type DeliveryResult,
+  type ReportDeliveryDraft,
+  type ScheduleFilter,
+} from "@/components/reports/reports-page-model";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { CompanyRecord } from "@/lib/companies/types";
-import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
-import {
-  formatMonitorAverageLatency,
-  formatMonitorP95Latency,
-  formatMonitorUptime,
-  formatReportAverageLatency,
-  formatReportFailureRate,
-  formatReportHealthScore,
-  formatReportP95Latency,
-  formatReportUptime,
-} from "@/lib/reports/metrics";
-import { showToast, type ToastTone } from "@/lib/client-toast";
 import type {
-  GeneratedReport,
   ReportCadence,
   ReportScheduleRecord,
   ReportScope,
   ReportTemplateVariant,
 } from "@/lib/reports/types";
-
-type ReportsResponse = { schedules?: ReportScheduleRecord[]; message?: string };
-type PreviewResponse = { report?: GeneratedReport; message?: string };
-type ScheduleFilter = "all" | "active" | "paused" | "failed";
-type DeliveryResult = {
-  status: string;
-  deliveredAt: string | null;
-  reportTitle: string;
-  recipients: string[];
-};
-
-type DraftReport = {
-  scope: ReportScope;
-  cadence: ReportCadence;
-  template: ReportTemplateVariant;
-  companyId: string;
-  recipients: string;
-  deliveryDetailLevel: "summary" | "standard" | "full";
-  includeOutageSummary: boolean;
-  includeMonitorBreakdown: boolean;
-  emailSubjectTemplate: string;
-  emailIntroTemplate: string;
-  reportBrandName: string;
-};
-
-type DraftSchedule = {
-  name: string;
-  scope: ReportScope;
-  cadence: ReportCadence;
-  template: ReportTemplateVariant;
-  companyId: string;
-  recipients: string;
-  nextRunAt: string;
-  isActive: boolean;
-  deliveryDetailLevel: "summary" | "standard" | "full";
-  includeOutageSummary: boolean;
-  includeMonitorBreakdown: boolean;
-  emailSubjectTemplate: string;
-  emailIntroTemplate: string;
-  reportBrandName: string;
-};
-
-const EMPTY_REPORT_DRAFT: DraftReport = {
-  scope: "global",
-  cadence: "weekly",
-  template: "operations",
-  companyId: "",
-  recipients: "",
-  deliveryDetailLevel: "standard",
-  includeOutageSummary: true,
-  includeMonitorBreakdown: true,
-  emailSubjectTemplate: "",
-  emailIntroTemplate: "",
-  reportBrandName: "",
-};
-
-const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
-  name: "Weekly Workspace Report",
-  scope: "global",
-  cadence: "weekly",
-  template: "operations",
-  companyId: "",
-  recipients: "",
-  nextRunAt: "",
-  isActive: true,
-  deliveryDetailLevel: "standard",
-  includeOutageSummary: true,
-  includeMonitorBreakdown: true,
-  emailSubjectTemplate: "",
-  emailIntroTemplate: "",
-  reportBrandName: "",
-};
 
 const CADENCE_OPTIONS: Array<{ value: Exclude<ReportCadence, "all_time">; label: string }> = [
   { value: "weekly", label: "Weekly" },
@@ -145,358 +69,21 @@ const TEMPLATE_OPTIONS: Array<{
 ];
 
 export default function ReportsPageClient() {
-  const [companies, setCompanies] = useState<CompanyRecord[]>([]);
-  const [schedules, setSchedules] = useState<ReportScheduleRecord[]>([]);
-  const [activeTab, setActiveTab] = useState<"preview" | "schedules">("preview");
-  const [previewDraft, setPreviewDraft] = useState<DraftReport>(EMPTY_REPORT_DRAFT);
-  const [scheduleDraft, setScheduleDraft] = useState<DraftSchedule>(EMPTY_SCHEDULE_DRAFT);
-  const [preview, setPreview] = useState<GeneratedReport | null>(null);
-  const [lastDeliveryResult, setLastDeliveryResult] = useState<DeliveryResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ text: string; tone: ToastTone } | null>(null);
-  const [scheduleSearch, setScheduleSearch] = useState("");
-  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>("all");
-  const [scheduleToDelete, setScheduleToDelete] = useState<ReportScheduleRecord | null>(null);
-
-  function notify(message: string, tone: ToastTone) {
-    setMessage({ text: message, tone });
-    showToast(message, tone);
-  }
-
-  const filteredSchedules = useMemo(
-    () => filterSchedules(schedules, scheduleSearch, scheduleFilter),
-    [scheduleFilter, scheduleSearch, schedules]
-  );
-  const activeSchedules = useMemo(
-    () =>
-      schedules
-        .filter((schedule) => schedule.isActive)
-        .sort((left, right) => new Date(left.nextRunAt).getTime() - new Date(right.nextRunAt).getTime()),
-    [schedules]
-  );
-
-  const refreshPage = useCallback(async (options: { clearMessage?: boolean } = {}) => {
-    setLoading(true);
-
-    try {
-      const [reportsResponse, companiesResponse] = await Promise.all([
-        fetch("/api/reports", { cache: "no-store" }),
-        fetch("/api/companies", { cache: "no-store" }),
-      ]);
-      const reportsData = (await reportsResponse.json()) as ReportsResponse;
-      const companiesData = (await companiesResponse.json()) as {
-        companies?: CompanyRecord[];
-        message?: string;
-      };
-
-      if (!reportsResponse.ok) {
-        throw new Error(reportsData.message ?? "Unable to load report schedules.");
-      }
-
-      if (!companiesResponse.ok) {
-        throw new Error(companiesData.message ?? "Unable to load companies.");
-      }
-
-      setSchedules(reportsData.schedules ?? []);
-      setCompanies(companiesData.companies ?? []);
-      if (options.clearMessage !== false) {
-        setMessage(null);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load reports.";
-      setMessage({ text: message, tone: "error" });
-      showToast(message, "error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshPage();
-  }, [refreshPage]);
-
-  useEffect(() => {
-    const search = typeof window === "undefined" ? "" : window.location.search;
-    const params = new URLSearchParams(search);
-    const mode = params.get("mode");
-
-    if (mode === "schedules" || mode === "preview") {
-      const frameId = window.requestAnimationFrame(() => setActiveTab(mode));
-      return () => window.cancelAnimationFrame(frameId);
-    }
-  }, []);
-
-  useEffect(() => {
-    setScheduleDraft((current) => ({
-      ...current,
-      name: buildScheduleName(current.scope, current.cadence, current.companyId, companies),
-    }));
-  }, [companies, scheduleDraft.cadence, scheduleDraft.companyId, scheduleDraft.scope]);
-
-  async function generatePreview() {
-    setSaving(true);
-    setLastDeliveryResult(null);
-
-    try {
-      const response = await fetch("/api/reports/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope: previewDraft.scope,
-          cadence: previewDraft.cadence,
-          template: previewDraft.template,
-          companyId: previewDraft.scope === "company" ? previewDraft.companyId : null,
-          ...buildReportDeliveryPayload(previewDraft),
-        }),
-      });
-      const data = (await response.json()) as PreviewResponse;
-
-      if (!response.ok || !data.report) {
-        throw new Error(data.message ?? "Unable to generate the report preview.");
-      }
-
-      setPreview(data.report);
-      notify("Report preview updated.", "success");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to generate the report preview.", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function sendPreviewNow() {
-    setSaving(true);
-
-    try {
-      const response = await fetch("/api/reports/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope: previewDraft.scope,
-          cadence: previewDraft.cadence,
-          template: previewDraft.template,
-          companyId: previewDraft.scope === "company" ? previewDraft.companyId : null,
-          recipientEmails: parseRecipients(previewDraft.recipients),
-          ...buildReportDeliveryPayload(previewDraft),
-        }),
-      });
-      const data = (await response.json()) as {
-        message?: string;
-        report?: GeneratedReport;
-        delivery?: { status?: string; deliveredAt?: string | null } | null;
-      };
-
-      if (!response.ok || !data.report || data.delivery?.status !== "delivered") {
-        throw new Error(data.message ?? "Unable to send the report.");
-      }
-
-      setPreview(data.report);
-
-      setLastDeliveryResult({
-        status: data.delivery.status,
-        deliveredAt: data.delivery.deliveredAt ?? null,
-        reportTitle: data.report.title,
-        recipients: parseRecipients(previewDraft.recipients),
-      });
-      notify("Report sent successfully with an HTML attachment.", "success");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to send the report.", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function createSchedule() {
-    setSaving(true);
-
-    try {
-      const response = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: scheduleDraft.name,
-          scope: scheduleDraft.scope,
-          cadence: scheduleDraft.cadence,
-          template: scheduleDraft.template,
-          companyId: scheduleDraft.scope === "company" ? scheduleDraft.companyId : null,
-          recipientEmails: parseRecipients(scheduleDraft.recipients),
-          isActive: scheduleDraft.isActive,
-          nextRunAt: scheduleDraft.nextRunAt ? new Date(scheduleDraft.nextRunAt).toISOString() : null,
-          ...buildReportDeliveryPayload(scheduleDraft),
-        }),
-      });
-      const data = (await response.json()) as { schedule?: ReportScheduleRecord; message?: string };
-
-      if (!response.ok || !data.schedule) {
-        throw new Error(data.message ?? "Unable to create the report schedule.");
-      }
-
-      setSchedules((current) => [data.schedule!, ...current]);
-      setScheduleDraft(EMPTY_SCHEDULE_DRAFT);
-      notify("Report schedule created.", "success");
-      setActiveTab("schedules");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to create the report schedule.", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function toggleSchedule(schedule: ReportScheduleRecord) {
-    setSaving(true);
-
-    try {
-      const response = await fetch(`/api/reports/${schedule.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !schedule.isActive }),
-      });
-      const data = (await response.json()) as { schedule?: ReportScheduleRecord; message?: string };
-
-      if (!response.ok || !data.schedule) {
-        throw new Error(data.message ?? "Unable to update the report schedule.");
-      }
-
-      setSchedules((current) =>
-        current.map((item) => (item.id === schedule.id ? data.schedule! : item))
-      );
-      notify("Report schedule updated.", "success");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to update the report schedule.", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function sendScheduleNow(scheduleId: string) {
-    setSaving(true);
-
-    try {
-      const response = await fetch(`/api/reports/${scheduleId}/send`, { method: "POST" });
-      const data = (await response.json()) as {
-        message?: string;
-        report?: GeneratedReport | null;
-        delivery?: { status?: string; deliveredAt?: string | null } | null;
-        schedule?: ReportScheduleRecord;
-      };
-
-      if (data.schedule) {
-        setSchedules((current) =>
-          current.map((schedule) => (schedule.id === data.schedule?.id ? data.schedule : schedule))
-        );
-      }
-      if (!response.ok || !data.schedule || !data.report || data.delivery?.status !== "delivered") {
-        throw new Error(data.message ?? "Unable to send the scheduled report.");
-      }
-
-      setLastDeliveryResult({
-        status: data.delivery.status,
-        deliveredAt: data.delivery.deliveredAt ?? null,
-        reportTitle: data.report.title,
-        recipients: data.schedule.recipientEmails,
-      });
-      notify("Scheduled report sent successfully.", "success");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to send the scheduled report.", "error");
-      await refreshPage({ clearMessage: false });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function duplicateSchedule(schedule: ReportScheduleRecord) {
-    setSaving(true);
-
-    try {
-      const response = await fetch(`/api/reports/${schedule.id}/duplicate`, { method: "POST" });
-      const data = (await response.json()) as { schedule?: ReportScheduleRecord; message?: string };
-
-      if (!response.ok || !data.schedule) {
-        throw new Error(data.message ?? "Unable to duplicate the report schedule.");
-      }
-
-      setSchedules((current) => [data.schedule!, ...current]);
-      notify("Report schedule duplicated as a paused copy.", "success");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to duplicate the report schedule.", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function deleteSchedule(scheduleId: string) {
-    setSaving(true);
-
-    try {
-      const response = await fetch(`/api/reports/${scheduleId}`, { method: "DELETE" });
-      const data = (await response.json()) as { id?: string; message?: string };
-
-      if (!response.ok || !data.id) {
-        throw new Error(data.message ?? "Unable to delete the report schedule.");
-      }
-
-      setSchedules((current) => current.filter((schedule) => schedule.id !== data.id));
-      notify("Report schedule deleted.", "success");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to delete the report schedule.", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function loadScheduleIntoBuilder(schedule: ReportScheduleRecord) {
-    setScheduleDraft({
-      name: schedule.name,
-      scope: schedule.scope,
-      cadence: normalizeCadence(schedule.cadence),
-      template: schedule.template,
-      companyId: schedule.companyId ?? "",
-      recipients: schedule.recipientEmails.join(", "),
-      nextRunAt: toLocalDateTime(schedule.nextRunAt),
-      isActive: schedule.isActive,
-      deliveryDetailLevel: schedule.deliveryDetailLevel,
-      includeOutageSummary: schedule.includeOutageSummary,
-      includeMonitorBreakdown: schedule.includeMonitorBreakdown,
-      emailSubjectTemplate: schedule.emailSubjectTemplate ?? "",
-      emailIntroTemplate: schedule.emailIntroTemplate ?? "",
-      reportBrandName: schedule.reportBrandName ?? "",
-    });
-    setActiveTab("schedules");
-  }
-
-  function exportPreviewHtml() {
-    if (!preview) {
-      return;
-    }
-
-    downloadFile(buildPrintableReportHtml(preview), `${buildReportFileSlug(preview)}.html`, "text/html;charset=utf-8");
-  }
-
-  const previewRecipients = parseRecipients(previewDraft.recipients);
-  const scheduleRecipients = parseRecipients(scheduleDraft.recipients);
-  const previewNeedsCompany = previewDraft.scope === "company" && !previewDraft.companyId;
-  const scheduleNeedsCompany = scheduleDraft.scope === "company" && !scheduleDraft.companyId;
+  const pageState = useReportsPageState();
+  const {
+    activeSchedules,
+    activeTab,
+    deleteSchedule,
+    message,
+    saving,
+    scheduleToDelete,
+    setActiveTab,
+    setScheduleToDelete,
+  } = pageState;
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="mb-1 text-2xl font-semibold tracking-tight">Reports</h1>
-          <p className="text-sm text-muted-foreground">
-            Generate and schedule seven-day workspace reports.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-sm md:justify-end">
-          <CalendarClock className={cn(
-            "size-4",
-            activeSchedules[0] ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
-          )} />
-          <span className="text-muted-foreground">
-            Next delivery: {activeSchedules[0] ? new Date(activeSchedules[0].nextRunAt).toLocaleString() : "No active schedule"}
-          </span>
-        </div>
-      </header>
+      <ReportsHeader nextRunAt={activeSchedules[0]?.nextRunAt} />
 
       {message ? (
         <div
@@ -531,64 +118,114 @@ export default function ReportsPageClient() {
 
       <div className="space-y-4">
           {activeTab === "preview" ? (
-            <>
+            <ManualReportWorkspace state={pageState} />
+          ) : (
+            <ScheduledReportWorkspace state={pageState} />
+          )}
+        </div>
+
+      <ScheduleDeleteDialog
+        schedule={scheduleToDelete}
+        saving={saving}
+        onClose={() => setScheduleToDelete(null)}
+        onDelete={(scheduleId) => void deleteSchedule(scheduleId)}
+      />
+      </div>
+  );
+}
+
+function ReportsHeader({ nextRunAt }: { nextRunAt?: string }) {
+  return (
+    <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight">Reports</h1>
+        <p className="text-sm text-muted-foreground">Generate and schedule seven-day workspace reports.</p>
+      </div>
+      <div className="flex items-center gap-2 text-sm md:justify-end">
+        <CalendarClock className={cn(
+          "size-4",
+          nextRunAt ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+        )} />
+        <span className="text-muted-foreground">
+          Next delivery: {nextRunAt ? new Date(nextRunAt).toLocaleString() : "No active schedule"}
+        </span>
+      </div>
+    </header>
+  );
+}
+
+function ScheduleDeleteDialog({
+  schedule,
+  saving,
+  onClose,
+  onDelete,
+}: {
+  schedule: ReportScheduleRecord | null;
+  saving: boolean;
+  onClose: () => void;
+  onDelete: (scheduleId: string) => void;
+}) {
+  return (
+    <Dialog open={schedule !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete report schedule?</DialogTitle>
+          <DialogDescription>
+            &ldquo;{schedule?.name}&rdquo; will stop running and its schedule record will be permanently removed.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button
+            variant="destructive"
+            disabled={saving || !schedule}
+            onClick={() => {
+              if (!schedule) return;
+              onClose();
+              onDelete(schedule.id);
+            }}
+          >
+            Delete schedule
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ManualReportWorkspace({
+  state,
+}: {
+  state: ReturnType<typeof useReportsPageState>;
+}) {
+  const {
+    companies,
+    exportPreviewHtml,
+    generatePreview,
+    lastDeliveryResult,
+    preview,
+    previewDraft,
+    previewNeedsCompany,
+    previewRecipients,
+    saving,
+    sendPreviewNow,
+    setLastDeliveryResult,
+    setPreview,
+    setPreviewDraft,
+  } = state;
+
+  return (
+    <>
           <Card className="overflow-hidden border-border/70">
             <CardHeader className="border-b pb-4">
               <CardTitle>Manual report</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <Field label="Scope">
-                  <Select
-                    value={previewDraft.scope}
-                    onValueChange={(value) =>
-                      setPreviewDraft((current) => ({
-                        ...current,
-                        scope: value as ReportScope,
-                        companyId: value === "global" ? "" : current.companyId,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="global">Global workspace</SelectItem>
-                      <SelectItem value="company">Company</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-
-                <ReadOnlyField label="Period" value="Last 7 days" />
-
-                {previewDraft.scope === "company" ? (
-                  <Field label="Company">
-                    <Select value={previewDraft.companyId} onValueChange={(value) => setPreviewDraft((current) => ({ ...current, companyId: String(value) }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select company" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {companies.map((company) => (
-                          <SelectItem key={company.id} value={company.id}>
-                            {company.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                ) : (
-                  <ReadOnlyField label="Company" value="All companies" />
-                )}
-
-                <Field label="Recipients">
-                  <Textarea
-                    rows={3}
-                    value={previewDraft.recipients}
-                    onChange={(event) => setPreviewDraft((current) => ({ ...current, recipients: event.target.value }))}
-                    placeholder="alerts@company.com, ops@company.com"
-                  />
-                </Field>
-              </div>
+              <ManualReportFields
+                companies={companies}
+                draft={previewDraft}
+                setDraft={setPreviewDraft}
+              />
 
               <ReportOptionsPanel
                 template={previewDraft.template}
@@ -600,26 +237,18 @@ export default function ReportsPageClient() {
                 onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
               />
 
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void generatePreview()} disabled={saving || previewNeedsCompany}>
-                  {saving ? "Generating..." : "Generate preview"}
-                </Button>
-                <Button variant="outline" onClick={() => void sendPreviewNow()} disabled={saving || previewNeedsCompany || previewRecipients.length === 0}>
-                  <Send className="mr-2 h-4 w-4" />
-                  Send now
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setPreviewDraft(EMPTY_REPORT_DRAFT);
-                    setPreview(null);
-                    setLastDeliveryResult(null);
-                  }}
-                  disabled={saving}
-                >
-                  Reset
-                </Button>
-              </div>
+              <ManualReportActions
+                disabled={previewNeedsCompany}
+                hasRecipients={previewRecipients.length > 0}
+                saving={saving}
+                onGenerate={() => void generatePreview()}
+                onSend={() => void sendPreviewNow()}
+                onReset={() => {
+                  setPreviewDraft(EMPTY_REPORT_DRAFT);
+                  setPreview(null);
+                  setLastDeliveryResult(null);
+                }}
+              />
 
               <RecipientHint count={previewRecipients.length} />
             </CardContent>
@@ -637,207 +266,306 @@ export default function ReportsPageClient() {
               description="Generate a preview to review the report before sending."
             />
           )}
-            </>
-          ) : (
-            <>
-          <Card className="overflow-hidden border-border/70">
-            <CardHeader className="border-b pb-4">
-              <CardTitle>Scheduled report</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5 pt-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <Field label="Schedule name">
-                  <Input value={scheduleDraft.name} onChange={(event) => setScheduleDraft((current) => ({ ...current, name: event.target.value }))} />
-                </Field>
+    </>
+  );
+}
 
-                <Field label="Scope">
-                  <Select
-                    value={scheduleDraft.scope}
-                    onValueChange={(value) =>
-                      setScheduleDraft((current) => ({
-                        ...current,
-                        scope: value as ReportScope,
-                        companyId: value === "global" ? "" : current.companyId,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="global">Global workspace</SelectItem>
-                      <SelectItem value="company">Company</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
+function ManualReportFields({
+  companies,
+  draft,
+  setDraft,
+}: {
+  companies: ReturnType<typeof useReportsPageState>["companies"];
+  draft: ReturnType<typeof useReportsPageState>["previewDraft"];
+  setDraft: ReturnType<typeof useReportsPageState>["setPreviewDraft"];
+}) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <Field label="Scope">
+        <Select value={draft.scope} onValueChange={(value) => setDraft((current) => ({
+          ...current,
+          scope: value as ReportScope,
+          companyId: value === "global" ? "" : current.companyId,
+        }))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="global">Global workspace</SelectItem>
+            <SelectItem value="company">Company</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      <ReadOnlyField label="Period" value="Last 7 days" />
+      {draft.scope === "company" ? (
+        <Field label="Company">
+          <Select value={draft.companyId} onValueChange={(value) => setDraft((current) => ({ ...current, companyId: String(value) }))}>
+            <SelectTrigger><SelectValue placeholder="Select company" /></SelectTrigger>
+            <SelectContent>
+              {companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+      ) : <ReadOnlyField label="Company" value="All companies" />}
+      <Field label="Recipients">
+        <Textarea
+          rows={3}
+          value={draft.recipients}
+          onChange={(event) => setDraft((current) => ({ ...current, recipients: event.target.value }))}
+          placeholder="alerts@company.com, ops@company.com"
+        />
+      </Field>
+    </div>
+  );
+}
 
-                <Field label="Cadence">
-                  <Select value={scheduleDraft.cadence} onValueChange={(value) => setScheduleDraft((current) => ({ ...current, cadence: value as ReportCadence }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CADENCE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
+function ManualReportActions({
+  disabled,
+  hasRecipients,
+  saving,
+  onGenerate,
+  onSend,
+  onReset,
+}: {
+  disabled: boolean;
+  hasRecipients: boolean;
+  saving: boolean;
+  onGenerate: () => void;
+  onSend: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button onClick={onGenerate} disabled={saving || disabled}>
+        {saving ? "Generating..." : "Generate preview"}
+      </Button>
+      <Button variant="outline" onClick={onSend} disabled={saving || disabled || !hasRecipients}>
+        <Send className="mr-2 h-4 w-4" /> Send now
+      </Button>
+      <Button variant="ghost" onClick={onReset} disabled={saving}>Reset</Button>
+    </div>
+  );
+}
 
-                {scheduleDraft.scope === "company" ? (
-                  <Field label="Company">
-                    <Select value={scheduleDraft.companyId} onValueChange={(value) => setScheduleDraft((current) => ({ ...current, companyId: String(value) }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select company" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {companies.map((company) => (
-                          <SelectItem key={company.id} value={company.id}>
-                            {company.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                ) : (
-                  <ReadOnlyField label="Company" value="All companies" />
-                )}
-                
-                <Field label="Recipients">
-                  <Textarea
-                    rows={3}
-                    value={scheduleDraft.recipients}
-                    onChange={(event) => setScheduleDraft((current) => ({ ...current, recipients: event.target.value }))}
-                    placeholder="alerts@company.com, leadership@company.com"
-                  />
-                </Field>
+function ScheduledReportWorkspace({ state }: { state: ReturnType<typeof useReportsPageState> }) {
+  return (
+    <>
+      <ScheduleBuilder state={state} />
+      <ScheduledReportsList state={state} />
+    </>
+  );
+}
 
-                <Field label="First run">
-                  <Input
-                    type="datetime-local"
-                    value={scheduleDraft.nextRunAt}
-                    onChange={(event) => setScheduleDraft((current) => ({ ...current, nextRunAt: event.target.value }))}
-                  />
-                </Field>
+function ScheduleBuilder({ state }: { state: ReturnType<typeof useReportsPageState> }) {
+  const { companies, createSchedule, saving, scheduleDraft, scheduleNeedsCompany, scheduleRecipients, setScheduleDraft } = state;
+  return (
+    <Card className="overflow-hidden border-border/70">
+      <CardHeader className="border-b pb-4"><CardTitle>Scheduled report</CardTitle></CardHeader>
+      <CardContent className="space-y-5 pt-5">
+        <ScheduleFields state={state} />
+        <ReportOptionsPanel
+          template={scheduleDraft.template}
+          draft={scheduleDraft}
+          subjectTitle={buildDraftReportTitle(scheduleDraft.scope, scheduleDraft.cadence, scheduleDraft.companyId, companies)}
+          subjectScope={resolveDraftScopeLabel(scheduleDraft, companies)}
+          subjectPeriod={resolveDraftPeriodLabel()}
+          onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
+          onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
+        />
+        <ScheduleBuilderActions
+          disabled={scheduleNeedsCompany || scheduleRecipients.length === 0}
+          saving={saving}
+          onCreate={() => void createSchedule()}
+          onReset={() => setScheduleDraft(EMPTY_SCHEDULE_DRAFT)}
+        />
+        <RecipientHint count={scheduleRecipients.length} />
+      </CardContent>
+    </Card>
+  );
+}
 
-                <div className="border-y py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium">Auto-send</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Send reports when this schedule is due.
-                      </p>
-                    </div>
-                    <Switch aria-label="Auto-send report" checked={scheduleDraft.isActive} onCheckedChange={(value) => setScheduleDraft((current) => ({ ...current, isActive: value }))} />
-                  </div>
-                </div>
-              </div>
+function ScheduleFields({ state }: { state: ReturnType<typeof useReportsPageState> }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <ScheduleIdentityFields state={state} />
+      <ScheduleDeliveryFields state={state} />
+    </div>
+  );
+}
 
-              <ReportOptionsPanel
-                template={scheduleDraft.template}
-                draft={scheduleDraft}
-                subjectTitle={buildDraftReportTitle(scheduleDraft.scope, scheduleDraft.cadence, scheduleDraft.companyId, companies)}
-                subjectScope={resolveDraftScopeLabel(scheduleDraft, companies)}
-                subjectPeriod={resolveDraftPeriodLabel()}
-                onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
-                onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
-              />
+function ScheduleIdentityFields({ state }: { state: ReturnType<typeof useReportsPageState> }) {
+  const { companies, scheduleDraft, setScheduleDraft } = state;
+  return (
+    <>
+      <Field label="Schedule name">
+        <Input value={scheduleDraft.name} onChange={(event) => setScheduleDraft((current) => ({ ...current, name: event.target.value }))} />
+      </Field>
+      <Field label="Scope">
+        <Select value={scheduleDraft.scope} onValueChange={(value) => setScheduleDraft((current) => ({
+          ...current,
+          scope: value as ReportScope,
+          companyId: value === "global" ? "" : current.companyId,
+        }))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="global">Global workspace</SelectItem>
+            <SelectItem value="company">Company</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Cadence">
+        <Select value={scheduleDraft.cadence} onValueChange={(value) => setScheduleDraft((current) => ({
+          ...current,
+          cadence: value as ReportCadence,
+        }))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CADENCE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      {scheduleDraft.scope === "company" ? (
+        <Field label="Company">
+          <Select
+            value={scheduleDraft.companyId}
+            onValueChange={(value) => setScheduleDraft((current) => ({ ...current, companyId: String(value) }))}
+          >
+            <SelectTrigger><SelectValue placeholder="Select company" /></SelectTrigger>
+            <SelectContent>
+              {companies.map((company) => (
+                <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      ) : <ReadOnlyField label="Company" value="All companies" />}
+    </>
+  );
+}
 
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void createSchedule()} disabled={saving || scheduleNeedsCompany || scheduleRecipients.length === 0}>
-                  {saving ? "Creating..." : "Create schedule"}
-                </Button>
-                <Button variant="ghost" onClick={() => setScheduleDraft(EMPTY_SCHEDULE_DRAFT)} disabled={saving}>
-                  Reset
-                </Button>
-              </div>
-
-              <RecipientHint count={scheduleRecipients.length} />
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border-border/70">
-            <CardHeader className="border-b pb-4">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div>
-                  <CardTitle>Scheduled reports</CardTitle>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <div className="relative min-w-64">
-                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input value={scheduleSearch} onChange={(event) => setScheduleSearch(event.target.value)} placeholder="Search schedule or recipient" className="pl-9" />
-                  </div>
-                  <Select value={scheduleFilter} onValueChange={(value) => setScheduleFilter(value as ScheduleFilter)}>
-                    <SelectTrigger className="min-w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All schedules</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="paused">Paused</SelectItem>
-                      <SelectItem value="failed">Failed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-4 pt-5">
-              {loading ? (
-                <p className="text-sm text-muted-foreground">Loading report schedules...</p>
-              ) : filteredSchedules.length === 0 ? (
-                <BuilderEmptyState
-                  title={scheduleSearch.trim() || scheduleFilter !== "all" ? "No schedules match these filters" : "No report schedules yet"}
-                  description={scheduleSearch.trim() || scheduleFilter !== "all" ? "Change the search or status filter." : "Create a schedule to send reports automatically."}
-                />
-              ) : (
-                filteredSchedules.map((schedule) => (
-                  <ScheduleCard
-                    key={schedule.id}
-                    schedule={schedule}
-                    saving={saving}
-                    onToggle={() => void toggleSchedule(schedule)}
-                    onSendNow={() => void sendScheduleNow(schedule.id)}
-                    onEdit={() => loadScheduleIntoBuilder(schedule)}
-                    onDuplicate={() => void duplicateSchedule(schedule)}
-                    onDelete={() => setScheduleToDelete(schedule)}
-                  />
-                ))
-              )}
-            </CardContent>
-          </Card>
-            </>
-          )}
+function ScheduleDeliveryFields({ state }: { state: ReturnType<typeof useReportsPageState> }) {
+  const { scheduleDraft, setScheduleDraft } = state;
+  return (
+    <>
+      <Field label="Recipients">
+        <Textarea
+          rows={3}
+          value={scheduleDraft.recipients}
+          onChange={(event) => setScheduleDraft((current) => ({ ...current, recipients: event.target.value }))}
+          placeholder="alerts@company.com, leadership@company.com"
+        />
+      </Field>
+      <Field label="First run">
+        <Input
+          type="datetime-local"
+          value={scheduleDraft.nextRunAt}
+          onChange={(event) => setScheduleDraft((current) => ({ ...current, nextRunAt: event.target.value }))}
+        />
+      </Field>
+      <div className="border-y py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Auto-send</p>
+            <p className="mt-1 text-xs text-muted-foreground">Send reports when this schedule is due.</p>
+          </div>
+          <Switch
+            aria-label="Auto-send report"
+            checked={scheduleDraft.isActive}
+            onCheckedChange={(value) => setScheduleDraft((current) => ({ ...current, isActive: value }))}
+          />
         </div>
-
-      <Dialog open={scheduleToDelete !== null} onOpenChange={(open) => !open && setScheduleToDelete(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete report schedule?</DialogTitle>
-            <DialogDescription>
-              “{scheduleToDelete?.name}” will stop running and its schedule record will be permanently removed.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setScheduleToDelete(null)} disabled={saving}>Cancel</Button>
-            <Button
-              variant="destructive"
-              disabled={saving || !scheduleToDelete}
-              onClick={() => {
-                if (!scheduleToDelete) return;
-                const scheduleId = scheduleToDelete.id;
-                setScheduleToDelete(null);
-                void deleteSchedule(scheduleId);
-              }}
-            >
-              Delete schedule
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       </div>
+    </>
+  );
+}
+
+function ScheduleBuilderActions({
+  disabled,
+  saving,
+  onCreate,
+  onReset,
+}: {
+  disabled: boolean;
+  saving: boolean;
+  onCreate: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button onClick={onCreate} disabled={saving || disabled}>
+        {saving ? "Creating..." : "Create schedule"}
+      </Button>
+      <Button variant="ghost" onClick={onReset} disabled={saving}>Reset</Button>
+    </div>
+  );
+}
+
+function ScheduledReportsList({ state }: { state: ReturnType<typeof useReportsPageState> }) {
+  const {
+    duplicateSchedule, filteredSchedules, loadScheduleIntoBuilder, loading, saving, scheduleFilter,
+    scheduleSearch, sendScheduleNow, setScheduleFilter, setScheduleSearch, setScheduleToDelete, toggleSchedule,
+  } = state;
+  const hasFilters = Boolean(scheduleSearch.trim()) || scheduleFilter !== "all";
+  return (
+    <Card className="overflow-hidden border-border/70">
+      <CardHeader className="border-b pb-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <CardTitle>Scheduled reports</CardTitle>
+          <ScheduleFilters filter={scheduleFilter} search={scheduleSearch} setFilter={setScheduleFilter} setSearch={setScheduleSearch} />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-5">
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading report schedules...</p>
+        ) : filteredSchedules.length === 0 ? (
+          <BuilderEmptyState
+            title={hasFilters ? "No schedules match these filters" : "No report schedules yet"}
+            description={hasFilters ? "Change the search or status filter." : "Create a schedule to send reports automatically."}
+          />
+        ) : filteredSchedules.map((schedule) => (
+          <ScheduleCard
+            key={schedule.id}
+            schedule={schedule}
+            saving={saving}
+            onToggle={() => void toggleSchedule(schedule)}
+            onSendNow={() => void sendScheduleNow(schedule.id)}
+            onEdit={() => loadScheduleIntoBuilder(schedule)}
+            onDuplicate={() => void duplicateSchedule(schedule)}
+            onDelete={() => setScheduleToDelete(schedule)}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScheduleFilters({
+  filter,
+  search,
+  setFilter,
+  setSearch,
+}: {
+  filter: ScheduleFilter;
+  search: string;
+  setFilter: (filter: ScheduleFilter) => void;
+  setSearch: (search: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="relative min-w-64">
+        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search schedule or recipient" className="pl-9" />
+      </div>
+      <Select value={filter} onValueChange={(value) => setFilter(value as ScheduleFilter)}>
+        <SelectTrigger className="min-w-40"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All schedules</SelectItem>
+          <SelectItem value="active">Active</SelectItem>
+          <SelectItem value="paused">Paused</SelectItem>
+          <SelectItem value="failed">Failed</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -949,16 +677,6 @@ function TemplateStrip({
   );
 }
 
-type ReportDeliveryDraft = Pick<
-  DraftReport,
-  | "deliveryDetailLevel"
-  | "includeOutageSummary"
-  | "includeMonitorBreakdown"
-  | "emailSubjectTemplate"
-  | "emailIntroTemplate"
-  | "reportBrandName"
->;
-
 function ReportDeliveryComposer({
   template,
   draft,
@@ -985,81 +703,101 @@ function ReportDeliveryComposer({
   });
 
   return (
-    <div>
-      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <Field label="Detail level">
-            <Select
-              value={draft.deliveryDetailLevel}
-              onValueChange={(value) =>
-                onChange({ deliveryDetailLevel: value as ReportDeliveryDraft["deliveryDetailLevel"] })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="summary">Summary</SelectItem>
-                <SelectItem value="standard">Standard</SelectItem>
-                <SelectItem value="full">Full</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <div className="divide-y border-y">
-            <div className="border-l-2 border-border px-3 py-1">
-              <p className="text-xs font-semibold">HTML delivery</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Scheduled and manual deliveries include one browser-ready HTML report.
-              </p>
-            </div>
-            <CompactToggle
-              label="Failures"
-              checked={draft.includeOutageSummary}
-              onChange={(includeOutageSummary) => onChange({ includeOutageSummary })}
-            />
-            <CompactToggle
-              label="Breakdown"
-              checked={draft.includeMonitorBreakdown}
-              onChange={(includeMonitorBreakdown) => onChange({ includeMonitorBreakdown })}
-            />
-          </div>
+    <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+      <ReportPackageOptions draft={draft} onChange={onChange} />
+      <ReportEmailOptions draft={draft} subjectPreview={subjectPreview} onChange={onChange} />
+    </div>
+  );
+}
+
+function ReportPackageOptions({
+  draft,
+  onChange,
+}: {
+  draft: ReportDeliveryDraft;
+  onChange: (patch: Partial<ReportDeliveryDraft>) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <Field label="Detail level">
+        <Select
+          value={draft.deliveryDetailLevel}
+          onValueChange={(value) => onChange({
+            deliveryDetailLevel: value as ReportDeliveryDraft["deliveryDetailLevel"],
+          })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="summary">Summary</SelectItem>
+            <SelectItem value="standard">Standard</SelectItem>
+            <SelectItem value="full">Full</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      <div className="divide-y border-y">
+        <div className="border-l-2 border-border px-3 py-1">
+          <p className="text-xs font-semibold">HTML delivery</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Scheduled and manual deliveries include one browser-ready HTML report.
+          </p>
         </div>
-        <div className="space-y-4">
-          <Field label="Brand / sender name">
-            <Input
-              value={draft.reportBrandName}
-              onChange={(event) => onChange({ reportBrandName: event.target.value })}
-              placeholder="Your organization"
-            />
-            <p className="text-xs leading-5 text-muted-foreground">
-              Replaces Sentrovia in the email header, attached report, and default subject prefix.
-            </p>
-          </Field>
-          <Field label="Email subject template">
-            <Input
-              value={draft.emailSubjectTemplate}
-              onChange={(event) => onChange({ emailSubjectTemplate: event.target.value })}
-              placeholder="[{brand} Report] {title} - {health_status}"
-            />
-            <p className="text-xs leading-5 text-muted-foreground">
-              Leave blank to use the default subject. Add a template to replace the complete subject, including the report prefix.
-            </p>
-          </Field>
-          <div className="border-l-2 border-sky-500 px-4 py-2">
-            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
-              Email subject preview
-            </p>
-            <p className="mt-1 break-words text-sm font-medium text-foreground">{subjectPreview}</p>
-          </div>
-          <TemplateEditor
-            label="Email intro template"
-            hint="Tokens: {title}, {brand}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {failure_rate}, {failures}, {down_now}, {p95_latency}"
-            rows={4}
-            value={draft.emailIntroTemplate}
-            onChange={(emailIntroTemplate) => onChange({ emailIntroTemplate })}
-          />
-        </div>
+        <CompactToggle
+          label="Failures"
+          checked={draft.includeOutageSummary}
+          onChange={(includeOutageSummary) => onChange({ includeOutageSummary })}
+        />
+        <CompactToggle
+          label="Breakdown"
+          checked={draft.includeMonitorBreakdown}
+          onChange={(includeMonitorBreakdown) => onChange({ includeMonitorBreakdown })}
+        />
       </div>
+    </div>
+  );
+}
+
+function ReportEmailOptions({
+  draft,
+  subjectPreview,
+  onChange,
+}: {
+  draft: ReportDeliveryDraft;
+  subjectPreview: string;
+  onChange: (patch: Partial<ReportDeliveryDraft>) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <Field label="Brand / sender name">
+        <Input
+          value={draft.reportBrandName}
+          onChange={(event) => onChange({ reportBrandName: event.target.value })}
+          placeholder="Your organization"
+        />
+        <p className="text-xs leading-5 text-muted-foreground">
+          Replaces Sentrovia in the email header, attached report, and default subject prefix.
+        </p>
+      </Field>
+      <Field label="Email subject template">
+        <Input
+          value={draft.emailSubjectTemplate}
+          onChange={(event) => onChange({ emailSubjectTemplate: event.target.value })}
+          placeholder="[{brand} Report] {title} - {health_status}"
+        />
+        <p className="text-xs leading-5 text-muted-foreground">
+          Leave blank to use the default subject. Add a template to replace the complete subject, including the report prefix.
+        </p>
+      </Field>
+      <div className="border-l-2 border-sky-500 px-4 py-2">
+        <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Email subject preview</p>
+        <p className="mt-1 break-words text-sm font-medium text-foreground">{subjectPreview}</p>
+      </div>
+      <TemplateEditor
+        label="Email intro template"
+        hint="Tokens: {title}, {brand}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {failure_rate}, {failures}, {down_now}, {p95_latency}"
+        rows={4}
+        value={draft.emailIntroTemplate}
+        onChange={(emailIntroTemplate) => onChange({ emailIntroTemplate })}
+      />
     </div>
   );
 }
@@ -1276,384 +1014,4 @@ function DetailBlock({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 text-sm leading-5 [overflow-wrap:anywhere]">{value}</dd>
     </div>
   );
-}
-
-function ReportPreviewPanel({
-  report,
-  onExportHtml,
-}: {
-  report: GeneratedReport;
-  onExportHtml: () => void;
-}) {
-  const maxFailureCount = Math.max(1, ...report.failingMonitors.map((monitor) => monitor.failures));
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="border-b bg-muted/20">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <CardTitle>{report.title}</CardTitle>
-              <CardDescription>
-                {report.periodLabel} / Generated {new Date(report.generatedAt).toLocaleString()}
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs text-muted-foreground">{report.templateLabel} / {report.workspaceName}</span>
-              <Button variant="outline" size="sm" onClick={onExportHtml}>
-                <Download className="mr-2 h-4 w-4" />
-                Download HTML
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-5">
-          <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
-            <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} tone={healthScoreTone(report.summary.healthScore)} />
-            <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} tone="text-sky-600 dark:text-sky-400" />
-            <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={uptimeTone(report.summary.uptimePct, report.summary.hasCompletedChecks)} />
-            <PreviewMetric label="P95 latency" value={formatReportP95Latency(report.summary)} detail={report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} avg` : "no latency samples"} tone={report.summary.hasLatencySamples ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"} />
-            <PreviewMetric label="Failure events" value={String(report.summary.failureEvents)} detail="confirmed down checks" tone={riskCountTone(report.summary.failureEvents)} />
-            <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failure events" tone={riskCountTone(report.summary.impactedMonitors)} />
-            <PreviewMetric label="Failure rate" value={formatReportFailureRate(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={failureRateTone(report.summary.failureRatePct, report.summary.hasCompletedChecks)} />
-          </dl>
-
-          <dl className="grid border-y md:grid-cols-3 md:divide-x">
-            <StateChip tone="emerald" label="Up now" value={String(report.summary.currentlyUp)} />
-            <StateChip tone="rose" label="Down now" value={String(report.summary.currentlyDown)} />
-            <StateChip tone="amber" label="Pending now" value={String(report.summary.currentlyPending)} />
-          </dl>
-
-        </CardContent>
-      </Card>
-
-      <section className="border-y py-4">
-        <div>
-          <h3 className="flex items-center gap-2 text-base font-medium">
-            <ScanLine className="size-4 text-sky-600 dark:text-sky-400" />
-            Report findings
-          </h3>
-        </div>
-        <div className="divide-y pt-3">
-          {report.recommendations.map((item, index) => (
-            <div key={`${item}-${index}`} className="py-3 first:pt-0 last:pb-0">
-              <p className="text-sm leading-6">{item}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="overflow-hidden border-border/70">
-          <CardHeader className="border-b bg-muted/10">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TriangleAlert className="size-4 text-rose-600 dark:text-rose-400" />
-              Top failing monitors
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="divide-y pt-4">
-            {report.failingMonitors.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No failures during the selected period.</p>
-            ) : (
-              report.failingMonitors.map((monitor) => (
-                <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {monitor.lastFailureAt ? `Last failure ${new Date(monitor.lastFailureAt).toLocaleString()}` : "No timestamp recorded"}
-                      </p>
-                    </div>
-                    <span className="text-xs font-medium text-muted-foreground">{monitor.failures} failures</span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full bg-rose-500" style={{ width: `${Math.max(10, (monitor.failures / maxFailureCount) * 100)}%` }} />
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden border-border/70">
-          <CardHeader className="border-b bg-muted/10">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Gauge className="size-4 text-amber-600 dark:text-amber-400" />
-              Latency watchlist
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="divide-y pt-4">
-            {report.slowMonitors.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No latency samples for this period.</p>
-            ) : (
-              report.slowMonitors.map((monitor) => (
-                <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
-                    </div>
-                    <span className="text-xs font-medium text-muted-foreground">{monitor.averageLatencyMs}ms avg</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <section className="border-y py-4">
-        <div>
-          <h3 className="flex items-center gap-2 text-base font-medium">
-            <TriangleAlert className="size-4 text-rose-600 dark:text-rose-400" />
-            Recent failure events
-          </h3>
-          <p className="text-sm text-muted-foreground">Latest failures included in the report.</p>
-        </div>
-        <div className="divide-y pt-3">
-          {report.recentFailures.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No failure events during the selected period.</p>
-          ) : (
-            report.recentFailures.map((event) => (
-              <div key={`${event.monitorId}-${event.createdAt}`} className="py-4 first:pt-0 last:pb-0">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <p className="text-sm font-medium [overflow-wrap:anywhere]">{event.url}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      {new Date(event.createdAt).toLocaleString()} / HTTP {event.statusCode ?? "N/A"}
-                    </p>
-                  </div>
-                  <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                    {event.detail}
-                  </p>
-                </div>
-              </div>
-
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="border-y py-4">
-        <div>
-          <h3 className="flex items-center gap-2 text-base font-medium">
-            <Activity className="size-4 text-emerald-600 dark:text-emerald-400" />
-            Monitor breakdown
-          </h3>
-          <p className="text-sm text-muted-foreground">Ranked by failures, then average latency.</p>
-        </div>
-        <div className="divide-y pt-3">
-          {report.monitorBreakdown.map((monitor) => (
-            <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {monitor.companyName ?? "No company"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Status {monitor.status} / HTTP {monitor.currentStatusCode ?? "N/A"} / {monitor.failures} failures
-                  </p>
-                  {monitor.lastErrorMessage ? (
-                    <p className="mt-2 text-xs leading-5 text-destructive">{monitor.lastErrorMessage}</p>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>Uptime {formatMonitorUptime(monitor)}</span>
-                  <span>Avg latency {formatMonitorAverageLatency(monitor)}</span>
-                  <span>P95 {formatMonitorP95Latency(monitor)}</span>
-                  <span>Last checked {monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : "N/A"}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function PreviewMetric({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
-  return (
-    <div className="border-b px-4 py-3 last:border-b-0 xl:[&:nth-last-child(-n+3)]:border-b-0">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-2 text-xl font-semibold tracking-tight", tone)}>{value}</dd>
-      {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
-    </div>
-  );
-}
-
-function healthScoreTone(score: number) {
-  if (score >= 90) return "text-emerald-600 dark:text-emerald-400";
-  if (score >= 70) return "text-amber-600 dark:text-amber-400";
-  return "text-rose-600 dark:text-rose-400";
-}
-
-function uptimeTone(uptimePct: number, hasCompletedChecks: boolean) {
-  if (!hasCompletedChecks) return "text-muted-foreground";
-  if (uptimePct >= 99) return "text-emerald-600 dark:text-emerald-400";
-  if (uptimePct >= 95) return "text-amber-600 dark:text-amber-400";
-  return "text-rose-600 dark:text-rose-400";
-}
-
-function riskCountTone(count: number) {
-  return count > 0
-    ? "text-rose-600 dark:text-rose-400"
-    : "text-emerald-600 dark:text-emerald-400";
-}
-
-function failureRateTone(rate: number, hasCompletedChecks: boolean) {
-  if (!hasCompletedChecks) return "text-muted-foreground";
-  if (rate === 0) return "text-emerald-600 dark:text-emerald-400";
-  if (rate < 5) return "text-amber-600 dark:text-amber-400";
-  return "text-rose-600 dark:text-rose-400";
-}
-
-function StateChip({
-  tone,
-  label,
-  value,
-}: {
-  tone: "emerald" | "rose" | "amber";
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="border-b px-4 py-3 last:border-b-0 md:border-b-0">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-2 text-lg font-semibold", tone === "emerald" && "text-emerald-500", tone === "rose" && "text-rose-500", tone === "amber" && "text-amber-500")}>{value}</dd>
-    </div>
-  );
-}
-
-function filterSchedules(schedules: ReportScheduleRecord[], query: string, filter: ScheduleFilter) {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  return schedules.filter((schedule) => {
-    const matchesQuery =
-      normalizedQuery.length === 0 ||
-      [schedule.name, schedule.companyName ?? "", schedule.recipientEmails.join(" ")]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
-
-    if (!matchesQuery) {
-      return false;
-    }
-
-    if (filter === "active") {
-      return schedule.isActive;
-    }
-
-    if (filter === "paused") {
-      return !schedule.isActive;
-    }
-
-    if (filter === "failed") {
-      return schedule.lastStatus === "failed";
-    }
-
-    return true;
-  });
-}
-
-function buildScheduleName(scope: ReportScope, cadence: ReportCadence, companyId: string, companies: CompanyRecord[]) {
-  const cadenceLabel = getCadenceLabel(cadence);
-
-  return buildScopedReportName(scope, companyId, companies, cadenceLabel);
-}
-
-function buildDraftReportTitle(scope: ReportScope, cadence: ReportCadence, companyId: string, companies: CompanyRecord[]) {
-  const periodLabel = cadence === "weekly" ? "Weekly" : "7-Day";
-
-  return buildScopedReportName(scope, companyId, companies, periodLabel);
-}
-
-function buildScopedReportName(scope: ReportScope, companyId: string, companies: CompanyRecord[], prefix: string) {
-
-  if (scope !== "company") {
-    return `${prefix} Workspace Report`;
-  }
-
-  const company = companies.find((item) => item.id === companyId);
-  return company ? `${prefix} ${company.name} Report` : `${prefix} Company Report`;
-}
-
-function resolveDraftScopeLabel(
-  draft: Pick<DraftReport, "scope" | "companyId">,
-  companies: CompanyRecord[]
-) {
-  if (draft.scope !== "company") {
-    return "Workspace";
-  }
-
-  return companies.find((company) => company.id === draft.companyId)?.name ?? "Company";
-}
-
-function resolveDraftPeriodLabel() {
-  return "Last 7 days";
-}
-
-function getCadenceLabel(cadence: ReportCadence) {
-  return normalizeCadence(cadence) === "weekly" ? "Weekly" : "Monthly";
-}
-
-function normalizeCadence(cadence: ReportCadence): Exclude<ReportCadence, "all_time"> {
-  return cadence === "weekly" ? "weekly" : "monthly";
-}
-
-function buildReportDeliveryPayload(draft: ReportDeliveryDraft) {
-  return {
-    deliveryDetailLevel: draft.deliveryDetailLevel,
-    includeOutageSummary: draft.includeOutageSummary,
-    includeMonitorBreakdown: draft.includeMonitorBreakdown,
-    emailSubjectTemplate: draft.emailSubjectTemplate.trim() || null,
-    emailIntroTemplate: draft.emailIntroTemplate.trim() || null,
-    reportBrandName: draft.reportBrandName.trim() || null,
-  };
-}
-
-function buildSchedulePackageLabel(schedule: ReportScheduleRecord) {
-  return `${schedule.deliveryDetailLevel} / HTML`;
-}
-
-function getScheduleDeliveryStatusLabel(schedule: ReportScheduleRecord) {
-  if (schedule.lastStatus === "running") {
-    return schedule.lastRunAt
-      ? `Sending since ${new Date(schedule.lastRunAt).toLocaleString()}`
-      : "Sending";
-  }
-
-  if (schedule.lastStatus === "delivered") {
-    return schedule.lastDeliveredAt
-      ? `Delivered at ${new Date(schedule.lastDeliveredAt).toLocaleString()}`
-      : "Delivered";
-  }
-
-  if (schedule.lastStatus === "failed") {
-    return schedule.lastRunAt
-      ? `Failed at ${new Date(schedule.lastRunAt).toLocaleString()}`
-      : "Failed";
-  }
-
-  return "Not sent yet";
-}
-
-function parseRecipients(value: string) {
-  return Array.from(new Set(value.split(/[\n,;]+/).map((item) => item.trim().toLowerCase()).filter(Boolean)));
-}
-
-function toLocalDateTime(value: string) {
-  const date = new Date(value);
-  const timezoneOffsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
-}
-
-function downloadFile(content: string, filename: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
