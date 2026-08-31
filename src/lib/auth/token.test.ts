@@ -6,6 +6,7 @@ const originalAuthSecret = process.env.AUTH_SECRET;
 const originalSessionId = process.env.AUTH_SESSION_ID;
 const testUser: SessionUser = {
   id: "user-1",
+  activeWorkspaceId: "workspace-1",
   firstName: "Test",
   lastName: "Admin",
   email: "admin@example.com",
@@ -27,8 +28,27 @@ describe("session deployment binding", () => {
 
     await expect(verifySessionToken(token)).resolves.toMatchObject({
       id: testUser.id,
+      activeWorkspaceId: "workspace-1",
       role: "admin",
       sessionVersion: 3,
+    });
+  });
+
+  it("keeps legacy sessions readable so the server can resolve their workspace", async () => {
+    process.env.AUTH_SECRET = "a".repeat(64);
+    process.env.AUTH_SESSION_ID = "deployment-one";
+    const token = await createSessionToken({
+      id: testUser.id,
+      firstName: testUser.firstName,
+      lastName: testUser.lastName,
+      email: testUser.email,
+      department: testUser.department,
+      role: testUser.role,
+    });
+
+    await expect(verifySessionToken(token)).resolves.toMatchObject({
+      id: testUser.id,
+      activeWorkspaceId: null,
     });
   });
 

@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
       message: "Password updated successfully.",
     });
 
-    return applySessionCookie(response, await createSessionToken(result.user, result.sessionVersion));
+    return applySessionCookie(response, await createSessionToken({
+      ...result.user,
+      activeWorkspaceId: session.activeWorkspaceId!,
+      role: session.role,
+    }, result.sessionVersion));
   } catch (error) {
     const authError =
       error instanceof AuthError ? error : toAuthError(error, "Unable to change your password right now.");

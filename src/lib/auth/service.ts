@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { count, eq, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, or, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
 import { runBoundedAuthWork } from "@/lib/auth/rate-limit";
 import { recordAuditEventSafely } from "@/lib/audit/service";
@@ -7,7 +7,7 @@ import type { ChangePasswordInput, LoginInput, MemberCreateInput, OnboardingInpu
 import { createSessionToken, type SessionUser, type UserRole } from "@/lib/auth/token";
 import { normalizeUserRole } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { users, userSettings } from "@/lib/db/schema";
+import { users, userSettings, workspaceMembers, workspaces } from "@/lib/db/schema";
 import { getAuthSecret } from "@/lib/env";
 
 const ONBOARDING_ADVISORY_LOCK_KEY = 77_481_307;
@@ -31,6 +31,11 @@ type AuthLoginRecord = AuthSessionRecord & {
 type PasswordRecord = {
   id: string;
   passwordHash: string;
+};
+
+type WorkspaceSessionRecord = AuthSessionRecord & {
+  activeWorkspaceId: string;
+  workspaceRole: string;
 };
 
 type UserCreateExecutor = Pick<typeof db, "insert" | "select">;
@@ -64,18 +69,19 @@ const passwordColumns = {
   passwordHash: users.passwordHash,
 };
 
-function toSessionUser(user: AuthSessionRecord): SessionUser {
+function toSessionUser(user: WorkspaceSessionRecord): SessionUser {
   return {
     id: user.id,
+    activeWorkspaceId: user.activeWorkspaceId,
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
     department: user.department,
-    role: toUserRole(user.role),
+    role: toUserRole(user.workspaceRole),
   };
 }
 
-function toPublicUser(user: AuthSessionRecord): PublicUser {
+function toPublicUser(user: WorkspaceSessionRecord): PublicUser {
   const safeUser = toSessionUser(user);
 
   return {
@@ -109,7 +115,20 @@ export async function createInitialAdmin(input: OnboardingInput) {
       throw new AuthError("Workspace onboarding is already complete.", 409);
     }
 
-    return createUserWithPasswordHash(input, "admin", passwordHash, tx);
+    const user = await createUserWithPasswordHash(input, "admin", passwordHash, tx);
+    const [workspace] = await tx
+      .insert(workspaces)
+      .values({ name: "Sentrovia Workspace" })
+      .returning({ id: workspaces.id });
+    if (!workspace) {
+      throw new AuthError("Unable to create the workspace right now.", 500);
+    }
+    await tx.insert(workspaceMembers).values({
+      workspaceId: workspace.id,
+      userId: user.id,
+      role: "admin",
+    });
+    return withWorkspace(user, workspace.id, "admin");
   });
 
   return {
@@ -118,16 +137,21 @@ export async function createInitialAdmin(input: OnboardingInput) {
   };
 }
 
-export async function createMember(input: Omit<MemberCreateInput, "role"> & { role?: UserRole }) {
+export async function createMember(
+  workspaceId: string,
+  input: Omit<MemberCreateInput, "role"> & { role?: UserRole }
+) {
   ensureAuthRuntimeReady();
   const passwordHash = await runBoundedAuthWork(() => bcrypt.hash(input.password, 12));
   const role = input.role ?? "operator";
-  const createdUser = await db.transaction((tx) =>
-    createUserWithPasswordHash({ ...input, role }, role, passwordHash, tx)
-  );
+  const createdUser = await db.transaction(async (tx) => {
+    const user = await createUserWithPasswordHash({ ...input, role }, role, passwordHash, tx);
+    await tx.insert(workspaceMembers).values({ workspaceId, userId: user.id, role });
+    return user;
+  });
 
   return {
-    user: serializeMember(createdUser),
+    user: serializeMember(createdUser, role),
   };
 }
 
@@ -212,9 +236,15 @@ export async function loginUser(input: LoginInput) {
     throw new AuthError("Invalid email, username, or password.", 401);
   }
 
+  const membership = await findActiveWorkspaceMembership(user.id);
+  if (!membership) {
+    throw new AuthError("This account does not belong to an active workspace.", 403);
+  }
+  const workspaceUser = withWorkspace(user, membership.workspaceId, membership.role);
+
   return {
-    user: toPublicUser(user),
-    token: await createSessionToken(toSessionUser(user), user.sessionVersion),
+    user: toPublicUser(workspaceUser),
+    token: await createSessionToken(toSessionUser(workspaceUser), user.sessionVersion),
   };
 }
 
@@ -265,12 +295,16 @@ export async function changeUserPassword(userId: string, input: ChangePasswordIn
   }
 
   return {
-    user: toSessionUser(updatedUser),
+    user: updatedUser,
     sessionVersion: updatedUser.sessionVersion,
   };
 }
 
-export async function getActiveSessionUser(userId: string, sessionVersion: number) {
+export async function getActiveSessionUser(
+  userId: string,
+  sessionVersion: number,
+  activeWorkspaceId?: string | null
+) {
   const user = await db
     .select(sessionColumns)
     .from(users)
@@ -282,8 +316,13 @@ export async function getActiveSessionUser(userId: string, sessionVersion: numbe
     return null;
   }
 
+  const membership = await findActiveWorkspaceMembership(user.id, activeWorkspaceId);
+  if (!membership) {
+    return null;
+  }
+
   return {
-    ...toSessionUser(user),
+    ...toSessionUser(withWorkspace(user, membership.workspaceId, membership.role)),
     sessionVersion: user.sessionVersion,
   };
 }
@@ -292,14 +331,14 @@ export function isCurrentSessionVersion(tokenVersion: number, userVersion: numbe
   return Number.isInteger(tokenVersion) && tokenVersion === userVersion;
 }
 
-function serializeMember(user: AuthSessionRecord) {
+function serializeMember(user: AuthSessionRecord, role: UserRole) {
   return {
     id: user.id,
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
     department: user.department,
-    role: toUserRole(user.role),
+    role,
     username: user.username,
     organization: null,
     jobTitle: null,
@@ -309,4 +348,26 @@ function serializeMember(user: AuthSessionRecord) {
 
 function toUserRole(role: string): UserRole {
   return normalizeUserRole(role);
+}
+
+function withWorkspace(user: AuthSessionRecord, activeWorkspaceId: string, role: string): WorkspaceSessionRecord {
+  return {
+    ...user,
+    activeWorkspaceId,
+    workspaceRole: role,
+  };
+}
+
+async function findActiveWorkspaceMembership(userId: string, workspaceId?: string | null) {
+  const membershipFilter = workspaceId
+    ? and(eq(workspaceMembers.userId, userId), eq(workspaceMembers.workspaceId, workspaceId))
+    : eq(workspaceMembers.userId, userId);
+
+  return db
+    .select({ workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
+    .from(workspaceMembers)
+    .where(membershipFilter)
+    .orderBy(asc(workspaceMembers.createdAt))
+    .limit(1)
+    .then((rows) => rows[0]);
 }

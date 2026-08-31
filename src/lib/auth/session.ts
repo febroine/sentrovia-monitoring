@@ -17,7 +17,11 @@ export const getSession = cache(async (): Promise<VersionedSessionPayload | null
     return null;
   }
 
-  return getActiveSessionUser(tokenPayload.id, tokenPayload.sessionVersion);
+  return getActiveSessionUser(
+    tokenPayload.id,
+    tokenPayload.sessionVersion,
+    tokenPayload.activeWorkspaceId
+  );
 });
 
 export function applySessionCookie(response: NextResponse, token: string) {
