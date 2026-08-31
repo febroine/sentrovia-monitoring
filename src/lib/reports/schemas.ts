@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const reportScopeSchema = z.enum(["global", "company"]);
 const reportCadenceSchema = z.enum(["weekly", "monthly", "all_time"]);
+const reportScheduleCadenceSchema = z.enum(["weekly", "monthly"]);
 const reportTemplateSchema = z.enum(["executive", "operations", "client"]);
 const deliveryDetailLevelSchema = z.enum(["summary", "standard", "full"]);
 const companyIdSchema = z.string().trim().max(120).nullable().optional();
@@ -26,6 +27,7 @@ export const reportPreviewSchema = z.object(reportPreviewShape);
 
 export const reportScheduleSchema = z.object({
   ...reportPreviewShape,
+  cadence: reportScheduleCadenceSchema,
   name: z.string().trim().min(3).max(160),
   recipientEmails: recipientEmailsSchema,
   isActive: z.boolean().default(true),
@@ -35,7 +37,7 @@ export const reportScheduleSchema = z.object({
 export const reportSchedulePatchSchema = z.object({
   id: z.string().trim().min(1).optional(),
   scope: reportScopeSchema.optional(),
-  cadence: reportCadenceSchema.optional(),
+  cadence: reportScheduleCadenceSchema.optional(),
   template: reportTemplateSchema.optional(),
   companyId: companyIdSchema,
   deliveryDetailLevel: deliveryDetailLevelSchema.optional(),

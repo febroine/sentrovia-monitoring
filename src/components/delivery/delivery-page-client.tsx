@@ -250,6 +250,12 @@ export function DeliveryPageClient() {
           from: historyDeletionRange === "custom" ? customFrom : undefined,
           to: historyDeletionRange === "custom" ? customTo : undefined,
           timezoneOffsetMinutes: historyDeletionRange === "custom" ? new Date().getTimezoneOffset() : undefined,
+          fromTimezoneOffsetMinutes: historyDeletionRange === "custom"
+            ? getLocalCalendarBoundaryOffset(customFrom)
+            : undefined,
+          toExclusiveTimezoneOffsetMinutes: historyDeletionRange === "custom"
+            ? getLocalCalendarBoundaryOffset(customTo, 1)
+            : undefined,
         }),
       });
       const data = await readJsonOrNull<{ count?: number; overview?: DeliveryOverview; message?: string }>(response);
@@ -591,6 +597,12 @@ export function DeliveryPageClient() {
       </Dialog>
     </div>
   );
+}
+
+function getLocalCalendarBoundaryOffset(value: string, dayOffset = 0) {
+  const [year, month, day] = value.split("-").map(Number);
+  const boundary = new Date(year, month - 1, day + dayOffset);
+  return Number.isNaN(boundary.getTime()) ? undefined : boundary.getTimezoneOffset();
 }
 
 function normalizeOverview(value: DeliveryOverview | undefined): DeliveryOverview {

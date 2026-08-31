@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken } from "@/lib/auth/token";
-import { applySessionCookie, getSession } from "@/lib/auth/session";
+import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission, hasPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
@@ -17,7 +17,10 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const settings = await getSettings(session.id);
+    const settings = await getSettings(
+      session.id,
+      hasPermission(session.role, "settings.manage")
+    );
     return NextResponse.json({ settings });
   } catch (error) {
     const authError = toAuthError(error, "Unable to load settings right now.");
@@ -32,6 +35,7 @@ export async function PATCH(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "settings.manage");
 
     const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
     const parsed = settingsSchema.safeParse(body);
@@ -51,22 +55,7 @@ export async function PATCH(request: NextRequest) {
       action: "settings.updated",
       summary: "Workspace settings were updated.",
     });
-    const response = NextResponse.json({ settings });
-
-    return applySessionCookie(
-      response,
-      await createSessionToken(
-        {
-          id: session.id,
-          firstName: parsed.data.profile.firstName,
-          lastName: parsed.data.profile.lastName,
-          email: parsed.data.profile.email,
-          department: parsed.data.profile.department || null,
-          role: session.role,
-        },
-        session.sessionVersion
-      )
-    );
+    return NextResponse.json({ settings });
   } catch (error) {
     const authError = toAuthError(error, "Unable to save settings right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

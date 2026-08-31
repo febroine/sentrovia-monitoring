@@ -16,4 +16,8 @@ describe("report schemas", () => {
     const parsed = reportSchedulePatchSchema.parse({ includeOutageSummary: false });
     expect(parsed.includeOutageSummary).toBe(false);
   });
+
+  it("rejects non-recurring all-time cadence for report schedules", () => {
+    expect(reportSchedulePatchSchema.safeParse({ cadence: "all_time" }).success).toBe(false);
+  });
 });

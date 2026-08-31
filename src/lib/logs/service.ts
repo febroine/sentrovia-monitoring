@@ -11,7 +11,6 @@ const WORKER_NOTIFICATION_MARKER_EVENTS: string[] = [...HIDDEN_NOTIFICATION_MARK
 const WARNING_EVENT_TYPES = ["ssl-expiry", "latency", "status-change"];
 const NON_ERROR_EVENT_TYPES = ["failure", "recovery", "check", ...WARNING_EVENT_TYPES];
 const LOG_LEVEL_FILTERS = new Set(["all", "info", "warning", "error", "critical"]);
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function mapEventToLevel(eventType: string, status: string | null): LogLevel {
   if (eventType === "check") return "info";
@@ -33,6 +32,8 @@ export async function listLogs(
     to?: string;
     statusCode?: string;
     timezoneOffsetMinutes?: number;
+    fromTimezoneOffsetMinutes?: number;
+    toExclusiveTimezoneOffsetMinutes?: number;
     page?: number;
     pageSize?: number;
   }
@@ -45,9 +46,16 @@ export async function listLogs(
   const monitorConditions = [eq(monitors.userId, userId), isNull(monitors.deletedAt)];
 
   const timezoneOffsetMinutes = normalizeTimezoneOffset(filters.timezoneOffsetMinutes);
-  const fromDate = parseDateFilter(filters.from, timezoneOffsetMinutes);
+  const fromDate = parseDateFilter(
+    filters.from,
+    normalizeTimezoneOffset(filters.fromTimezoneOffsetMinutes ?? timezoneOffsetMinutes)
+  );
   const toDate = parseDateFilter(filters.to, timezoneOffsetMinutes);
-  if (fromDate && toDate && fromDate > toDate) {
+  const bothCalendarDates = isCalendarDateInput(filters.from) && isCalendarDateInput(filters.to);
+  const rangeReversed = bothCalendarDates
+    ? filters.from!.trim() > filters.to!.trim()
+    : Boolean(fromDate && toDate && fromDate > toDate);
+  if (rangeReversed) {
     throw new AuthError("The log start date must not be after the end date.", 400);
   }
 
@@ -58,7 +66,14 @@ export async function listLogs(
 
   if (toDate) {
     if (isCalendarDateInput(filters.to)) {
-      const toExclusive = new Date(toDate.getTime() + DAY_MS);
+      const toExclusive = resolveCalendarDateBoundary(
+        filters.to!,
+        normalizeTimezoneOffset(filters.toExclusiveTimezoneOffsetMinutes ?? timezoneOffsetMinutes),
+        1
+      );
+      if (!toExclusive) {
+        throw new AuthError("Enter a valid log date.", 400);
+      }
       conditions.push(lt(monitorEvents.createdAt, toExclusive));
       monitorConditions.push(lt(monitors.lastCheckedAt, toExclusive));
     } else {
@@ -230,6 +245,23 @@ function parseCalendarDateInput(value: string, timezoneOffsetMinutes: number) {
 
 function isCalendarDateInput(value: string | undefined) {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()));
+}
+
+export function resolveCalendarDateBoundary(
+  value: string,
+  timezoneOffsetMinutes: number,
+  dayOffset = 0
+) {
+  return parseDateFilter(
+    dayOffset === 0 ? value : shiftCalendarDate(value, dayOffset),
+    timezoneOffsetMinutes
+  );
+}
+
+function shiftCalendarDate(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function normalizeTimezoneOffset(value: number | undefined) {

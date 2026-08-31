@@ -11,12 +11,12 @@ import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/use-settings-store";
 
 export default function ProfilePage() {
-  const { settings, loading, saving, error, message, loadSettings, saveSettings, updateSetting } =
+  const { settings, loading, saving, error, message, loadProfile, saveProfile, updateSetting } =
     useSettingsStore();
 
   useEffect(() => {
-    void loadSettings();
-  }, [loadSettings]);
+    void loadProfile();
+  }, [loadProfile]);
 
   return (
     <div className="w-full">
@@ -33,7 +33,7 @@ export default function ProfilePage() {
         <ProfileTabs
           settings={settings}
           saving={saving}
-          onSave={() => void saveSettings()}
+          onSave={() => void saveProfile()}
           onUpdate={updateSetting}
         />
       )}

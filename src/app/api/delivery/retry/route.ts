@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { getDeliveryOverview, retryDeliveryEvent, retryDeliveryQueue } from "@/lib/delivery/service";
 import { assertSameOriginMutation } from "@/lib/http/json-body";
 
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "delivery.manage");
 
     const eventId = new URL(request.url).searchParams.get("eventId");
     if (eventId !== null) {

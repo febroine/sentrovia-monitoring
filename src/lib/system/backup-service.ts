@@ -383,7 +383,7 @@ async function remapReportScheduleCompanies(
         : {
             companyId: null,
             isActive: false,
-            lastStatus: "error",
+            lastStatus: "failed",
             lastErrorMessage: "The assigned company was not included in the restored backup.",
             updatedAt: new Date(),
           })

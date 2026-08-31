@@ -9,6 +9,7 @@ import {
 } from "@/lib/db/schema";
 import { env, getMetricsAuthToken } from "@/lib/env";
 import { WORKER_STATE_ID } from "@/lib/worker/constants";
+import { getHeartbeatAgeMs, isHeartbeatCurrent } from "@/lib/worker/heartbeat";
 
 const MONITOR_STATUSES = ["up", "down", "pending"] as const;
 const DELIVERY_STATUSES = ["pending", "retrying", "processing", "delivered", "failed"] as const;
@@ -79,9 +80,7 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
       )),
   ]);
   const worker = workerRows[0];
-  const heartbeatAgeSeconds = worker?.heartbeatAt
-    ? Math.max(0, (now.getTime() - worker.heartbeatAt.getTime()) / 1000)
-    : 0;
+  const heartbeatAgeSeconds = (getHeartbeatAgeMs(worker?.heartbeatAt, now) ?? 0) / 1000;
   const staleThresholdSeconds = Math.max(env.workerPollIntervalMs * 6, 180_000) / 1000;
   const backup = backupRows[0];
   const successfulBackup = successfulBackupRows[0];
@@ -107,9 +106,7 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
 }
 
 export function isWorkerHeartbeatCurrent(heartbeatAt: Date | null | undefined, now: Date, thresholdSeconds: number) {
-  if (!heartbeatAt) return false;
-  const ageSeconds = Math.max(0, (now.getTime() - heartbeatAt.getTime()) / 1000);
-  return ageSeconds <= thresholdSeconds;
+  return isHeartbeatCurrent(heartbeatAt, now, thresholdSeconds * 1000);
 }
 
 export function renderPrometheusMetrics(snapshot: PrometheusSnapshot) {

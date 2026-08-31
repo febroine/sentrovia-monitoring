@@ -22,16 +22,20 @@ export function serializeMonitorRecord<
     heartbeatTokenHash?: unknown;
     telegramBotToken?: unknown;
   }
->(monitor: T) {
+>(monitor: T, includeSecrets = true) {
   const serialized = serializeMonitorDates(monitor);
   const safeMonitor = { ...serialized };
   delete safeMonitor.databasePasswordEncrypted;
   delete safeMonitor.heartbeatTokenHash;
   if (typeof safeMonitor.heartbeatToken === "string") {
-    safeMonitor.heartbeatToken = decryptValueOrLegacyPlaintext(safeMonitor.heartbeatToken);
+    safeMonitor.heartbeatToken = includeSecrets
+      ? decryptValueOrLegacyPlaintext(safeMonitor.heartbeatToken)
+      : null;
   }
   if (typeof safeMonitor.telegramBotToken === "string") {
-    safeMonitor.telegramBotToken = decryptValueOrLegacyPlaintext(safeMonitor.telegramBotToken);
+    safeMonitor.telegramBotToken = includeSecrets
+      ? decryptValueOrLegacyPlaintext(safeMonitor.telegramBotToken)
+      : null;
   }
 
   return {

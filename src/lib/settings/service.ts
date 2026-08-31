@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db, sql, type DatabaseExecutor } from "@/lib/db";
-import { monitors, userSettings, users } from "@/lib/db/schema";
+import { monitors, userSettings } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
 import {
@@ -244,7 +244,10 @@ function dateOrNull(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export async function getSettings(userId: string): Promise<SettingsPayload | null> {
+export async function getSettings(
+  userId: string,
+  includeSensitiveConfig = true
+): Promise<SettingsPayload | null> {
   const [user, settings] = await Promise.all([readUserCompat(userId), readUserSettingsCompat(userId)]);
   if (!user) return null;
   const notificationLanguage = languageOrDefault(settings?.notificationLanguage);
@@ -305,9 +308,9 @@ export async function getSettings(userId: string): Promise<SettingsPayload | nul
         settings?.smtpInsecureSkipVerify,
         DEFAULT_SETTINGS.notifications.smtpInsecureSkipVerify
       ),
-      discordWebhookUrl: decryptValueOrLegacyPlaintext(
-        stringOrEmpty(settings?.discordWebhookUrl)
-      ) ?? "",
+      discordWebhookUrl: includeSensitiveConfig
+        ? decryptValueOrLegacyPlaintext(stringOrEmpty(settings?.discordWebhookUrl)) ?? ""
+        : "",
       discordEnabled: booleanOrDefault(settings?.discordEnabled, DEFAULT_SETTINGS.notifications.discordEnabled),
       notificationEmailBrandName: stringOrEmpty(settings?.notificationEmailBrandName)
         || DEFAULT_SETTINGS.notifications.notificationEmailBrandName,
@@ -641,8 +644,7 @@ export async function updateDashboardPreferences(userId: string, input: Dashboar
 }
 
 async function persistSettings(userId: string, input: SettingsInput, executor: DatabaseExecutor) {
-  const [userColumns, settingsColumns, existing] = await Promise.all([
-    getTableColumns("users"),
+  const [settingsColumns, existing] = await Promise.all([
     getTableColumns("user_settings"),
     readUserSettingsCompat(userId),
   ]);
@@ -654,8 +656,6 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
   if (input.publicStatus.enabled) {
     await assertPublicStatusCompanyAvailable(userId, input.publicStatus.companyId, executor);
   }
-
-  await updateUserCompat(executor, userId, input, userColumns);
 
   const encryptedPassword = resolveSmtpPasswordEncrypted(
     input.notifications.smtpPassword,
@@ -780,37 +780,6 @@ async function assertPublicStatusCompanyAvailable(
   if (!company) {
     throw new AuthError("The selected public status company is unavailable.", 400);
   }
-}
-
-async function updateUserCompat(
-  executor: DatabaseExecutor,
-  userId: string,
-  input: SettingsInput,
-  existingColumns: Set<string>
-) {
-  const values = {
-    firstName: input.profile.firstName,
-    lastName: input.profile.lastName,
-    email: input.profile.email,
-    department: emptyToNull(input.profile.department),
-    username: normalizeUsername(input.profile.username),
-    organization: emptyToNull(input.profile.organization),
-    jobTitle: emptyToNull(input.profile.jobTitle),
-    phone: emptyToNull(input.profile.phone),
-    updatedAt: new Date(),
-  };
-
-  const filteredValues = filterValuesForColumns(values, USERS_COLUMN_MAP, existingColumns);
-  if (Object.keys(filteredValues).length === 0) {
-    return;
-  }
-
-  await executor.update(users).set(filteredValues).where(eq(users.id, userId));
-}
-
-function normalizeUsername(value: string) {
-  const username = value.trim().toLowerCase();
-  return username.length > 0 ? username : null;
 }
 
 async function clearInheritedMonitorTemplates(

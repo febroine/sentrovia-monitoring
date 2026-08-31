@@ -49,5 +49,6 @@ describe("Prometheus metrics", () => {
     expect(isWorkerHeartbeatCurrent(null, now, 180)).toBe(false);
     expect(isWorkerHeartbeatCurrent(new Date("2026-08-24T11:58:00.000Z"), now, 180)).toBe(true);
     expect(isWorkerHeartbeatCurrent(new Date("2026-08-24T11:56:00.000Z"), now, 180)).toBe(false);
+    expect(isWorkerHeartbeatCurrent(new Date("2026-08-24T12:04:00.000Z"), now, 180)).toBe(false);
   });
 });

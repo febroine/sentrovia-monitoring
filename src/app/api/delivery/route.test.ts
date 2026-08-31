@@ -35,7 +35,16 @@ describe("delivery route", () => {
     const response = await GET(new Request("http://localhost/api/delivery?page=3") as never);
 
     expect(response.status).toBe(200);
-    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 3);
+    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 3, true);
+  });
+
+  it("does not expose the webhook URL to read-only users", async () => {
+    mocks.getSession.mockResolvedValue({ id: "user-1", role: "viewer" });
+
+    const response = await GET(new Request("http://localhost/api/delivery") as never);
+
+    expect(response.status).toBe(200);
+    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 1, false);
   });
 
   it("rejects an invalid history page", async () => {

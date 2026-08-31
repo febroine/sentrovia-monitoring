@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission, hasPermission } from "@/lib/auth/permissions";
 import { isValidCalendarDate, resolveDeliveryHistoryRange } from "@/lib/delivery/history-range";
 import { deleteDeliveryHistory, getDeliveryOverview, upsertWebhookSettings } from "@/lib/delivery/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
@@ -21,6 +22,8 @@ const historyDeletionSchema = z
     from: z.string().optional(),
     to: z.string().optional(),
     timezoneOffsetMinutes: z.number().int().min(-840).max(840).optional(),
+    fromTimezoneOffsetMinutes: z.number().int().min(-840).max(840).optional(),
+    toExclusiveTimezoneOffsetMinutes: z.number().int().min(-840).max(840).optional(),
   })
   .superRefine((value, context) => {
     if (value.range !== "custom") {
@@ -49,7 +52,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Invalid delivery history page." }, { status: 400 });
     }
 
-    const overview = await getDeliveryOverview(session.id, parsedPage.data);
+    const overview = await getDeliveryOverview(
+      session.id,
+      parsedPage.data,
+      hasPermission(session.role, "delivery.manage")
+    );
     return NextResponse.json({ overview });
   } catch (error) {
     const authError = toAuthError(error, "Unable to load delivery operations right now.");
@@ -63,6 +70,7 @@ export async function DELETE(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "delivery.manage");
 
     const parsed = historyDeletionSchema.safeParse(
       await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES)
@@ -89,6 +97,7 @@ export async function PATCH(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "delivery.manage");
 
     const parsed = webhookSchema.safeParse(await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES));
     if (!parsed.success) {

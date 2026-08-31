@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settingsSchema } from "@/lib/settings/schemas";
+import { profileSettingsSchema, settingsSchema } from "@/lib/settings/schemas";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 describe("settings schema", () => {
@@ -212,6 +212,34 @@ describe("settings schema", () => {
     });
 
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("personal profile schema", () => {
+  it("normalizes login identifiers without accepting a role", () => {
+    const parsed = profileSettingsSchema.parse({
+      firstName: " View ",
+      lastName: " User ",
+      email: " Viewer@Example.COM ",
+      department: " Operations ",
+      username: " View.User ",
+      organization: " Sentrovia ",
+      jobTitle: " Observer ",
+      phone: " ",
+      role: "admin",
+    });
+
+    expect(parsed).toEqual({
+      firstName: "View",
+      lastName: "User",
+      email: "viewer@example.com",
+      department: "Operations",
+      username: "view.user",
+      organization: "Sentrovia",
+      jobTitle: "Observer",
+      phone: "",
+    });
+    expect(parsed).not.toHaveProperty("role");
   });
 });
 
