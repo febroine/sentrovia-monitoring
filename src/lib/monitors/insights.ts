@@ -7,7 +7,11 @@ import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
 const MAX_RECENT_ROWS_PER_MONITOR = 100;
 const COMPANY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 12) {
+export async function listRecentMonitorChecks(
+  userId: string,
+  limitPerMonitor = 12,
+  workspaceId?: string
+) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedChecks = db
     .select({
@@ -18,7 +22,7 @@ export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 
       )`.as("monitor_row_number"),
     })
     .from(monitorChecks)
-    .where(eq(monitorChecks.userId, userId))
+    .where(workspaceId ? eq(monitorChecks.workspaceId, workspaceId) : eq(monitorChecks.userId, userId))
     .as("ranked_monitor_checks");
   const rows = await db
     .select()
@@ -29,7 +33,11 @@ export async function listRecentMonitorChecks(userId: string, limitPerMonitor = 
   return groupRecentRowsByMonitor(rows, normalizedLimit);
 }
 
-export async function listRecentMonitorDiagnostics(userId: string, limitPerMonitor = 3) {
+export async function listRecentMonitorDiagnostics(
+  userId: string,
+  limitPerMonitor = 3,
+  workspaceId?: string
+) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedDiagnostics = db
     .select({
@@ -40,7 +48,11 @@ export async function listRecentMonitorDiagnostics(userId: string, limitPerMonit
       )`.as("monitor_row_number"),
     })
     .from(monitorDiagnostics)
-    .where(eq(monitorDiagnostics.userId, userId))
+    .where(
+      workspaceId
+        ? eq(monitorDiagnostics.workspaceId, workspaceId)
+        : eq(monitorDiagnostics.userId, userId)
+    )
     .as("ranked_monitor_diagnostics");
   const rows = await db
     .select()
@@ -51,7 +63,11 @@ export async function listRecentMonitorDiagnostics(userId: string, limitPerMonit
   return groupRecentRowsByMonitor(rows, normalizedLimit);
 }
 
-export async function listRecentOutageEvents(userId: string, limitPerMonitor = 8) {
+export async function listRecentOutageEvents(
+  userId: string,
+  limitPerMonitor = 8,
+  workspaceId?: string
+) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedEvents = db
     .select({
@@ -62,7 +78,7 @@ export async function listRecentOutageEvents(userId: string, limitPerMonitor = 8
       )`.as("monitor_row_number"),
     })
     .from(outageEvents)
-    .where(eq(outageEvents.userId, userId))
+    .where(workspaceId ? eq(outageEvents.workspaceId, workspaceId) : eq(outageEvents.userId, userId))
     .as("ranked_outage_events");
   const rows = await db
     .select()

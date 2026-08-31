@@ -28,7 +28,12 @@ export async function PATCH(request: NextRequest, context: MonitorActiveRouteCon
       return NextResponse.json({ message: "Invalid monitor active state." }, { status: 400 });
     }
 
-    const monitor = await updateMonitorActiveState(session.id, id, parsed.data.isActive);
+    const monitor = await updateMonitorActiveState(
+      session.id,
+      id,
+      parsed.data.isActive,
+      session.activeWorkspaceId!
+    );
 
     if (!monitor) {
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });

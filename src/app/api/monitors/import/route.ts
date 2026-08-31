@@ -52,7 +52,12 @@ export async function POST(request: NextRequest) {
     });
 
     assertRestorablePostgresMonitorPasswords(parsed);
-    const created = await createManyMonitors(session.id, parsed);
+    const created = await createManyMonitors(
+      session.id,
+      parsed,
+      undefined,
+      session.activeWorkspaceId!
+    );
 
     return NextResponse.json({
       monitors: created.map(serializeMonitor),

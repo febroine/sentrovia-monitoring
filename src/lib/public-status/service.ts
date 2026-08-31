@@ -37,7 +37,7 @@ export async function getPublicStatusPage(slug: string) {
     ? eq(monitors.companyId, pageRow.companyId)
     : undefined;
   const publicMonitorScope = and(
-    eq(monitors.userId, pageRow.userId),
+    eq(monitors.workspaceId, pageRow.workspaceId),
     eq(monitors.isActive, true),
     eq(monitors.publishOnStatusPage, true),
     isNull(monitors.deletedAt),
@@ -75,7 +75,7 @@ export async function getPublicStatusPage(slug: string) {
       .from(monitorOutages)
       .innerJoin(monitors, eq(monitors.id, monitorOutages.monitorId))
       .where(and(
-        eq(monitorOutages.userId, pageRow.userId),
+        eq(monitorOutages.workspaceId, pageRow.workspaceId),
         eq(monitorOutages.status, "open"),
         publicMonitorScope
       ))
@@ -85,7 +85,9 @@ export async function getPublicStatusPage(slug: string) {
   const uptimeByMonitorId = await getMonitorUptimeById(
     pageRow.userId,
     monitorRows.map((monitor) => monitor.id),
-    generatedAt
+    generatedAt,
+    db,
+    pageRow.workspaceId
   );
   const timeDisplaySettings = resolveTimeDisplaySettings(settings?.appearance);
   const openOutageMap = new Map(openOutages.map((outage) => [outage.monitorId, outage.startedAt.toISOString()]));
@@ -171,6 +173,7 @@ async function findPublicStatusPage(slug: string) {
   const [page] = await db
     .select({
       userId: publicStatusPages.userId,
+      workspaceId: publicStatusPages.workspaceId,
       title: publicStatusPages.title,
       summary: publicStatusPages.summary,
       companyId: publicStatusPages.companyId,
@@ -184,7 +187,7 @@ async function findPublicStatusPage(slug: string) {
     .innerJoin(users, eq(users.id, publicStatusPages.userId))
     .leftJoin(companies, and(
       eq(companies.id, publicStatusPages.companyId),
-      eq(companies.userId, publicStatusPages.userId)
+      eq(companies.workspaceId, publicStatusPages.workspaceId)
     ))
     .where(eq(publicStatusPages.slug, slug))
     .limit(1);

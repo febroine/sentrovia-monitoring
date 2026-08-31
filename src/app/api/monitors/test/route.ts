@@ -50,7 +50,8 @@ export async function POST(request: NextRequest) {
     const monitor = await buildMonitorForTest(
       session.id,
       parsed.data,
-      requestData.data.monitorId
+      requestData.data.monitorId,
+      session.activeWorkspaceId!
     );
     const result = await checkMonitor(monitor, {
       allowPrivateTargets: monitor.allowPrivateTargets,

@@ -21,6 +21,7 @@ import type {
   ReportScheduleStatus,
   ReportTemplateVariant,
 } from "@/lib/reports/types";
+import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
 
 const REPORT_PREVIEW_LIMIT = 12;
 const RECENT_FAILURE_LIMIT = 8;
@@ -81,9 +82,11 @@ export async function listReportSchedules(userId: string): Promise<ReportSchedul
 
 export async function createReportSchedule(userId: string, input: ReportScheduleInput) {
   const resolvedCompanyId = await resolveScopedCompanyId(userId, input);
+  const workspaceId = await requireWorkspaceIdForUser(userId);
   const [created] = await db
     .insert(reportSchedules)
     .values({
+      workspaceId,
       userId,
       name: input.name.trim(),
       scope: input.scope,
@@ -203,6 +206,7 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
   const [created] = await db
     .insert(reportSchedules)
     .values({
+      workspaceId: existing.workspaceId,
       userId,
       name: `${existing.name} Copy`,
       scope: existing.scope,

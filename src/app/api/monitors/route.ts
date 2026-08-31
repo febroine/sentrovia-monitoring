@@ -27,7 +27,7 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const monitors = await listMonitors(session.id);
+    const monitors = await listMonitors(session.id, undefined, session.activeWorkspaceId!);
 
     return NextResponse.json({
       monitors: monitors.map((monitor) =>
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid monitor payload." }, { status: 400 });
     }
 
-    const monitor = await createMonitor(session.id, parsed.data);
+    const monitor = await createMonitor(session.id, parsed.data, session.activeWorkspaceId!);
     await recordAuditEventSafely({
       userId: session.id,
       actorUserId: session.id,
@@ -90,7 +90,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Select at least one monitor to delete." }, { status: 400 });
     }
 
-    const deleted = await deleteMonitors(session.id, parsed.data.ids);
+    const deleted = await deleteMonitors(session.id, parsed.data.ids, session.activeWorkspaceId!);
     await Promise.all(deleted.map((monitor) => recordAuditEventSafely({
       userId: session.id,
       actorUserId: session.id,

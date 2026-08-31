@@ -19,7 +19,10 @@ vi.mock("@/lib/settings/service", () => ({ getSettings: vi.fn() }));
 describe("monitor config import route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getSession).mockResolvedValue({ id: "user-1" } as never);
+    vi.mocked(getSession).mockResolvedValue({
+      id: "user-1",
+      activeWorkspaceId: "workspace-1",
+    } as never);
     vi.mocked(getSettings).mockResolvedValue(DEFAULT_SETTINGS);
     vi.mocked(createManyMonitors).mockResolvedValue([]);
   });
@@ -69,7 +72,9 @@ describe("monitor config import route", () => {
     expect(response.status).toBe(200);
     expect(createManyMonitors).toHaveBeenCalledWith(
       "user-1",
-      [expect.objectContaining({ name: "New", url: "https://new.example.com" })]
+      [expect.objectContaining({ name: "New", url: "https://new.example.com" })],
+      undefined,
+      "workspace-1"
     );
   });
 });

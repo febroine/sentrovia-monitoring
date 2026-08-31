@@ -3,7 +3,7 @@ import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
 import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { deliveryEvents, webhookEndpoints } from "@/lib/db/schema";
+import { deliveryEvents, webhookEndpoints, workspaceMembers } from "@/lib/db/schema";
 import { escapeHtml } from "@/lib/html";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
@@ -33,6 +33,7 @@ import type {
   DeliveryTestInput,
   WebhookSettingsInput,
 } from "@/lib/delivery/types";
+import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
 import {
   buildDeliveryAbortSignal,
   DELIVERY_REQUEST_TIMEOUT_MS,
@@ -150,7 +151,10 @@ export async function getDeliveryOverview(
   };
 }
 
-export async function getDeliverySummary(userId: string): Promise<DeliveryOverview["summary"]> {
+export async function getDeliverySummary(
+  userId: string,
+  workspaceId?: string
+): Promise<DeliveryOverview["summary"]> {
   const [row] = await db
     .select({
       delivered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'delivered')::integer`,
@@ -161,7 +165,7 @@ export async function getDeliverySummary(userId: string): Promise<DeliveryOvervi
       deadLettered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed' and ${deliveryEvents.deadLetteredAt} is not null)::integer`,
     })
     .from(deliveryEvents)
-    .where(eq(deliveryEvents.userId, userId));
+    .where(workspaceId ? eq(deliveryEvents.workspaceId, workspaceId) : eq(deliveryEvents.userId, userId));
 
   return normalizeDeliverySummary(row);
 }
@@ -294,6 +298,7 @@ function isValidDeletionRange(range: DeliveryHistoryDeletionRange) {
 
 export async function upsertWebhookSettings(userId: string, input: WebhookSettingsInput) {
   const safeUrl = await assertSafeWebhookUrl(input.url);
+  const workspaceId = await requireWorkspaceIdForUser(userId);
   const [existing] = await db
     .select()
     .from(webhookEndpoints)
@@ -303,6 +308,7 @@ export async function upsertWebhookSettings(userId: string, input: WebhookSettin
     : existing?.secretEncrypted ?? null;
 
   const values = {
+    workspaceId,
     userId,
     url: encryptValue(safeUrl),
     secretEncrypted,
@@ -737,6 +743,13 @@ async function createDeliveryEvent(
   const [created] = await db
     .insert(deliveryEvents)
     .values({
+      workspaceId: sql<string>`(
+        SELECT ${workspaceMembers.workspaceId}
+        FROM ${workspaceMembers}
+        WHERE ${workspaceMembers.userId} = ${userId}
+        ORDER BY ${workspaceMembers.createdAt}, ${workspaceMembers.workspaceId}
+        LIMIT 1
+      )`,
       userId,
       monitorId: monitorId ?? null,
       channel,

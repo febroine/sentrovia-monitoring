@@ -14,7 +14,8 @@ export async function getMonitorUptimeById(
   userId: string,
   monitorIds: string[],
   now = new Date(),
-  database: DatabaseExecutor = db
+  database: DatabaseExecutor = db,
+  workspaceId?: string
 ) {
   const uniqueMonitorIds = Array.from(new Set(monitorIds));
   if (uniqueMonitorIds.length === 0) {
@@ -29,7 +30,9 @@ export async function getMonitorUptimeById(
     })
     .from(monitorChecks)
     .where(and(
-      eq(monitorChecks.userId, userId),
+      workspaceId
+        ? eq(monitorChecks.workspaceId, workspaceId)
+        : eq(monitorChecks.userId, userId),
       inArray(monitorChecks.monitorId, uniqueMonitorIds),
       gte(monitorChecks.createdAt, new Date(now.getTime() - MONITOR_UPTIME_WINDOW_MS))
     ))

@@ -31,7 +31,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid bulk monitor payload." }, { status: 400 });
     }
 
-    const monitors = await bulkUpdateMonitors(session.id, parsed.data.ids, parsed.data.payload);
+    const monitors = await bulkUpdateMonitors(
+      session.id,
+      parsed.data.ids,
+      parsed.data.payload,
+      session.activeWorkspaceId!
+    );
 
     return NextResponse.json({
       monitors: monitors.map((monitor) => serializeMonitorRecord(monitor)),

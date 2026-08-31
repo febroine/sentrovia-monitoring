@@ -1234,6 +1234,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
 
   return {
     id: "monitor-1",
+    workspaceId: "workspace-1",
     userId: "user-1",
     name: "API",
     monitorType: "http",

@@ -14,7 +14,12 @@ export async function POST(request: NextRequest) {
       monitorBulkDeleteSchema,
       "Select at least one monitor to restore."
     );
-    const restored = await restoreMonitors(session.id, input.ids);
+    const restored = await restoreMonitors(
+      session.id,
+      input.ids,
+      new Date(),
+      session.activeWorkspaceId!
+    );
     if (restored.length === 0) {
       return NextResponse.json({ message: "The monitor restore window has expired." }, { status: 409 });
     }

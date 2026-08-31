@@ -1,9 +1,11 @@
 import { and, desc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitorOutages } from "@/lib/db/schema";
+import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
 
 type OutageStateInput = {
   monitorId: string;
+  workspaceId?: string;
   userId: string;
   checkedAt: Date;
   statusCode: number | null;
@@ -13,9 +15,11 @@ export async function openOrUpdateOutage(
   input: OutageStateInput & { errorMessage: string | null },
   database: DatabaseExecutor = db
 ) {
+  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId, database);
   const [outage] = await database
     .insert(monitorOutages)
     .values({
+      workspaceId,
       monitorId: input.monitorId,
       userId: input.userId,
       status: "open",

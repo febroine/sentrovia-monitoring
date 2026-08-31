@@ -101,7 +101,12 @@ async function migrateHeartbeatToken(row: {
 
   return db.transaction(async (tx) => {
     const [conflict] = await tx
-      .select({ id: monitors.id, userId: monitors.userId, name: monitors.name })
+      .select({
+        id: monitors.id,
+        workspaceId: monitors.workspaceId,
+        userId: monitors.userId,
+        name: monitors.name,
+      })
       .from(monitors)
       .where(and(eq(monitors.heartbeatTokenHash, tokenHash), ne(monitors.id, row.id)))
       .limit(1);
@@ -123,7 +128,7 @@ async function migrateHeartbeatToken(row: {
 }
 
 async function rotateConflictingHeartbeatToken(
-  monitor: { id: string; userId: string; name: string },
+  monitor: { id: string; workspaceId: string; userId: string; name: string },
   executor: Parameters<Parameters<typeof db.transaction>[0]>[0]
 ) {
   const replacement = crypto.randomUUID();
@@ -138,6 +143,7 @@ async function rotateConflictingHeartbeatToken(
     })
     .where(eq(monitors.id, monitor.id));
   await executor.insert(auditEvents).values({
+    workspaceId: monitor.workspaceId,
     userId: monitor.userId,
     actorUserId: null,
     actorLabel: "Sentrovia security migration",

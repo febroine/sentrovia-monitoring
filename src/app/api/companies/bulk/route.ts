@@ -30,7 +30,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (parsed.data.action === "delete") {
-      const deleted = await deleteCompanies(session.id, parsed.data.ids);
+      const deleted = await deleteCompanies({
+        workspaceId: session.activeWorkspaceId!,
+        userId: session.id,
+      }, parsed.data.ids);
       const deletedAt = deleted[0]?.deletedAt;
       return NextResponse.json({
         ids: deleted.map((company) => company.id),
@@ -39,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     const companies = await updateCompaniesActiveState(
-      session.id,
+      { workspaceId: session.activeWorkspaceId!, userId: session.id },
       parsed.data.ids,
       parsed.data.action === "activate"
     );

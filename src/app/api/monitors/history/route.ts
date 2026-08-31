@@ -16,10 +16,14 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const history = await listRecentMonitorChecks(session.id, 5);
+    const history = await listRecentMonitorChecks(session.id, 5, session.activeWorkspaceId!);
     const [diagnostics, outageEvents] = await Promise.all([
-      loadOptionalHistorySection(() => listRecentMonitorDiagnostics(session.id, 3)),
-      loadOptionalHistorySection(() => listRecentOutageEvents(session.id, 8)),
+      loadOptionalHistorySection(() =>
+        listRecentMonitorDiagnostics(session.id, 3, session.activeWorkspaceId!)
+      ),
+      loadOptionalHistorySection(() =>
+        listRecentOutageEvents(session.id, 8, session.activeWorkspaceId!)
+      ),
     ]);
 
     return NextResponse.json({

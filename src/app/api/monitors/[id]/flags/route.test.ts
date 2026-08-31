@@ -13,7 +13,7 @@ import { PATCH } from "@/app/api/monitors/[id]/flags/route";
 describe("monitor dashboard flags route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ id: "user-1" });
+    mocks.getSession.mockResolvedValue({ id: "user-1", activeWorkspaceId: "workspace-1" });
     mocks.updateMonitorFlags.mockResolvedValue({ id: "monitor-1", isFavorite: true, isCritical: false });
   });
 
@@ -28,7 +28,12 @@ describe("monitor dashboard flags route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.updateMonitorFlags).toHaveBeenCalledWith("user-1", "monitor-1", { isFavorite: true });
+    expect(mocks.updateMonitorFlags).toHaveBeenCalledWith(
+      "user-1",
+      "monitor-1",
+      { isFavorite: true },
+      "workspace-1"
+    );
   });
 
   it("rejects an empty flag payload", async () => {

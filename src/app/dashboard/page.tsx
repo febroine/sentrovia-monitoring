@@ -9,6 +9,6 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const data = await getDashboardData(session.id);
+  const data = await getDashboardData(session.id, session.activeWorkspaceId!);
   return <DashboardLive initialData={data} />;
 }

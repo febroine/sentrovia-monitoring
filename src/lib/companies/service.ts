@@ -3,14 +3,20 @@ import { db, type DatabaseExecutor } from "@/lib/db";
 import { companies, monitors, reportSchedules, userSettings } from "@/lib/db/schema";
 import type { CompanyInput } from "@/lib/companies/schemas";
 import { decryptValueOrLegacyPlaintext, encryptValue } from "@/lib/security/encryption";
+import {
+  resolveWorkspaceScope,
+  type WorkspaceScope,
+  type WorkspaceSubject,
+} from "@/lib/workspaces/ownership";
 
 export const COMPANY_SOFT_DELETE_UNDO_MS = 60_000;
 
-export async function listCompanies(userId: string, database: DatabaseExecutor = db) {
+export async function listCompanies(subject: WorkspaceSubject, database: DatabaseExecutor = db) {
+  const scope = await resolveWorkspaceScope(subject, database);
   const companyRows = await database
     .select()
     .from(companies)
-    .where(and(eq(companies.userId, userId), isNull(companies.deletedAt)))
+    .where(and(eq(companies.workspaceId, scope.workspaceId), isNull(companies.deletedAt)))
     .orderBy(desc(companies.createdAt));
 
   const monitorRows = await database
@@ -21,7 +27,7 @@ export async function listCompanies(userId: string, database: DatabaseExecutor =
       isActive: monitors.isActive,
     })
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
+    .where(and(eq(monitors.workspaceId, scope.workspaceId), isNull(monitors.deletedAt)));
 
   return companyRows.map((company) => {
     const related = monitorRows.filter((monitor) => monitor.companyId === company.id);
@@ -41,21 +47,23 @@ export function summarizeCompanyMonitorCounts(monitors: Array<{ isActive: boolea
   };
 }
 
-export async function createCompany(userId: string, input: CompanyInput, database?: DatabaseExecutor) {
+export async function createCompany(subject: WorkspaceSubject, input: CompanyInput, database?: DatabaseExecutor) {
   if (!database) {
-    return db.transaction((tx) => persistCompany(userId, input, tx));
+    return db.transaction((tx) => persistCompany(subject, input, tx));
   }
 
-  return persistCompany(userId, input, database);
+  return persistCompany(subject, input, database);
 }
 
-async function persistCompany(userId: string, input: CompanyInput, database: DatabaseExecutor) {
-  await releaseExpiredCompanyName(userId, input.name, database);
+async function persistCompany(subject: WorkspaceSubject, input: CompanyInput, database: DatabaseExecutor) {
+  const scope = await resolveWorkspaceScope(subject, database);
+  await releaseExpiredCompanyName(scope, input.name, database);
   const telegram = resolveCompanyTelegramCredentials(input, null);
   const [company] = await database
     .insert(companies)
     .values({
-      userId,
+      workspaceId: scope.workspaceId,
+      userId: scope.userId,
       name: input.name,
       description: input.description,
       notificationEmailRecipients: input.notificationEmailRecipients,
@@ -72,14 +80,14 @@ async function persistCompany(userId: string, input: CompanyInput, database: Dat
   };
 }
 
-async function releaseExpiredCompanyName(userId: string, name: string, database: DatabaseExecutor) {
+async function releaseExpiredCompanyName(scope: WorkspaceScope, name: string, database: DatabaseExecutor) {
   const cutoff = new Date(Date.now() - COMPANY_SOFT_DELETE_UNDO_MS);
   const expired = await database
     .select({ id: companies.id })
     .from(companies)
     .where(
       and(
-        eq(companies.userId, userId),
+        eq(companies.workspaceId, scope.workspaceId),
         lt(companies.deletedAt, cutoff),
         sql`lower(btrim(${companies.name})) = lower(btrim(${name}))`
       )
@@ -97,11 +105,11 @@ async function releaseExpiredCompanyName(userId: string, name: string, database:
       publicStatusCompanyId: null,
       updatedAt: now,
     })
-    .where(and(eq(userSettings.userId, userId), inArray(userSettings.publicStatusCompanyId, expiredIds)));
+    .where(and(eq(userSettings.userId, scope.userId), inArray(userSettings.publicStatusCompanyId, expiredIds)));
   await database
     .update(monitors)
     .set({ companyId: null, company: null, updatedAt: now })
-    .where(and(eq(monitors.userId, userId), inArray(monitors.companyId, expiredIds)));
+    .where(and(eq(monitors.workspaceId, scope.workspaceId), inArray(monitors.companyId, expiredIds)));
   await database
     .update(reportSchedules)
     .set({
@@ -111,25 +119,31 @@ async function releaseExpiredCompanyName(userId: string, name: string, database:
       lastErrorMessage: "The assigned company was deleted.",
       updatedAt: now,
     })
-    .where(and(eq(reportSchedules.userId, userId), inArray(reportSchedules.companyId, expiredIds)));
+    .where(and(eq(reportSchedules.workspaceId, scope.workspaceId), inArray(reportSchedules.companyId, expiredIds)));
   await database
     .delete(companies)
-    .where(and(eq(companies.userId, userId), inArray(companies.id, expiredIds)));
+    .where(and(eq(companies.workspaceId, scope.workspaceId), inArray(companies.id, expiredIds)));
 }
 
-export async function getCompanyById(userId: string, companyId: string, database: DatabaseExecutor = db) {
+export async function getCompanyById(subject: WorkspaceSubject, companyId: string, database: DatabaseExecutor = db) {
+  const scope = await resolveWorkspaceScope(subject, database);
   const [company] = await database
     .select()
     .from(companies)
-    .where(and(eq(companies.userId, userId), eq(companies.id, companyId), isNull(companies.deletedAt)));
+    .where(and(
+      eq(companies.workspaceId, scope.workspaceId),
+      eq(companies.id, companyId),
+      isNull(companies.deletedAt)
+    ));
 
   return company ?? null;
 }
 
-export async function updateCompany(userId: string, companyId: string, input: CompanyInput) {
+export async function updateCompany(subject: WorkspaceSubject, companyId: string, input: CompanyInput) {
   const company = await db.transaction(async (tx) => {
-    await releaseExpiredCompanyName(userId, input.name, tx);
-    const existing = await getCompanyById(userId, companyId, tx);
+    const scope = await resolveWorkspaceScope(subject, tx);
+    await releaseExpiredCompanyName(scope, input.name, tx);
+    const existing = await getCompanyById(scope, companyId, tx);
     if (!existing) {
       return null;
     }
@@ -149,7 +163,11 @@ export async function updateCompany(userId: string, companyId: string, input: Co
         isActive: input.isActive,
         updatedAt: new Date(),
       })
-      .where(and(eq(companies.userId, userId), eq(companies.id, companyId), isNull(companies.deletedAt)))
+      .where(and(
+        eq(companies.workspaceId, scope.workspaceId),
+        eq(companies.id, companyId),
+        isNull(companies.deletedAt)
+      ))
       .returning();
 
     if (!updated) {
@@ -162,7 +180,7 @@ export async function updateCompany(userId: string, companyId: string, input: Co
         company: updated.name,
         updatedAt: new Date(),
       })
-      .where(and(eq(monitors.userId, userId), eq(monitors.companyId, companyId)));
+      .where(and(eq(monitors.workspaceId, scope.workspaceId), eq(monitors.companyId, companyId)));
 
     return updated;
   });
@@ -171,11 +189,12 @@ export async function updateCompany(userId: string, companyId: string, input: Co
     return null;
   }
 
-  const [withCounts] = await listCompanies(userId).then((items) => items.filter((item) => item.id === companyId));
+  const [withCounts] = await listCompanies(subject).then((items) => items.filter((item) => item.id === companyId));
   return withCounts ?? null;
 }
 
-export async function deleteCompany(userId: string, companyId: string) {
+export async function deleteCompany(subject: WorkspaceSubject, companyId: string) {
+  const scope = await resolveWorkspaceScope(subject);
   const now = new Date();
   const [company] = await db
     .update(companies)
@@ -185,7 +204,11 @@ export async function deleteCompany(userId: string, companyId: string) {
       isActive: false,
       updatedAt: now,
     })
-    .where(and(eq(companies.userId, userId), eq(companies.id, companyId), isNull(companies.deletedAt)))
+    .where(and(
+      eq(companies.workspaceId, scope.workspaceId),
+      eq(companies.id, companyId),
+      isNull(companies.deletedAt)
+    ))
     .returning({ id: companies.id, deletedAt: companies.deletedAt });
 
   return company ?? null;
@@ -214,29 +237,39 @@ function toCompanyOutput(company: typeof companies.$inferSelect) {
   };
 }
 
-export async function updateCompaniesActiveState(userId: string, ids: string[], isActive: boolean) {
+export async function updateCompaniesActiveState(
+  subject: WorkspaceSubject,
+  ids: string[],
+  isActive: boolean
+) {
   const companyIds = Array.from(new Set(ids));
   if (companyIds.length === 0) {
     return [];
   }
 
+  const scope = await resolveWorkspaceScope(subject);
   await db
     .update(companies)
     .set({
       isActive,
       updatedAt: new Date(),
     })
-    .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds), isNull(companies.deletedAt)));
+    .where(and(
+      eq(companies.workspaceId, scope.workspaceId),
+      inArray(companies.id, companyIds),
+      isNull(companies.deletedAt)
+    ));
 
-  return listCompanies(userId);
+  return listCompanies(scope);
 }
 
-export async function deleteCompanies(userId: string, ids: string[]) {
+export async function deleteCompanies(subject: WorkspaceSubject, ids: string[]) {
   const companyIds = Array.from(new Set(ids));
   if (companyIds.length === 0) {
     return [];
   }
 
+  const scope = await resolveWorkspaceScope(subject);
   const now = new Date();
   const deleted = await db
     .update(companies)
@@ -246,13 +279,18 @@ export async function deleteCompanies(userId: string, ids: string[]) {
       isActive: false,
       updatedAt: now,
     })
-    .where(and(eq(companies.userId, userId), inArray(companies.id, companyIds), isNull(companies.deletedAt)))
+    .where(and(
+      eq(companies.workspaceId, scope.workspaceId),
+      inArray(companies.id, companyIds),
+      isNull(companies.deletedAt)
+    ))
     .returning({ id: companies.id, deletedAt: companies.deletedAt });
 
   return deleted;
 }
 
-export async function restoreCompanies(userId: string, ids: string[], now = new Date()) {
+export async function restoreCompanies(subject: WorkspaceSubject, ids: string[], now = new Date()) {
+  const scope = await resolveWorkspaceScope(subject);
   const undoCutoff = new Date(now.getTime() - COMPANY_SOFT_DELETE_UNDO_MS);
   return db
     .update(companies)
@@ -264,7 +302,7 @@ export async function restoreCompanies(userId: string, ids: string[], now = new 
     })
     .where(
       and(
-        eq(companies.userId, userId),
+        eq(companies.workspaceId, scope.workspaceId),
         inArray(companies.id, ids),
         isNotNull(companies.deletedAt),
         gte(companies.deletedAt, undoCutoff)

@@ -13,7 +13,7 @@ import { PATCH } from "@/app/api/dashboard/preferences/route";
 describe("dashboard preferences route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ id: "user-1" });
+    mocks.getSession.mockResolvedValue({ id: "user-1", activeWorkspaceId: "workspace-1" });
     mocks.saveDashboardPreferences.mockResolvedValue({ preferences: { focus: "all" } });
   });
 
@@ -33,7 +33,7 @@ describe("dashboard preferences route", () => {
     }) as never);
 
     expect(response.status).toBe(200);
-    expect(mocks.saveDashboardPreferences).toHaveBeenCalledWith("user-1", payload);
+    expect(mocks.saveDashboardPreferences).toHaveBeenCalledWith("user-1", payload, "workspace-1");
   });
 
   it("rejects unsupported widget identifiers", async () => {

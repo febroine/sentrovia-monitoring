@@ -34,7 +34,13 @@ export async function PATCH(request: NextRequest, context: PublicStatusPageRoute
     }
 
     const { id } = await context.params;
-    const page = await updatePublicStatusPage(session.id, id, parsed.data);
+    const page = await updatePublicStatusPage(
+      session.id,
+      id,
+      parsed.data,
+      undefined,
+      session.activeWorkspaceId!
+    );
     if (!page) {
       return NextResponse.json({ message: "Public status page not found." }, { status: 404 });
     }
@@ -66,7 +72,12 @@ export async function DELETE(_request: NextRequest, context: PublicStatusPageRou
     assertPermission(session.role, "settings.manage");
 
     const { id } = await context.params;
-    const deleted = await deletePublicStatusPage(session.id, id);
+    const deleted = await deletePublicStatusPage(
+      session.id,
+      id,
+      undefined,
+      session.activeWorkspaceId!
+    );
     if (!deleted) {
       return NextResponse.json({ message: "Public status page not found." }, { status: 404 });
     }
