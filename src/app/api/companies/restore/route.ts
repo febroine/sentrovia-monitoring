@@ -13,7 +13,10 @@ export async function POST(request: NextRequest) {
       companyBulkActionSchema.pick({ ids: true }),
       "Select at least one company to restore."
     );
-    const companies = await restoreCompanies(session.id, input.ids);
+    const companies = await restoreCompanies({
+      workspaceId: session.activeWorkspaceId!,
+      userId: session.id,
+    }, input.ids);
     if (companies.length === 0) {
       return NextResponse.json({ message: "The company restore window has expired." }, { status: 409 });
     }

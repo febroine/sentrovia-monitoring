@@ -37,7 +37,10 @@ export async function PATCH(request: NextRequest, context: CompanyRouteContext) 
     }
 
     const { id } = await context.params;
-    const company = await updateCompany(session.id, id, parsed.data);
+    const company = await updateCompany({
+      workspaceId: session.activeWorkspaceId!,
+      userId: session.id,
+    }, id, parsed.data);
     if (!company) {
       return NextResponse.json({ message: "Company not found." }, { status: 404 });
     }
@@ -57,7 +60,10 @@ export async function DELETE(_request: NextRequest, context: CompanyRouteContext
     }
 
     const { id } = await context.params;
-    const deleted = await deleteCompany(session.id, id);
+    const deleted = await deleteCompany({
+      workspaceId: session.activeWorkspaceId!,
+      userId: session.id,
+    }, id);
     if (!deleted) {
       return NextResponse.json({ message: "Company not found." }, { status: 404 });
     }

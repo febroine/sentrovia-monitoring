@@ -22,7 +22,10 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const companies = await listCompanies(session.id);
+    const companies = await listCompanies({
+      workspaceId: session.activeWorkspaceId!,
+      userId: session.id,
+    });
     return NextResponse.json({ companies: companies.map(serializeCompany) });
   } catch (error) {
     const authError = toAuthError(error, "Unable to load companies right now.");
@@ -43,7 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid company payload." }, { status: 400 });
     }
 
-    const company = await createCompany(session.id, parsed.data);
+    const company = await createCompany({
+      workspaceId: session.activeWorkspaceId!,
+      userId: session.id,
+    }, parsed.data);
     return NextResponse.json({ company: serializeCompany(company) }, { status: 201 });
   } catch (error) {
     const authError = toAuthError(error, "Unable to create company right now.");

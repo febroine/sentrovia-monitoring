@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { and, asc, eq, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { automaticBackupRuns, users, userSettings } from "@/lib/db/schema";
+import { automaticBackupRuns, users, userSettings, workspaceMembers } from "@/lib/db/schema";
 import { env, getAppEncryptionSecret, getDatabaseUrl } from "@/lib/env";
 import {
   calculateFileSha256,
@@ -23,6 +23,7 @@ const DUMP_MAGIC = Buffer.from("PGDMP", "ascii");
 const BACKUP_FILE_PATTERN = /^sentrovia-db-\d{4}-\d{2}-\d{2}T\d{6}Z\.sentrovia-backup$/;
 
 type BackupSchedule = {
+  workspaceId: string;
   userId: string;
   enabled: boolean;
   window: string;
@@ -55,7 +56,7 @@ export async function runAutomaticDatabaseBackup(now = new Date()) {
   if (!schedule || !isAutomaticBackupDue(schedule, now)) return { status: "not-due" as const };
 
   const scheduledDate = getZonedDateAndTime(now, schedule.timeZone).date;
-  const run = await claimBackupRun(schedule.userId, scheduledDate, now);
+  const run = await claimBackupRun(schedule.workspaceId, schedule.userId, scheduledDate, now);
   if (!run) return { status: "already-claimed" as const };
 
   await markBackupSettings(schedule.userId, "running", null).catch(() => undefined);
@@ -112,6 +113,7 @@ export function isAutomaticBackupDue(schedule: BackupSchedule, now: Date) {
 async function readBackupSchedule(): Promise<BackupSchedule | null> {
   const [row] = await db
     .select({
+      workspaceId: workspaceMembers.workspaceId,
       userId: users.id,
       enabled: userSettings.autoBackupEnabled,
       window: userSettings.backupWindow,
@@ -121,11 +123,13 @@ async function readBackupSchedule(): Promise<BackupSchedule | null> {
     })
     .from(users)
     .innerJoin(userSettings, eq(userSettings.userId, users.id))
-    .where(and(eq(users.role, "admin"), eq(userSettings.autoBackupEnabled, true)))
+    .innerJoin(workspaceMembers, eq(workspaceMembers.userId, users.id))
+    .where(and(eq(workspaceMembers.role, "admin"), eq(userSettings.autoBackupEnabled, true)))
     .orderBy(asc(users.createdAt))
     .limit(1);
   if (!row) return null;
   return {
+    workspaceId: row.workspaceId,
     userId: row.userId,
     enabled: row.enabled,
     window: row.window,
@@ -135,10 +139,18 @@ async function readBackupSchedule(): Promise<BackupSchedule | null> {
   };
 }
 
-async function claimBackupRun(userId: string, scheduledDate: string, now: Date) {
+async function claimBackupRun(workspaceId: string, userId: string, scheduledDate: string, now: Date) {
   const [created] = await db
     .insert(automaticBackupRuns)
-    .values({ id: crypto.randomUUID(), ownerUserId: userId, scheduledDate, status: "running", startedAt: now, updatedAt: now })
+    .values({
+      id: crypto.randomUUID(),
+      workspaceId,
+      ownerUserId: userId,
+      scheduledDate,
+      status: "running",
+      startedAt: now,
+      updatedAt: now,
+    })
     .onConflictDoNothing()
     .returning({ id: automaticBackupRuns.id });
   if (created) return created;

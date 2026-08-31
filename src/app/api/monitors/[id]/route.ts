@@ -40,7 +40,7 @@ export async function PATCH(request: NextRequest, context: MonitorRouteContext) 
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid monitor payload." }, { status: 400 });
     }
 
-    const monitor = await updateMonitor(session.id, id, parsed.data);
+    const monitor = await updateMonitor(session.id, id, parsed.data, session.activeWorkspaceId!);
 
     if (!monitor) {
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });
@@ -73,7 +73,7 @@ export async function DELETE(_request: NextRequest, context: MonitorRouteContext
     }
 
     const { id } = await context.params;
-    const deleted = await deleteMonitors(session.id, [id]);
+    const deleted = await deleteMonitors(session.id, [id], session.activeWorkspaceId!);
 
     if (deleted.length === 0) {
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });

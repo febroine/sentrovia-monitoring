@@ -9,9 +9,11 @@ import {
 } from "@/lib/db/schema";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
 import { WORKER_STATE_ID } from "@/lib/worker/constants";
+import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
 
 export async function appendMonitorEvent(input: {
   monitorId: string;
+  workspaceId?: string;
   userId: string;
   eventType: string;
   status?: string | null;
@@ -22,7 +24,9 @@ export async function appendMonitorEvent(input: {
   rcaTitle?: string | null;
   rcaSummary?: string | null;
 }, database: DatabaseExecutor = db) {
+  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId, database);
   await database.insert(monitorEvents).values({
+    workspaceId,
     monitorId: input.monitorId,
     userId: input.userId,
     eventType: input.eventType,
@@ -105,13 +109,16 @@ export async function countMonitorEvents(input: {
 
 export async function appendMonitorCheck(input: {
   monitorId: string;
+  workspaceId?: string;
   userId: string;
   status: "up" | "down" | "pending";
   statusCode?: number | null;
   latencyMs?: number | null;
   createdAt: Date;
 }) {
+  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId);
   await db.insert(monitorChecks).values({
+    workspaceId,
     monitorId: input.monitorId,
     userId: input.userId,
     status: input.status,
@@ -123,10 +130,13 @@ export async function appendMonitorCheck(input: {
 
 export async function appendMonitorDiagnostic(input: {
   monitorId: string;
+  workspaceId?: string;
   userId: string;
   diagnostic: MonitorDiagnosticResult;
 }) {
+  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId);
   await db.insert(monitorDiagnostics).values({
+    workspaceId,
     monitorId: input.monitorId,
     userId: input.userId,
     status: input.diagnostic.status,
@@ -149,6 +159,7 @@ export async function appendMonitorDiagnostic(input: {
 export async function appendOutageEvent(input: {
   outageId?: string | null;
   monitorId: string;
+  workspaceId?: string;
   userId: string;
   eventType: string;
   title: string;
@@ -156,7 +167,9 @@ export async function appendOutageEvent(input: {
   metadata?: Record<string, unknown> | null;
   createdAt?: Date;
 }) {
+  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId);
   await db.insert(outageEvents).values({
+    workspaceId,
     outageId: input.outageId ?? null,
     monitorId: input.monitorId,
     userId: input.userId,
@@ -223,5 +236,4 @@ export async function incrementWorkerCheckedCount(amount = 1) {
 
   return state;
 }
-
 

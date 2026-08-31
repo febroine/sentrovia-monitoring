@@ -12,8 +12,11 @@ import { buildCanonicalMonitorTarget, buildMonitorIdentityKey, getMonitorTargetD
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import type { MonitorConfigBundle, MonitorPayload, MonitorRecord, MonitorType } from "@/lib/monitors/types";
 
-export async function buildMonitorConfigBundle(userId: string): Promise<MonitorConfigBundle> {
-  const monitors = await listMonitors(userId);
+export async function buildMonitorConfigBundle(
+  userId: string,
+  workspaceId?: string
+): Promise<MonitorConfigBundle> {
+  const monitors = await listMonitors(userId, undefined, workspaceId);
 
   return {
     version: 1,
@@ -70,9 +73,13 @@ export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
   return bundle;
 }
 
-export async function previewMonitorConfigImport(userId: string, inputs: MonitorInput[]) {
+export async function previewMonitorConfigImport(
+  userId: string,
+  inputs: MonitorInput[],
+  workspaceId?: string
+) {
   const [existing, allowPrivateTargets] = await Promise.all([
-    listReservedMonitorTargets(userId),
+    listReservedMonitorTargets(userId, undefined, new Date(), workspaceId),
     canUserAccessPrivateTargets(userId),
   ]);
   const validationErrors = await Promise.all(

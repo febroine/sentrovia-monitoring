@@ -69,7 +69,8 @@ export async function POST(request: NextRequest) {
 
     const validPreview = await previewMonitorConfigImport(
       session.id,
-      validEntries.map((entry) => entry.input)
+      validEntries.map((entry) => entry.input),
+      session.activeWorkspaceId!
     );
     const invalidItems = validatedEntries
       .filter((entry) => entry.input === null)
@@ -105,7 +106,12 @@ export async function POST(request: NextRequest) {
       .filter((_, index) => validPreview.items[index]?.status === "added")
       .map((entry) => entry.input);
     const created = importableMonitors.length > 0
-      ? await createManyMonitors(session.id, importableMonitors)
+      ? await createManyMonitors(
+          session.id,
+          importableMonitors,
+          undefined,
+          session.activeWorkspaceId!
+        )
       : [];
     return NextResponse.json({
       monitors: created.map((monitor) => serializeMonitorRecord(monitor)),

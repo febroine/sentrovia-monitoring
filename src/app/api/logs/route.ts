@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
       ),
       page: Number(searchParams.get("page") ?? "1"),
       pageSize: Number(searchParams.get("pageSize") ?? "10"),
-    });
-    const options = await getLogFilterOptions(session.id);
+    }, session.activeWorkspaceId!);
+    const options = await getLogFilterOptions(session.id, session.activeWorkspaceId!);
 
     return NextResponse.json({
       logs: logs.rows.map((log) => ({ ...log, createdAt: log.createdAt.toISOString() })),
@@ -61,7 +61,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const deleted = await clearLogs(session.id);
+    const deleted = await clearLogs(session.id, session.activeWorkspaceId!);
     return NextResponse.json({ count: deleted.length });
   } catch (error) {
     const authError = toAuthError(error, "Unable to clear logs right now.");

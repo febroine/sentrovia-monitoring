@@ -5,6 +5,7 @@ import {
 } from "@/lib/system/automatic-backup";
 
 const baseSchedule = {
+  workspaceId: "workspace-1",
   userId: "admin-1",
   enabled: true,
   window: "03:00",

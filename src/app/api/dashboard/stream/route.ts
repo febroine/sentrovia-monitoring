@@ -47,7 +47,10 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          const payload = await getDashboardData(activeSession.id);
+          const payload = await getDashboardData(
+            activeSession.id,
+            activeSession.activeWorkspaceId
+          );
           if (closed) {
             return;
           }

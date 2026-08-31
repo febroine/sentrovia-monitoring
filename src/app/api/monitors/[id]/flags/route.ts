@@ -38,7 +38,12 @@ export async function PATCH(request: NextRequest, context: MonitorFlagsRouteCont
       );
     }
 
-    const monitor = await updateMonitorFlags(session.id, id, parsed.data);
+    const monitor = await updateMonitorFlags(
+      session.id,
+      id,
+      parsed.data,
+      session.activeWorkspaceId!
+    );
     if (!monitor) {
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });
     }

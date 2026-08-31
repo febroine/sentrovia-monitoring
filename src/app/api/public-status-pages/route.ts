@@ -19,7 +19,9 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    return NextResponse.json({ pages: await listPublicStatusPages(session.id) });
+    return NextResponse.json({
+      pages: await listPublicStatusPages(session.id, undefined, session.activeWorkspaceId!),
+    });
   } catch (error) {
     const resolved = toAuthError(error, "Unable to load public status pages right now.");
     return NextResponse.json({ message: resolved.message }, { status: resolved.status });
@@ -43,7 +45,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const page = await createPublicStatusPage(session.id, parsed.data);
+    const page = await createPublicStatusPage(
+      session.id,
+      parsed.data,
+      undefined,
+      session.activeWorkspaceId!
+    );
     if (!page) {
       throw new Error("The public status page could not be loaded after creation.");
     }

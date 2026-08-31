@@ -36,14 +36,18 @@ export async function listLogs(
     toExclusiveTimezoneOffsetMinutes?: number;
     page?: number;
     pageSize?: number;
-  }
+  },
+  workspaceId?: string
 ) {
   const conditions = [
-    eq(monitorEvents.userId, userId),
+    workspaceId ? eq(monitorEvents.workspaceId, workspaceId) : eq(monitorEvents.userId, userId),
     ne(monitorEvents.eventType, "check"),
     notInArray(monitorEvents.eventType, HIDDEN_NOTIFICATION_MARKER_EVENTS),
   ];
-  const monitorConditions = [eq(monitors.userId, userId), isNull(monitors.deletedAt)];
+  const monitorConditions = [
+    workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId),
+    isNull(monitors.deletedAt),
+  ];
 
   const timezoneOffsetMinutes = normalizeTimezoneOffset(filters.timezoneOffsetMinutes);
   const fromDate = parseDateFilter(
@@ -281,16 +285,22 @@ function toBoundedInteger(value: number | undefined, fallback: number, min: numb
   return Math.min(max, Math.max(min, parsed));
 }
 
-export async function getLogFilterOptions(userId: string) {
+export async function getLogFilterOptions(userId: string, workspaceId?: string) {
   const [companyRows, monitorRows] = await Promise.all([
     db
       .select({ id: companies.id, name: companies.name })
       .from(companies)
-      .where(and(eq(companies.userId, userId), isNull(companies.deletedAt))),
+      .where(and(
+        workspaceId ? eq(companies.workspaceId, workspaceId) : eq(companies.userId, userId),
+        isNull(companies.deletedAt)
+      )),
     db
       .select({ id: monitors.id, name: monitors.name, companyId: monitors.companyId })
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt))),
+      .where(and(
+        workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId),
+        isNull(monitors.deletedAt)
+      )),
   ]);
 
   return {
@@ -299,12 +309,12 @@ export async function getLogFilterOptions(userId: string) {
   };
 }
 
-export async function clearLogs(userId: string) {
+export async function clearLogs(userId: string, workspaceId?: string) {
   return db
     .delete(monitorEvents)
     .where(
       and(
-        eq(monitorEvents.userId, userId),
+        workspaceId ? eq(monitorEvents.workspaceId, workspaceId) : eq(monitorEvents.userId, userId),
         notInArray(monitorEvents.eventType, WORKER_NOTIFICATION_MARKER_EVENTS)
       )
     )

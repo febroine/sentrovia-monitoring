@@ -16,9 +16,9 @@ import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
-export async function getDashboardData(userId: string) {
+export async function getDashboardData(userId: string, workspaceId?: string) {
   const [monitorSection, settingsSection] = await Promise.all([
-    loadDashboardSection("monitor status", getDashboardMonitors(userId), []),
+    loadDashboardSection("monitor status", getDashboardMonitors(userId, workspaceId), []),
     loadDashboardSection("workspace settings", getSettings(userId), null),
   ]);
   const monitorRows = monitorSection.data;
@@ -35,9 +35,17 @@ export async function getDashboardData(userId: string) {
   const total = scopedMonitorRows.length;
   const activeRows = scopedMonitorRows.filter((monitor) => monitor.isActive);
   const [eventsSection, workerSection, deliverySection] = await Promise.all([
-    loadDashboardSection("recent events", getRecentDashboardEvents(userId, preferences.companyId), []),
+    loadDashboardSection(
+      "recent events",
+      getRecentDashboardEvents(userId, preferences.companyId, workspaceId),
+      []
+    ),
     loadDashboardSection("worker health", getDashboardWorkerState(), DEFAULT_DASHBOARD_WORKER),
-    loadDashboardSection("notification delivery", getDashboardDeliverySummary(userId), DEFAULT_DELIVERY_SUMMARY),
+    loadDashboardSection(
+      "notification delivery",
+      getDashboardDeliverySummary(userId, workspaceId),
+      DEFAULT_DELIVERY_SUMMARY
+    ),
   ]);
   const eventRows = eventsSection.data;
   const worker = workerSection.data;
@@ -119,7 +127,10 @@ type DashboardMonitorDatabaseRow = DashboardMonitorRow & {
   checkSslExpiry: boolean;
 };
 
-async function getDashboardMonitors(userId: string): Promise<DashboardMonitorDatabaseRow[]> {
+async function getDashboardMonitors(
+  userId: string,
+  workspaceId?: string
+): Promise<DashboardMonitorDatabaseRow[]> {
   try {
     return await db
       .select({
@@ -143,7 +154,10 @@ async function getDashboardMonitors(userId: string): Promise<DashboardMonitorDat
         intervalUnit: monitors.intervalUnit,
       })
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
+      .where(and(
+        workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId),
+        isNull(monitors.deletedAt)
+      ));
   } catch (error) {
     if (!isSchemaDriftError(error)) {
       throw error;
@@ -219,21 +233,30 @@ function isSchemaDriftError(error: unknown): boolean {
   return current.cause ? isSchemaDriftError(current.cause) : false;
 }
 
-async function getRecentDashboardEvents(userId: string, companyId: string) {
+async function getRecentDashboardEvents(
+  userId: string,
+  companyId: string,
+  workspaceId?: string
+) {
   try {
-    return await queryRecentDashboardEvents(userId, companyId, true);
+    return await queryRecentDashboardEvents(userId, companyId, true, workspaceId);
   } catch (error) {
     if (!isSchemaDriftError(error)) {
       throw error;
     }
 
-    return queryRecentDashboardEvents(userId, companyId, false);
+    return queryRecentDashboardEvents(userId, companyId, false, workspaceId);
   }
 }
 
-async function queryRecentDashboardEvents(userId: string, companyId: string, includeSoftDeleteFilter: boolean) {
+async function queryRecentDashboardEvents(
+  userId: string,
+  companyId: string,
+  includeSoftDeleteFilter: boolean,
+  workspaceId?: string
+) {
   const conditions = [
-    eq(monitorEvents.userId, userId),
+    workspaceId ? eq(monitorEvents.workspaceId, workspaceId) : eq(monitorEvents.userId, userId),
     ne(monitorEvents.eventType, "check"),
     notInArray(monitorEvents.eventType, [...NOTIFICATION_MARKER_EVENT_TYPES]),
   ];
@@ -262,17 +285,24 @@ async function queryRecentDashboardEvents(userId: string, companyId: string, inc
     .limit(10);
 }
 
-export async function saveDashboardPreferences(userId: string, input: DashboardPreferences) {
+export async function saveDashboardPreferences(
+  userId: string,
+  input: DashboardPreferences,
+  workspaceId?: string
+) {
   const preferences = normalizeDashboardPreferences(input);
   if (preferences.companyId) {
-    const company = await getCompanyById(userId, preferences.companyId);
+    const company = await getCompanyById(
+      workspaceId ? { userId, workspaceId } : userId,
+      preferences.companyId
+    );
     if (!company) {
       throw new AuthError("The selected dashboard company is unavailable.", 400);
     }
   }
 
   await persistDashboardPreferences(userId, preferences);
-  return getDashboardData(userId);
+  return getDashboardData(userId, workspaceId);
 }
 
 export function buildDashboardCompanyOptions(
@@ -371,8 +401,8 @@ async function getDashboardWorkerState() {
   };
 }
 
-async function getDashboardDeliverySummary(userId: string) {
-  return getDeliverySummary(userId);
+async function getDashboardDeliverySummary(userId: string, workspaceId?: string) {
+  return getDeliverySummary(userId, workspaceId);
 }
 
 export async function loadDashboardSection<T>(label: string, request: Promise<T>, fallback: T) {

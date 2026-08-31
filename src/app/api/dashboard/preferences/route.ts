@@ -30,7 +30,11 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const dashboard = await saveDashboardPreferences(session.id, parsed.data);
+    const dashboard = await saveDashboardPreferences(
+      session.id,
+      parsed.data,
+      session.activeWorkspaceId!
+    );
     return NextResponse.json({ dashboard });
   } catch (error) {
     const authError = toAuthError(error, "Unable to save dashboard preferences right now.");

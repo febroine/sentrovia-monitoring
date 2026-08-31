@@ -25,6 +25,7 @@ describe("monitor connection test route", () => {
   it("runs a check without persisting monitor state", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "user-1",
+      activeWorkspaceId: "workspace-1",
       firstName: "User",
       lastName: "One",
       email: "user@example.com",
@@ -53,7 +54,12 @@ describe("monitor connection test route", () => {
 
     expect(response.status).toBe(200);
     expect(body.result).toMatchObject({ ok: true, statusCode: 200 });
-    expect(buildMonitorForTest).toHaveBeenCalledOnce();
+    expect(buildMonitorForTest).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ name: "Example monitor" }),
+      undefined,
+      "workspace-1"
+    );
     expect(checkMonitor).toHaveBeenCalledWith(
       expect.objectContaining({ id: "test-monitor" }),
       { allowPrivateTargets: false }

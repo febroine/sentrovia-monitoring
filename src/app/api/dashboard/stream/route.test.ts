@@ -17,9 +17,9 @@ vi.mock("@/lib/dashboard/service", () => ({
   getDashboardData: vi.fn(),
 }));
 
-  const session = {
-    id: "user-1",
-    activeWorkspaceId: "workspace-1",
+const session = {
+  id: "user-1",
+  activeWorkspaceId: "workspace-1",
   firstName: "Test",
   lastName: "User",
   email: "test@example.com",
@@ -72,6 +72,7 @@ describe("dashboard stream route", () => {
 
     expect(body).toContain('data: {"summary":{"total":2}}');
     expect(getActiveSessionUser).toHaveBeenCalledBefore(vi.mocked(getDashboardData));
+    expect(getDashboardData).toHaveBeenCalledWith("user-1", "workspace-1");
 
     await reader?.cancel();
   });

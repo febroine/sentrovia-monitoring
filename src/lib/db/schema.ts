@@ -88,6 +88,9 @@ export const auditEvents = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }),
     actorLabel: varchar("actor_label", { length: 255 }).notNull(),
@@ -99,6 +102,7 @@ export const auditEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    index("audit_events_workspace_created_idx").on(table.workspaceId, table.createdAt),
     index("audit_events_user_created_idx").on(table.userId, table.createdAt),
     index("audit_events_actor_created_idx").on(table.actorUserId, table.createdAt),
   ]
@@ -224,6 +228,9 @@ export const automaticBackupRuns = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     ownerUserId: text("owner_user_id").references(() => users.id, { onDelete: "set null" }),
     scheduledDate: varchar("scheduled_date", { length: 10 }).notNull(),
     status: varchar("status", { length: 16 }).default("running").notNull(),
@@ -237,6 +244,7 @@ export const automaticBackupRuns = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    index("automatic_backup_runs_workspace_updated_idx").on(table.workspaceId, table.updatedAt),
     uniqueIndex("automatic_backup_runs_scheduled_date_unique").on(table.scheduledDate),
     index("automatic_backup_runs_status_updated_idx").on(table.status, table.updatedAt),
   ]
@@ -248,6 +256,9 @@ export const companies = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -268,6 +279,7 @@ export const companies = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    index("companies_workspace_deleted_at_idx").on(table.workspaceId, table.deletedAt),
     uniqueIndex("companies_user_normalized_name_unique").on(
       table.userId,
       sql`lower(btrim(${table.name}))`
@@ -282,6 +294,9 @@ export const publicStatusPages = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -294,6 +309,7 @@ export const publicStatusPages = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    index("public_status_pages_workspace_created_idx").on(table.workspaceId, table.createdAt),
     uniqueIndex("public_status_pages_slug_unique").on(table.slug),
     uniqueIndex("public_status_pages_user_company_unique")
       .on(table.userId, table.companyId)
@@ -309,6 +325,9 @@ export const monitors = pgTable("monitors", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
@@ -385,6 +404,7 @@ export const monitors = pgTable("monitors", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("monitors_workspace_deleted_at_idx").on(table.workspaceId, table.deletedAt),
   index("monitors_user_deleted_at_idx").on(table.userId, table.deletedAt),
   index("monitors_user_favorite_critical_idx").on(table.userId, table.isFavorite, table.isCritical, table.status),
     uniqueIndex("monitors_heartbeat_token_hash_unique").on(table.heartbeatTokenHash),
@@ -394,6 +414,9 @@ export const monitorEvents = pgTable("monitor_events", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
   monitorId: text("monitor_id")
     .notNull()
     .references(() => monitors.id, { onDelete: "cascade" }),
@@ -409,12 +432,17 @@ export const monitorEvents = pgTable("monitor_events", {
   rcaTitle: varchar("rca_title", { length: 160 }),
   rcaSummary: text("rca_summary"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("monitor_events_workspace_created_idx").on(table.workspaceId, table.createdAt),
+]);
 
 export const monitorChecks = pgTable("monitor_checks", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
   monitorId: text("monitor_id")
     .notNull()
     .references(() => monitors.id, { onDelete: "cascade" }),
@@ -426,6 +454,7 @@ export const monitorChecks = pgTable("monitor_checks", {
   latencyMs: integer("latency_ms"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("monitor_checks_workspace_created_idx").on(table.workspaceId, table.createdAt),
   index("monitor_checks_user_monitor_created_at_idx").on(
     table.userId,
     table.monitorId,
@@ -439,6 +468,9 @@ export const monitorOutages = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     monitorId: text("monitor_id")
       .notNull()
       .references(() => monitors.id, { onDelete: "cascade" }),
@@ -455,6 +487,7 @@ export const monitorOutages = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    index("monitor_outages_workspace_created_idx").on(table.workspaceId, table.createdAt),
     uniqueIndex("monitor_outages_single_open_unique")
       .on(table.userId, table.monitorId)
       .where(sql`${table.status} = 'open' and ${table.resolvedAt} is null`),
@@ -484,6 +517,9 @@ export const webhookEndpoints = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -493,13 +529,19 @@ export const webhookEndpoints = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("webhook_endpoints_user_id_unique").on(table.userId)]
+  (table) => [
+    uniqueIndex("webhook_endpoints_user_id_unique").on(table.userId),
+    index("webhook_endpoints_workspace_created_idx").on(table.workspaceId, table.createdAt),
+  ]
 );
 
 export const deliveryEvents = pgTable("delivery_events", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
@@ -520,6 +562,7 @@ export const deliveryEvents = pgTable("delivery_events", {
   deadLetteredAt: timestamp("dead_lettered_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("delivery_events_workspace_created_idx").on(table.workspaceId, table.createdAt),
   index("delivery_events_webhook_claim_due_idx").on(
     table.channel,
     table.status,
@@ -581,6 +624,9 @@ export const reportSchedules = pgTable("report_schedules", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
@@ -610,6 +656,7 @@ export const reportSchedules = pgTable("report_schedules", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("report_schedules_workspace_created_idx").on(table.workspaceId, table.createdAt),
   index("report_schedules_claim_due_idx").on(
     table.isActive,
     table.nextRunAt,
@@ -624,6 +671,9 @@ export const monitorDiagnostics = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     monitorId: text("monitor_id")
       .notNull()
       .references(() => monitors.id, { onDelete: "cascade" }),
@@ -649,6 +699,7 @@ export const monitorDiagnostics = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    index("monitor_diagnostics_workspace_created_idx").on(table.workspaceId, table.createdAt),
     index("monitor_diagnostics_user_monitor_created_idx").on(table.userId, table.monitorId, table.createdAt),
     index("monitor_diagnostics_monitor_created_idx").on(table.monitorId, table.createdAt),
   ]
@@ -660,6 +711,9 @@ export const outageEvents = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     outageId: text("outage_id").references(() => monitorOutages.id, { onDelete: "set null" }),
     monitorId: text("monitor_id")
       .notNull()
@@ -674,6 +728,7 @@ export const outageEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    index("outage_events_workspace_created_idx").on(table.workspaceId, table.createdAt),
     index("outage_events_user_monitor_created_idx").on(table.userId, table.monitorId, table.createdAt),
     index("outage_events_outage_created_idx").on(table.outageId, table.createdAt),
   ]

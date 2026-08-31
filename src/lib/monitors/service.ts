@@ -31,6 +31,7 @@ import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { assertHeartbeatTokenAvailable } from "@/lib/monitors/heartbeat-secrets";
 import type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
+import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
 export {
   normalizeHeartbeatTokenInput,
   receiveHeartbeat,
@@ -73,18 +74,23 @@ const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 export const SOFT_DELETE_UNDO_MS = 60_000;
 
-export async function listMonitors(userId: string, database: DatabaseExecutor = db) {
+export async function listMonitors(
+  userId: string,
+  database: DatabaseExecutor = db,
+  workspaceId?: string
+) {
   const monitorRows = await database
     .select()
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)))
+    .where(and(monitorOwnershipCondition(userId, workspaceId), isNull(monitors.deletedAt)))
     .orderBy(desc(monitors.createdAt));
 
   const uptimeByMonitorId = await getMonitorUptimeById(
     userId,
     monitorRows.map((monitor) => monitor.id),
     new Date(),
-    database
+    database,
+    workspaceId
   );
 
   return monitorRows.map((monitor) => ({
@@ -93,13 +99,21 @@ export async function listMonitors(userId: string, database: DatabaseExecutor = 
   }));
 }
 
-export async function createMonitor(userId: string, input: MonitorInput) {
+export async function createMonitor(userId: string, input: MonitorInput, workspaceId?: string) {
   return db.transaction(async (tx) => {
-    await lockMonitorTargets(tx, userId);
-    await assertMonitorQuota(userId, 1, tx);
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
+    await lockMonitorTargets(tx, resolvedWorkspaceId);
+    await assertMonitorQuota(userId, 1, tx, resolvedWorkspaceId);
     const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
-    const values = await buildMonitorValues(userId, input, null, allowPrivateTargets, tx);
-    await assertMonitorTargetAvailable(userId, values.monitorType, values.url, null, tx);
+    const values = await buildMonitorValues(userId, input, null, allowPrivateTargets, tx, resolvedWorkspaceId);
+    await assertMonitorTargetAvailable(
+      userId,
+      values.monitorType,
+      values.url,
+      null,
+      tx,
+      resolvedWorkspaceId
+    );
     const [monitor] = await tx
       .insert(monitors)
       .values(values)
@@ -112,15 +126,23 @@ export async function createMonitor(userId: string, input: MonitorInput) {
 export async function buildMonitorForTest(
   userId: string,
   input: MonitorInput,
-  monitorId?: string | null
+  monitorId?: string | null,
+  workspaceId?: string
 ): Promise<ClaimedMonitor> {
-  const existingMonitor = monitorId ? await getMonitorById(userId, monitorId) : null;
+  const existingMonitor = monitorId ? await getMonitorById(userId, monitorId, db, workspaceId) : null;
   if (monitorId && !existingMonitor) {
     throw new AuthError("Monitor not found.", 404);
   }
 
   const allowPrivateTargets = await canUserAccessPrivateTargets(userId);
-  const values = await buildMonitorValues(userId, input, existingMonitor, allowPrivateTargets);
+  const values = await buildMonitorValues(
+    userId,
+    input,
+    existingMonitor,
+    allowPrivateTargets,
+    db,
+    workspaceId
+  );
   const now = new Date();
 
   return {
@@ -158,17 +180,37 @@ export async function buildMonitorForTest(
   };
 }
 
-export async function updateMonitor(userId: string, monitorId: string, input: MonitorInput) {
+export async function updateMonitor(
+  userId: string,
+  monitorId: string,
+  input: MonitorInput,
+  workspaceId?: string
+) {
   return db.transaction(async (tx) => {
-    await lockMonitorTargets(tx, userId);
-    const existingMonitor = await getMonitorById(userId, monitorId, tx);
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
+    await lockMonitorTargets(tx, resolvedWorkspaceId);
+    const existingMonitor = await getMonitorById(userId, monitorId, tx, resolvedWorkspaceId);
     if (!existingMonitor) {
       return null;
     }
 
     const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
-    const values = await buildMonitorValues(userId, input, existingMonitor, allowPrivateTargets, tx);
-    await assertMonitorTargetAvailable(userId, values.monitorType, values.url, monitorId, tx);
+    const values = await buildMonitorValues(
+      userId,
+      input,
+      existingMonitor,
+      allowPrivateTargets,
+      tx,
+      resolvedWorkspaceId
+    );
+    await assertMonitorTargetAvailable(
+      userId,
+      values.monitorType,
+      values.url,
+      monitorId,
+      tx,
+      resolvedWorkspaceId
+    );
     const now = new Date();
     const targetChanged = hasMonitorTargetChanged(existingMonitor, values);
     const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
@@ -192,7 +234,11 @@ export async function updateMonitor(userId: string, monitorId: string, input: Mo
         userId,
         updatedAt: now,
       })
-      .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
+      .where(and(
+        eq(monitors.id, monitorId),
+        eq(monitors.workspaceId, resolvedWorkspaceId),
+        isNull(monitors.deletedAt)
+      ))
       .returning();
 
     if (!monitor) {
@@ -224,10 +270,11 @@ async function assertMonitorTargetAvailable(
   monitorType: MonitorInput["monitorType"],
   url: string,
   excludedMonitorId: string | null,
-  database: DatabaseExecutor = db
+  database: DatabaseExecutor = db,
+  workspaceId?: string
 ) {
   const targetKey = buildMonitorIdentityKey({ monitorType, url });
-  const existing = await listReservedMonitorTargets(userId, database);
+  const existing = await listReservedMonitorTargets(userId, database, new Date(), workspaceId);
 
   const conflict = existing.some((monitor) => {
     if (monitor.id === excludedMonitorId) {
@@ -245,15 +292,20 @@ async function assertMonitorTargetAvailable(
   }
 }
 
-async function lockMonitorTargets(executor: Pick<typeof db, "execute">, userId: string) {
+async function lockMonitorTargets(executor: Pick<typeof db, "execute">, ownershipId: string) {
   await executor.execute(
-    sql`select pg_advisory_xact_lock(hashtext(${`${MONITOR_TARGET_LOCK_PREFIX}${userId}`}))`
+    sql`select pg_advisory_xact_lock(hashtext(${`${MONITOR_TARGET_LOCK_PREFIX}${ownershipId}`}))`
   );
 }
 
-export async function updateMonitorActiveState(userId: string, monitorId: string, isActive: boolean) {
+export async function updateMonitorActiveState(
+  userId: string,
+  monitorId: string,
+  isActive: boolean,
+  workspaceId?: string
+) {
   return db.transaction(async (tx) => {
-    const existingMonitor = await getMonitorById(userId, monitorId, tx);
+    const existingMonitor = await getMonitorById(userId, monitorId, tx, workspaceId);
     if (!existingMonitor) {
       return null;
     }
@@ -266,7 +318,11 @@ export async function updateMonitorActiveState(userId: string, monitorId: string
         ...buildActiveStateUpdate(existingMonitor.isActive, isActive, now),
         updatedAt: now,
       })
-      .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
+      .where(and(
+        eq(monitors.id, monitorId),
+        monitorOwnershipCondition(userId, workspaceId),
+        isNull(monitors.deletedAt)
+      ))
       .returning();
 
     if (!monitor) {
@@ -281,7 +337,8 @@ export async function updateMonitorActiveState(userId: string, monitorId: string
 export async function updateMonitorFlags(
   userId: string,
   monitorId: string,
-  input: { isFavorite?: boolean; isCritical?: boolean }
+  input: { isFavorite?: boolean; isCritical?: boolean },
+  workspaceId?: string
 ) {
   if (input.isFavorite === undefined && input.isCritical === undefined) {
     throw new AuthError("At least one dashboard flag is required.", 400);
@@ -294,19 +351,33 @@ export async function updateMonitorFlags(
       ...(input.isCritical === undefined ? {} : { isCritical: input.isCritical }),
       updatedAt: new Date(),
     })
-    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
+    .where(and(
+      eq(monitors.id, monitorId),
+      monitorOwnershipCondition(userId, workspaceId),
+      isNull(monitors.deletedAt)
+    ))
     .returning();
 
   return monitor ?? null;
 }
 
-export async function bulkUpdateMonitors(userId: string, ids: string[], input: MonitorInput) {
+export async function bulkUpdateMonitors(
+  userId: string,
+  ids: string[],
+  input: MonitorInput,
+  workspaceId?: string
+) {
   return db.transaction(async (tx) => {
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
     const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
     const existingMonitors = await tx
       .select()
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)));
+      .where(and(
+        eq(monitors.workspaceId, resolvedWorkspaceId),
+        inArray(monitors.id, ids),
+        isNull(monitors.deletedAt)
+      ));
     const updated: Array<typeof monitors.$inferSelect> = [];
     const pausedOutages: Array<Parameters<typeof resolveOutage>[0]> = [];
 
@@ -317,7 +388,8 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
         mergedInput,
         existingMonitor,
         allowPrivateTargets,
-        tx
+        tx,
+        resolvedWorkspaceId
       );
       const now = new Date();
       const scheduleUpdate = buildConfigurationScheduleUpdate(
@@ -338,7 +410,7 @@ export async function bulkUpdateMonitors(userId: string, ids: string[], input: M
         })
         .where(and(
           eq(monitors.id, existingMonitor.id),
-          eq(monitors.userId, userId),
+          eq(monitors.workspaceId, resolvedWorkspaceId),
           isNull(monitors.deletedAt)
         ))
         .returning();
@@ -369,14 +441,19 @@ export async function updateMonitorTags(
   userId: string,
   ids: string[],
   action: "add" | "remove" | "replace",
-  tags: string[]
+  tags: string[],
+  workspaceId?: string
 ) {
   const normalizedTags = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
   return db.transaction(async (tx) => {
     const current = await tx
       .select()
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)));
+      .where(and(
+        monitorOwnershipCondition(userId, workspaceId),
+        inArray(monitors.id, ids),
+        isNull(monitors.deletedAt)
+      ));
     const updated: Array<typeof monitors.$inferSelect> = [];
 
     for (const monitor of current) {
@@ -387,7 +464,11 @@ export async function updateMonitorTags(
           tags: nextTags,
           updatedAt: new Date(),
         })
-        .where(and(eq(monitors.id, monitor.id), eq(monitors.userId, userId), isNull(monitors.deletedAt)))
+        .where(and(
+          eq(monitors.id, monitor.id),
+          monitorOwnershipCondition(userId, workspaceId),
+          isNull(monitors.deletedAt)
+        ))
         .returning();
 
       if (item) {
@@ -399,13 +480,17 @@ export async function updateMonitorTags(
   });
 }
 
-export async function deleteMonitors(userId: string, ids: string[]) {
+export async function deleteMonitors(userId: string, ids: string[], workspaceId?: string) {
   const now = new Date();
   return db.transaction(async (tx) => {
     const existing = await tx
       .select({ id: monitors.id, status: monitors.status, statusCode: monitors.statusCode })
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)));
+      .where(and(
+        monitorOwnershipCondition(userId, workspaceId),
+        inArray(monitors.id, ids),
+        isNull(monitors.deletedAt)
+      ));
     const deleted = await tx
       .update(monitors)
       .set({
@@ -417,7 +502,11 @@ export async function deleteMonitors(userId: string, ids: string[]) {
         leaseExpiresAt: null,
         updatedAt: now,
       })
-      .where(and(eq(monitors.userId, userId), inArray(monitors.id, ids), isNull(monitors.deletedAt)))
+      .where(and(
+        monitorOwnershipCondition(userId, workspaceId),
+        inArray(monitors.id, ids),
+        isNull(monitors.deletedAt)
+      ))
       .returning({ id: monitors.id, deletedAt: monitors.deletedAt });
 
     const deletedIds = new Set(deleted.map((monitor) => monitor.id));
@@ -435,21 +524,27 @@ export async function deleteMonitors(userId: string, ids: string[]) {
   });
 }
 
-export async function restoreMonitors(userId: string, ids: string[], now = new Date()) {
+export async function restoreMonitors(
+  userId: string,
+  ids: string[],
+  now = new Date(),
+  workspaceId?: string
+) {
   return db.transaction(async (tx) => {
-    await lockMonitorTargets(tx, userId);
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
+    await lockMonitorTargets(tx, resolvedWorkspaceId);
     const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
     const nextCheckTimestamp = now.toISOString();
     const [restorable] = await tx
       .select({ total: count() })
       .from(monitors)
       .where(and(
-        eq(monitors.userId, userId),
+        eq(monitors.workspaceId, resolvedWorkspaceId),
         inArray(monitors.id, ids),
         isNotNull(monitors.deletedAt),
         gte(monitors.deletedAt, undoCutoff)
       ));
-    await assertMonitorQuota(userId, Number(restorable?.total ?? 0), tx);
+    await assertMonitorQuota(userId, Number(restorable?.total ?? 0), tx, resolvedWorkspaceId);
 
     return tx
       .update(monitors)
@@ -462,7 +557,7 @@ export async function restoreMonitors(userId: string, ids: string[], now = new D
         updatedAt: now,
       })
       .where(and(
-        eq(monitors.userId, userId),
+        eq(monitors.workspaceId, resolvedWorkspaceId),
         inArray(monitors.id, ids),
         isNotNull(monitors.deletedAt),
         gte(monitors.deletedAt, undoCutoff)
@@ -505,20 +600,32 @@ export function buildMonitorTargetResetState(isActive: boolean, now: Date) {
   };
 }
 
-export async function createManyMonitors(userId: string, inputs: MonitorInput[], database?: DatabaseExecutor) {
+export async function createManyMonitors(
+  userId: string,
+  inputs: MonitorInput[],
+  database?: DatabaseExecutor,
+  workspaceId?: string
+) {
   if (database) {
-    await lockMonitorTargets(database, userId);
-    return persistManyMonitors(userId, inputs, database);
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, database);
+    await lockMonitorTargets(database, resolvedWorkspaceId);
+    return persistManyMonitors(userId, inputs, database, resolvedWorkspaceId);
   }
 
   return db.transaction(async (tx) => {
-    await lockMonitorTargets(tx, userId);
-    return persistManyMonitors(userId, inputs, tx);
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
+    await lockMonitorTargets(tx, resolvedWorkspaceId);
+    return persistManyMonitors(userId, inputs, tx, resolvedWorkspaceId);
   });
 }
 
-async function persistManyMonitors(userId: string, inputs: MonitorInput[], database: DatabaseExecutor) {
-  const existing = await listReservedMonitorTargets(userId, database);
+async function persistManyMonitors(
+  userId: string,
+  inputs: MonitorInput[],
+  database: DatabaseExecutor,
+  workspaceId: string
+) {
+  const existing = await listReservedMonitorTargets(userId, database, new Date(), workspaceId);
   const allowPrivateTargets = await canUserAccessPrivateTargets(userId, database);
 
   const existingTargets = new Set(
@@ -530,9 +637,9 @@ async function persistManyMonitors(userId: string, inputs: MonitorInput[], datab
     )
   );
   const filtered = filterDuplicateMonitorInputs(inputs, existingTargets);
-  await assertMonitorQuota(userId, filtered.length, database);
+  await assertMonitorQuota(userId, filtered.length, database, workspaceId);
   const values = await Promise.all(filtered.map((input) =>
-    buildMonitorValues(userId, input, null, allowPrivateTargets, database)
+    buildMonitorValues(userId, input, null, allowPrivateTargets, database, workspaceId)
   ));
   const valuesWithInitialSchedule = spreadInitialMonitorChecks(values, new Date());
 
@@ -546,7 +653,8 @@ async function persistManyMonitors(userId: string, inputs: MonitorInput[], datab
 async function assertMonitorQuota(
   userId: string,
   requested: number,
-  database: DatabaseExecutor = db
+  database: DatabaseExecutor = db,
+  workspaceId?: string
 ) {
   if (requested <= 0) {
     return;
@@ -555,7 +663,7 @@ async function assertMonitorQuota(
   const [row] = await database
     .select({ total: count() })
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
+    .where(and(monitorOwnershipCondition(userId, workspaceId), isNull(monitors.deletedAt)));
   const current = Number(row?.total ?? 0);
 
   if (current + requested > MAX_MONITORS_PER_USER) {
@@ -569,7 +677,8 @@ async function assertMonitorQuota(
 export async function listReservedMonitorTargets(
   userId: string,
   database: DatabaseExecutor = db,
-  now = new Date()
+  now = new Date(),
+  workspaceId?: string
 ) {
   const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
   return database
@@ -577,7 +686,7 @@ export async function listReservedMonitorTargets(
     .from(monitors)
     .where(
       and(
-        eq(monitors.userId, userId),
+        monitorOwnershipCondition(userId, workspaceId),
         or(isNull(monitors.deletedAt), gte(monitors.deletedAt, undoCutoff))
       )
     );
@@ -690,9 +799,19 @@ async function buildMonitorValues(
   input: MonitorInput,
   existingMonitor: typeof monitors.$inferSelect | null,
   allowPrivateTargets: boolean,
-  database: DatabaseExecutor = db
+  database: DatabaseExecutor = db,
+  workspaceId?: string
 ) {
-  const identity = await resolveMonitorIdentity(userId, input, existingMonitor, database);
+  const resolvedWorkspaceId = existingMonitor?.workspaceId
+    ?? workspaceId
+    ?? await requireWorkspaceIdForUser(userId, database);
+  const identity = await resolveMonitorIdentity(
+    userId,
+    input,
+    existingMonitor,
+    database,
+    resolvedWorkspaceId
+  );
   try {
     await assertMonitorNetworkTargetAllowed(identity.monitorType, identity.url, allowPrivateTargets);
   } catch (error) {
@@ -705,7 +824,7 @@ async function buildMonitorValues(
       : null;
 
   return {
-    ...buildCommonMonitorValues(userId, input, identity),
+    ...buildCommonMonitorValues(resolvedWorkspaceId, userId, input, identity),
     ...buildTypeSpecificMonitorValues(input, existingMonitor, identity, databasePasswordEncrypted),
   };
 }
@@ -714,10 +833,11 @@ async function resolveMonitorIdentity(
   userId: string,
   input: MonitorInput,
   existingMonitor: typeof monitors.$inferSelect | null,
-  database: DatabaseExecutor
+  database: DatabaseExecutor,
+  workspaceId: string
 ) {
   const companyRecord = input.companyId
-    ? await getCompanyById(userId, input.companyId, database)
+    ? await getCompanyById({ userId, workspaceId }, input.companyId, database)
     : null;
   const monitorType = normalizeMonitorType(input.monitorType);
   const heartbeatToken = monitorType === "heartbeat" ? resolveHeartbeatToken(input, existingMonitor) : null;
@@ -733,8 +853,14 @@ async function resolveMonitorIdentity(
 
 type MonitorIdentity = Awaited<ReturnType<typeof resolveMonitorIdentity>>;
 
-function buildCommonMonitorValues(userId: string, input: MonitorInput, identity: MonitorIdentity) {
+function buildCommonMonitorValues(
+  workspaceId: string,
+  userId: string,
+  input: MonitorInput,
+  identity: MonitorIdentity
+) {
   return {
+    workspaceId,
     userId,
     name: input.name,
     monitorType: identity.monitorType,
@@ -821,13 +947,28 @@ async function recordBlockedMonitorTarget(
 }
 
 
-async function getMonitorById(userId: string, monitorId: string, database: DatabaseExecutor = db) {
+async function getMonitorById(
+  userId: string,
+  monitorId: string,
+  database: DatabaseExecutor = db,
+  workspaceId?: string
+) {
   const [monitor] = await database
     .select()
     .from(monitors)
-    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId), isNull(monitors.deletedAt)));
+    .where(and(
+      eq(monitors.id, monitorId),
+      monitorOwnershipCondition(userId, workspaceId),
+      isNull(monitors.deletedAt)
+    ));
 
   return monitor ?? null;
+}
+
+function monitorOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(monitors.workspaceId, workspaceId)
+    : eq(monitors.userId, userId);
 }
 
 export function selectDueMonitorsForCycle<T extends {

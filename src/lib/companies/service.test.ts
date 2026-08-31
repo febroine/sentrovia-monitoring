@@ -66,7 +66,7 @@ describe("company service", () => {
   });
 
   it("creates a company inside a transaction", async () => {
-    const result = await createCompany("user-1", {
+    const result = await createCompany({ workspaceId: "workspace-1", userId: "user-1" }, {
       name: "Operations",
       description: null,
       notificationEmailRecipients: [],
@@ -87,7 +87,7 @@ describe("company service", () => {
       })),
     });
 
-    await createCompany("user-1", {
+    await createCompany({ workspaceId: "workspace-1", userId: "user-1" }, {
       name: "Operations",
       description: null,
       notificationEmailRecipients: [],

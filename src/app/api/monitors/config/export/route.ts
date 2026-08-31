@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     const format = request.nextUrl.searchParams.get("format") === "yaml" ? "yaml" : "json";
-    const bundle = await buildMonitorConfigBundle(session.id);
+    const bundle = await buildMonitorConfigBundle(session.id, session.activeWorkspaceId!);
     const body = serializeMonitorConfigBundle(bundle, format);
 
     return new NextResponse(body, {

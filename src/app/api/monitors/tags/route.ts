@@ -29,7 +29,13 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid tag patch payload." }, { status: 400 });
     }
 
-    const monitors = await updateMonitorTags(session.id, parsed.data.ids, parsed.data.action, parsed.data.tags);
+    const monitors = await updateMonitorTags(
+      session.id,
+      parsed.data.ids,
+      parsed.data.action,
+      parsed.data.tags,
+      session.activeWorkspaceId!
+    );
     return NextResponse.json({ monitors: monitors.map((monitor) => serializeMonitorRecord(monitor)) });
   } catch (error) {
     const authError = toAuthError(error, "Unable to update monitor tags right now.");
