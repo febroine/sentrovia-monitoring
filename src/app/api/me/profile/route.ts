@@ -50,6 +50,7 @@ export async function PATCH(request: NextRequest) {
     const token = await createSessionToken(
       {
         id: session.id,
+        activeWorkspaceId: session.activeWorkspaceId!,
         firstName: profile.firstName,
         lastName: profile.lastName,
         email: profile.email,

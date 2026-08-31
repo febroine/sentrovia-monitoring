@@ -23,7 +23,7 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const members = await listMembers(session.id, session.role);
+    const members = await listMembers(session.activeWorkspaceId!, session.id, session.role);
     return NextResponse.json({
       currentUserId: session.id,
       currentUserRole: session.role,
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       throw new AuthError("You cannot assign this workspace role.", 403);
     }
 
-    const result = await createMember(parsed.data);
+    const result = await createMember(session.activeWorkspaceId!, parsed.data);
     await recordAuditEventSafely({
       userId: session.id,
       actorUserId: session.id,
@@ -87,7 +87,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Select at least one member." }, { status: 400 });
     }
 
-    const deleted = await deleteMembers(session.id, session.role, parsed.data.ids);
+    const deleted = await deleteMembers(
+      session.activeWorkspaceId!,
+      session.id,
+      session.role,
+      parsed.data.ids
+    );
     const deletedIds = deleted.map((member) => member.id);
     await Promise.all(deleted.map((member) => recordAuditEventSafely({
       userId: member.id === session.id ? null : session.id,

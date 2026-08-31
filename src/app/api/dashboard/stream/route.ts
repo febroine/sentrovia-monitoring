@@ -36,7 +36,11 @@ export async function GET(request: NextRequest) {
 
         frameInProgress = true;
         try {
-          const activeSession = await getActiveSessionUser(session.id, session.sessionVersion);
+      const activeSession = await getActiveSessionUser(
+        session.id,
+        session.sessionVersion,
+        session.activeWorkspaceId
+      );
           if (!activeSession) {
             cleanup();
             controller.close();

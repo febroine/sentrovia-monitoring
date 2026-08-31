@@ -12,6 +12,7 @@ export const DEFAULT_SESSION_VERSION = 1;
 
 export interface SessionUser {
   id: string;
+  activeWorkspaceId: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -21,7 +22,8 @@ export interface SessionUser {
 
 export type SessionPayload = SessionUser;
 
-export interface VersionedSessionPayload extends SessionPayload {
+export interface VersionedSessionPayload extends Omit<SessionPayload, "activeWorkspaceId"> {
+  activeWorkspaceId?: string | null;
   sessionVersion: number;
 }
 
@@ -39,9 +41,14 @@ function shouldUseSecureSessionCookie() {
   }
 }
 
-export async function createSessionToken(user: SessionUser, sessionVersion = DEFAULT_SESSION_VERSION) {
+export async function createSessionToken(
+  user: SessionUser | Omit<SessionUser, "activeWorkspaceId">,
+  sessionVersion = DEFAULT_SESSION_VERSION
+) {
+  const activeWorkspaceId = "activeWorkspaceId" in user ? user.activeWorkspaceId : undefined;
   return new SignJWT({
     id: user.id,
+    activeWorkspaceId,
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
@@ -72,6 +79,7 @@ export async function verifySessionToken(token?: string | null): Promise<Version
     });
 
     const id = typeof payload.id === "string" ? payload.id : null;
+    const activeWorkspaceId = typeof payload.activeWorkspaceId === "string" ? payload.activeWorkspaceId : null;
     const firstName = typeof payload.firstName === "string" ? payload.firstName : null;
     const lastName = typeof payload.lastName === "string" ? payload.lastName : null;
     const email = typeof payload.email === "string" ? payload.email : null;
@@ -89,6 +97,7 @@ export async function verifySessionToken(token?: string | null): Promise<Version
 
     return {
       id,
+      activeWorkspaceId,
       firstName,
       lastName,
       email,

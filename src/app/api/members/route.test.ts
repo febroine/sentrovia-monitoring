@@ -33,6 +33,7 @@ describe("members route", () => {
   it("lets admins request deletion of other members", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "admin-1",
+      activeWorkspaceId: "workspace-1",
       firstName: "Admin",
       lastName: "User",
       email: "admin@example.com",
@@ -53,12 +54,13 @@ describe("members route", () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({ ids: ["member-2"], signedOut: false });
-    expect(deleteMembers).toHaveBeenCalledWith("admin-1", "admin", ["member-2"]);
+    expect(deleteMembers).toHaveBeenCalledWith("workspace-1", "admin-1", "admin", ["member-2"]);
   });
 
   it("rejects invalid usernames during member updates", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "admin-1",
+      activeWorkspaceId: "workspace-1",
       firstName: "Admin",
       lastName: "User",
       email: "admin@example.com",
@@ -85,6 +87,7 @@ describe("members route", () => {
   it("normalizes member update email and username before saving", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "admin-1",
+      activeWorkspaceId: "workspace-1",
       firstName: "Admin",
       lastName: "User",
       email: "admin@example.com",
@@ -116,7 +119,7 @@ describe("members route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(updateMember).toHaveBeenCalledWith("member-2", "admin-1", "admin", {
+    expect(updateMember).toHaveBeenCalledWith("workspace-1", "member-2", "admin-1", "admin", {
       email: "member@example.com",
       role: "admin",
       username: "member.two",
@@ -124,9 +127,42 @@ describe("members route", () => {
     expect(applySessionCookie).not.toHaveBeenCalled();
   });
 
+  it("returns not found when the member is outside the active workspace", async () => {
+    vi.mocked(getSession).mockResolvedValueOnce({
+      id: "admin-1",
+      activeWorkspaceId: "workspace-1",
+      firstName: "Admin",
+      lastName: "User",
+      email: "admin@example.com",
+      department: null,
+      role: "admin",
+      sessionVersion: 1,
+    });
+    vi.mocked(updateMember).mockResolvedValueOnce(null);
+
+    const response = await PATCH(
+      new Request("https://example.com/api/members/member-in-workspace-2", {
+        method: "PATCH",
+        body: JSON.stringify({ email: "member@example.com", username: "member.two" }),
+        headers: { "content-type": "application/json" },
+      }) as never,
+      { params: Promise.resolve({ id: "member-in-workspace-2" }) }
+    );
+
+    expect(response.status).toBe(404);
+    expect(updateMember).toHaveBeenCalledWith(
+      "workspace-1",
+      "member-in-workspace-2",
+      "admin-1",
+      "admin",
+      expect.any(Object)
+    );
+  });
+
   it("refreshes the session cookie when users update their own account", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "admin-1",
+      activeWorkspaceId: "workspace-1",
       firstName: "Admin",
       lastName: "User",
       email: "old@example.com",
@@ -161,6 +197,7 @@ describe("members route", () => {
     expect(createSessionToken).toHaveBeenCalledWith(
       {
         id: "admin-1",
+        activeWorkspaceId: "workspace-1",
         firstName: "Admin",
         lastName: "User",
         email: "new@example.com",
@@ -176,6 +213,7 @@ describe("members route", () => {
     vi.mocked(updateMember).mockClear();
     vi.mocked(getSession).mockResolvedValueOnce({
       id: "member-1",
+      activeWorkspaceId: "workspace-1",
       firstName: "Member",
       lastName: "One",
       email: "member@example.com",

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   bigint,
+  check,
   index,
   integer,
   pgTable,
@@ -45,6 +46,39 @@ export const users = pgTable(
   (table) => [
     uniqueIndex("users_email_unique").on(sql`lower(${table.email})`),
     uniqueIndex("users_username_unique").on(sql`lower(${table.username})`),
+  ]
+);
+
+export const workspaces = pgTable("workspaces", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 160 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const workspaceMembers = pgTable(
+  "workspace_members",
+  {
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 16 }).default("operator").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("workspace_members_workspace_user_unique").on(table.workspaceId, table.userId),
+    index("workspace_members_user_created_idx").on(table.userId, table.createdAt),
+    index("workspace_members_workspace_role_idx").on(table.workspaceId, table.role),
+    check(
+      "workspace_members_role_check",
+      sql`${table.role} in ('admin', 'manager', 'operator', 'viewer')`
+    ),
   ]
 );
 

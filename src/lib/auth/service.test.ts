@@ -77,7 +77,7 @@ describe("auth service", () => {
   });
 
   it("persists the optional department during member creation", async () => {
-    const result = await createMember({
+    const result = await createMember("workspace-1", {
       firstName: "Aykut",
       lastName: "Bayram",
       username: "aykut.bayram",
@@ -117,7 +117,7 @@ describe("auth service", () => {
       })),
     });
 
-    await expect(createMember({
+    await expect(createMember("workspace-1", {
       firstName: "Aykut",
       lastName: "Bayram",
       username: null,

@@ -50,7 +50,13 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       return NextResponse.json({ message: "You cannot assign this workspace role." }, { status: 403 });
     }
 
-    const member = await updateMember(id, session.id, session.role, parsed.data);
+    const member = await updateMember(
+      session.activeWorkspaceId!,
+      id,
+      session.id,
+      session.role,
+      parsed.data
+    );
     if (!member) {
       return NextResponse.json({ message: "Member not found." }, { status: 404 });
     }
@@ -84,6 +90,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       await createSessionToken(
         {
           id: session.id,
+          activeWorkspaceId: session.activeWorkspaceId!,
           firstName: member.firstName,
           lastName: member.lastName,
           email: member.email,
