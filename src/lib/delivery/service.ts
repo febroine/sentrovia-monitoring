@@ -82,7 +82,11 @@ function deliveryHealthWindowWhere(since: Date) {
   );
 }
 
-export async function getDeliveryOverview(userId: string, requestedPage = 1): Promise<DeliveryOverview> {
+export async function getDeliveryOverview(
+  userId: string,
+  requestedPage = 1,
+  includeWebhookUrl = true
+): Promise<DeliveryOverview> {
   const healthSince = new Date(Date.now() - DELIVERY_HEALTH_WINDOW_MS);
   const [endpoint, totalRows, summary, healthRows, latestHealthRows] = await Promise.all([
     getWebhookEndpoint(userId),
@@ -131,7 +135,7 @@ export async function getDeliveryOverview(userId: string, requestedPage = 1): Pr
   return {
     webhook: endpoint
       ? {
-          url: decryptValueOrLegacyPlaintext(endpoint.url) ?? "",
+          url: includeWebhookUrl ? decryptValueOrLegacyPlaintext(endpoint.url) ?? "" : "",
           isActive: endpoint.isActive,
           secretConfigured: Boolean(decryptValue(endpoint.secretEncrypted)),
         }

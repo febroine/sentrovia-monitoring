@@ -27,6 +27,17 @@ const profileUsername = z
     "Username can only include letters, numbers, dots, underscores, and dashes."
   );
 
+export const profileSettingsSchema = z.object({
+  firstName: z.string().trim().min(2).max(80),
+  lastName: z.string().trim().min(2).max(80),
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  department: optionalString(120),
+  username: profileUsername,
+  organization: optionalString(160),
+  jobTitle: optionalString(120),
+  phone: optionalString(40),
+});
+
 const publicStatusSlug = z
   .string()
   .trim()
@@ -38,16 +49,7 @@ const MIN_MONITORING_INTERVAL_VALUE = 1;
 const MAX_MONITORING_INTERVAL_VALUE = 1440;
 
 const settingsObjectSchema = z.object({
-  profile: z.object({
-    firstName: z.string().trim().min(2).max(80),
-    lastName: z.string().trim().min(2).max(80),
-    email: z.string().trim().email().transform((value) => value.toLowerCase()),
-    department: optionalString(120),
-    username: profileUsername,
-    organization: optionalString(160),
-    jobTitle: optionalString(120),
-    phone: optionalString(40),
-  }),
+  profile: profileSettingsSchema,
   notifications: z.object({
     notificationLanguage: z.enum(["en", "tr"]).default("en"),
     notifyOnDown: z.boolean(),
@@ -178,6 +180,7 @@ const settingsObjectSchema = z.object({
 export const settingsSchema = z.preprocess(normalizeLegacySettingsInput, settingsObjectSchema);
 
 export type SettingsInput = z.infer<typeof settingsSchema>;
+export type ProfileSettingsInput = z.infer<typeof profileSettingsSchema>;
 
 function normalizeLegacySettingsInput(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

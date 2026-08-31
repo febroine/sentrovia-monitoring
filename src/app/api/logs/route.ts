@@ -23,6 +23,16 @@ export async function GET(request: NextRequest) {
       to: searchParams.get("to") ?? "",
       statusCode: searchParams.get("statusCode") ?? "",
       timezoneOffsetMinutes: Number(searchParams.get("timezoneOffsetMinutes") ?? "0"),
+      fromTimezoneOffsetMinutes: Number(
+        searchParams.get("fromTimezoneOffsetMinutes")
+          ?? searchParams.get("timezoneOffsetMinutes")
+          ?? "0"
+      ),
+      toExclusiveTimezoneOffsetMinutes: Number(
+        searchParams.get("toExclusiveTimezoneOffsetMinutes")
+          ?? searchParams.get("timezoneOffsetMinutes")
+          ?? "0"
+      ),
       page: Number(searchParams.get("page") ?? "1"),
       pageSize: Number(searchParams.get("pageSize") ?? "10"),
     });

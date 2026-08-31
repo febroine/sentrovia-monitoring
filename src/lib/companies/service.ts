@@ -107,7 +107,7 @@ async function releaseExpiredCompanyName(userId: string, name: string, database:
     .set({
       companyId: null,
       isActive: false,
-      lastStatus: "error",
+      lastStatus: "failed",
       lastErrorMessage: "The assigned company was deleted.",
       updatedAt: now,
     })

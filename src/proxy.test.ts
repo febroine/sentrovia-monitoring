@@ -63,6 +63,8 @@ describe("authenticated route matcher", () => {
   });
 
   it("keeps readiness, heartbeat, and metrics endpoints outside cookie authentication", async () => {
+    await expect(proxy(new NextRequest("http://localhost/api/auth/session")))
+      .resolves.toMatchObject({ status: 200 });
     await expect(proxy(new NextRequest("http://localhost/api/health"))).resolves.toMatchObject({ status: 200 });
     await expect(proxy(new NextRequest("http://localhost/api/metrics"))).resolves.toMatchObject({ status: 200 });
     await expect(proxy(new NextRequest("http://localhost/api/monitors/heartbeat/token", { method: "POST" })))

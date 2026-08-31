@@ -19,7 +19,7 @@ import { POST } from "@/app/api/delivery/retry/route";
 describe("delivery retry route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ id: "user-1" });
+    mocks.getSession.mockResolvedValue({ id: "user-1", role: "admin" });
     mocks.getDeliveryOverview.mockResolvedValue({ history: [] });
     mocks.retryDeliveryEvent.mockResolvedValue({ id: "delivery-1", status: "delivered" });
     mocks.retryDeliveryQueue.mockResolvedValue({ processed: 2 });
@@ -31,6 +31,17 @@ describe("delivery retry route", () => {
     const response = await POST(new Request("http://localhost/api/delivery/retry", { method: "POST" }) as never);
 
     expect(response.status).toBe(401);
+    expect(mocks.retryDeliveryQueue).not.toHaveBeenCalled();
+  });
+
+  it("rejects retries from read-only users", async () => {
+    mocks.getSession.mockResolvedValueOnce({ id: "user-1", role: "viewer" });
+
+    const response = await POST(
+      new Request("http://localhost/api/delivery/retry", { method: "POST" }) as never
+    );
+
+    expect(response.status).toBe(403);
     expect(mocks.retryDeliveryQueue).not.toHaveBeenCalled();
   });
 

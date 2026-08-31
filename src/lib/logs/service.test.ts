@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AuthError } from "@/lib/auth/errors";
-import { mapEventToLevel, parseDateFilter } from "@/lib/logs/service";
+import {
+  mapEventToLevel,
+  parseDateFilter,
+  resolveCalendarDateBoundary,
+} from "@/lib/logs/service";
 
 describe("log service filters", () => {
   it("keeps displayed event levels mutually consistent", () => {
@@ -23,6 +27,12 @@ describe("log service filters", () => {
   it("interprets calendar filters in the browser timezone", () => {
     expect(parseDateFilter("2026-07-01", -180)).toEqual(
       new Date("2026-06-30T21:00:00.000Z")
+    );
+  });
+
+  it("resolves the exclusive end boundary with its own daylight-saving offset", () => {
+    expect(resolveCalendarDateBoundary("2026-03-08", 240, 1)).toEqual(
+      new Date("2026-03-09T04:00:00.000Z")
     );
   });
 });

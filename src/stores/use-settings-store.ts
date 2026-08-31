@@ -20,7 +20,9 @@ interface SettingsState {
   error: string | null;
   message: string | null;
   loadSettings: () => Promise<void>;
+  loadProfile: () => Promise<void>;
   saveSettings: (section?: SettingsSaveSection) => Promise<void>;
+  saveProfile: () => Promise<void>;
   updateSetting: (
     path: string,
     value: string | number | boolean | string[] | null
@@ -64,6 +66,35 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       });
     }
   },
+  loadProfile: async () => {
+    set({ loading: true });
+
+    try {
+      const response = await fetch("/api/me/profile", { cache: "no-store" });
+      const data = await readJsonOrNull<{
+        message?: string;
+        profile?: SettingsPayload["profile"];
+      }>(response);
+
+      if (!response.ok || !data?.profile) {
+        throw new Error(data?.message ?? "Unable to load your profile.");
+      }
+      const profile = data.profile;
+
+      set((state) => ({
+        settings: { ...state.settings, profile },
+        persistedSettings: { ...state.persistedSettings, profile: structuredClone(profile) },
+        loading: false,
+        error: null,
+        message: null,
+      }));
+    } catch (error) {
+      set({
+        loading: false,
+        error: error instanceof Error ? error.message : "Unable to load your profile.",
+      });
+    }
+  },
   saveSettings: async (section = "all") => {
     if (get().saving) {
       return;
@@ -85,7 +116,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         throw new Error(data?.message ?? "Unable to save settings.");
       }
 
-      const mergedSettings = mergeSavedSection(get().settings, data.settings, section, state.persistedSettings);
+      const currentSettings = get().settings;
+      const mergedSettings = mergeSavedSection(
+        currentSettings,
+        data.settings,
+        section,
+        state.persistedSettings
+      );
+      preserveConcurrentEdits(mergedSettings, currentSettings, state.settings);
       set({
         settings: mergedSettings,
         persistedSettings: structuredClone(data.settings),
@@ -120,6 +158,51 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       showToast(message, "error");
     }
   },
+  saveProfile: async () => {
+    if (get().saving) {
+      return;
+    }
+
+    set({ saving: true, message: null });
+
+    const submittedProfile = structuredClone(get().settings.profile);
+
+    try {
+      const response = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(submittedProfile),
+      });
+      const data = await readJsonOrNull<{
+        message?: string;
+        profile?: SettingsPayload["profile"];
+      }>(response);
+
+      if (!response.ok || !data?.profile) {
+        throw new Error(data?.message ?? "Unable to save your profile.");
+      }
+      const profile = data.profile;
+
+      set((state) => {
+        const currentProfile = state.settings.profile;
+        const mergedProfile = structuredClone(profile);
+        preserveConcurrentEdits(mergedProfile, currentProfile, submittedProfile);
+
+        return {
+          settings: { ...state.settings, profile: mergedProfile },
+          persistedSettings: { ...state.persistedSettings, profile: structuredClone(profile) },
+          saving: false,
+          error: null,
+          message: "Profile saved.",
+        };
+      });
+      showToast("Profile saved.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save your profile.";
+      set({ saving: false, error: message });
+      showToast(message, "error");
+    }
+  },
   updateSetting: (path, value) =>
     set((state) => {
       const next = structuredClone(state.settings);
@@ -135,3 +218,40 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }),
   clearMessage: () => set({ message: null, error: null }),
 }));
+
+function preserveConcurrentEdits<T extends object>(
+  target: T,
+  current: T,
+  submitted: T
+) {
+  for (const key of Object.keys(current) as Array<keyof T>) {
+    const currentValue = current[key];
+    const submittedValue = submitted[key];
+    const targetValue = target[key];
+
+    if (
+      isPlainObject(currentValue)
+      && isPlainObject(submittedValue)
+      && isPlainObject(targetValue)
+    ) {
+      preserveConcurrentEdits(targetValue, currentValue, submittedValue);
+      continue;
+    }
+
+    if (!valuesEqual(currentValue, submittedValue)) {
+      target[key] = structuredClone(currentValue);
+    }
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function valuesEqual(left: unknown, right: unknown) {
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((value, index) => value === right[index]);
+  }
+
+  return left === right;
+}

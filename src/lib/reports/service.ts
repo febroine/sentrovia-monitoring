@@ -131,7 +131,7 @@ export async function updateReportSchedule(
 
   const hasNextRunAtUpdate = Object.prototype.hasOwnProperty.call(input, "nextRunAt");
   const scope = input.scope ?? (existing.scope as ReportPreviewInput["scope"]);
-  const cadence = input.cadence ?? (existing.cadence as ReportCadence);
+  const cadence = input.cadence ?? normalizeReportScheduleCadence(existing.cadence);
   const template = input.template ?? (existing.template as ReportTemplateVariant);
   const companyId = await resolveScopedCompanyId(userId, {
     scope,
@@ -385,7 +385,8 @@ export async function runDueReportSchedules(now = new Date()) {
     .limit(DUE_REPORT_BATCH_SIZE);
 
   for (const schedule of dueSchedules) {
-    const nextRunAt = scheduleNextRunAfter(schedule.nextRunAt, schedule.cadence as ReportCadence, now);
+    const cadence = normalizeReportScheduleCadence(schedule.cadence);
+    const nextRunAt = scheduleNextRunAfter(schedule.nextRunAt, cadence, now);
     const claimedSchedule = await claimDueReportSchedule(schedule, now);
     if (!claimedSchedule) {
       continue;
@@ -396,7 +397,7 @@ export async function runDueReportSchedules(now = new Date()) {
         claimedSchedule.userId,
         {
           scope: claimedSchedule.scope as ReportPreviewInput["scope"],
-          cadence: claimedSchedule.cadence as ReportCadence,
+          cadence,
           template: claimedSchedule.template as ReportTemplateVariant,
           companyId: claimedSchedule.companyId,
           ...scheduleToDeliveryInput(claimedSchedule),
@@ -441,7 +442,7 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
       userId,
       {
         scope: claimedSchedule.scope as ReportPreviewInput["scope"],
-        cadence: claimedSchedule.cadence as ReportCadence,
+        cadence: normalizeReportScheduleCadence(claimedSchedule.cadence),
         template: claimedSchedule.template as ReportTemplateVariant,
         companyId: claimedSchedule.companyId,
         ...scheduleToDeliveryInput(claimedSchedule),
@@ -1034,7 +1035,7 @@ function serializeSchedule(
     id: row.id,
     name: row.name,
     scope: row.scope as ReportScheduleRecord["scope"],
-    cadence: row.cadence as ReportScheduleRecord["cadence"],
+    cadence: normalizeReportScheduleCadence(row.cadence),
     template: row.template as ReportTemplateVariant,
     companyId: row.companyId,
     companyName,
@@ -1043,7 +1044,7 @@ function serializeSchedule(
     nextRunAt: row.nextRunAt.toISOString(),
     lastRunAt: row.lastRunAt?.toISOString() ?? null,
     lastDeliveredAt: row.lastDeliveredAt?.toISOString() ?? null,
-    lastStatus: row.lastStatus as ReportScheduleStatus,
+    lastStatus: normalizeReportScheduleStatus(row.lastStatus),
     lastErrorMessage: row.lastErrorMessage,
     deliveryDetailLevel: resolveDeliveryDetailLevel(row.deliveryDetailLevel),
     includeOutageSummary: row.includeOutageSummary,
@@ -1054,6 +1055,20 @@ function serializeSchedule(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+export function normalizeReportScheduleStatus(value: unknown): ReportScheduleStatus {
+  if (value === "running" || value === "delivered" || value === "failed") {
+    return value;
+  }
+
+  return value === "error" ? "failed" : "idle";
+}
+
+export function normalizeReportScheduleCadence(
+  value: unknown
+): Exclude<ReportCadence, "all_time"> {
+  return value === "weekly" ? "weekly" : "monthly";
 }
 
 function scheduleToDeliveryInput(schedule: typeof reportSchedules.$inferSelect | ReportScheduleRecord) {
@@ -1124,7 +1139,7 @@ export function scheduleNextRunAfter(currentRunAt: Date, cadence: ReportCadence,
 
   while (nextRunAt <= after) {
     if (cadence === "weekly") {
-      nextRunAt.setDate(nextRunAt.getDate() + 7);
+      nextRunAt.setUTCDate(nextRunAt.getUTCDate() + 7);
     } else {
       advanceOneMonthClamped(nextRunAt);
     }
@@ -1240,21 +1255,21 @@ async function completeClaimedReportSchedule(
 }
 
 function advanceOneMonthClamped(value: Date) {
-  const dayOfMonth = value.getDate();
-  const lastDayOfCurrentMonth = new Date(
-    value.getFullYear(),
-    value.getMonth() + 1,
+  const dayOfMonth = value.getUTCDate();
+  const lastDayOfCurrentMonth = new Date(Date.UTC(
+    value.getUTCFullYear(),
+    value.getUTCMonth() + 1,
     0
-  ).getDate();
+  )).getUTCDate();
   const staysAtMonthEnd = dayOfMonth === lastDayOfCurrentMonth;
-  value.setDate(1);
-  value.setMonth(value.getMonth() + 1);
-  const lastDayOfTargetMonth = new Date(
-    value.getFullYear(),
-    value.getMonth() + 1,
+  value.setUTCDate(1);
+  value.setUTCMonth(value.getUTCMonth() + 1);
+  const lastDayOfTargetMonth = new Date(Date.UTC(
+    value.getUTCFullYear(),
+    value.getUTCMonth() + 1,
     0
-  ).getDate();
-  value.setDate(staysAtMonthEnd ? lastDayOfTargetMonth : Math.min(dayOfMonth, lastDayOfTargetMonth));
+  )).getUTCDate();
+  value.setUTCDate(staysAtMonthEnd ? lastDayOfTargetMonth : Math.min(dayOfMonth, lastDayOfTargetMonth));
 }
 
 async function completeManualReportSchedule(

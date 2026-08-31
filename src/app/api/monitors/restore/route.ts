@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
     if (restored.length === 0) {
       return NextResponse.json({ message: "The monitor restore window has expired." }, { status: 409 });
     }
-    return NextResponse.json({ monitors: restored.map(serializeMonitorRecord) });
+    return NextResponse.json({
+      monitors: restored.map((monitor) => serializeMonitorRecord(monitor)),
+    });
   } catch (error) {
     return apiErrorResponse(error, "Unable to restore monitors right now.");
   }

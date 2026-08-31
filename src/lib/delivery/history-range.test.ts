@@ -52,6 +52,22 @@ describe("delivery history deletion ranges", () => {
     });
   });
 
+  it("uses separate local offsets for ranges that cross a daylight-saving boundary", () => {
+    expect(
+      resolveDeliveryHistoryRange({
+        range: "custom",
+        from: "2026-03-07",
+        to: "2026-03-08",
+        timezoneOffsetMinutes: 300,
+        fromTimezoneOffsetMinutes: 300,
+        toExclusiveTimezoneOffsetMinutes: 240,
+      }, now)
+    ).toEqual({
+      from: new Date("2026-03-07T05:00:00.000Z"),
+      toExclusive: new Date("2026-03-09T04:00:00.000Z"),
+    });
+  });
+
   it("rejects impossible or reversed custom dates", () => {
     expect(isValidCalendarDate("2026-02-30")).toBe(false);
     expect(() => resolveDeliveryHistoryRange({ range: "custom", from: "2026-07-04", to: "2026-07-03" }, now)).toThrow(

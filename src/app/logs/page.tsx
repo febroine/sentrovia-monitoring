@@ -44,6 +44,7 @@ export default function LogsPage() {
   const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const previousIdsRef = useRef<string[]>([]);
+  const latestLogsRequestRef = useRef(0);
 
   const loadPresets = useCallback(async () => {
     const response = await fetch("/api/logs/presets", { cache: "no-store" });
@@ -52,6 +53,7 @@ export default function LogsPage() {
   }, []);
 
   const loadLogs = useCallback(async (silent = false) => {
+    const requestId = ++latestLogsRequestRef.current;
     if (!silent) {
       setLoading(true);
     }
@@ -66,6 +68,12 @@ export default function LogsPage() {
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
       params.set("timezoneOffsetMinutes", String(new Date().getTimezoneOffset()));
+      if (filters.from) {
+        params.set("fromTimezoneOffsetMinutes", String(getLocalCalendarBoundaryOffset(filters.from)));
+      }
+      if (filters.to) {
+        params.set("toExclusiveTimezoneOffsetMinutes", String(getLocalCalendarBoundaryOffset(filters.to, 1)));
+      }
 
       const response = await fetch(`/api/logs?${params.toString()}`, { cache: "no-store" });
       const data = (await response.json()) as {
@@ -77,6 +85,9 @@ export default function LogsPage() {
 
       if (!response.ok) {
         throw new Error(data.message ?? "Unable to load logs.");
+      }
+      if (requestId !== latestLogsRequestRef.current) {
+        return;
       }
 
       const nextLogs = data.logs ?? [];
@@ -95,9 +106,11 @@ export default function LogsPage() {
         window.setTimeout(() => setHighlightIds(new Set()), 4000);
       }
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to load logs.");
+      if (requestId === latestLogsRequestRef.current) {
+        setError(caughtError instanceof Error ? caughtError.message : "Unable to load logs.");
+      }
     } finally {
-      if (!silent) {
+      if (requestId === latestLogsRequestRef.current) {
         setLoading(false);
       }
     }
@@ -352,6 +365,11 @@ export default function LogsPage() {
       </Dialog>
     </div>
   );
+}
+
+function getLocalCalendarBoundaryOffset(value: string, dayOffset = 0) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day + dayOffset).getTimezoneOffset();
 }
 
 function AlertBanner({ message }: { message: string }) {

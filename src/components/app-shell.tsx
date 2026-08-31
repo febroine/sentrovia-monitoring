@@ -21,14 +21,22 @@ const DEFAULT_APPEARANCE: AppearanceState = {
   highContrastSurfaces: false,
 };
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  initialAuthenticated,
+}: {
+  children: React.ReactNode;
+  initialAuthenticated: boolean;
+}) {
   const pathname = usePathname();
   const isAuth = AUTH_ROUTES.some((r) => pathname.startsWith(r));
   const isPublicRoute = PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+  const isRootTransition = pathname === '/';
+  const isProtectedRoute = !isAuth && !isPublicRoute && !isRootTransition;
   const [appearance, setAppearance] = useState<AppearanceState>(DEFAULT_APPEARANCE);
 
   useEffect(() => {
-    if (isAuth || isPublicRoute) {
+    if (isAuth || isPublicRoute || isRootTransition || !initialAuthenticated) {
       return;
     }
 
@@ -68,10 +76,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       active = false;
       window.removeEventListener(APPEARANCE_SETTINGS_UPDATED_EVENT, handleAppearanceUpdate);
     };
-  }, [isAuth, isPublicRoute]);
+  }, [initialAuthenticated, isAuth, isPublicRoute, isRootTransition]);
 
-  if (isAuth || isPublicRoute) {
+  if (isAuth || isPublicRoute || isRootTransition) {
     return <>{children}</>;
+  }
+
+  if (isProtectedRoute && !initialAuthenticated) {
+    return <div className="min-h-screen" aria-busy="true" />;
   }
 
   return (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { hasPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorBulkDeleteSchema, monitorInputSchema } from "@/lib/monitors/schemas";
@@ -11,8 +12,11 @@ import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
-function serializeMonitor(monitor: Awaited<ReturnType<typeof listMonitors>>[number]) {
-  return serializeMonitorRecord(monitor);
+function serializeMonitor(
+  monitor: Awaited<ReturnType<typeof listMonitors>>[number],
+  includeSecrets = true
+) {
+  return serializeMonitorRecord(monitor, includeSecrets);
 }
 
 export async function GET() {
@@ -26,7 +30,9 @@ export async function GET() {
     const monitors = await listMonitors(session.id);
 
     return NextResponse.json({
-      monitors: monitors.map(serializeMonitor),
+      monitors: monitors.map((monitor) =>
+        serializeMonitor(monitor, hasPermission(session.role, "monitors.manage"))
+      ),
     });
   } catch (error) {
     const authError = toAuthError(error, "Unable to load monitors right now.");

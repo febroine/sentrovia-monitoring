@@ -4,6 +4,8 @@ import {
   buildReportMessage,
   calculateReportSummaryMetrics,
   normalizeReportStatus,
+  normalizeReportScheduleStatus,
+  normalizeReportScheduleCadence,
   resolveReportFailureStats,
   resolveReportPeriod,
   resolveReportTitle,
@@ -23,7 +25,33 @@ describe("normalizeReportStatus", () => {
   });
 });
 
+describe("normalizeReportScheduleStatus", () => {
+  it("maps legacy error states to the supported failed state", () => {
+    expect(normalizeReportScheduleStatus("error")).toBe("failed");
+    expect(normalizeReportScheduleStatus("delivered")).toBe("delivered");
+    expect(normalizeReportScheduleStatus("unknown")).toBe("idle");
+  });
+});
+
+describe("normalizeReportScheduleCadence", () => {
+  it("maps legacy all-time schedules to their historical monthly behavior", () => {
+    expect(normalizeReportScheduleCadence("weekly")).toBe("weekly");
+    expect(normalizeReportScheduleCadence("monthly")).toBe("monthly");
+    expect(normalizeReportScheduleCadence("all_time")).toBe("monthly");
+  });
+});
+
 describe("scheduleNextRunAfter", () => {
+  it("keeps weekly schedules on the same UTC time across daylight-saving changes", () => {
+    const nextRun = scheduleNextRunAfter(
+      new Date("2026-03-01T15:00:00.000Z"),
+      "weekly",
+      new Date("2026-03-02T00:00:00.000Z")
+    );
+
+    expect(nextRun.toISOString()).toBe("2026-03-08T15:00:00.000Z");
+  });
+
   it("clamps end-of-month schedules instead of skipping February", () => {
     const nextRun = scheduleNextRunAfter(
       new Date("2027-01-31T08:00:00.000Z"),

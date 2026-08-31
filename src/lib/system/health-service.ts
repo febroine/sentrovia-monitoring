@@ -8,6 +8,7 @@ import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { isPidAlive } from "@/lib/worker/process";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
+import { getHeartbeatAgeMs, isHeartbeatCurrent } from "@/lib/worker/heartbeat";
 
 const DAY_MS = 24 * 60 * 60_000;
 const RECENT_FAILURE_LIMIT = 12;
@@ -77,15 +78,14 @@ export async function getSystemHealth() {
   const failedDeliveryCount = deliveryCounts?.failed ?? 0;
   const queuedDeliveryCount = deliveryCounts?.queued ?? 0;
   const staleThresholdMs = Math.max(env.workerPollIntervalMs * 6, 180_000);
-  const heartbeatAgeMs = worker.heartbeatAt
-    ? Math.max(0, now.getTime() - worker.heartbeatAt.getTime())
-    : null;
+  const heartbeatAgeMs = getHeartbeatAgeMs(worker.heartbeatAt, now);
+  const heartbeatCurrent = isHeartbeatCurrent(worker.heartbeatAt, now, staleThresholdMs);
   const processAlive = env.disableEmbeddedWorkerSpawn
-    ? heartbeatAgeMs !== null && heartbeatAgeMs <= staleThresholdMs
+    ? heartbeatCurrent
     : isPidAlive(worker.pid);
   const workerHealthy =
     worker.desiredState !== "running" ||
-    (worker.running && processAlive && heartbeatAgeMs !== null && heartbeatAgeMs <= staleThresholdMs);
+    (worker.running && processAlive && heartbeatCurrent);
   const connectivityOffline =
     worker.desiredState === "running" && worker.connectivityStatus === "offline";
   const alarms = buildSystemHealthAlarms({

@@ -134,7 +134,7 @@ async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db
     update report_schedules
     set company_id = null,
         is_active = false,
-        last_status = 'error',
+        last_status = 'failed',
         last_error_message = 'The assigned company was deleted.',
         updated_at = (${queryTimestamp})::timestamptz
     where company_id in (select id from expired_companies)

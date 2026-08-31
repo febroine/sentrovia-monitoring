@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { sendDeliveryTest } from "@/lib/delivery/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "delivery.manage");
 
     const parsed = testSchema.safeParse(await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES));
     if (!parsed.success) {

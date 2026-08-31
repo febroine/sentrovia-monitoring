@@ -9,6 +9,7 @@ import type { WorkerObservabilityRange } from "@/lib/monitors/types";
 import { getWorkerObservability } from "@/lib/worker/observability";
 import { isPidAlive, spawnWorkerProcess } from "@/lib/worker/process";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
+import { isHeartbeatCurrent } from "@/lib/worker/heartbeat";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ function resolveProcessAlive(
   staleThresholdMs: number
 ) {
   if (env.disableEmbeddedWorkerSpawn) {
-    return heartbeatAt !== null && Date.now() - heartbeatAt.getTime() <= staleThresholdMs;
+    return isHeartbeatCurrent(heartbeatAt, new Date(), staleThresholdMs);
   }
 
   return isPidAlive(pid);
@@ -67,11 +68,11 @@ export async function GET(request: NextRequest) {
     const observabilityRange = resolveObservabilityRange(request);
     const state = await getWorkerState();
     const staleThresholdMs = Math.max(env.workerPollIntervalMs * 6, 180_000);
-    const heartbeatAgeMs = state.heartbeatAt ? Date.now() - state.heartbeatAt.getTime() : null;
+    const heartbeatCurrent = isHeartbeatCurrent(state.heartbeatAt, new Date(), staleThresholdMs);
     const processAlive = resolveProcessAlive(state.pid, state.heartbeatAt, staleThresholdMs);
     const staleWorker =
       state.desiredState === "running" &&
-      (heartbeatAgeMs === null || heartbeatAgeMs > staleThresholdMs || (!env.disableEmbeddedWorkerSpawn && !processAlive));
+      (!heartbeatCurrent || (!env.disableEmbeddedWorkerSpawn && !processAlive));
 
     const normalizedState = staleWorker
       ? await updateWorkerState({
