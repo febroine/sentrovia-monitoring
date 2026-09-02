@@ -18,6 +18,10 @@ export function formatLastChecked(value: string | null) {
   return `${Math.floor(diffHours / 24)}d ago`;
 }
 
+export function formatLatency(value: number | null) {
+  return typeof value === "number" ? `${value}ms` : "--";
+}
+
 export function payloadFromMonitor(monitor: MonitorRecord): MonitorPayload {
   return {
     ...DEFAULT_MONITOR_FORM,

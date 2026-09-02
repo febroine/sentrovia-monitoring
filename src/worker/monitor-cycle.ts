@@ -539,7 +539,7 @@ function shouldNotifyStatusCodeChange(
 
 async function checkClaimedMonitor(monitor: Monitor, allowPrivateTargets: boolean | undefined) {
   const currentPrivateTargetAccess = allowPrivateTargets === true
-    ? await canUserAccessPrivateTargets(monitor.userId)
+    ? await canUserAccessPrivateTargets(monitor.userId, undefined, monitor.workspaceId)
     : false;
   return checkMonitor(monitor, { allowPrivateTargets: currentPrivateTargetAccess });
 }

@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { users, workspaceMembers } from "@/lib/db/schema";
 import { normalizeUserRole } from "@/lib/auth/permissions";
 import type { ProfileSettingsInput } from "@/lib/settings/schemas";
 import type { SettingsPayload } from "@/lib/settings/types";
@@ -17,6 +17,11 @@ const profileColumns = {
   phone: users.phone,
 };
 
+const workspaceProfileColumns = {
+  ...profileColumns,
+  role: workspaceMembers.role,
+};
+
 type ProfileRow = Pick<
   typeof users.$inferSelect,
   | "firstName"
@@ -30,7 +35,21 @@ type ProfileRow = Pick<
   | "phone"
 >;
 
-export async function getUserProfile(userId: string) {
+export async function getUserProfile(userId: string, workspaceId?: string) {
+  if (workspaceId) {
+    const [profile] = await db
+      .select(workspaceProfileColumns)
+      .from(users)
+      .innerJoin(
+        workspaceMembers,
+        and(eq(workspaceMembers.userId, users.id), eq(workspaceMembers.workspaceId, workspaceId))
+      )
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    return profile ? serializeProfile(profile) : null;
+  }
+
   const [profile] = await db
     .select(profileColumns)
     .from(users)
@@ -40,7 +59,11 @@ export async function getUserProfile(userId: string) {
   return profile ? serializeProfile(profile) : null;
 }
 
-export async function updateUserProfile(userId: string, input: ProfileSettingsInput) {
+export async function updateUserProfile(
+  userId: string,
+  input: ProfileSettingsInput,
+  workspaceId?: string
+) {
   const [profile] = await db
     .update(users)
     .set({
@@ -55,9 +78,13 @@ export async function updateUserProfile(userId: string, input: ProfileSettingsIn
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId))
-    .returning(profileColumns);
+    .returning({ id: users.id });
 
-  return profile ? serializeProfile(profile) : null;
+  if (!profile) {
+    return null;
+  }
+
+  return getUserProfile(userId, workspaceId);
 }
 
 function serializeProfile(profile: ProfileRow): SettingsPayload["profile"] {
