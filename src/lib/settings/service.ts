@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db, sql, type DatabaseExecutor } from "@/lib/db";
-import { monitors, userSettings } from "@/lib/db/schema";
+import { monitors, userSettings, workspaceSettings } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
 import {
@@ -246,10 +246,16 @@ function dateOrNull(value: unknown) {
 
 export async function getSettings(
   userId: string,
-  includeSensitiveConfig = true
+  includeSensitiveConfig = true,
+  workspaceId?: string
 ): Promise<SettingsPayload | null> {
-  const [user, settings] = await Promise.all([readUserCompat(userId), readUserSettingsCompat(userId)]);
+  const [user, personalSettings, sharedSettings] = await Promise.all([
+    readUserCompat(userId),
+    readUserSettingsCompat(userId),
+    readWorkspaceSettingsCompat(workspaceId),
+  ]);
   if (!user) return null;
+  const settings = mergeSettingsScopes(personalSettings, sharedSettings?.valuesJson);
   const notificationLanguage = languageOrDefault(settings?.notificationLanguage);
   const notificationTemplates = getDefaultNotificationTemplates(notificationLanguage);
   const legacyNotificationTemplates = buildLegacyNotificationTemplateSets();
@@ -594,19 +600,89 @@ export async function upsertSettings(
   userId: string,
   input: SettingsInput,
   database?: DatabaseExecutor,
-  skipReadback = false
+  skipReadback = false,
+  workspaceId?: string
 ) {
   if (input.notifications.discordWebhookUrl.trim().length > 0) {
     await assertSafeWebhookUrl(input.notifications.discordWebhookUrl);
   }
 
   if (!database) {
-    await db.transaction((tx) => persistSettings(userId, input, tx));
-    return skipReadback ? null : getSettings(userId);
+    await db.transaction((tx) => persistSettings(userId, input, tx, workspaceId));
+    return skipReadback ? null : getSettings(userId, true, workspaceId);
   }
 
-  await persistSettings(userId, input, database);
-  return skipReadback ? null : getSettings(userId);
+  await persistSettings(userId, input, database, workspaceId);
+  return skipReadback ? null : getSettings(userId, true, workspaceId);
+}
+
+async function readWorkspaceSettingsCompat(
+  workspaceId?: string,
+  database: DatabaseExecutor = db
+) {
+  if (!workspaceId) {
+    return null;
+  }
+
+  try {
+    const [settings] = await database
+      .select({ valuesJson: workspaceSettings.valuesJson })
+      .from(workspaceSettings)
+      .where(eq(workspaceSettings.workspaceId, workspaceId))
+      .limit(1);
+    return settings ?? null;
+  } catch (error) {
+    if (isMissingWorkspaceSettingsTable(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+const PERSONAL_SETTINGS_PROPERTIES = new Set<string>([
+  "notificationLanguage",
+  "reduceMotion",
+  "compactDensity",
+  "sidebarAccent",
+  "dashboardLandingPage",
+  "dashboardWidgets",
+  "dashboardCompanyId",
+  "dashboardFocus",
+  "showOutageBanner",
+  "showChartsSection",
+  "highContrastSurfaces",
+  "timeZone",
+  "use24HourClock",
+]);
+
+function normalizeWorkspaceSettingsValues(value: Record<string, unknown> | null | undefined) {
+  if (!value) {
+    return {};
+  }
+
+  const propertyByColumn = new Map<string, string>(
+    Object.entries(USER_SETTINGS_COLUMN_MAP).map(([property, column]) => [column, property])
+  );
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, item]) => [propertyByColumn.get(key) ?? key, item] as const)
+      .filter(([property]) => !PERSONAL_SETTINGS_PROPERTIES.has(property))
+  );
+}
+
+export function mergeSettingsScopes(
+  personalSettings: Record<string, unknown> | null | undefined,
+  workspaceValues: Record<string, unknown> | null | undefined
+) {
+  return {
+    ...personalSettings,
+    ...normalizeWorkspaceSettingsValues(workspaceValues),
+  };
+}
+
+function isMissingWorkspaceSettingsTable(error: unknown) {
+  const resolved = unwrapDatabaseError(error);
+  return resolved.code === "42P01";
 }
 
 export async function updateDashboardPreferences(userId: string, input: DashboardPreferences) {
@@ -643,18 +719,31 @@ export async function updateDashboardPreferences(userId: string, input: Dashboar
   return getSettings(userId);
 }
 
-async function persistSettings(userId: string, input: SettingsInput, executor: DatabaseExecutor) {
-  const [settingsColumns, existing] = await Promise.all([
+async function persistSettings(
+  userId: string,
+  input: SettingsInput,
+  executor: DatabaseExecutor,
+  workspaceId?: string
+) {
+  const [settingsColumns, personalSettings, sharedSettings] = await Promise.all([
     getTableColumns("user_settings"),
     readUserSettingsCompat(userId),
+    readWorkspaceSettingsCompat(workspaceId, executor),
   ]);
+  const existing = mergeSettingsScopes(personalSettings, sharedSettings?.valuesJson);
+  const hasPersonalSettings = Boolean(personalSettings);
 
   if (!settingsColumns.has("user_id")) {
     throw buildMissingSettingsTableError();
   }
 
   if (input.publicStatus.enabled) {
-    await assertPublicStatusCompanyAvailable(userId, input.publicStatus.companyId, executor);
+    await assertPublicStatusCompanyAvailable(
+      userId,
+      input.publicStatus.companyId,
+      executor,
+      workspaceId
+    );
   }
 
   const encryptedPassword = resolveSmtpPasswordEncrypted(
@@ -756,7 +845,7 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
 
   const filteredValues = filterValuesForColumns(values, USER_SETTINGS_COLUMN_MAP, settingsColumns);
 
-  if (existing) {
+  if (hasPersonalSettings) {
     await executor.update(userSettings).set(filteredValues).where(eq(userSettings.userId, userId));
   } else {
     await executor
@@ -764,19 +853,39 @@ async function persistSettings(userId: string, input: SettingsInput, executor: D
       .values(filteredValues as typeof values & { userId: string });
   }
 
-  await clearInheritedMonitorTemplates(executor, userId, existing);
+  if (workspaceId) {
+    const workspaceValues = Object.fromEntries(
+      Object.entries(values).filter(([property]) => (
+        property !== "userId" && !PERSONAL_SETTINGS_PROPERTIES.has(property)
+      ))
+    );
+    await executor
+      .insert(workspaceSettings)
+      .values({ workspaceId, valuesJson: workspaceValues, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: workspaceSettings.workspaceId,
+        set: { valuesJson: workspaceValues, updatedAt: new Date() },
+      });
+  }
+
+  await clearInheritedMonitorTemplates(executor, userId, existing, workspaceId);
 }
 
 async function assertPublicStatusCompanyAvailable(
   userId: string,
   companyId: string,
-  executor: DatabaseExecutor
+  executor: DatabaseExecutor,
+  workspaceId?: string
 ) {
   if (!companyId) {
     return;
   }
 
-  const company = await getCompanyById(userId, companyId, executor);
+  const company = await getCompanyById(
+    workspaceId ? { userId, workspaceId } : userId,
+    companyId,
+    executor
+  );
   if (!company) {
     throw new AuthError("The selected public status company is unavailable.", 400);
   }
@@ -785,7 +894,8 @@ async function assertPublicStatusCompanyAvailable(
 async function clearInheritedMonitorTemplates(
   executor: DatabaseExecutor,
   userId: string,
-  existing: ExistingNotificationTemplates | null
+  existing: ExistingNotificationTemplates | null,
+  workspaceId?: string
 ) {
   if (!existing) {
     return;
@@ -796,21 +906,24 @@ async function clearInheritedMonitorTemplates(
     userId,
     "emailSubject",
     monitors.emailSubject,
-    stringOrEmpty(existing.defaultEmailSubjectTemplate)
+    stringOrEmpty(existing.defaultEmailSubjectTemplate),
+    workspaceId
   );
   await clearInheritedMonitorTemplate(
     executor,
     userId,
     "emailBody",
     monitors.emailBody,
-    stringOrEmpty(existing.defaultEmailBodyTemplate)
+    stringOrEmpty(existing.defaultEmailBodyTemplate),
+    workspaceId
   );
   await clearInheritedMonitorTemplate(
     executor,
     userId,
     "telegramTemplate",
     monitors.telegramTemplate,
-    stringOrEmpty(existing.defaultTelegramTemplate)
+    stringOrEmpty(existing.defaultTelegramTemplate),
+    workspaceId
   );
 }
 
@@ -819,7 +932,8 @@ async function clearInheritedMonitorTemplate(
   userId: string,
   key: MonitorTemplateKey,
   column: typeof monitors.emailSubject | typeof monitors.emailBody | typeof monitors.telegramTemplate,
-  inheritedTemplate: string
+  inheritedTemplate: string,
+  workspaceId?: string
 ) {
   const template = inheritedTemplate.trim();
   if (!template) {
@@ -829,7 +943,10 @@ async function clearInheritedMonitorTemplate(
   await executor
     .update(monitors)
     .set({ [key]: null })
-    .where(and(eq(monitors.userId, userId), eq(column, inheritedTemplate)));
+    .where(and(
+      workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId),
+      eq(column, inheritedTemplate)
+    ));
 }
 
 export function resolveSmtpPasswordEncrypted(

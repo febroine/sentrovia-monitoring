@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { parseMonitorConfigBundle, previewMonitorConfigImport } from "@/lib/monitors/config-service";
 import { createManyMonitors } from "@/lib/monitors/service";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const body = (await readJsonBody(request, MONITOR_CONFIG_IMPORT_LIMITS.maxRequestBytes)) as {
       format?: string;
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const bundle = parseMonitorConfigBundle(content, format);
-    const settings = await getSettings(session.id);
+    const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     const validatedEntries = bundle.monitors.map((monitor, index) => {
       const parsed = monitorInputSchema.safeParse(applyMonitorDefaults(monitor, settings));
       if (!parsed.success) {

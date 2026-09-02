@@ -35,8 +35,9 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Profile not found." }, { status: 404 });
     }
 
-    await recordAuditEventSafely({
-      userId: session.id,
+await recordAuditEventSafely({
+userId: session.id,
+workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: profile.email,
       entityType: "profile",

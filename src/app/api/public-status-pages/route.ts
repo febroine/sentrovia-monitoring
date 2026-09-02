@@ -54,8 +54,9 @@ export async function POST(request: NextRequest) {
     if (!page) {
       throw new Error("The public status page could not be loaded after creation.");
     }
-    await recordAuditEventSafely({
-      userId: session.id,
+await recordAuditEventSafely({
+userId: session.id,
+workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "settings",

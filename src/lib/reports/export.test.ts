@@ -40,6 +40,7 @@ function buildSampleReport(): GeneratedReport {
     periodStartedAt: "2026-04-28T08:00:00.000Z",
     periodEndedAt: "2026-05-05T08:00:00.000Z",
     periodLabel: "Last 7 days",
+    timeZone: "UTC",
     summary: {
       monitorCount: 2,
       currentlyUp: 1,

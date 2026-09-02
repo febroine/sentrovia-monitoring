@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiErrorResponse, parseJsonRequest, requireMutationSession } from "@/lib/http/api-route";
+import { apiErrorResponse, parseJsonRequest, requireMutationPermission } from "@/lib/http/api-route";
 import { reportSchedulePatchSchema } from "@/lib/reports/schemas";
 import { deleteReportSchedule, updateReportSchedule } from "@/lib/reports/service";
 
@@ -9,7 +9,7 @@ type Params = Promise<{ id: string }>;
 
 export async function PATCH(request: NextRequest, context: { params: Params }) {
   try {
-    const session = await requireMutationSession(request);
+    const session = await requireMutationPermission(request, "reports.manage");
     const input = await parseJsonRequest(request, reportSchedulePatchSchema, "Invalid report schedule update.");
 
     const { id } = await context.params;
@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
 
 export async function DELETE(request: NextRequest, context: { params: Params }) {
   try {
-    const session = await requireMutationSession(request);
+    const session = await requireMutationPermission(request, "reports.manage");
 
     const { id } = await context.params;
     const deleted = await deleteReportSchedule(

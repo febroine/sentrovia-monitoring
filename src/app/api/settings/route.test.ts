@@ -21,16 +21,24 @@ describe("settings route permissions", () => {
   });
 
   it("loads settings without sensitive configuration for read-only users", async () => {
-    mocks.getSession.mockResolvedValue({ id: "user-1", role: "viewer" });
+    mocks.getSession.mockResolvedValue({
+      id: "user-1",
+      role: "viewer",
+      activeWorkspaceId: "workspace-1",
+    });
 
     const response = await GET();
 
     expect(response.status).toBe(200);
-    expect(mocks.getSettings).toHaveBeenCalledWith("user-1", false);
+    expect(mocks.getSettings).toHaveBeenCalledWith("user-1", false, "workspace-1");
   });
 
   it("rejects settings updates from read-only users", async () => {
-    mocks.getSession.mockResolvedValue({ id: "user-1", role: "viewer" });
+    mocks.getSession.mockResolvedValue({
+      id: "user-1",
+      role: "viewer",
+      activeWorkspaceId: "workspace-1",
+    });
 
     const response = await PATCH(
       new Request("http://localhost/api/settings", { method: "PATCH" }) as never

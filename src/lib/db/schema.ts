@@ -5,6 +5,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -222,6 +223,15 @@ export const userSettings = pgTable(
   ]
 );
 
+export const workspaceSettings = pgTable("workspace_settings", {
+  workspaceId: text("workspace_id")
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  valuesJson: jsonb("values_json").$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const automaticBackupRuns = pgTable(
   "automatic_backup_runs",
   {
@@ -280,10 +290,10 @@ export const companies = pgTable(
   },
   (table) => [
     index("companies_workspace_deleted_at_idx").on(table.workspaceId, table.deletedAt),
-    uniqueIndex("companies_user_normalized_name_unique").on(
-      table.userId,
+    uniqueIndex("companies_workspace_normalized_name_unique").on(
+      table.workspaceId,
       sql`lower(btrim(${table.name}))`
-    ),
+    ).where(sql`${table.deletedAt} is null`),
     index("companies_user_deleted_at_idx").on(table.userId, table.deletedAt),
   ]
 );
@@ -311,11 +321,11 @@ export const publicStatusPages = pgTable(
   (table) => [
     index("public_status_pages_workspace_created_idx").on(table.workspaceId, table.createdAt),
     uniqueIndex("public_status_pages_slug_unique").on(table.slug),
-    uniqueIndex("public_status_pages_user_company_unique")
-      .on(table.userId, table.companyId)
+    uniqueIndex("public_status_pages_workspace_company_unique")
+      .on(table.workspaceId, table.companyId)
       .where(sql`${table.companyId} is not null`),
-    uniqueIndex("public_status_pages_user_workspace_unique")
-      .on(table.userId)
+    uniqueIndex("public_status_pages_workspace_default_unique")
+      .on(table.workspaceId)
       .where(sql`${table.companyId} is null`),
     index("public_status_pages_user_created_idx").on(table.userId, table.createdAt),
   ]
@@ -483,14 +493,67 @@ export const monitorOutages = pgTable(
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
     statusCode: integer("status_code"),
     errorMessage: text("error_message"),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgedByUserId: text("acknowledged_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    assignedToUserId: text("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
+    escalationLevel: integer("escalation_level").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index("monitor_outages_workspace_created_idx").on(table.workspaceId, table.createdAt),
     uniqueIndex("monitor_outages_single_open_unique")
-      .on(table.userId, table.monitorId)
+      .on(table.workspaceId, table.monitorId)
       .where(sql`${table.status} = 'open' and ${table.resolvedAt} is null`),
+  ]
+);
+
+export const maintenanceWindows = pgTable(
+  "maintenance_windows",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    monitorId: text("monitor_id").references(() => monitors.id, { onDelete: "cascade" }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    kind: varchar("kind", { length: 16 }).default("maintenance").notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("maintenance_windows_workspace_time_idx").on(table.workspaceId, table.startsAt, table.endsAt),
+    index("maintenance_windows_monitor_time_idx").on(table.monitorId, table.startsAt, table.endsAt),
+  ]
+);
+
+export const incidentUpdates = pgTable(
+  "incident_updates",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    outageId: text("outage_id")
+      .notNull()
+      .references(() => monitorOutages.id, { onDelete: "cascade" }),
+    authorUserId: text("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    visibility: varchar("visibility", { length: 16 }).default("internal").notNull(),
+    updateType: varchar("update_type", { length: 24 }).default("note").notNull(),
+    message: text("message").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("incident_updates_workspace_created_idx").on(table.workspaceId, table.createdAt),
+    index("incident_updates_outage_created_idx").on(table.outageId, table.createdAt),
   ]
 );
 
@@ -530,7 +593,7 @@ export const webhookEndpoints = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("webhook_endpoints_user_id_unique").on(table.userId),
+    uniqueIndex("webhook_endpoints_workspace_id_unique").on(table.workspaceId),
     index("webhook_endpoints_workspace_created_idx").on(table.workspaceId, table.createdAt),
   ]
 );

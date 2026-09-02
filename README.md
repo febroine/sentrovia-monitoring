@@ -32,6 +32,9 @@
 - [x] Detects when the monitoring server itself loses internet access
 - [x] Captures evidence after confirmed HTTP-style failures
 - [x] Keeps delivery retries and notification outcomes auditable
+- [x] Isolates monitor, delivery, report, status-page, and settings data by workspace and role
+- [x] Coordinates incidents with acknowledgement, ownership, escalation, and public updates
+- [x] Silences notifications during auditable maintenance windows without stopping checks
 - [x] Monitors HTTP, TCP, Ping, PostgreSQL, JSON, keyword, and heartbeat targets
 - [x] Runs with Docker Compose or as native Windows services through NSSM
 
@@ -129,8 +132,8 @@ Versioned images are published as `:<major>.<minor>` and `:<major>.<minor>.<patc
     </td>
   </tr>
   <tr>
-    <td><sub>Workspace health, worker state, recent activity, and system visibility.</sub></td>
-    <td><sub>Monitor inventory, verification state, bulk actions, history strips, and company assignment.</sub></td>
+    <td><sub>Workspace health, activation progress, worker state, recent activity, and system visibility.</sub></td>
+    <td><sub>Server-paginated monitor inventory, incident coordination, maintenance windows, bulk actions, and lazy-loaded timelines.</sub></td>
   </tr>
 </table>
 
@@ -398,6 +401,10 @@ Sentrovia uses four workspace roles:
 
 The API enforces permissions independently of disabled or hidden interface controls. Role changes invalidate the affected member's existing sessions.
 
+Operational data and shared configuration are scoped to the active workspace. Appearance, dashboard layout, time display, and notification-language preferences remain personal to each member. The server resolves the active workspace from the authenticated membership; API clients cannot select another workspace by submitting a `workspaceId`.
+
+After first sign-in, administrators see an activation checklist derived from live system state: create a monitor, verify an online worker connection, and complete a successful delivery.
+
 ## Database Backups
 
 Administrators can enable daily PostgreSQL backups under **Settings -> Data**. The worker creates a PostgreSQL custom-format dump, verifies it with `pg_restore`, encrypts it with AES-256-GCM using the application encryption secret, records a SHA-256 checksum, and rotates only verified backup files according to the configured retention count.
@@ -477,13 +484,24 @@ Reports are designed for people who need a readable operational summary, not a s
 
 Sentrovia currently sends HTML reports only:
 
-- A rolling last-7-days reporting window for every manual and scheduled report
+- Rolling 7-day weekly and 30-day monthly reporting windows
+- Manual 7-day, 30-day, or custom calendar-date ranges with explicit timezone and start/end boundaries
 - Workspace-wide or company-scoped reports
 - Manual preview and scheduled delivery
 - URL-first tables, readable failure details, and service snapshots
 - One browser-ready HTML attachment per delivery
 
-Public status pages can be created separately for each company, with an optional workspace-wide page in **Settings**. Every page has its own slug, title, summary, and publish state; a company-scoped page only exposes monitors assigned to that company.
+Public status pages can be created separately for each company, with an optional workspace-wide page in **Settings**. Every page has its own slug, title, summary, and publish state; a company-scoped page only exposes monitors assigned to that company. Operators can publish chronological incident updates, while internal notes, assignees, acknowledgement details, and escalation state remain private.
+
+## Maintenance and Incident Operations
+
+The Monitoring page includes a compact operations area for active incidents and maintenance:
+
+- Planned maintenance and temporary silences can target one monitor or the whole workspace.
+- Checks and outage evidence continue during a window, but notification delivery is suppressed until it ends or is cancelled.
+- Active outages can be acknowledged, assigned to a workspace member, escalated from level 0 to 3, and annotated.
+- Notes are internal by default. Only updates explicitly marked public appear in the public status-page incident history.
+- Creation, cancellation, and incident mutations are workspace-scoped, permission-checked, and written to the audit trail.
 
 ## Tech Stack
 

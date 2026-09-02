@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { getActiveSessionUser } from "@/lib/auth/service";
-import { getDashboardData } from "@/lib/dashboard/service";
+import { getCachedDashboardData } from "@/lib/dashboard/service";
 
 export const runtime = "nodejs";
 
@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
   let closed = false;
   let frameInProgress = false;
   let interval: ReturnType<typeof setInterval> | null = null;
+  let lastPayload = "";
 
   function cleanup() {
     closed = true;
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          const payload = await getDashboardData(
+          const dashboard = await getCachedDashboardData(
             activeSession.id,
             activeSession.activeWorkspaceId
           );
@@ -55,7 +56,13 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+          const payload = JSON.stringify(dashboard);
+          if (payload === lastPayload) {
+            controller.enqueue(encoder.encode(": unchanged\n\n"));
+            return;
+          }
+          lastPayload = payload;
+          controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
         } finally {
           frameInProgress = false;
         }

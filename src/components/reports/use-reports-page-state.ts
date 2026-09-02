@@ -179,6 +179,11 @@ export function useReportsPageState() {
     preview,
     previewDraft,
     previewNeedsCompany: previewDraft.scope === "company" && !previewDraft.companyId,
+    previewNeedsPeriod: previewDraft.periodRange === "custom" && (
+      !previewDraft.periodStartedAt
+      || !previewDraft.periodEndedAt
+      || previewDraft.periodStartedAt > previewDraft.periodEndedAt
+    ),
     previewRecipients: parseRecipients(previewDraft.recipients),
     saving,
     scheduleNeedsCompany: schedule.scheduleDraft.scope === "company" && !schedule.scheduleDraft.companyId,

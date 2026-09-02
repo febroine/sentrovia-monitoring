@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   CheckCircle2,
@@ -263,10 +264,33 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
+      {isAdmin && !data.activation.complete ? <ActivationChecklist activation={data.activation} /> : null}
+
       <div className="space-y-4">
         {visibleWidgets.map((widget) => <div key={widget}>{renderWidget(widget)}</div>)}
       </div>
     </div>
+  );
+}
+
+function ActivationChecklist({ activation }: { activation: DashboardData["activation"] }) {
+  return (
+    <section className="border-y border-border py-4" aria-label="Activation checklist">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="font-semibold">Finish workspace activation</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{activation.completed} of {activation.steps.length} operational checks complete.</p>
+        </div>
+        <ol className="grid min-w-0 flex-1 gap-2 sm:max-w-2xl sm:grid-cols-3">
+          {activation.steps.map((step) => (
+            <li className="flex items-center gap-2 text-sm" key={step.id}>
+              {step.complete ? <CheckCircle2 className="size-4 shrink-0 text-emerald-600" /> : <Clock3 className="size-4 shrink-0 text-muted-foreground" />}
+              {step.complete ? <span className="text-muted-foreground line-through">{step.label}</span> : <Link className="font-medium underline-offset-4 hover:underline" href={step.href}>{step.label}</Link>}
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
   );
 }
 

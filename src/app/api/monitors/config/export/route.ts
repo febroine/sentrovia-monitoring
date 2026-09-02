@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { buildMonitorConfigBundle, serializeMonitorConfigBundle } from "@/lib/monitors/config-service";
 
 export const runtime = "nodejs";
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const format = request.nextUrl.searchParams.get("format") === "yaml" ? "yaml" : "json";
     const bundle = await buildMonitorConfigBundle(session.id, session.activeWorkspaceId!);

@@ -21,6 +21,7 @@ import { MonitorStats } from "@/components/monitoring/monitor-stats";
 import { MonitorTable } from "@/components/monitoring/monitor-table";
 import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
+import { OperationsConsole } from "@/components/monitoring/operations-console";
 import { payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -256,7 +257,7 @@ export default function MonitoringPage() {
   async function handleCreate(payload: MonitorPayload) {
     const created = await createMonitor(payload);
     if (created) {
-      await refreshMonitoring();
+      await loadMonitorPage();
       setCreateOpen(false);
     }
   }
@@ -268,7 +269,6 @@ export default function MonitoringPage() {
 
     const updated = await updateMonitor(editingMonitor.id, payload);
     if (updated) {
-      await refreshMonitoring();
       setEditingMonitor(null);
     }
   }
@@ -281,7 +281,6 @@ export default function MonitoringPage() {
       async () => {
         const updated = await bulkUpdateMonitors(ids, payload);
         if (updated.length > 0) {
-          await refreshMonitoring();
           setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
         }
       }
@@ -349,7 +348,7 @@ export default function MonitoringPage() {
       async () => {
         const deletion = await deleteMonitors(ids);
         if (deletion && deletion.ids.length > 0) {
-          await refreshMonitoring();
+          await loadMonitorPage();
           setSelectedIds((current) => removeIds(current, deletion.ids));
           setPendingRestores((current) => [
             ...current,
@@ -395,7 +394,7 @@ export default function MonitoringPage() {
     const restored = await restoreMonitors(ids);
     if (restored.length > 0) {
       setPendingRestores([]);
-      await refreshMonitoring();
+      await loadMonitorPage();
     }
   }
 
@@ -498,6 +497,7 @@ export default function MonitoringPage() {
       ) : null}
 
       {workspaceSettings?.profile.role === "admin" ? <WorkerPulseCard /> : null}
+      <OperationsConsole monitors={monitors} canManage={canManageMonitors} />
       <MonitorStats monitors={monitors} />
 
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -805,7 +805,7 @@ export default function MonitoringPage() {
         onImported={(imported) => {
           importMonitors(imported);
           clearError();
-          void refreshMonitoring();
+          void loadMonitorPage();
         }}
       />
       <MonitorConfigDialog
@@ -813,7 +813,7 @@ export default function MonitoringPage() {
         onOpenChange={setConfigOpen}
         onImported={() => {
           clearError();
-          void refreshMonitoring();
+          void loadMonitorPage();
         }}
       />
       <MonitorTagsDialog
@@ -836,7 +836,7 @@ export default function MonitoringPage() {
                 throw new Error(data?.message ?? "Unable to update monitor tags.");
               }
 
-              await refreshMonitoring();
+              await loadMonitorPage();
               setSelectedIds((current) => removeIds(current, ids));
               showToast("Monitor tags updated.", "success");
             }

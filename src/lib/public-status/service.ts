@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   companies,
+  incidentUpdates,
   monitorOutages,
   monitors,
   publicStatusPages,
@@ -45,8 +46,9 @@ export async function getPublicStatusPage(slug: string) {
   );
 
   const generatedAt = new Date();
-  const [settings, monitorRows, openOutages] = await Promise.all([
-    getSettings(pageRow.userId),
+  const incidentCutoff = new Date(generatedAt.getTime() - 30 * 24 * 60 * 60_000);
+  const [settings, monitorRows, openOutages, publicIncidentRows] = await Promise.all([
+    getSettings(pageRow.userId, false, pageRow.workspaceId),
     db
       .select({
         id: monitors.id,
@@ -80,6 +82,33 @@ export async function getPublicStatusPage(slug: string) {
         publicMonitorScope
       ))
       .orderBy(desc(monitorOutages.startedAt)),
+    db
+      .select({
+        outageId: monitorOutages.id,
+        monitorId: monitorOutages.monitorId,
+        monitorUrl: monitors.url,
+        status: monitorOutages.status,
+        startedAt: monitorOutages.startedAt,
+        resolvedAt: monitorOutages.resolvedAt,
+        updateId: incidentUpdates.id,
+        visibility: incidentUpdates.visibility,
+        updateType: incidentUpdates.updateType,
+        message: incidentUpdates.message,
+        updateCreatedAt: incidentUpdates.createdAt,
+      })
+      .from(incidentUpdates)
+      .innerJoin(monitorOutages, and(
+        eq(monitorOutages.id, incidentUpdates.outageId),
+        eq(monitorOutages.workspaceId, pageRow.workspaceId)
+      ))
+      .innerJoin(monitors, eq(monitors.id, monitorOutages.monitorId))
+      .where(and(
+        eq(incidentUpdates.workspaceId, pageRow.workspaceId),
+        eq(incidentUpdates.visibility, "public"),
+        gt(incidentUpdates.createdAt, incidentCutoff),
+        publicMonitorScope
+      ))
+      .orderBy(desc(monitorOutages.startedAt), asc(incidentUpdates.createdAt)),
   ]);
 
   const uptimeByMonitorId = await getMonitorUptimeById(
@@ -141,6 +170,7 @@ export async function getPublicStatusPage(slug: string) {
   const operational = services.filter((service) => service.status === "up").length;
   const degraded = services.filter((service) => service.status === "pending").length;
   const outage = services.filter((service) => service.status === "down").length;
+  const incidents = buildPublicIncidentHistory(filterPublicIncidentUpdates(publicIncidentRows));
 
   return {
     slug: trimmedSlug,
@@ -166,7 +196,54 @@ export async function getPublicStatusPage(slug: string) {
       outage,
     },
     services,
+    incidents,
   };
+}
+
+function buildPublicIncidentHistory(rows: Array<{
+  outageId: string;
+  monitorId: string;
+  monitorUrl: string;
+  status: string;
+  startedAt: Date;
+  resolvedAt: Date | null;
+  updateId: string;
+  updateType: string;
+  message: string;
+  updateCreatedAt: Date;
+}>) {
+  const incidents = new Map<string, {
+    id: string;
+    monitorId: string;
+    monitorUrl: string;
+    status: string;
+    startedAt: string;
+    resolvedAt: string | null;
+    updates: Array<{ id: string; type: string; message: string; createdAt: string }>;
+  }>();
+  for (const row of rows) {
+    const incident = incidents.get(row.outageId) ?? {
+      id: row.outageId,
+      monitorId: row.monitorId,
+      monitorUrl: sanitizePublicMonitorUrl(row.monitorUrl),
+      status: row.status,
+      startedAt: row.startedAt.toISOString(),
+      resolvedAt: row.resolvedAt?.toISOString() ?? null,
+      updates: [],
+    };
+    incident.updates.push({
+      id: row.updateId,
+      type: row.updateType,
+      message: row.message,
+      createdAt: row.updateCreatedAt.toISOString(),
+    });
+    incidents.set(row.outageId, incident);
+  }
+  return [...incidents.values()];
+}
+
+export function filterPublicIncidentUpdates<T extends { visibility: string }>(rows: T[]) {
+  return rows.filter((row) => row.visibility === "public");
 }
 
 async function findPublicStatusPage(slug: string) {

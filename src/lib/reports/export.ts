@@ -200,9 +200,9 @@ function renderPrintableDocumentStart(report: GeneratedReport, autoPrint: boolea
 
 function renderPrintableHero(report: GeneratedReport) {
   const scope = report.scope === "company" ? report.companyName ?? "Company" : "Workspace";
-  const startedAt = new Date(report.periodStartedAt).toLocaleString();
-  const endedAt = new Date(report.periodEndedAt).toLocaleString();
-  const generatedAt = new Date(report.generatedAt).toLocaleString();
+  const startedAt = new Date(report.periodStartedAt).toLocaleString("en-GB", { timeZone: report.timeZone });
+  const endedAt = new Date(report.periodEndedAt).toLocaleString("en-GB", { timeZone: report.timeZone });
+  const generatedAt = new Date(report.generatedAt).toLocaleString("en-GB", { timeZone: report.timeZone });
   return `
     <section class="hero">
       <div class="hero-top">
@@ -210,7 +210,7 @@ function renderPrintableHero(report: GeneratedReport) {
         <span class="period-chip">${escapeHtml(report.periodLabel)}</span>
       </div>
       <h1>${escapeHtml(report.title)}</h1>
-      <p class="summary">${escapeHtml(scope)} &middot; ${escapeHtml(startedAt)} - ${escapeHtml(endedAt)} &middot; Generated ${escapeHtml(generatedAt)}</p>
+      <p class="summary">${escapeHtml(scope)} &middot; ${escapeHtml(startedAt)} - ${escapeHtml(endedAt)} (${escapeHtml(report.timeZone)}) &middot; Generated ${escapeHtml(generatedAt)}</p>
     </section>`;
 }
 

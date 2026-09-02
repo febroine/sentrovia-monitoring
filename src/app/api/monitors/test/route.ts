@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const requestData = requestSchema.safeParse(
       await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES)
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Invalid monitor test payload." }, { status: 400 });
     }
 
-    const settings = await getSettings(session.id);
+    const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     const defaultsApplied = applyMonitorDefaults(requestData.data.payload, settings);
     const parsed = monitorInputSchema.safeParse({
       ...defaultsApplied,

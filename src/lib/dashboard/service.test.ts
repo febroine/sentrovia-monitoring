@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildActivationChecklist,
   buildCompanyHealth,
   buildDashboardMonitorFocus,
   calculateAverageLatency,
@@ -10,6 +11,18 @@ import {
 } from "@/lib/dashboard/service";
 
 describe("dashboard service", () => {
+  it("derives activation steps from real workspace state", () => {
+    const activation = buildActivationChecklist({
+      hasMonitor: true,
+      workerRunning: true,
+      workerConnectivityStatus: "online",
+      deliveredCount: 0,
+    });
+
+    expect(activation.completed).toBe(2);
+    expect(activation.complete).toBe(false);
+    expect(activation.steps.find((step) => step.id === "delivery")?.complete).toBe(false);
+  });
   it("calculates average monitor interval in minutes across mixed units", () => {
     const average = calculateAverageIntervalMinutes([
       { intervalValue: 30, intervalUnit: "sn" },

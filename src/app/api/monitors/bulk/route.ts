@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorBulkUpdateSchema } from "@/lib/monitors/schemas";
@@ -17,10 +18,11 @@ export async function PATCH(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const rawBody = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
     const body = rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>) : {};
-    const settings = await getSettings(session.id);
+    const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     const payloadWithDefaults = {
       ...body,
       payload: applyMonitorDefaults(body?.payload, settings),

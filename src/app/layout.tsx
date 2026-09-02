@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { TranslationProvider } from '@/context/translation-context';
 import AppShell from '@/components/app-shell';
 import { ToastRegion } from '@/components/ui/toast-region';
 import { getSession } from '@/lib/auth/session';
+import { getSettings } from '@/lib/settings/service';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
@@ -27,14 +27,20 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
+  const settings = session
+    ? await getSettings(session.id, false, session.activeWorkspaceId!).catch(() => null)
+    : null;
 
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} font-sans bg-background text-foreground antialiased min-h-screen`}>
-        <TranslationProvider>
-          <AppShell initialAuthenticated={Boolean(session)}>{children}</AppShell>
-          <ToastRegion />
-        </TranslationProvider>
+        <AppShell
+          initialAuthenticated={Boolean(session)}
+          initialAppearance={settings?.appearance ?? null}
+        >
+          {children}
+        </AppShell>
+        <ToastRegion />
       </body>
     </html>
   );

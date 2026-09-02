@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { getSession } from "@/lib/auth/session";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { monitorActiveStateSchema } from "@/lib/monitors/schemas";
@@ -19,6 +20,7 @@ export async function PATCH(request: NextRequest, context: MonitorActiveRouteCon
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const { id } = await context.params;
     const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);

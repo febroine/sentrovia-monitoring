@@ -402,7 +402,7 @@ export async function sendEmailDelivery(input: {
   attachments?: Mail.Attachment[];
   buildAttachments?: () => Promise<Mail.Attachment[] | undefined>;
 }) {
-  const smtp = await getSmtpSettings(input.userId);
+  const smtp = await getSmtpSettings(input.userId, input.workspaceId);
   const destination = input.destinationOverride?.trim() || smtp?.defaultToEmail?.trim() || "";
   const event = await createDeliveryEvent(input.userId, "email", input.kind, destination || "Email not configured", {
     subject: input.subject,
@@ -562,7 +562,7 @@ export async function sendChannelWebhookDelivery(
   monitorId?: string | null,
   workspaceId?: string
 ) {
-  const settings = await getSettings(userId);
+  const settings = await getSettings(userId, true, workspaceId);
   const destination = settings?.notifications.discordWebhookUrl;
   const enabled = settings?.notifications.discordEnabled;
   const event = await createDeliveryEvent(
@@ -746,6 +746,7 @@ async function processWithConcurrency<T>(
 
 export async function buildNotificationWebhookPayload(input: {
   userId: string;
+  workspaceId?: string;
   kind: DeliveryKind;
   monitorName: string;
   url: string;
@@ -757,7 +758,7 @@ export async function buildNotificationWebhookPayload(input: {
   rcaTitle: string;
   rcaSummary: string;
 }) {
-  const settings = await getSettings(input.userId);
+  const settings = await getSettings(input.userId, true, input.workspaceId);
 
   return {
     event: input.kind,
@@ -983,7 +984,7 @@ async function deliverClaimedDelivery(event: DeliveryEventRow) {
 }
 
 async function deliverClaimedEmail(event: DeliveryEventRow) {
-  const smtp = await getSmtpSettings(event.userId);
+  const smtp = await getSmtpSettings(event.userId, event.workspaceId);
   const payload = safeJsonParse(event.payloadJson);
   const payloadDestination = readPayloadString(payload, "to");
   const destination = payloadDestination || (event.destination === "Email not configured" ? "" : event.destination);
@@ -1095,7 +1096,7 @@ async function deliverClaimedTelegram(event: DeliveryEventRow) {
 }
 
 async function deliverClaimedDiscord(event: DeliveryEventRow) {
-  const settings = await getSettings(event.userId);
+  const settings = await getSettings(event.userId, true, event.workspaceId);
   const destination = settings?.notifications.discordWebhookUrl;
   if (!settings?.notifications.discordEnabled || !destination) {
     return markDeliveryFailed(event.id, null, "Discord webhook is not configured or inactive.", event.attempts + 1, event.claimToken);

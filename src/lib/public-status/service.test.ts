@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   comparePublicStatusServices,
+  filterPublicIncidentUpdates,
   isPublicStatusCompanyAvailable,
   isSlowPublicService,
   normalizePublicServiceStatus,
   sanitizePublicMonitorUrl,
 } from "@/lib/public-status/service";
+
+describe("public incident updates", () => {
+  it("never exposes internal incident notes", () => {
+    const updates = filterPublicIncidentUpdates([
+      { id: "internal", visibility: "internal", message: "private root cause" },
+      { id: "public", visibility: "public", message: "mitigation underway" },
+    ]);
+
+    expect(updates).toEqual([
+      { id: "public", visibility: "public", message: "mitigation underway" },
+    ]);
+  });
+});
 
 describe("sanitizePublicMonitorUrl", () => {
   it("removes credentials, query strings, and fragments before public rendering", () => {

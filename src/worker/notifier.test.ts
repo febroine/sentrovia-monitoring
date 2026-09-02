@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   countMonitorEvents: vi.fn(),
   getSettings: vi.fn(),
   getMonitorNotificationRouting: vi.fn(),
+  getActiveNotificationSuppression: vi.fn(),
   hasRecentMonitorEvent: vi.fn(),
   sendChannelWebhookDelivery: vi.fn(),
   sendEmailDelivery: vi.fn(),
@@ -42,6 +43,10 @@ vi.mock("@/lib/notifications/routing", () => ({
   getMonitorNotificationRouting: mocks.getMonitorNotificationRouting,
 }));
 
+vi.mock("@/lib/maintenance/service", () => ({
+  getActiveNotificationSuppression: mocks.getActiveNotificationSuppression,
+}));
+
 vi.mock("@/worker/templates", () => ({
   renderNotificationTemplates: () => ({
     subject: "Recovered",
@@ -64,6 +69,7 @@ describe("worker notifier", () => {
         notifyOnRecovery: true,
       },
     });
+    mocks.getActiveNotificationSuppression.mockResolvedValue(null);
     mocks.hasRecentMonitorEvent.mockResolvedValue(true);
     mocks.getMonitorNotificationRouting.mockResolvedValue({
       emailRecipients: "ops@example.com",
@@ -97,6 +103,19 @@ describe("worker notifier", () => {
         subject: "Recovered",
       })
     );
+  });
+
+  it("suppresses outage notifications during an active maintenance window", async () => {
+    mocks.getActiveNotificationSuppression.mockResolvedValue({
+      id: "maintenance-1",
+      title: "Database upgrade",
+    });
+
+    const sent = await sendMonitorNotifications(buildNotificationContext("failure"));
+
+    expect(sent).toBe(false);
+    expect(mocks.getSettings).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
   });
 
   it("uses the resolved company or workspace destinations for monitor channels", async () => {

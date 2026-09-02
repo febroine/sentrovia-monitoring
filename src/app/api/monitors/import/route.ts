@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
 import { createManyMonitors } from "@/lib/monitors/service";
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const body = (await readJsonBody(request, MONITOR_CSV_IMPORT_LIMITS.maxRequestBytes)) as { monitors?: unknown };
     const items: unknown[] = Array.isArray(body?.monitors) ? body.monitors : [];
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const settings = await getSettings(session.id);
+    const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     const intervalDefaults = parseIntervalSetting(settings?.monitoring.interval ?? "1m");
 
     const parsed = items.map((item, index) => {

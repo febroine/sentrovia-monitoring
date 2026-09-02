@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { ZodType } from "zod";
 import { requireSession } from "@/lib/auth/authorization";
+import { assertPermission, type Permission } from "@/lib/auth/permissions";
 import { AuthError, toAuthError } from "@/lib/auth/errors";
 import {
   assertSameOriginMutation,
@@ -11,6 +12,12 @@ import {
 export async function requireMutationSession(request: NextRequest) {
   assertSameOriginMutation(request);
   return requireSession();
+}
+
+export async function requireMutationPermission(request: NextRequest, permission: Permission) {
+  const session = await requireMutationSession(request);
+  assertPermission(session.role, permission);
+  return session;
 }
 
 export async function parseJsonRequest<T>(

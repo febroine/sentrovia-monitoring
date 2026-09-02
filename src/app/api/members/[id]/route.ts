@@ -68,8 +68,9 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       },
     });
 
-    await recordAuditEventSafely({
-      userId: session.id,
+await recordAuditEventSafely({
+userId: session.id,
+workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "member",

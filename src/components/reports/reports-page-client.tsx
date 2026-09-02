@@ -206,6 +206,7 @@ function ManualReportWorkspace({
     preview,
     previewDraft,
     previewNeedsCompany,
+    previewNeedsPeriod,
     previewRecipients,
     saving,
     sendPreviewNow,
@@ -230,15 +231,15 @@ function ManualReportWorkspace({
               <ReportOptionsPanel
                 template={previewDraft.template}
                 draft={previewDraft}
-                subjectTitle={buildDraftReportTitle(previewDraft.scope, previewDraft.cadence, previewDraft.companyId, companies)}
+                subjectTitle={buildDraftReportTitle(previewDraft.scope, previewDraft.cadence, previewDraft.companyId, companies, previewDraft.periodRange)}
                 subjectScope={resolveDraftScopeLabel(previewDraft, companies)}
-                subjectPeriod={resolveDraftPeriodLabel(previewDraft.cadence)}
+                subjectPeriod={resolveDraftPeriodLabel(previewDraft)}
                 onTemplateChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
                 onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
               />
 
               <ManualReportActions
-                disabled={previewNeedsCompany}
+                disabled={previewNeedsCompany || previewNeedsPeriod}
                 hasRecipients={previewRecipients.length > 0}
                 saving={saving}
                 onGenerate={() => void generatePreview()}
@@ -294,7 +295,30 @@ function ManualReportFields({
           </SelectContent>
         </Select>
       </Field>
-      <ReadOnlyField label="Period" value="Last 7 days" />
+      <Field label="Period">
+        <Select value={draft.periodRange} onValueChange={(value) => setDraft((current) => ({
+          ...current,
+          periodRange: value as typeof current.periodRange,
+          cadence: value === "30d" ? "monthly" : "weekly",
+        }))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7d">Last 7 days</SelectItem>
+            <SelectItem value="30d">Last 30 days</SelectItem>
+            <SelectItem value="custom">Custom dates</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      {draft.periodRange === "custom" ? (
+        <>
+          <Field label="From">
+            <Input type="date" value={draft.periodStartedAt} onChange={(event) => setDraft((current) => ({ ...current, periodStartedAt: event.target.value }))} />
+          </Field>
+          <Field label="Through">
+            <Input type="date" min={draft.periodStartedAt || undefined} value={draft.periodEndedAt} onChange={(event) => setDraft((current) => ({ ...current, periodEndedAt: event.target.value }))} />
+          </Field>
+        </>
+      ) : null}
       {draft.scope === "company" ? (
         <Field label="Company">
           <Select value={draft.companyId} onValueChange={(value) => setDraft((current) => ({ ...current, companyId: String(value) }))}>
@@ -366,7 +390,7 @@ function ScheduleBuilder({ state }: { state: ReturnType<typeof useReportsPageSta
           draft={scheduleDraft}
           subjectTitle={buildDraftReportTitle(scheduleDraft.scope, scheduleDraft.cadence, scheduleDraft.companyId, companies)}
           subjectScope={resolveDraftScopeLabel(scheduleDraft, companies)}
-          subjectPeriod={resolveDraftPeriodLabel(scheduleDraft.cadence)}
+          subjectPeriod={scheduleDraft.cadence === "weekly" ? "Last 7 days" : "Last 30 days"}
           onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
           onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
         />

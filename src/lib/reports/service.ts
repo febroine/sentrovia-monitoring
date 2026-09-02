@@ -306,8 +306,8 @@ export async function generateReportPreview(
   workspaceId?: string
 ): Promise<GeneratedReport> {
   const scoped = await loadScopedReportData(userId, input, now, workspaceId);
-  const workspaceName = await resolveReportBrandName(userId, input.reportBrandName);
-  const period = resolveReportPeriod(now, input.cadence);
+  const workspaceName = await resolveReportBrandName(userId, input.reportBrandName, workspaceId);
+  const period = resolveReportPeriod(now, input.cadence, input);
   const template = input.template ?? DEFAULT_REPORT_TEMPLATE;
   const checksByMonitor = new Map(scoped.checkAggregates.map((item) => [item.monitorId, item]));
   const slowMonitors = buildSlowMonitorSummary(scoped.monitorRows, checksByMonitor);
@@ -339,7 +339,7 @@ export async function generateReportPreview(
   });
 
   return {
-    title: resolveReportTitle(input.cadence, input.scope, scoped.companyName),
+    title: resolveReportTitle(input.cadence, input.scope, scoped.companyName, input.periodRange),
     scope: input.scope,
     cadence: input.cadence,
     template,
@@ -352,6 +352,7 @@ export async function generateReportPreview(
     periodStartedAt: period.startedAt.toISOString(),
     periodEndedAt: period.endedAt.toISOString(),
     periodLabel: period.label,
+    timeZone: period.timeZone,
     summary: {
       monitorCount: scoped.monitorRows.length,
       currentlyUp: scoped.monitorRows.filter((monitor) => monitor.status === "up").length,
@@ -541,7 +542,7 @@ async function loadScopedReportData(
   now: Date,
   workspaceId?: string
 ) {
-  const period = resolveReportPeriod(now, input.cadence);
+  const period = resolveReportPeriod(now, input.cadence, input);
   const company =
     input.scope === "company" && input.companyId
       ? await getCompanyById(companySubject(userId, workspaceId), input.companyId)
@@ -723,21 +724,47 @@ function emptyReportMetrics() {
   };
 }
 
-export function resolveReportPeriod(now: Date, cadence: ReportCadence = "weekly") {
-  const windowDays = cadence === "weekly" ? 7 : 30;
+export function resolveReportPeriod(
+  now: Date,
+  cadence: ReportCadence = "weekly",
+  input: Pick<ReportPreviewInput, "periodRange" | "periodStartedAt" | "periodEndedAt" | "timeZone"> = {}
+) {
+  const timeZone = input.timeZone || "UTC";
+  if (input.periodRange === "custom" && input.periodStartedAt && input.periodEndedAt) {
+    const startedAt = new Date(input.periodStartedAt);
+    const endedAt = new Date(input.periodEndedAt);
+    return {
+      startedAt,
+      endedAt,
+      label: `${formatReportBoundary(startedAt, timeZone)} – ${formatReportBoundary(endedAt, timeZone)}`,
+      timeZone,
+    };
+  }
+
+  const windowDays = input.periodRange === "30d" || cadence !== "weekly" ? 30 : 7;
   return {
     startedAt: new Date(now.getTime() - windowDays * REPORT_DAY_MS),
     endedAt: now,
     label: `Last ${windowDays} days`,
+    timeZone,
   };
+}
+
+function formatReportBoundary(value: Date, timeZone: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(value);
 }
 
 export function resolveReportTitle(
   cadence: ReportCadence,
   scope: ReportPreviewInput["scope"],
-  companyName: string | null
+  companyName: string | null,
+  periodRange?: ReportPreviewInput["periodRange"]
 ) {
-  const cadenceLabel = cadence === "weekly" ? "Weekly" : "Monthly";
+  const cadenceLabel = periodRange === "custom" ? "Custom" : cadence === "weekly" ? "Weekly" : "Monthly";
   return scope === "company" ? `${cadenceLabel} ${companyName ?? "Company"} Report` : `${cadenceLabel} Workspace Report`;
 }
 
@@ -1386,13 +1413,17 @@ function serializeCompletedManualSchedule(
   return serializeSchedule(schedule, companyName);
 }
 
-async function resolveReportBrandName(userId: string, override: string | null | undefined) {
+async function resolveReportBrandName(
+  userId: string,
+  override: string | null | undefined,
+  workspaceId?: string
+) {
   const brandName = emptyTemplateToNull(override);
   if (brandName) {
     return brandName;
   }
 
-  const settings = await getSettings(userId);
+  const settings = await getSettings(userId, true, workspaceId);
   return settings?.profile.organization || "Sentrovia";
 }
 

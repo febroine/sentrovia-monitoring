@@ -16,10 +16,14 @@ import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
+const DASHBOARD_CACHE_TTL_MS = 20_000;
+const DASHBOARD_CACHE_MAX_ENTRIES = 200;
+const dashboardSnapshotCache = new Map<string, { expiresAt: number; value: Promise<DashboardData> }>();
+
 export async function getDashboardData(userId: string, workspaceId?: string) {
   const [monitorSection, settingsSection] = await Promise.all([
     loadDashboardSection("monitor status", getDashboardMonitors(userId, workspaceId), []),
-    loadDashboardSection("workspace settings", getSettings(userId), null),
+    loadDashboardSection("workspace settings", getSettings(userId, true, workspaceId), null),
   ]);
   const monitorRows = monitorSection.data;
   const settings = settingsSection.data;
@@ -95,11 +99,72 @@ export async function getDashboardData(userId: string, workspaceId?: string) {
     },
     settings,
     worker,
+    activation: buildActivationChecklist({
+      hasMonitor: monitorRows.length > 0,
+      workerRunning: worker.running,
+      workerConnectivityStatus: worker.connectivityStatus,
+      deliveredCount: delivery.delivered,
+    }),
     warnings,
   };
 }
 
+export function buildActivationChecklist(input: {
+  hasMonitor: boolean;
+  workerRunning: boolean;
+  workerConnectivityStatus: string;
+  deliveredCount: number;
+}) {
+  const steps = [
+    { id: "monitor", label: "Create the first monitor", href: "/monitoring", complete: input.hasMonitor },
+    {
+      id: "worker",
+      label: "Verify the monitoring worker",
+      href: "/monitoring",
+      complete: input.workerRunning && input.workerConnectivityStatus === "online",
+    },
+    {
+      id: "delivery",
+      label: "Complete the first successful delivery",
+      href: "/delivery",
+      complete: input.deliveredCount > 0,
+    },
+  ];
+  return { steps, completed: steps.filter((step) => step.complete).length, complete: steps.every((step) => step.complete) };
+}
+
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
+
+export function getCachedDashboardData(userId: string, workspaceId?: string, now = Date.now()) {
+  const key = `${workspaceId ?? "legacy"}:${userId}`;
+  const cached = dashboardSnapshotCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const value = getDashboardData(userId, workspaceId).catch((error) => {
+    dashboardSnapshotCache.delete(key);
+    throw error;
+  });
+  dashboardSnapshotCache.set(key, { expiresAt: now + DASHBOARD_CACHE_TTL_MS, value });
+  trimDashboardCache(now);
+  return value;
+}
+
+export function invalidateDashboardCache(userId: string, workspaceId?: string) {
+  dashboardSnapshotCache.delete(`${workspaceId ?? "legacy"}:${userId}`);
+}
+
+function trimDashboardCache(now: number) {
+  for (const [key, entry] of dashboardSnapshotCache) {
+    if (entry.expiresAt <= now) dashboardSnapshotCache.delete(key);
+  }
+  while (dashboardSnapshotCache.size > DASHBOARD_CACHE_MAX_ENTRIES) {
+    const oldestKey = dashboardSnapshotCache.keys().next().value;
+    if (!oldestKey) break;
+    dashboardSnapshotCache.delete(oldestKey);
+  }
+}
 
 const DEFAULT_DELIVERY_SUMMARY = {
   delivered: 0,
@@ -302,6 +367,7 @@ export async function saveDashboardPreferences(
   }
 
   await persistDashboardPreferences(userId, preferences);
+  invalidateDashboardCache(userId, workspaceId);
   return getDashboardData(userId, workspaceId);
 }
 

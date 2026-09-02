@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiErrorResponse, requireMutationSession } from "@/lib/http/api-route";
+import { apiErrorResponse, requireMutationPermission } from "@/lib/http/api-route";
 import { duplicateReportSchedule } from "@/lib/reports/service";
 
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ type Params = Promise<{ id: string }>;
 
 export async function POST(request: NextRequest, context: { params: Params }) {
   try {
-    const session = await requireMutationSession(request);
+    const session = await requireMutationPermission(request, "reports.manage");
 
     const { id } = await context.params;
     const schedule = await duplicateReportSchedule(
