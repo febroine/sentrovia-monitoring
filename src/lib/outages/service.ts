@@ -29,7 +29,7 @@ export async function openOrUpdateOutage(
       errorMessage: input.errorMessage,
     })
     .onConflictDoUpdate({
-      target: [monitorOutages.userId, monitorOutages.monitorId],
+      target: [monitorOutages.workspaceId, monitorOutages.monitorId],
       targetWhere: sql`${monitorOutages.status} = 'open' and ${monitorOutages.resolvedAt} is null`,
       setWhere: or(
         isNull(monitorOutages.lastCheckedAt),
