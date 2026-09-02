@@ -61,6 +61,7 @@ interface PendingMonitorRestore {
 export default function MonitoringPage() {
   const {
     monitors,
+    pagination,
     loading,
     saving,
     error,
@@ -106,34 +107,15 @@ export default function MonitoringPage() {
     ? hasPermission(workspaceSettings.profile.role, "monitors.manage")
     : false;
 
-  const companyFilters = useMemo(
-    () => ["all", ...Array.from(new Set(monitors.map((monitor) => monitor.company).filter(Boolean)))],
-    [monitors]
-  );
-
-  const filtered = useMemo(
-    () =>
-      monitors.filter((monitor) => {
-        const query = search.trim().toLowerCase();
-        const matchesSearch =
-          !query ||
-          monitor.name.toLowerCase().includes(query) ||
-          monitor.url.toLowerCase().includes(query) ||
-          monitor.tags.some((tag) => tag.toLowerCase().includes(query));
-        const matchesCompany = companyFilter === "all" || monitor.company === companyFilter;
-        return matchesSearch && matchesCompany;
-      }),
-    [companyFilter, monitors, search]
-  );
   const problematicCount = useMemo(
     () => monitors.filter((monitor) => monitor.isActive && (monitor.status === "down" || monitor.verificationMode)).length,
     [monitors]
   );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const totalPages = pagination.totalPages;
   const currentPage = Math.min(page, totalPages);
   const visiblePages = buildVisiblePages(currentPage, totalPages, PAGE_NUMBER_WINDOW);
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginated = monitors;
   const allPageSelected = paginated.length > 0 && paginated.every((monitor) => selectedIds.has(monitor.id));
   const somePageSelected = paginated.some((monitor) => selectedIds.has(monitor.id));
   const bulkEditTemplate = useMemo(() => {
@@ -165,34 +147,62 @@ export default function MonitoringPage() {
     }
   }, []);
 
-  const loadMonitorHistory = useCallback(async () => {
+  const loadMonitorHistory = useCallback(async (monitorId: string) => {
     try {
-      const response = await fetch("/api/monitors/history", { cache: "no-store" });
+      const response = await fetch(
+        `/api/monitors/history?monitorId=${encodeURIComponent(monitorId)}`,
+        { cache: "no-store" }
+      );
       const data = await readJsonOrNull<{
         history?: Record<string, MonitorHistoryPoint[]>;
         diagnostics?: Record<string, MonitorDiagnosticRecord[]>;
         outageEvents?: Record<string, MonitorOutageEventRecord[]>;
       }>(response);
 
-      setHistoryByMonitor(response.ok ? data?.history ?? {} : {});
-      setDiagnosticsByMonitor(response.ok ? data?.diagnostics ?? {} : {});
-      setOutageEventsByMonitor(response.ok ? data?.outageEvents ?? {} : {});
+      const points = response.ok ? data?.history?.[monitorId] ?? [] : [];
+      const diagnostics = response.ok ? data?.diagnostics?.[monitorId] ?? [] : [];
+      const outageEvents = response.ok ? data?.outageEvents?.[monitorId] ?? [] : [];
+      setHistoryByMonitor((current) => ({ ...current, [monitorId]: points }));
+      setDiagnosticsByMonitor((current) => ({ ...current, [monitorId]: diagnostics }));
+      setOutageEventsByMonitor((current) => ({ ...current, [monitorId]: outageEvents }));
+      return points;
     } catch {
-      setHistoryByMonitor({});
-      setDiagnosticsByMonitor({});
-      setOutageEventsByMonitor({});
+      setHistoryByMonitor((current) => ({ ...current, [monitorId]: [] }));
+      setDiagnosticsByMonitor((current) => ({ ...current, [monitorId]: [] }));
+      setOutageEventsByMonitor((current) => ({ ...current, [monitorId]: [] }));
+      return [];
     }
   }, []);
 
+  const loadMonitorPage = useCallback(() => loadMonitors({
+    page,
+    pageSize,
+    search,
+    companyId: companyFilter,
+  }), [companyFilter, loadMonitors, page, pageSize, search]);
+
   const refreshMonitoring = useCallback(async () => {
-    await Promise.all([loadMonitors(), loadMonitorHistory(), loadSupportingData()]);
-  }, [loadMonitorHistory, loadMonitors, loadSupportingData]);
+    await Promise.all([loadMonitorPage(), loadSupportingData()]);
+  }, [loadMonitorPage, loadSupportingData]);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void refreshMonitoring();
-    });
-  }, [refreshMonitoring]);
+    const timeoutId = window.setTimeout(() => void loadMonitorPage(), 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadMonitorPage]);
+
+  useEffect(() => {
+    queueMicrotask(() => void loadSupportingData());
+  }, [loadSupportingData]);
+
+  useEffect(() => {
+    if (page > pagination.totalPages) {
+      setPage(pagination.totalPages);
+    }
+  }, [page, pagination.totalPages]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [companyFilter, page, pageSize, search]);
 
   useEffect(() => {
     if (!pendingBulkAction) {
@@ -288,7 +298,7 @@ export default function MonitoringPage() {
     try {
       const updated = await updateMonitorActiveState(monitor.id, !monitor.isActive);
       if (updated) {
-        await Promise.all([loadMonitorHistory(), loadSupportingData()]);
+        await loadSupportingData();
       }
     } finally {
       setActiveTogglePendingId(null);
@@ -418,9 +428,10 @@ export default function MonitoringPage() {
     });
   }
 
-  function handleSelectTimelinePoint(monitor: MonitorRecord, point: MonitorHistoryPoint) {
+  async function handleOpenTimeline(monitor: MonitorRecord) {
+    const points = await loadMonitorHistory(monitor.id);
     setTimelineMonitor(monitor);
-    setSelectedTimelinePointId(point.id);
+    setSelectedTimelinePointId(points.at(-1)?.id ?? null);
   }
 
   return (
@@ -429,7 +440,7 @@ export default function MonitoringPage() {
         <div className="space-y-1">
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Monitoring</h1>
           <p className="text-sm text-muted-foreground">
-            {filtered.length} endpoints shown · {problematicCount} problematic
+            {pagination.totalItems} endpoints · {problematicCount} problematic on this page
           </p>
         </div>
 
@@ -513,10 +524,9 @@ export default function MonitoringPage() {
             <SelectValue placeholder="Filter by company" />
           </SelectTrigger>
           <SelectContent>
-            {companyFilters.map((company) => (
-              <SelectItem key={company} value={company}>
-                {company === "all" ? "All companies" : company}
-              </SelectItem>
+            <SelectItem value="all">All companies</SelectItem>
+            {companies.map((company) => (
+              <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -566,7 +576,6 @@ export default function MonitoringPage() {
         monitors={paginated}
         readOnly={!canManageMonitors}
         loading={loading}
-        historyByMonitor={historyByMonitor}
         selectedIds={selectedIds}
         activeTogglePendingId={activeTogglePendingId}
         flagPendingId={flagPendingId}
@@ -577,7 +586,7 @@ export default function MonitoringPage() {
         onToggleActive={(monitor) => void handleToggleMonitorActive(monitor)}
         onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
         onEdit={setEditingMonitor}
-        onSelectTimelinePoint={handleSelectTimelinePoint}
+        onOpenTimeline={(monitor) => void handleOpenTimeline(monitor)}
       />
 
       {totalPages > 1 ? (
@@ -775,12 +784,13 @@ export default function MonitoringPage() {
       </Dialog>
 
       <MonitorHistoryDialog
-        open={Boolean(timelineMonitor && selectedTimelinePointId)}
+        open={Boolean(timelineMonitor)}
         monitor={timelineMonitor}
         points={timelineMonitor ? historyByMonitor[timelineMonitor.id] ?? [] : []}
         diagnostics={timelineMonitor ? diagnosticsByMonitor[timelineMonitor.id] ?? [] : []}
         outageEvents={timelineMonitor ? outageEventsByMonitor[timelineMonitor.id] ?? [] : []}
         selectedPointId={selectedTimelinePointId}
+        onSelectPoint={setSelectedTimelinePointId}
         onOpenChange={(open) => {
           if (!open) {
             setTimelineMonitor(null);

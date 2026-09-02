@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
@@ -74,6 +74,16 @@ const MAX_COLD_START_SPREAD_MS = 5 * 60_000;
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 export const SOFT_DELETE_UNDO_MS = 60_000;
 
+export type MonitorListQuery = {
+  page: number;
+  pageSize: number;
+  search?: string;
+  companyId?: string;
+  status?: "up" | "down" | "pending";
+  sort: "createdAt" | "name" | "status" | "lastCheckedAt" | "latencyMs";
+  direction: "asc" | "desc";
+};
+
 export async function listMonitors(
   userId: string,
   database: DatabaseExecutor = db,
@@ -97,6 +107,70 @@ export async function listMonitors(
     ...monitor,
     uptime: uptimeByMonitorId.get(monitor.id) ?? NO_MONITOR_UPTIME_DATA,
   }));
+}
+
+export async function listMonitorsPage(
+  userId: string,
+  query: MonitorListQuery,
+  database: DatabaseExecutor = db,
+  workspaceId?: string
+) {
+  const search = query.search?.trim();
+  const searchPattern = search ? `%${search}%` : null;
+  const where = and(
+    monitorOwnershipCondition(userId, workspaceId),
+    isNull(monitors.deletedAt),
+    query.companyId ? eq(monitors.companyId, query.companyId) : undefined,
+    query.status ? eq(monitors.status, query.status) : undefined,
+    searchPattern
+      ? or(
+          ilike(monitors.name, searchPattern),
+          ilike(monitors.url, searchPattern),
+          ilike(monitors.company, searchPattern),
+          sql<boolean>`array_to_string(${monitors.tags}, ' ') ilike ${searchPattern}`
+        )
+      : undefined
+  );
+  const sortColumn = {
+    createdAt: monitors.createdAt,
+    name: monitors.name,
+    status: monitors.status,
+    lastCheckedAt: monitors.lastCheckedAt,
+    latencyMs: monitors.latencyMs,
+  }[query.sort];
+  const order = query.direction === "asc" ? asc : desc;
+  const [totalRows, monitorRows] = await Promise.all([
+    database.select({ total: count() }).from(monitors).where(where),
+    database
+      .select()
+      .from(monitors)
+      .where(where)
+      .orderBy(order(sortColumn), order(monitors.id))
+      .limit(query.pageSize)
+      .offset((query.page - 1) * query.pageSize),
+  ]);
+  const totalItems = Number(totalRows[0]?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
+  const uptimeByMonitorId = await getMonitorUptimeById(
+    userId,
+    monitorRows.map((monitor) => monitor.id),
+    new Date(),
+    database,
+    workspaceId
+  );
+
+  return {
+    monitors: monitorRows.map((monitor) => ({
+      ...monitor,
+      uptime: uptimeByMonitorId.get(monitor.id) ?? NO_MONITOR_UPTIME_DATA,
+    })),
+    pagination: {
+      page: query.page,
+      pageSize: query.pageSize,
+      totalItems,
+      totalPages,
+    },
+  };
 }
 
 export async function createMonitor(userId: string, input: MonitorInput, workspaceId?: string) {

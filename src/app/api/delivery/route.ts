@@ -55,7 +55,8 @@ export async function GET(request: NextRequest) {
     const overview = await getDeliveryOverview(
       session.id,
       parsedPage.data,
-      hasPermission(session.role, "delivery.manage")
+      hasPermission(session.role, "delivery.manage"),
+      session.activeWorkspaceId ?? undefined
     );
     return NextResponse.json({ overview });
   } catch (error) {
@@ -82,8 +83,12 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const deletedCount = await deleteDeliveryHistory(session.id, resolveDeliveryHistoryRange(parsed.data));
-    const overview = await getDeliveryOverview(session.id, 1);
+    const deletedCount = await deleteDeliveryHistory(
+      session.id,
+      resolveDeliveryHistoryRange(parsed.data),
+      session.activeWorkspaceId ?? undefined
+    );
+    const overview = await getDeliveryOverview(session.id, 1, true, session.activeWorkspaceId ?? undefined);
     return NextResponse.json({ count: deletedCount, overview });
   } catch (error) {
     const authError = toAuthError(error, "Unable to delete delivery history right now.");
@@ -104,8 +109,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid webhook payload." }, { status: 400 });
     }
 
-    await upsertWebhookSettings(session.id, parsed.data);
-    const overview = await getDeliveryOverview(session.id);
+    await upsertWebhookSettings(session.id, parsed.data, session.activeWorkspaceId ?? undefined);
+    const overview = await getDeliveryOverview(session.id, 1, true, session.activeWorkspaceId ?? undefined);
     return NextResponse.json({ overview });
   } catch (error) {
     const authError = toAuthError(error, "Unable to save webhook delivery settings right now.");

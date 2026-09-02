@@ -23,16 +23,18 @@ export async function runWorkerPhases(
   }
   if (!(await isRunRequested())) return { status: "stopped" };
 
+  const outboundConnectivity = await ensureWorkerConnectivity();
+  if (outboundConnectivity.available) {
+    await retryDeliveryQueueForAllUsers();
+  }
+  if (!(await isRunRequested())) return { status: "stopped" };
+
   await runMonitoringCycle();
   if (!(await isRunRequested())) return { status: "stopped" };
 
-  const beforeOutboundWork = await ensureWorkerConnectivity();
-  if (!beforeOutboundWork.available) {
-    return { status: "connectivity-paused", message: beforeOutboundWork.message };
+  if (!outboundConnectivity.available) {
+    return { status: "connectivity-paused", message: outboundConnectivity.message };
   }
-
-  await retryDeliveryQueueForAllUsers();
-  if (!(await isRunRequested())) return { status: "stopped" };
 
   await runDueReportSchedules();
   return (await isRunRequested()) ? { status: "completed" } : { status: "stopped" };

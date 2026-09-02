@@ -26,7 +26,11 @@ const overview = {
 describe("delivery route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ id: "user-1", role: "admin" });
+    mocks.getSession.mockResolvedValue({
+      id: "user-1",
+      role: "admin",
+      activeWorkspaceId: "workspace-1",
+    });
     mocks.getDeliveryOverview.mockResolvedValue(overview);
     mocks.deleteDeliveryHistory.mockResolvedValue(1);
   });
@@ -35,16 +39,20 @@ describe("delivery route", () => {
     const response = await GET(new Request("http://localhost/api/delivery?page=3") as never);
 
     expect(response.status).toBe(200);
-    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 3, true);
+    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 3, true, "workspace-1");
   });
 
   it("does not expose the webhook URL to read-only users", async () => {
-    mocks.getSession.mockResolvedValue({ id: "user-1", role: "viewer" });
+    mocks.getSession.mockResolvedValue({
+      id: "user-1",
+      role: "viewer",
+      activeWorkspaceId: "workspace-1",
+    });
 
     const response = await GET(new Request("http://localhost/api/delivery") as never);
 
     expect(response.status).toBe(200);
-    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 1, false);
+    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 1, false, "workspace-1");
   });
 
   it("rejects an invalid history page", async () => {
@@ -66,11 +74,15 @@ describe("delivery route", () => {
 
     expect(response.status).toBe(200);
     expect(body.count).toBe(1);
-    expect(mocks.deleteDeliveryHistory).toHaveBeenCalledWith("user-1", {
-      from: new Date("2026-07-01T00:00:00.000Z"),
-      toExclusive: new Date("2026-07-04T00:00:00.000Z"),
-    });
-    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 1);
+    expect(mocks.deleteDeliveryHistory).toHaveBeenCalledWith(
+      "user-1",
+      {
+        from: new Date("2026-07-01T00:00:00.000Z"),
+        toExclusive: new Date("2026-07-04T00:00:00.000Z"),
+      },
+      "workspace-1"
+    );
+    expect(mocks.getDeliveryOverview).toHaveBeenCalledWith("user-1", 1, true, "workspace-1");
   });
 
   it("rejects reversed custom date ranges", async () => {

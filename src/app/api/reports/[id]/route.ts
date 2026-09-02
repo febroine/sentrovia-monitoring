@@ -13,7 +13,12 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     const input = await parseJsonRequest(request, reportSchedulePatchSchema, "Invalid report schedule update.");
 
     const { id } = await context.params;
-    const schedule = await updateReportSchedule(session.id, id, input);
+    const schedule = await updateReportSchedule(
+      session.id,
+      id,
+      input,
+      session.activeWorkspaceId ?? undefined
+    );
     if (!schedule) {
       return NextResponse.json({ message: "Report schedule not found." }, { status: 404 });
     }
@@ -29,7 +34,11 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
     const session = await requireMutationSession(request);
 
     const { id } = await context.params;
-    const deleted = await deleteReportSchedule(session.id, id);
+    const deleted = await deleteReportSchedule(
+      session.id,
+      id,
+      session.activeWorkspaceId ?? undefined
+    );
     if (!deleted) {
       return NextResponse.json({ message: "Report schedule not found." }, { status: 404 });
     }

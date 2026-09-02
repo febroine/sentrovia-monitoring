@@ -26,7 +26,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: "Invalid delivery event id." }, { status: 400 });
       }
 
-      const delivery = await retryDeliveryEvent(session.id, parsedEventId.data);
+      const delivery = await retryDeliveryEvent(
+        session.id,
+        parsedEventId.data,
+        session.activeWorkspaceId ?? undefined
+      );
       if (!delivery) {
         return NextResponse.json(
           { message: "This delivery is no longer available for manual retry." },
@@ -34,12 +38,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const overview = await getDeliveryOverview(session.id);
+      const overview = await getDeliveryOverview(session.id, 1, true, session.activeWorkspaceId ?? undefined);
       return NextResponse.json({ delivery, overview });
     }
 
-    const result = await retryDeliveryQueue(session.id);
-    const overview = await getDeliveryOverview(session.id);
+    const result = await retryDeliveryQueue(session.id, undefined, session.activeWorkspaceId ?? undefined);
+    const overview = await getDeliveryOverview(session.id, 1, true, session.activeWorkspaceId ?? undefined);
     return NextResponse.json({ result, overview });
   } catch (error) {
     const authError = toAuthError(error, "Unable to process the delivery retry queue right now.");

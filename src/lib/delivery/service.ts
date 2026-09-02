@@ -51,11 +51,13 @@ import {
 
 const DELIVERY_HISTORY_PAGE_SIZE = 10;
 const MAX_DELIVERY_ATTEMPTS = 5;
-const DELIVERY_RETRY_DELAY_MS = 5 * 60 * 1000;
+const INITIAL_DELIVERY_RETRY_DELAY_MS = 60_000;
+const MAX_DELIVERY_RETRY_DELAY_MS = 5 * 60_000;
 const DELIVERY_CLAIM_LEASE_MS = 2 * 60 * 1000;
 const DELIVERY_QUEUE_STATUSES = ["pending", "retrying", "processing"] as const;
 const DELIVERY_HISTORY_DELETABLE_STATUSES = ["delivered", "failed"];
 const DELIVERY_RETRY_BATCH_SIZE = 20;
+const DELIVERY_RETRY_CONCURRENCY = 4;
 const DELIVERY_HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DELIVERY_PENDING_STALE_MS = 2 * 60 * 1000;
 const DELIVERY_CHANNELS = ["email", "telegram", "discord", "webhook"] as const;
@@ -73,6 +75,7 @@ type DeliveryHealthLatestRow = {
 type DeliveryEventRow = typeof deliveryEvents.$inferSelect;
 type DeliveryQueueOptions = {
   userId?: string;
+  workspaceId?: string;
   channels?: readonly DeliveryChannel[];
 };
 
@@ -83,23 +86,37 @@ function deliveryHealthWindowWhere(since: Date) {
   );
 }
 
+function deliveryOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(deliveryEvents.workspaceId, workspaceId)
+    : eq(deliveryEvents.userId, userId);
+}
+
+function deliveryEndpointOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(webhookEndpoints.workspaceId, workspaceId)
+    : eq(webhookEndpoints.userId, userId);
+}
+
 export async function getDeliveryOverview(
   userId: string,
   requestedPage = 1,
-  includeWebhookUrl = true
+  includeWebhookUrl = true,
+  workspaceId?: string
 ): Promise<DeliveryOverview> {
+  const ownership = deliveryOwnershipCondition(userId, workspaceId);
   const healthSince = new Date(Date.now() - DELIVERY_HEALTH_WINDOW_MS);
   const [endpoint, totalRows, summary, healthRows, latestHealthRows] = await Promise.all([
-    getWebhookEndpoint(userId),
+    getWebhookEndpoint(userId, workspaceId),
     db
       .select({ total: count() })
       .from(deliveryEvents)
-      .where(eq(deliveryEvents.userId, userId)),
-    getDeliverySummary(userId),
+      .where(ownership),
+    getDeliverySummary(userId, workspaceId),
     db
       .select({ channel: deliveryEvents.channel, status: deliveryEvents.status, total: count() })
       .from(deliveryEvents)
-      .where(and(eq(deliveryEvents.userId, userId), deliveryHealthWindowWhere(healthSince)))
+      .where(and(ownership, deliveryHealthWindowWhere(healthSince)))
       .groupBy(deliveryEvents.channel, deliveryEvents.status),
     Promise.all(DELIVERY_CHANNELS.map((channel) =>
       db
@@ -112,7 +129,7 @@ export async function getDeliveryOverview(
         })
         .from(deliveryEvents)
         .where(and(
-          eq(deliveryEvents.userId, userId),
+          ownership,
           eq(deliveryEvents.channel, channel),
           deliveryHealthWindowWhere(healthSince)
         ))
@@ -127,7 +144,7 @@ export async function getDeliveryOverview(
   const historyRows = await db
     .select()
     .from(deliveryEvents)
-    .where(eq(deliveryEvents.userId, userId))
+    .where(ownership)
     .orderBy(desc(deliveryEvents.createdAt), desc(deliveryEvents.id))
     .limit(DELIVERY_HISTORY_PAGE_SIZE)
     .offset((page - 1) * DELIVERY_HISTORY_PAGE_SIZE);
@@ -267,7 +284,11 @@ export async function hasRecentFailedNotificationDelivery(input: {
   return Boolean(event);
 }
 
-export async function deleteDeliveryHistory(userId: string, range: DeliveryHistoryDeletionRange) {
+export async function deleteDeliveryHistory(
+  userId: string,
+  range: DeliveryHistoryDeletionRange,
+  workspaceId?: string
+) {
   if (!isValidDeletionRange(range)) {
     throw new Error("Invalid delivery history deletion range.");
   }
@@ -276,7 +297,7 @@ export async function deleteDeliveryHistory(userId: string, range: DeliveryHisto
     .delete(deliveryEvents)
     .where(
       and(
-        eq(deliveryEvents.userId, userId),
+        deliveryOwnershipCondition(userId, workspaceId),
         gte(deliveryEvents.createdAt, range.from),
         lt(deliveryEvents.createdAt, range.toExclusive),
         inArray(deliveryEvents.status, DELIVERY_HISTORY_DELETABLE_STATUSES)
@@ -296,19 +317,23 @@ function isValidDeletionRange(range: DeliveryHistoryDeletionRange) {
     && range.from < range.toExclusive;
 }
 
-export async function upsertWebhookSettings(userId: string, input: WebhookSettingsInput) {
+export async function upsertWebhookSettings(
+  userId: string,
+  input: WebhookSettingsInput,
+  workspaceId?: string
+) {
   const safeUrl = await assertSafeWebhookUrl(input.url);
-  const workspaceId = await requireWorkspaceIdForUser(userId);
+  const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId);
   const [existing] = await db
     .select()
     .from(webhookEndpoints)
-    .where(eq(webhookEndpoints.userId, userId));
+    .where(deliveryEndpointOwnershipCondition(userId, workspaceId));
   const secretEncrypted = input.secret.trim()
     ? encryptValue(input.secret.trim())
     : existing?.secretEncrypted ?? null;
 
   const values = {
-    workspaceId,
+    workspaceId: resolvedWorkspaceId,
     userId,
     url: encryptValue(safeUrl),
     secretEncrypted,
@@ -317,20 +342,24 @@ export async function upsertWebhookSettings(userId: string, input: WebhookSettin
   };
 
   if (existing) {
-    await db.update(webhookEndpoints).set(values).where(eq(webhookEndpoints.userId, userId));
+    await db
+      .update(webhookEndpoints)
+      .set(values)
+      .where(deliveryEndpointOwnershipCondition(userId, workspaceId));
   } else {
     await db.insert(webhookEndpoints).values(values);
   }
 
-  return getWebhookEndpoint(userId);
+  return getWebhookEndpoint(userId, workspaceId);
 }
 
-export async function sendDeliveryTest(userId: string, input: DeliveryTestInput) {
+export async function sendDeliveryTest(userId: string, input: DeliveryTestInput, workspaceId?: string) {
   const message = input.message?.trim() || "Sentrovia test delivery from the integrations console.";
 
   if (input.channel === "email") {
     return sendEmailDelivery({
       userId,
+      workspaceId,
       kind: "test",
       destinationOverride: input.destination?.trim() || null,
       subject: "Sentrovia test email",
@@ -342,6 +371,7 @@ export async function sendDeliveryTest(userId: string, input: DeliveryTestInput)
   if (input.channel === "telegram") {
     return sendTelegramDelivery({
       userId,
+      workspaceId,
       kind: "test",
       botToken: input.botToken?.trim() || "",
       chatId: input.chatId?.trim() || "",
@@ -350,18 +380,19 @@ export async function sendDeliveryTest(userId: string, input: DeliveryTestInput)
   }
 
   if (input.channel === "discord") {
-    return sendChannelWebhookDelivery(userId, "discord", "test", message);
+    return sendChannelWebhookDelivery(userId, "discord", "test", message, null, workspaceId);
   }
 
   return sendWebhookDelivery(userId, "test", {
     event: "test",
     message,
     sentAt: new Date().toISOString(),
-  });
+  }, null, workspaceId);
 }
 
 export async function sendEmailDelivery(input: {
   userId: string;
+  workspaceId?: string;
   kind: DeliveryKind;
   monitorId?: string | null;
   destinationOverride?: string | null;
@@ -379,7 +410,7 @@ export async function sendEmailDelivery(input: {
     htmlBody: input.htmlBody,
     to: destination,
     attachments: serializeEmailAttachments(input.attachments),
-  }, input.monitorId);
+  }, input.monitorId, input.workspaceId);
 
   if (!smtp || !smtp.fromEmail || !destination) {
     return markDeliveryFailed(event.id, null, "SMTP configuration is incomplete for email delivery.");
@@ -441,6 +472,7 @@ async function resolveEmailAttachments(input: {
 
 export async function sendTelegramDelivery(input: {
   userId: string;
+  workspaceId?: string;
   kind: DeliveryKind;
   monitorId?: string | null;
   botToken: string;
@@ -456,7 +488,7 @@ export async function sendTelegramDelivery(input: {
   const event = await createDeliveryEvent(input.userId, "telegram", input.kind, destination, {
     text: body,
     photo: input.photo?.filename ?? null,
-  }, input.monitorId);
+  }, input.monitorId, input.workspaceId);
 
   if (!botToken || !chatId) {
     return markDeliveryFailed(event.id, null, "Telegram bot token or chat id is missing.");
@@ -497,9 +529,10 @@ export async function sendWebhookDelivery(
   userId: string,
   kind: DeliveryKind,
   payload: Record<string, unknown>,
-  monitorId?: string | null
+  monitorId?: string | null,
+  workspaceId?: string
 ) {
-  const endpoint = await getWebhookEndpoint(userId);
+  const endpoint = await getWebhookEndpoint(userId, workspaceId);
   if (!endpoint?.isActive && kind !== "test") {
     return null;
   }
@@ -510,7 +543,8 @@ export async function sendWebhookDelivery(
     kind,
     redactWebhookDestination(endpoint?.url ?? "Webhook not configured"),
     payload,
-    monitorId
+    monitorId,
+    workspaceId
   );
 
   if (!endpoint?.isActive) {
@@ -525,7 +559,8 @@ export async function sendChannelWebhookDelivery(
   channel: "discord",
   kind: DeliveryKind,
   message: string,
-  monitorId?: string | null
+  monitorId?: string | null,
+  workspaceId?: string
 ) {
   const settings = await getSettings(userId);
   const destination = settings?.notifications.discordWebhookUrl;
@@ -538,7 +573,8 @@ export async function sendChannelWebhookDelivery(
     {
       text: message,
     },
-    monitorId
+    monitorId,
+    workspaceId
   );
 
   if (!enabled || !destination) {
@@ -606,14 +642,15 @@ export async function retryWebhookQueueForAllUsers() {
 
 export async function retryDeliveryQueue(
   userId: string,
-  channels: readonly DeliveryChannel[] = DELIVERY_CHANNELS
+  channels: readonly DeliveryChannel[] = DELIVERY_CHANNELS,
+  workspaceId?: string
 ) {
   if (channels.length === 0) return { processed: 0 };
 
   const dueEvents = await db
     .select()
     .from(deliveryEvents)
-    .where(buildDeliveryQueueWhere({ userId, channels }))
+    .where(buildDeliveryQueueWhere({ userId: workspaceId ? undefined : userId, workspaceId, channels }))
     .orderBy(asc(deliveryEvents.createdAt))
     .limit(DELIVERY_RETRY_BATCH_SIZE);
 
@@ -635,17 +672,18 @@ export async function retryDeliveryQueueForAllUsers(
   return processDeliveryEvents(dueEvents);
 }
 
-export async function retryDeliveryEvent(userId: string, eventId: string) {
+export async function retryDeliveryEvent(userId: string, eventId: string, workspaceId?: string) {
   const [event] = await db
     .select()
     .from(deliveryEvents)
-    .where(and(eq(deliveryEvents.id, eventId), eq(deliveryEvents.userId, userId)))
+    .where(and(eq(deliveryEvents.id, eventId), deliveryOwnershipCondition(userId, workspaceId)))
     .limit(1);
 
   if (!event || event.status !== "failed") return null;
 
   const claimed = await claimDeliveryEvent(event.id, {
-    userId,
+    userId: workspaceId ? undefined : userId,
+    workspaceId,
     allowFailed: true,
     resetAttempts: true,
   });
@@ -659,6 +697,7 @@ function buildDeliveryQueueWhere(options: DeliveryQueueOptions = {}) {
 
   return and(
     options.userId ? eq(deliveryEvents.userId, options.userId) : undefined,
+    options.workspaceId ? eq(deliveryEvents.workspaceId, options.workspaceId) : undefined,
     options.channels?.length ? inArray(deliveryEvents.channel, options.channels) : undefined,
     inArray(deliveryEvents.status, DELIVERY_QUEUE_STATUSES),
     or(isNull(deliveryEvents.claimExpiresAt), lte(deliveryEvents.claimExpiresAt, now)),
@@ -671,17 +710,38 @@ function buildDeliveryQueueWhere(options: DeliveryQueueOptions = {}) {
 }
 
 async function processDeliveryEvents(events: DeliveryEventRow[]) {
-  let processed = 0;
+  const processed = await processWithConcurrency(
+    events,
+    DELIVERY_RETRY_CONCURRENCY,
+    async (event) => {
+      const claimed = await claimDeliveryEvent(event.id, { userId: event.userId });
+      if (!claimed) return false;
 
-  for (const event of events) {
-    const claimed = await claimDeliveryEvent(event.id, { userId: event.userId });
-    if (!claimed) continue;
-
-    const result = await deliverClaimedDelivery(claimed);
-    if (result) processed += 1;
-  }
+      return Boolean(await deliverClaimedDelivery(claimed));
+    }
+  );
 
   return { processed };
+}
+
+async function processWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  task: (item: T) => Promise<boolean>
+) {
+  const queue = [...items];
+  let processed = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), queue.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (!item) return;
+      if (await task(item)) processed += 1;
+    }
+  }));
+
+  return processed;
 }
 
 export async function buildNotificationWebhookPayload(input: {
@@ -718,11 +778,11 @@ export async function buildNotificationWebhookPayload(input: {
   };
 }
 
-export async function getWebhookEndpoint(userId: string) {
+export async function getWebhookEndpoint(userId: string, workspaceId?: string) {
   const [endpoint] = await db
     .select()
     .from(webhookEndpoints)
-    .where(eq(webhookEndpoints.userId, userId));
+    .where(deliveryEndpointOwnershipCondition(userId, workspaceId));
 
   return endpoint
     ? {
@@ -738,12 +798,13 @@ async function createDeliveryEvent(
   kind: DeliveryKind,
   destination: string,
   payload: Record<string, unknown>,
-  monitorId?: string | null
+  monitorId?: string | null,
+  workspaceId?: string
 ) {
   const [created] = await db
     .insert(deliveryEvents)
     .values({
-      workspaceId: sql<string>`(
+      workspaceId: workspaceId ?? sql<string>`(
         SELECT ${workspaceMembers.workspaceId}
         FROM ${workspaceMembers}
         WHERE ${workspaceMembers.userId} = ${userId}
@@ -840,6 +901,7 @@ async function claimDeliveryEvent(
   eventId: string,
   options: {
     userId?: string;
+    workspaceId?: string;
     allowFailed?: boolean;
     allowFreshPending?: boolean;
     resetAttempts?: boolean;
@@ -875,6 +937,7 @@ async function claimDeliveryEvent(
       and(
         eq(deliveryEvents.id, eventId),
         options.userId ? eq(deliveryEvents.userId, options.userId) : undefined,
+        options.workspaceId ? eq(deliveryEvents.workspaceId, options.workspaceId) : undefined,
         inArray(deliveryEvents.status, eligibleStatuses),
         or(isNull(deliveryEvents.claimExpiresAt), lte(deliveryEvents.claimExpiresAt, now)),
         or(isNull(deliveryEvents.nextRetryAt), lte(deliveryEvents.nextRetryAt, now)),
@@ -891,7 +954,7 @@ async function deliverClaimedDelivery(event: DeliveryEventRow) {
   if (event.channel === "telegram") return deliverClaimedTelegram(event);
   if (event.channel === "discord") return deliverClaimedDiscord(event);
   if (event.channel === "webhook") {
-    const endpoint = await getWebhookEndpoint(event.userId);
+    const endpoint = await getWebhookEndpoint(event.userId, event.workspaceId);
     if (!endpoint?.isActive) {
       return markDeliveryFailed(
         event.id,
@@ -989,7 +1052,7 @@ async function createSafeSmtpTransport(
 
 async function deliverClaimedTelegram(event: DeliveryEventRow) {
   const routing = event.monitorId
-    ? await getMonitorNotificationRouting(event.userId, event.monitorId)
+    ? await getMonitorNotificationRouting(event.userId, event.monitorId, event.workspaceId)
     : null;
   if (!routing?.telegramBotToken || !routing.telegramChatId) {
     return markDeliveryFailed(
@@ -1105,7 +1168,7 @@ async function markDeliveryRetryable(
       responseCode,
       errorMessage: errorMessage.slice(0, 1000),
       lastAttemptAt: new Date(),
-      nextRetryAt: exhausted ? null : new Date(Date.now() + DELIVERY_RETRY_DELAY_MS),
+      nextRetryAt: exhausted ? null : new Date(Date.now() + getDeliveryRetryDelayMs(attempts)),
       claimToken: null,
       claimExpiresAt: null,
       deadLetteredAt: exhausted ? new Date() : null,
@@ -1140,6 +1203,14 @@ async function markDeliveryFailed(
     .returning();
 
   return updated;
+}
+
+function getDeliveryRetryDelayMs(attempts: number) {
+  const retryExponent = Math.max(0, attempts - 1);
+  return Math.min(
+    INITIAL_DELIVERY_RETRY_DELAY_MS * 2 ** retryExponent,
+    MAX_DELIVERY_RETRY_DELAY_MS
+  );
 }
 
 function deliveryClaimWhere(eventId: string, claimToken?: string | null) {

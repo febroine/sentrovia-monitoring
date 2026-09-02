@@ -15,7 +15,8 @@ export interface SlaPeriodSummary {
 export async function getMonitorSlaPeriods(
   userId: string,
   monitorIds: string[],
-  now = new Date()
+  now = new Date(),
+  workspaceId?: string
 ): Promise<[SlaPeriodSummary, SlaPeriodSummary]> {
   if (monitorIds.length === 0) {
     return [emptyPeriod("24h SLA"), emptyPeriod("7d SLA")];
@@ -35,12 +36,14 @@ export async function getMonitorSlaPeriods(
       .from(monitorChecks)
       .where(
         and(
-          eq(monitorChecks.userId, userId),
+          workspaceId
+            ? eq(monitorChecks.workspaceId, workspaceId)
+            : eq(monitorChecks.userId, userId),
           inArray(monitorChecks.monitorId, uniqueMonitorIds),
           gte(monitorChecks.createdAt, since7Days)
         )
       ),
-    getOutageCounts(userId, uniqueMonitorIds, since24Hours, since7Days),
+    getOutageCounts(userId, uniqueMonitorIds, since24Hours, since7Days, workspaceId),
   ]);
 
   return [
@@ -63,7 +66,8 @@ async function getOutageCounts(
   userId: string,
   monitorIds: string[],
   since24Hours: Date,
-  since7Days: Date
+  since7Days: Date,
+  workspaceId?: string
 ) {
   const request = db
       .select({
@@ -73,7 +77,9 @@ async function getOutageCounts(
       .from(monitorOutages)
       .where(
         and(
-          eq(monitorOutages.userId, userId),
+          workspaceId
+            ? eq(monitorOutages.workspaceId, workspaceId)
+            : eq(monitorOutages.userId, userId),
           inArray(monitorOutages.monitorId, monitorIds),
           gte(monitorOutages.startedAt, since7Days)
         )

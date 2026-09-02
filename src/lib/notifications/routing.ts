@@ -21,7 +21,11 @@ export interface ResolvedNotificationRouting {
   telegramChatId: string | null;
 }
 
-export async function getMonitorNotificationRouting(userId: string, monitorId: string) {
+export async function getMonitorNotificationRouting(
+  userId: string,
+  monitorId: string,
+  workspaceId?: string
+) {
   const [row] = await db
     .select({
       monitorEmail: monitors.notifEmail,
@@ -37,11 +41,14 @@ export async function getMonitorNotificationRouting(userId: string, monitorId: s
     .from(monitors)
     .leftJoin(companies, and(
       eq(companies.id, monitors.companyId),
-      eq(companies.userId, monitors.userId),
+      eq(companies.workspaceId, monitors.workspaceId),
       isNull(companies.deletedAt)
     ))
     .leftJoin(userSettings, eq(userSettings.userId, monitors.userId))
-    .where(and(eq(monitors.id, monitorId), eq(monitors.userId, userId)))
+    .where(and(
+      eq(monitors.id, monitorId),
+      workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId)
+    ))
     .limit(1);
 
   if (!row) {

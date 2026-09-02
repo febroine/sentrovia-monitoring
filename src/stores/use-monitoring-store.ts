@@ -6,10 +6,11 @@ import { showToast } from "@/lib/client-toast";
 
 interface MonitoringState {
   monitors: MonitorRecord[];
+  pagination: MonitorPagination;
   loading: boolean;
   saving: boolean;
   error: string | null;
-  loadMonitors: () => Promise<void>;
+  loadMonitors: (query?: MonitorQuery) => Promise<void>;
   createMonitor: (payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitor: (id: string, payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitorActiveState: (id: string, isActive: boolean) => Promise<MonitorRecord | null>;
@@ -21,6 +22,23 @@ interface MonitoringState {
   clearError: () => void;
 }
 
+export type MonitorQuery = {
+  page: number;
+  pageSize: number;
+  search?: string;
+  companyId?: string;
+  status?: "up" | "down" | "pending";
+  sort?: "createdAt" | "name" | "status" | "lastCheckedAt" | "latencyMs";
+  direction?: "asc" | "desc";
+};
+
+type MonitorPagination = {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+};
+
 type SoftDeleteResult = { ids: string[]; undoUntil: string | null };
 
 async function readJsonOrNull<T>(response: Response): Promise<T | null> {
@@ -29,21 +47,37 @@ async function readJsonOrNull<T>(response: Response): Promise<T | null> {
 
 export const useMonitoringStore = create<MonitoringState>((set) => ({
   monitors: [],
+  pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 1 },
   loading: true,
   saving: false,
   error: null,
-  loadMonitors: async () => {
+  loadMonitors: async (query) => {
     set({ loading: true });
 
     try {
-      const response = await fetch("/api/monitors", { cache: "no-store" });
-      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      const queryString = query ? `?${buildMonitorQueryString(query)}` : "";
+      const response = await fetch(`/api/monitors${queryString}`, { cache: "no-store" });
+      const data = await readJsonOrNull<{
+        message?: string;
+        monitors?: MonitorRecord[];
+        pagination?: MonitorPagination;
+      }>(response);
 
       if (!response.ok || !data) {
         throw new Error(data?.message ?? "Unable to load monitors.");
       }
 
-      set({ monitors: data.monitors ?? [], loading: false, error: null });
+      set((state) => ({
+        monitors: data.monitors ?? [],
+        pagination: data.pagination ?? {
+          page: 1,
+          pageSize: data.monitors?.length ?? state.pagination.pageSize,
+          totalItems: data.monitors?.length ?? 0,
+          totalPages: 1,
+        },
+        loading: false,
+        error: null,
+      }));
     } catch (error) {
       set({
         loading: false,
@@ -281,4 +315,18 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function buildMonitorQueryString(query: MonitorQuery) {
+  const params = new URLSearchParams({
+    page: String(query.page),
+    pageSize: String(query.pageSize),
+    sort: query.sort ?? "createdAt",
+    direction: query.direction ?? "desc",
+  });
+
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.companyId && query.companyId !== "all") params.set("companyId", query.companyId);
+  if (query.status) params.set("status", query.status);
+  return params.toString();
 }

@@ -41,21 +41,45 @@ export async function POST(request: NextRequest) {
 
     const bundle = parseWorkspaceBackup(content, format);
     if (mode === "preview") {
-      const { preview, workspaceRevision } = await previewWorkspaceBackupRestore(session.id, bundle);
+      const { preview, workspaceRevision } = await previewWorkspaceBackupRestore(
+        session.id,
+        bundle,
+        session.activeWorkspaceId ?? undefined
+      );
       return NextResponse.json({
         preview,
-        restoreToken: createWorkspaceRestoreToken(session.id, format, content, workspaceRevision),
+        restoreToken: createWorkspaceRestoreToken(
+          session.id,
+          format,
+          content,
+          workspaceRevision,
+          new Date(),
+          session.activeWorkspaceId ?? undefined
+        ),
       });
     }
     if (body.confirm !== true || !body.restoreToken) {
       return NextResponse.json({ message: "Analyze the backup and confirm the restore first." }, { status: 400 });
     }
-    const workspaceRevision = await getWorkspaceRestoreRevision(session.id);
-    if (!verifyWorkspaceRestoreToken(body.restoreToken, session.id, format, content, workspaceRevision)) {
+    const workspaceRevision = await getWorkspaceRestoreRevision(
+      session.id,
+      undefined,
+      session.activeWorkspaceId ?? undefined
+    );
+    if (!verifyWorkspaceRestoreToken(
+      body.restoreToken,
+      session.id,
+      format,
+      content,
+      workspaceRevision,
+      new Date(),
+      session.activeWorkspaceId ?? undefined
+    )) {
       return NextResponse.json({ message: "Workspace data changed or the restore analysis expired. Analyze the backup again." }, { status: 400 });
     }
     const restored = await restoreWorkspaceBackup(session.id, bundle, {
       expectedRevision: workspaceRevision,
+      workspaceId: session.activeWorkspaceId ?? undefined,
     });
     return NextResponse.json({ restored });
   } catch (error) {

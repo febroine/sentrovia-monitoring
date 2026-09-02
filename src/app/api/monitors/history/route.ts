@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import {
@@ -9,20 +10,33 @@ import {
 
 export const runtime = "nodejs";
 
-export async function GET() {
+const monitorIdSchema = z.string().trim().min(1).max(128);
+
+export async function GET(request?: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const history = await listRecentMonitorChecks(session.id, 5, session.activeWorkspaceId!);
+    const rawMonitorId = request?.nextUrl.searchParams.get("monitorId") ?? null;
+    const parsedMonitorId = rawMonitorId ? monitorIdSchema.safeParse(rawMonitorId) : null;
+    if (parsedMonitorId && !parsedMonitorId.success) {
+      return NextResponse.json({ message: "Invalid monitor id." }, { status: 400 });
+    }
+    const monitorId = parsedMonitorId?.data;
+    const history = await listRecentMonitorChecks(
+      session.id,
+      12,
+      session.activeWorkspaceId!,
+      monitorId
+    );
     const [diagnostics, outageEvents] = await Promise.all([
       loadOptionalHistorySection(() =>
-        listRecentMonitorDiagnostics(session.id, 3, session.activeWorkspaceId!)
+        listRecentMonitorDiagnostics(session.id, 3, session.activeWorkspaceId!, monitorId)
       ),
       loadOptionalHistorySection(() =>
-        listRecentOutageEvents(session.id, 8, session.activeWorkspaceId!)
+        listRecentOutageEvents(session.id, 8, session.activeWorkspaceId!, monitorId)
       ),
     ]);
 

@@ -19,7 +19,11 @@ import { POST } from "@/app/api/delivery/retry/route";
 describe("delivery retry route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ id: "user-1", role: "admin" });
+    mocks.getSession.mockResolvedValue({
+      id: "user-1",
+      role: "admin",
+      activeWorkspaceId: "workspace-1",
+    });
     mocks.getDeliveryOverview.mockResolvedValue({ history: [] });
     mocks.retryDeliveryEvent.mockResolvedValue({ id: "delivery-1", status: "delivered" });
     mocks.retryDeliveryQueue.mockResolvedValue({ processed: 2 });
@@ -51,7 +55,11 @@ describe("delivery retry route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.retryDeliveryEvent).toHaveBeenCalledWith("user-1", "delivery-1");
+    expect(mocks.retryDeliveryEvent).toHaveBeenCalledWith(
+      "user-1",
+      "delivery-1",
+      "workspace-1"
+    );
     expect(mocks.retryDeliveryQueue).not.toHaveBeenCalled();
   });
 

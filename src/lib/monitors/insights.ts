@@ -10,7 +10,8 @@ const COMPANY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export async function listRecentMonitorChecks(
   userId: string,
   limitPerMonitor = 12,
-  workspaceId?: string
+  workspaceId?: string,
+  monitorId?: string
 ) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedChecks = db
@@ -22,7 +23,10 @@ export async function listRecentMonitorChecks(
       )`.as("monitor_row_number"),
     })
     .from(monitorChecks)
-    .where(workspaceId ? eq(monitorChecks.workspaceId, workspaceId) : eq(monitorChecks.userId, userId))
+    .where(and(
+      workspaceId ? eq(monitorChecks.workspaceId, workspaceId) : eq(monitorChecks.userId, userId),
+      monitorId ? eq(monitorChecks.monitorId, monitorId) : undefined
+    ))
     .as("ranked_monitor_checks");
   const rows = await db
     .select()
@@ -36,7 +40,8 @@ export async function listRecentMonitorChecks(
 export async function listRecentMonitorDiagnostics(
   userId: string,
   limitPerMonitor = 3,
-  workspaceId?: string
+  workspaceId?: string,
+  monitorId?: string
 ) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedDiagnostics = db
@@ -49,9 +54,12 @@ export async function listRecentMonitorDiagnostics(
     })
     .from(monitorDiagnostics)
     .where(
-      workspaceId
-        ? eq(monitorDiagnostics.workspaceId, workspaceId)
-        : eq(monitorDiagnostics.userId, userId)
+      and(
+        workspaceId
+          ? eq(monitorDiagnostics.workspaceId, workspaceId)
+          : eq(monitorDiagnostics.userId, userId),
+        monitorId ? eq(monitorDiagnostics.monitorId, monitorId) : undefined
+      )
     )
     .as("ranked_monitor_diagnostics");
   const rows = await db
@@ -66,7 +74,8 @@ export async function listRecentMonitorDiagnostics(
 export async function listRecentOutageEvents(
   userId: string,
   limitPerMonitor = 8,
-  workspaceId?: string
+  workspaceId?: string,
+  monitorId?: string
 ) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedEvents = db
@@ -78,7 +87,10 @@ export async function listRecentOutageEvents(
       )`.as("monitor_row_number"),
     })
     .from(outageEvents)
-    .where(workspaceId ? eq(outageEvents.workspaceId, workspaceId) : eq(outageEvents.userId, userId))
+    .where(and(
+      workspaceId ? eq(outageEvents.workspaceId, workspaceId) : eq(outageEvents.userId, userId),
+      monitorId ? eq(outageEvents.monitorId, monitorId) : undefined
+    ))
     .as("ranked_outage_events");
   const rows = await db
     .select()
@@ -89,15 +101,20 @@ export async function listRecentOutageEvents(
   return groupRecentRowsByMonitor(rows, normalizedLimit);
 }
 
-export async function getCompanySlaReport(userId: string, companyId: string, now = new Date()) {
-  const company = await getCompanyById(userId, companyId);
+export async function getCompanySlaReport(
+  userId: string,
+  companyId: string,
+  now = new Date(),
+  workspaceId?: string
+) {
+  const company = await getCompanyById(workspaceId ? { userId, workspaceId } : userId, companyId);
   if (!company) return null;
 
   const companyMonitors = await db
     .select({ id: monitors.id })
     .from(monitors)
     .where(and(
-      eq(monitors.userId, userId),
+      workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId),
       eq(monitors.companyId, companyId),
       eq(monitors.isActive, true),
       isNull(monitors.deletedAt)
@@ -105,14 +122,16 @@ export async function getCompanySlaReport(userId: string, companyId: string, now
   const monitorIds = companyMonitors.map((monitor) => monitor.id);
   const recentChecksStartedAt = resolveCompanyRecentChecksStart(now);
   const [periods, recentChecks] = await Promise.all([
-    getMonitorSlaPeriods(userId, monitorIds, now),
+    getMonitorSlaPeriods(userId, monitorIds, now, workspaceId),
     monitorIds.length === 0
       ? Promise.resolve([])
       : db
           .select()
           .from(monitorChecks)
           .where(and(
-            eq(monitorChecks.userId, userId),
+            workspaceId
+              ? eq(monitorChecks.workspaceId, workspaceId)
+              : eq(monitorChecks.userId, userId),
             inArray(monitorChecks.monitorId, monitorIds),
             gte(monitorChecks.createdAt, recentChecksStartedAt)
           ))
@@ -133,15 +152,20 @@ export async function getCompanySlaReport(userId: string, companyId: string, now
   };
 }
 
-export async function getCompanyMonthlyUptimeReport(userId: string, companyId: string, now = new Date()) {
-  const company = await getCompanyById(userId, companyId);
+export async function getCompanyMonthlyUptimeReport(
+  userId: string,
+  companyId: string,
+  now = new Date(),
+  workspaceId?: string
+) {
+  const company = await getCompanyById(workspaceId ? { userId, workspaceId } : userId, companyId);
   if (!company) return null;
 
   const companyMonitors = await db
     .select({ id: monitors.id })
     .from(monitors)
     .where(and(
-      eq(monitors.userId, userId),
+      workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId),
       eq(monitors.companyId, companyId),
       eq(monitors.isActive, true),
       isNull(monitors.deletedAt)
@@ -156,7 +180,9 @@ export async function getCompanyMonthlyUptimeReport(userId: string, companyId: s
     .select({ status: monitorChecks.status, createdAt: monitorChecks.createdAt })
     .from(monitorChecks)
     .where(and(
-      eq(monitorChecks.userId, userId),
+      workspaceId
+        ? eq(monitorChecks.workspaceId, workspaceId)
+        : eq(monitorChecks.userId, userId),
       inArray(monitorChecks.monitorId, monitorIds),
       gte(monitorChecks.createdAt, since)
     ))

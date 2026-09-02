@@ -134,6 +134,8 @@ describe("delivery service", () => {
   });
 
   it("queues transient SMTP failures instead of dead-lettering them immediately", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-14T10:00:00.000Z"));
     mocks.getSmtpSettings.mockResolvedValue(buildSmtpSettings());
     mocks.sendMail.mockRejectedValueOnce(Object.assign(new Error("Connection reset"), { code: "ECONNECTION" }));
     mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "retrying" }]);
@@ -147,15 +149,19 @@ describe("delivery service", () => {
       htmlBody: "<p>Down</p>",
     });
 
-    expect(result?.status).toBe("retrying");
-    expect(mocks.updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "retrying",
-        attempts: 1,
-        deadLetteredAt: null,
-        nextRetryAt: expect.any(Date),
-      })
-    );
+    try {
+      expect(result?.status).toBe("retrying");
+      expect(mocks.updateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "retrying",
+          attempts: 1,
+          deadLetteredAt: null,
+          nextRetryAt: new Date("2026-07-14T10:01:00.000Z"),
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resets the retry budget when manually resending a dead-lettered delivery", async () => {

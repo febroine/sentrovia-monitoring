@@ -11,7 +11,11 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     const session = await requireMutationSession(request);
 
     const { id } = await context.params;
-    const schedule = await duplicateReportSchedule(session.id, id);
+    const schedule = await duplicateReportSchedule(
+      session.id,
+      id,
+      session.activeWorkspaceId ?? undefined
+    );
     if (!schedule) {
       return NextResponse.json({ message: "Report schedule not found." }, { status: 404 });
     }

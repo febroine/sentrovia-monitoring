@@ -18,7 +18,12 @@ import {
 import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 import { calculateVerificationTimeout } from "@/lib/monitors/verification";
 import type { Monitor } from "@/lib/db/schema";
-import { calculateNextCheckAt, calculateVerificationCheckAt, checkMonitor } from "@/worker/checker";
+import {
+  calculateNextCheckAt,
+  calculateOutageRecheckAt,
+  calculateVerificationCheckAt,
+  checkMonitor,
+} from "@/worker/checker";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { sendMonitorNotifications } from "@/worker/notifier";
 import { buildFailureScreenshotAttachment } from "@/worker/screenshot";
@@ -211,7 +216,7 @@ async function recordExistingOutageTransition(monitor: ClaimedMonitor, probe: Pr
     status: "down",
     statusCode: result.statusCode,
     lastCheckedAt: result.checkedAt,
-    nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, probe.checkCompletedAt),
+    nextCheckAt: calculateOutageRecheckAt(monitor, result.checkedAt, probe.checkCompletedAt),
     lastSuccessAt: monitor.lastSuccessAt,
     lastFailureAt: monitor.lastFailureAt ?? result.checkedAt,
     sslExpiresAt: result.sslExpiresAt,
@@ -242,7 +247,7 @@ async function recordVerificationTransition(
     statusCode: result.statusCode,
     lastCheckedAt: result.checkedAt,
     nextCheckAt: confirmedOutage
-      ? calculateNextCheckAt(monitor, result.checkedAt, probe.checkCompletedAt)
+      ? calculateOutageRecheckAt(monitor, result.checkedAt, probe.checkCompletedAt)
       : calculateVerificationCheckAt(result.checkedAt, probe.checkCompletedAt),
     lastSuccessAt: monitor.lastSuccessAt,
     lastFailureAt: previousStatus === "up" ? result.checkedAt : monitor.lastFailureAt ?? result.checkedAt,

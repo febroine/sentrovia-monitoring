@@ -9,7 +9,12 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireMutationSession(request);
     const input = await parseJsonRequest(request, reportPreviewSchema, "Invalid report preview payload.");
-    const report = await generateReportPreview(session.id, input);
+    const report = await generateReportPreview(
+      session.id,
+      input,
+      new Date(),
+      session.activeWorkspaceId ?? undefined
+    );
     return NextResponse.json({ report });
   } catch (error) {
     return apiErrorResponse(error, "Unable to generate the report preview right now.");

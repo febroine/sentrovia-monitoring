@@ -9,7 +9,12 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireMutationSession(request);
     const input = await parseJsonRequest(request, reportDispatchSchema, "Invalid report delivery payload.");
-    const result = await dispatchReportNow(session.id, input, input.recipientEmails);
+    const result = await dispatchReportNow(
+      session.id,
+      input,
+      input.recipientEmails,
+      session.activeWorkspaceId ?? undefined
+    );
     return NextResponse.json(result);
   } catch (error) {
     return apiErrorResponse(error, "Unable to send the report right now.");
