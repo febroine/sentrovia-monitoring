@@ -178,7 +178,7 @@ export async function createMonitor(userId: string, input: MonitorInput, workspa
     const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
     await lockMonitorTargets(tx, resolvedWorkspaceId);
     await assertMonitorQuota(userId, 1, tx, resolvedWorkspaceId);
-    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
+    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx, resolvedWorkspaceId);
     const values = await buildMonitorValues(userId, input, null, allowPrivateTargets, tx, resolvedWorkspaceId);
     await assertMonitorTargetAvailable(
       userId,
@@ -208,7 +208,7 @@ export async function buildMonitorForTest(
     throw new AuthError("Monitor not found.", 404);
   }
 
-  const allowPrivateTargets = await canUserAccessPrivateTargets(userId);
+  const allowPrivateTargets = await canUserAccessPrivateTargets(userId, undefined, workspaceId);
   const values = await buildMonitorValues(
     userId,
     input,
@@ -268,7 +268,7 @@ export async function updateMonitor(
       return null;
     }
 
-    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
+    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx, resolvedWorkspaceId);
     const values = await buildMonitorValues(
       userId,
       input,
@@ -443,7 +443,7 @@ export async function bulkUpdateMonitors(
 ) {
   return db.transaction(async (tx) => {
     const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
-    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx);
+    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx, resolvedWorkspaceId);
     const existingMonitors = await tx
       .select()
       .from(monitors)
@@ -700,7 +700,7 @@ async function persistManyMonitors(
   workspaceId: string
 ) {
   const existing = await listReservedMonitorTargets(userId, database, new Date(), workspaceId);
-  const allowPrivateTargets = await canUserAccessPrivateTargets(userId, database);
+  const allowPrivateTargets = await canUserAccessPrivateTargets(userId, database, workspaceId);
 
   const existingTargets = new Set(
     existing.map((item) =>

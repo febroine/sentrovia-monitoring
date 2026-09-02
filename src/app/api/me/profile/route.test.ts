@@ -29,6 +29,7 @@ const session = {
   lastName: "User",
   email: "viewer@example.com",
   department: null,
+  activeWorkspaceId: "workspace-1",
   role: "viewer" as const,
   sessionVersion: 3,
 };
@@ -59,7 +60,7 @@ describe("personal profile route", () => {
 
     expect(response.status).toBe(200);
     expect(body.profile).toEqual(profile);
-    expect(getUserProfile).toHaveBeenCalledWith("viewer-1");
+    expect(getUserProfile).toHaveBeenCalledWith("viewer-1", "workspace-1");
   });
 
   it("allows a viewer to update their own personal profile", async () => {
@@ -84,7 +85,7 @@ describe("personal profile route", () => {
       organization: "Sentrovia",
       jobTitle: "Observer",
       phone: "",
-    });
+    }, "workspace-1");
     expect(recordAuditEventSafely).toHaveBeenCalledWith(expect.objectContaining({
       action: "profile.updated",
       actorUserId: "viewer-1",

@@ -1,15 +1,29 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { users, workspaceMembers } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { hasPermission, normalizeUserRole } from "@/lib/auth/permissions";
 
 export async function canUserAccessPrivateTargets(
   userId: string,
-  database: DatabaseExecutor = db
+  database: DatabaseExecutor = db,
+  workspaceId?: string
 ) {
   if (!env.monitorAllowPrivateTargets) {
     return false;
+  }
+
+  if (workspaceId) {
+    const [membership] = await database
+      .select({ role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .where(and(
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.workspaceId, workspaceId)
+      ))
+      .limit(1);
+
+    return hasPermission(normalizeUserRole(membership?.role), "private-targets.access");
   }
 
   const [user] = await database

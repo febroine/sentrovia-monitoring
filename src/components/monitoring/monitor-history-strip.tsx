@@ -1,6 +1,7 @@
 import type { MonitorHistoryPoint } from "@/lib/monitors/types";
 import { toEnglishUppercase } from "@/lib/text/casing";
 import { cn } from "@/lib/utils";
+import { formatLatency } from "@/components/monitoring/utils";
 
 export function MonitorHistoryStrip({
   points,
@@ -46,6 +47,6 @@ export function MonitorHistoryStrip({
 function buildTitle(point: MonitorHistoryPoint) {
   const timestamp = new Date(point.createdAt).toLocaleString();
   const code = point.statusCode ? ` · HTTP ${point.statusCode}` : "";
-  const latency = point.latencyMs ? ` · ${point.latencyMs}ms` : "";
+  const latency = typeof point.latencyMs === "number" ? ` · ${formatLatency(point.latencyMs)}` : "";
   return `${toEnglishUppercase(point.status)} · ${timestamp}${code}${latency}`;
 }

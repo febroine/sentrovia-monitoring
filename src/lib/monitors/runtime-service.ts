@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { monitors, userSettings, users, type Monitor } from "@/lib/db/schema";
+import { monitors, userSettings, workspaceMembers, type Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { encryptLegacyClaimedSecrets } from "@/lib/monitors/heartbeat-secrets";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
@@ -77,13 +77,10 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
     .returning();
 
   const claimedUserIds = Array.from(new Set(claimed.map((monitor) => monitor.userId)));
-  const roleRows = await db
-    .select({ id: users.id, role: users.role })
-    .from(users)
-    .where(inArray(users.id, claimedUserIds));
-  const privateTargetUsers = new Set(
-    roleRows.filter((user) => user.role === "admin").map((user) => user.id)
-  );
+  const membershipRows = await db
+    .select({ userId: workspaceMembers.userId, workspaceId: workspaceMembers.workspaceId, role: workspaceMembers.role })
+    .from(workspaceMembers)
+    .where(inArray(workspaceMembers.userId, claimedUserIds));
 
   await encryptLegacyClaimedSecrets(claimed);
 
@@ -91,8 +88,19 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
     ...monitor,
     heartbeatToken: decryptValueOrLegacyPlaintext(monitor.heartbeatToken),
     telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
-    allowPrivateTargets: env.monitorAllowPrivateTargets && privateTargetUsers.has(monitor.userId),
+    allowPrivateTargets: env.monitorAllowPrivateTargets && hasPrivateTargetAccess(monitor, membershipRows),
   }));
+}
+
+export function hasPrivateTargetAccess(
+  monitor: Pick<Monitor, "userId" | "workspaceId">,
+  memberships: Array<{ userId: string; workspaceId: string; role: string }>
+) {
+  return memberships.some((membership) =>
+    membership.userId === monitor.userId
+    && membership.workspaceId === monitor.workspaceId
+    && membership.role === "admin"
+  );
 }
 
 async function mapWithConcurrency<T, TResult>(
@@ -182,6 +190,7 @@ export async function recordMonitorResult(
   },
   expectedLeaseToken?: string | null
 ) {
+  const leaseCheckTime = new Date();
   const extendedLeaseTimestamp = new Date(Date.now() + MONITOR_LEASE_MS).toISOString();
   const [monitor] = await db
     .update(monitors)
@@ -202,7 +211,8 @@ export async function recordMonitorResult(
         eq(monitors.id, monitorId),
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
-        expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
+        expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined,
+        expectedLeaseToken ? gt(monitors.leaseExpiresAt, leaseCheckTime) : undefined
       )
     )
     .returning();
@@ -216,6 +226,7 @@ export async function refreshMonitorUptime(
   expectedLeaseToken: string | null,
   now = new Date()
 ) {
+  const leaseCheckTime = new Date();
   const uptimeByMonitorId = await getMonitorUptimeById(userId, [monitorId], now);
   const uptime = uptimeByMonitorId.get(monitorId) ?? NO_MONITOR_UPTIME_DATA;
   const [updated] = await db
@@ -226,7 +237,8 @@ export async function refreshMonitorUptime(
       eq(monitors.userId, userId),
       eq(monitors.isActive, true),
       isNull(monitors.deletedAt),
-      expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined
+      expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined,
+      expectedLeaseToken ? gt(monitors.leaseExpiresAt, leaseCheckTime) : undefined
     ))
     .returning({ id: monitors.id });
 
@@ -243,6 +255,7 @@ export async function renewMonitorLease(
   }
 
   const leaseDurationMs = calculateMonitorLeaseMs([monitor]);
+  const leaseCheckTime = new Date();
   const extendedLeaseTimestamp = new Date(Date.now() + leaseDurationMs).toISOString();
   const [updated] = await db
     .update(monitors)
@@ -258,7 +271,8 @@ export async function renewMonitorLease(
         eq(monitors.id, monitorId),
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
-        eq(monitors.leaseToken, expectedLeaseToken)
+        eq(monitors.leaseToken, expectedLeaseToken),
+        gt(monitors.leaseExpiresAt, leaseCheckTime)
       )
     )
     .returning({ id: monitors.id });
@@ -283,4 +297,3 @@ export async function releaseMonitorLease(monitorId: string, expectedLeaseToken:
 
   return Boolean(monitor);
 }
-

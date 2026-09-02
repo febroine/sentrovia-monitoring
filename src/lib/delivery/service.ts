@@ -417,7 +417,7 @@ export async function sendEmailDelivery(input: {
   }
 
   try {
-    const transporter = await createSafeSmtpTransport(input.userId, smtp);
+    const transporter = await createSafeSmtpTransport(input.userId, smtp, input.workspaceId);
 
     const attachments = await resolveEmailAttachments(input);
     await transporter.sendMail(buildEmailMessage({ ...input, attachments }, smtp.fromEmail, destination));
@@ -1003,7 +1003,7 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
   }
 
   try {
-    const transporter = await createSafeSmtpTransport(event.userId, smtp);
+    const transporter = await createSafeSmtpTransport(event.userId, smtp, event.workspaceId);
     await transporter.sendMail({
       from: smtp.fromEmail,
       to: destination,
@@ -1022,9 +1022,10 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
 
 async function createSafeSmtpTransport(
   userId: string,
-  smtp: NonNullable<Awaited<ReturnType<typeof getSmtpSettings>>>
+  smtp: NonNullable<Awaited<ReturnType<typeof getSmtpSettings>>>,
+  workspaceId?: string
 ) {
-  const allowPrivateTargets = await canUserAccessPrivateTargets(userId);
+  const allowPrivateTargets = await canUserAccessPrivateTargets(userId, undefined, workspaceId);
   const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(
     smtp.host,
     {

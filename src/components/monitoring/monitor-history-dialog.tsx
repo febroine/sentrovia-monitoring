@@ -9,6 +9,7 @@ import type {
 } from "@/lib/monitors/types";
 import { buildMonitorHistoryWindow } from "@/lib/monitors/history-window";
 import { toEnglishUppercase } from "@/lib/text/casing";
+import { formatLatency } from "@/components/monitoring/utils";
 
 export function MonitorHistoryDialog({
   open,
@@ -66,7 +67,7 @@ export function MonitorHistoryDialog({
               />
               <HistoryStat
                 label="Latency"
-                value={selection.point.latencyMs ? `${selection.point.latencyMs}ms` : "--"}
+                value={formatLatency(selection.point.latencyMs)}
                 helper="Measured response time"
               />
             </dl>
@@ -199,7 +200,7 @@ export function MonitorHistoryDialog({
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>{point.statusCode ? `HTTP ${point.statusCode}` : "No code"}</span>
-                      <span>{point.latencyMs ? `${point.latencyMs}ms` : "--"}</span>
+                      <span>{formatLatency(point.latencyMs)}</span>
                     </div>
                   </button>
                 ))}

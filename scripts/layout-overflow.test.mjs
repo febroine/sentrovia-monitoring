@@ -24,6 +24,6 @@ describe("wide table containment", () => {
     expect(monitorTable).toContain("min-w-0 max-w-full overflow-hidden");
     expect(monitorTable).toContain('Table className="min-w-0 table-fixed');
     expect(monitorTable).toContain("<colgroup>");
-    expect(monitorTable).toContain("compact");
+    expect(monitorTable).toContain("onOpenTimeline");
   });
 });

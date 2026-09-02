@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const session = await requireSession();
-    const profile = await getUserProfile(session.id);
+    const profile = await getUserProfile(session.id, session.activeWorkspaceId ?? undefined);
     if (!profile) {
       return NextResponse.json({ message: "Profile not found." }, { status: 404 });
     }
@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const session = await requireMutationSession(request);
     const input = await parseJsonRequest(request, profileSettingsSchema, "Invalid profile payload.");
-    const profile = await updateUserProfile(session.id, input);
+    const profile = await updateUserProfile(session.id, input, session.activeWorkspaceId ?? undefined);
     if (!profile) {
       return NextResponse.json({ message: "Profile not found." }, { status: 404 });
     }

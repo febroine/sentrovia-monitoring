@@ -226,7 +226,7 @@ function getRemainingTimeout(deadlineAt: number) {
 function resolvePrivateTargetAccess(monitor: Monitor) {
   const claimedPolicy = (monitor as Monitor & { allowPrivateTargets?: boolean }).allowPrivateTargets;
   return claimedPolicy === undefined
-    ? canUserAccessPrivateTargets(monitor.userId)
+    ? canUserAccessPrivateTargets(monitor.userId, undefined, monitor.workspaceId)
     : Promise.resolve(claimedPolicy);
 }
 

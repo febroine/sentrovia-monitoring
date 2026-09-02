@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getMonitorTargetDisplay, getMonitorTypeLabel } from "@/lib/monitors/targets";
 import type { MonitorRecord, NotificationPref, SiteStatus } from "@/lib/monitors/types";
-import { formatLastChecked } from "@/components/monitoring/utils";
+import { formatLastChecked, formatLatency } from "@/components/monitoring/utils";
 
 function StatusBadge({
   status,
@@ -227,7 +227,7 @@ export function MonitorTable({
                 </TableCell>
                 <TableCell className="px-1.5">{monitor.statusCode ?? "--"}</TableCell>
                 <TableCell className="px-1.5" title={monitor.slowResponseThresholdMs ? `Alert threshold: ${monitor.slowResponseThresholdMs}ms` : undefined}>
-                  {monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"}
+                  {formatLatency(monitor.latencyMs)}
                 </TableCell>
                 <TableCell className="px-1.5"><NotificationBadge pref={monitor.notificationPref} /></TableCell>
                 <TableCell className="overflow-hidden px-1.5"><span className="block truncate" title={monitor.company ?? undefined}>{monitor.company ?? "--"}</span></TableCell>
@@ -432,7 +432,7 @@ function MobileMonitorCard({
       <p className="mt-3 break-all text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
       <div className="mt-3 grid grid-cols-3 gap-2 border-y py-3 text-xs">
         <MobileMetric label="HTTP" value={monitor.statusCode ? String(monitor.statusCode) : "--"} />
-        <MobileMetric label="Latency" value={monitor.latencyMs ? `${monitor.latencyMs}ms` : "--"} />
+        <MobileMetric label="Latency" value={formatLatency(monitor.latencyMs)} />
         <MobileMetric label="Uptime" value={monitor.uptime} />
       </div>
       <div className="mt-3" onClick={(event) => event.stopPropagation()}>

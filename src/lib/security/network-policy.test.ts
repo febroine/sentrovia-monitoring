@@ -13,6 +13,7 @@ vi.mock("@/lib/env", async (importOriginal) => {
 });
 
 import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
+import { workspaceMembers } from "@/lib/db/schema";
 
 describe("private target authorization", () => {
   it("allows private targets only for administrators", async () => {
@@ -21,14 +22,23 @@ describe("private target authorization", () => {
     await expect(canUserAccessPrivateTargets("operator-1", buildDatabase("operator"))).resolves.toBe(false);
     await expect(canUserAccessPrivateTargets("viewer-1", buildDatabase("viewer"))).resolves.toBe(false);
   });
+
+  it("uses the membership role for the requested workspace", async () => {
+    await expect(
+      canUserAccessPrivateTargets("user-1", buildDatabase("admin", "operator"), "workspace-operator")
+    ).resolves.toBe(false);
+  });
 });
 
-function buildDatabase(role: "admin" | "manager" | "operator" | "viewer") {
+function buildDatabase(
+  userRole: "admin" | "manager" | "operator" | "viewer",
+  workspaceRole = userRole
+) {
   return {
     select: () => ({
-      from: () => ({
+      from: (table: unknown) => ({
         where: () => ({
-          limit: async () => [{ role }],
+          limit: async () => [{ role: table === workspaceMembers ? workspaceRole : userRole }],
         }),
       }),
     }),
