@@ -5,7 +5,7 @@ describe("database schema synchronization order", () => {
   it("creates the base schema before manual migrations for an empty database", () => {
     expect(resolveSchemaSteps({ users: false, monitors: false, user_settings: false, audit_events: false })).toEqual([
       "db:push:bootstrap",
-      "db:manual",
+      "db:manual:baseline",
     ]);
   });
 
@@ -30,7 +30,7 @@ describe("database schema synchronization order", () => {
   });
 
   it("passes the held schema lock to the manual migration child", () => {
-    const environment = buildSchemaStepEnvironment("db:manual", { DATABASE_URL: "postgres://example" });
+    const environment = buildSchemaStepEnvironment("db:manual:baseline", { DATABASE_URL: "postgres://example" });
 
     expect(environment).toEqual({
       DATABASE_URL: "postgres://example",

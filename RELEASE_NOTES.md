@@ -12,6 +12,7 @@
 - Reduced dashboard stream work with short-lived scoped snapshots and unchanged-frame heartbeats.
 - Removed the incomplete sidebar-only translation layer to keep the interface language consistent.
 - Aligned outage upserts with the workspace-scoped open-incident constraint and tracked the retired translation files in the upgrade cleanup manifest.
+- Made clean database bootstrap baseline historical manual migrations after schema creation, while preserving the normal migration path for existing installations.
 
 ## Upgrade notes
 

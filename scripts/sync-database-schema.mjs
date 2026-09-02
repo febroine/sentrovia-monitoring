@@ -22,7 +22,7 @@ const SECRET_MIGRATION_SCRIPT = path.join(PROJECT_ROOT, "scripts", "migrate-lega
 export function resolveSchemaSteps(tablePresence) {
   const states = CORE_TABLES.map((table) => Boolean(tablePresence[table]));
   if (states.every((present) => !present)) {
-    return ["db:push:bootstrap", "db:manual"];
+    return ["db:push:bootstrap", "db:manual:baseline"];
   }
   if (states.every(Boolean)) {
     const prerequisitesPresent = MANUAL_MIGRATION_PREREQUISITES.every(
@@ -106,7 +106,7 @@ async function readCoreTablePresence(sql) {
 }
 
 export function buildSchemaStepEnvironment(step, baseEnvironment = process.env) {
-  if (step !== "db:manual") {
+  if (!step.startsWith("db:manual")) {
     return baseEnvironment;
   }
 
@@ -117,8 +117,8 @@ export function buildSchemaStepEnvironment(step, baseEnvironment = process.env) 
 }
 
 function runSchemaStep(step) {
-  const args = step === "db:manual"
-    ? [MANUAL_MIGRATION_SCRIPT]
+  const args = step.startsWith("db:manual")
+    ? [MANUAL_MIGRATION_SCRIPT, ...(step === "db:manual:baseline" ? ["--baseline"] : [])]
     : [DRIZZLE_KIT_CLI, "push", "--force"];
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
