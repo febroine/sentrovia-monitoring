@@ -11,6 +11,7 @@
 - Added an activation checklist derived from monitor, worker, and delivery state.
 - Reduced dashboard stream work with short-lived scoped snapshots and unchanged-frame heartbeats.
 - Removed the incomplete sidebar-only translation layer to keep the interface language consistent.
+- Aligned outage upserts with the workspace-scoped open-incident constraint and tracked the retired translation files in the upgrade cleanup manifest.
 
 ## Upgrade notes
 

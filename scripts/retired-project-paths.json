@@ -30,7 +30,9 @@
   "src/components/settings/app-update-card.tsx",
   "src/components/settings/maintenance-windows-editor.tsx",
   "src/components/update-banner.tsx",
+  "src/context/translation-context.tsx",
   "src/lib/app-update",
   "src/lib/maintenance/service.test.ts",
-  "src/lib/reports/pdf.ts"
+  "src/lib/reports/pdf.ts",
+  "src/locales/en.ts"
 ]
