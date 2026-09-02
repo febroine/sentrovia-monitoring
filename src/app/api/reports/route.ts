@@ -10,7 +10,7 @@ export async function GET() {
   try {
     const session = await requireSession();
 
-    const schedules = await listReportSchedules(session.id);
+    const schedules = await listReportSchedules(session.id, session.activeWorkspaceId ?? undefined);
     return NextResponse.json({ schedules });
   } catch (error) {
     return apiErrorResponse(error, "Unable to load reports right now.");
@@ -21,7 +21,11 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireMutationSession(request);
     const input = await parseJsonRequest(request, reportScheduleSchema, "Invalid report schedule payload.");
-    const schedule = await createReportSchedule(session.id, input);
+    const schedule = await createReportSchedule(
+      session.id,
+      input,
+      session.activeWorkspaceId ?? undefined
+    );
     return NextResponse.json({ schedule }, { status: 201 });
   } catch (error) {
     return apiErrorResponse(error, "Unable to create the report schedule right now.");

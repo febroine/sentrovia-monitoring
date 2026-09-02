@@ -29,7 +29,11 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     return false;
   }
 
-  const routing = await getMonitorNotificationRouting(context.monitor.userId, context.monitor.id);
+  const routing = await getMonitorNotificationRouting(
+    context.monitor.userId,
+    context.monitor.id,
+    context.monitor.workspaceId
+  );
 
   const rendered = renderNotificationTemplates(context, settings, env.appUrl);
   const deliveryResults: NotificationDeliveryResult[] = [];

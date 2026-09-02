@@ -30,7 +30,37 @@ const REPORT_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const DUE_REPORT_BATCH_SIZE = 5;
 const DEFAULT_REPORT_TEMPLATE: ReportTemplateVariant = "operations";
 const REPORT_DAY_MS = 24 * 60 * 60 * 1000;
-const REPORT_WINDOW_DAYS = 7;
+
+function reportOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(reportSchedules.workspaceId, workspaceId)
+    : eq(reportSchedules.userId, userId);
+}
+
+function companyOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId ? eq(companies.workspaceId, workspaceId) : eq(companies.userId, userId);
+}
+
+function monitorOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId);
+}
+
+function checkOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(monitorChecks.workspaceId, workspaceId)
+    : eq(monitorChecks.userId, userId);
+}
+
+function eventOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(monitorEvents.workspaceId, workspaceId)
+    : eq(monitorEvents.userId, userId);
+}
+
+function companySubject(userId: string, workspaceId?: string) {
+  return workspaceId ? { userId, workspaceId } : userId;
+}
+
 type ReportCheckAggregate = {
   monitorId: string;
   totalChecks: number;
@@ -52,11 +82,14 @@ const DEFAULT_REPORT_DELIVERY_OPTIONS: ReportDeliveryOptions = {
   emailIntroTemplate: null,
 };
 
-export async function listReportSchedules(userId: string): Promise<ReportScheduleRecord[]> {
+export async function listReportSchedules(
+  userId: string,
+  workspaceId?: string
+): Promise<ReportScheduleRecord[]> {
   const rows = await db
     .select()
     .from(reportSchedules)
-    .where(eq(reportSchedules.userId, userId))
+    .where(reportOwnershipCondition(userId, workspaceId))
     .orderBy(desc(reportSchedules.createdAt));
 
   const companyIds = Array.from(new Set(rows.map((row) => row.companyId).filter(Boolean))) as string[];
@@ -67,7 +100,7 @@ export async function listReportSchedules(userId: string): Promise<ReportSchedul
           .select({ id: companies.id, name: companies.name })
           .from(companies)
           .where(and(
-            eq(companies.userId, userId),
+            companyOwnershipCondition(userId, workspaceId),
             inArray(companies.id, companyIds),
             isNull(companies.deletedAt)
           ));
@@ -80,13 +113,17 @@ export async function listReportSchedules(userId: string): Promise<ReportSchedul
   return rows.map((row) => serializeSchedule(row, companyNameMap.get(row.companyId ?? "") ?? null));
 }
 
-export async function createReportSchedule(userId: string, input: ReportScheduleInput) {
-  const resolvedCompanyId = await resolveScopedCompanyId(userId, input);
-  const workspaceId = await requireWorkspaceIdForUser(userId);
+export async function createReportSchedule(
+  userId: string,
+  input: ReportScheduleInput,
+  workspaceId?: string
+) {
+  const resolvedCompanyId = await resolveScopedCompanyId(userId, input, workspaceId);
+  const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId);
   const [created] = await db
     .insert(reportSchedules)
     .values({
-      workspaceId,
+      workspaceId: resolvedWorkspaceId,
       userId,
       name: input.name.trim(),
       scope: input.scope,
@@ -102,31 +139,32 @@ export async function createReportSchedule(userId: string, input: ReportSchedule
     })
     .returning();
 
-  return serializeSchedule(created, await resolveCompanyName(userId, resolvedCompanyId));
+  return serializeSchedule(created, await resolveCompanyName(userId, resolvedCompanyId, workspaceId));
 }
 
-async function getReportScheduleById(userId: string, scheduleId: string) {
+async function getReportScheduleById(userId: string, scheduleId: string, workspaceId?: string) {
   const [row] = await db
     .select()
     .from(reportSchedules)
-    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+    .where(and(eq(reportSchedules.id, scheduleId), reportOwnershipCondition(userId, workspaceId)));
 
   if (!row) {
     return null;
   }
 
-  return serializeSchedule(row, await resolveCompanyName(userId, row.companyId));
+  return serializeSchedule(row, await resolveCompanyName(userId, row.companyId, workspaceId));
 }
 
 export async function updateReportSchedule(
   userId: string,
   scheduleId: string,
-  input: Partial<ReportScheduleInput>
+  input: Partial<ReportScheduleInput>,
+  workspaceId?: string
 ) {
   const [existing] = await db
     .select()
     .from(reportSchedules)
-    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+    .where(and(eq(reportSchedules.id, scheduleId), reportOwnershipCondition(userId, workspaceId)));
 
   if (!existing) {
     return null;
@@ -146,7 +184,7 @@ export async function updateReportSchedule(
     isActive: input.isActive ?? existing.isActive,
     nextRunAt: hasNextRunAtUpdate ? input.nextRunAt : existing.nextRunAt?.toISOString() ?? null,
     reportBrandName: input.reportBrandName ?? existing.reportBrandName,
-  });
+  }, workspaceId);
 
   const [updated] = await db
     .update(reportSchedules)
@@ -168,7 +206,7 @@ export async function updateReportSchedule(
     .where(
       and(
         eq(reportSchedules.id, scheduleId),
-        eq(reportSchedules.userId, userId),
+        reportOwnershipCondition(userId, workspaceId),
         reportScheduleClaimAvailable(new Date())
       )
     )
@@ -178,7 +216,7 @@ export async function updateReportSchedule(
     const [current] = await db
       .select({ id: reportSchedules.id })
       .from(reportSchedules)
-      .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+      .where(and(eq(reportSchedules.id, scheduleId), reportOwnershipCondition(userId, workspaceId)));
 
     if (current) {
       throw new AuthError("Wait for the current report delivery to finish before updating this schedule.", 409);
@@ -187,20 +225,20 @@ export async function updateReportSchedule(
     return null;
   }
 
-  return serializeSchedule(updated, await resolveCompanyName(userId, companyId));
+  return serializeSchedule(updated, await resolveCompanyName(userId, companyId, workspaceId));
 }
 
-export async function duplicateReportSchedule(userId: string, scheduleId: string) {
+export async function duplicateReportSchedule(userId: string, scheduleId: string, workspaceId?: string) {
   const [existing] = await db
     .select()
     .from(reportSchedules)
-    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+    .where(and(eq(reportSchedules.id, scheduleId), reportOwnershipCondition(userId, workspaceId)));
 
   if (!existing) {
     return null;
   }
 
-  const companyName = await resolveCompanyName(userId, existing.companyId);
+  const companyName = await resolveCompanyName(userId, existing.companyId, workspaceId);
   assertReportScheduleCompanyAvailable(existing.scope, companyName);
 
   const [created] = await db
@@ -232,14 +270,14 @@ export async function duplicateReportSchedule(userId: string, scheduleId: string
   return serializeSchedule(created, companyName);
 }
 
-export async function deleteReportSchedule(userId: string, scheduleId: string) {
+export async function deleteReportSchedule(userId: string, scheduleId: string, workspaceId?: string) {
   const now = new Date();
   const [deleted] = await db
     .delete(reportSchedules)
     .where(
       and(
         eq(reportSchedules.id, scheduleId),
-        eq(reportSchedules.userId, userId),
+        reportOwnershipCondition(userId, workspaceId),
         reportScheduleClaimAvailable(now)
       )
     )
@@ -252,7 +290,7 @@ export async function deleteReportSchedule(userId: string, scheduleId: string) {
   const [existing] = await db
     .select({ id: reportSchedules.id })
     .from(reportSchedules)
-    .where(and(eq(reportSchedules.id, scheduleId), eq(reportSchedules.userId, userId)));
+    .where(and(eq(reportSchedules.id, scheduleId), reportOwnershipCondition(userId, workspaceId)));
 
   if (existing) {
     throw new AuthError("Wait for the current report delivery to finish before deleting this schedule.", 409);
@@ -264,11 +302,12 @@ export async function deleteReportSchedule(userId: string, scheduleId: string) {
 export async function generateReportPreview(
   userId: string,
   input: ReportPreviewInput,
-  now = new Date()
+  now = new Date(),
+  workspaceId?: string
 ): Promise<GeneratedReport> {
-  const scoped = await loadScopedReportData(userId, input, now);
+  const scoped = await loadScopedReportData(userId, input, now, workspaceId);
   const workspaceName = await resolveReportBrandName(userId, input.reportBrandName);
-  const period = resolveReportPeriod(now);
+  const period = resolveReportPeriod(now, input.cadence);
   const template = input.template ?? DEFAULT_REPORT_TEMPLATE;
   const checksByMonitor = new Map(scoped.checkAggregates.map((item) => [item.monitorId, item]));
   const slowMonitors = buildSlowMonitorSummary(scoped.monitorRows, checksByMonitor);
@@ -345,19 +384,21 @@ export async function generateReportPreview(
 export async function dispatchReportNow(
   userId: string,
   input: ReportPreviewInput,
-  recipientEmails: string[]
+  recipientEmails: string[],
+  workspaceId?: string
 ) {
   const normalizedRecipients = normalizeEmails(recipientEmails);
   if (normalizedRecipients.length === 0) {
     throw new Error("At least one recipient email is required.");
   }
 
-  const report = await generateReportPreview(userId, input);
+  const report = await generateReportPreview(userId, input, new Date(), workspaceId);
   const deliveryOptions = normalizeReportDeliveryOptions(input);
   const attachments = await buildReportAttachments(report);
   const message = buildReportMessage(report, deliveryOptions);
   const delivery = await sendEmailDelivery({
     userId,
+    workspaceId,
     kind: "report",
     destinationOverride: normalizedRecipients.join(", "),
     subject: message.subject,
@@ -406,7 +447,8 @@ export async function runDueReportSchedules(now = new Date()) {
           companyId: claimedSchedule.companyId,
           ...scheduleToDeliveryInput(claimedSchedule),
         },
-        claimedSchedule.recipientEmails
+        claimedSchedule.recipientEmails,
+        claimedSchedule.workspaceId
       );
 
       await completeClaimedReportSchedule(claimedSchedule.id, claimedSchedule.claimToken, {
@@ -427,15 +469,20 @@ export async function runDueReportSchedules(now = new Date()) {
   }
 }
 
-export async function sendReportScheduleNow(userId: string, scheduleId: string, now = new Date()) {
-  const schedule = await getReportScheduleById(userId, scheduleId);
+export async function sendReportScheduleNow(
+  userId: string,
+  scheduleId: string,
+  now = new Date(),
+  workspaceId?: string
+) {
+  const schedule = await getReportScheduleById(userId, scheduleId, workspaceId);
   if (!schedule) {
     return null;
   }
 
   assertReportScheduleCompanyAvailable(schedule.scope, schedule.companyName);
 
-  const claimedSchedule = await claimReportScheduleForManualSend(userId, scheduleId, now);
+  const claimedSchedule = await claimReportScheduleForManualSend(userId, scheduleId, now, workspaceId);
   if (!claimedSchedule) {
     throw new AuthError("This report schedule is already being delivered.", 409);
   }
@@ -451,14 +498,15 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
         companyId: claimedSchedule.companyId,
         ...scheduleToDeliveryInput(claimedSchedule),
       },
-      claimedSchedule.recipientEmails
+      claimedSchedule.recipientEmails,
+      claimedSchedule.workspaceId
     );
   } catch (error) {
     const updatedSchedule = await completeManualReportSchedule(userId, claimedSchedule, {
       lastRunAt: now,
       lastStatus: "failed",
       lastErrorMessage: toMessage(error),
-    });
+    }, workspaceId);
 
     return {
       report: null,
@@ -473,7 +521,7 @@ export async function sendReportScheduleNow(userId: string, scheduleId: string, 
     lastDeliveredAt: now,
     lastStatus: "delivered",
     lastErrorMessage: null,
-  });
+  }, workspaceId);
 
   return {
     ...result,
@@ -487,11 +535,16 @@ export function assertReportScheduleCompanyAvailable(scope: string, companyName:
   }
 }
 
-async function loadScopedReportData(userId: string, input: ReportPreviewInput, now: Date) {
-  const period = resolveReportPeriod(now);
+async function loadScopedReportData(
+  userId: string,
+  input: ReportPreviewInput,
+  now: Date,
+  workspaceId?: string
+) {
+  const period = resolveReportPeriod(now, input.cadence);
   const company =
     input.scope === "company" && input.companyId
-      ? await getCompanyById(userId, input.companyId)
+      ? await getCompanyById(companySubject(userId, workspaceId), input.companyId)
       : null;
 
   if (input.scope === "company" && !company) {
@@ -516,12 +569,16 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
     .where(
       input.scope === "company" && company
         ? and(
-            eq(monitors.userId, userId),
+            monitorOwnershipCondition(userId, workspaceId),
             eq(monitors.companyId, company.id),
             eq(monitors.isActive, true),
             isNull(monitors.deletedAt)
           )
-        : and(eq(monitors.userId, userId), eq(monitors.isActive, true), isNull(monitors.deletedAt))
+        : and(
+            monitorOwnershipCondition(userId, workspaceId),
+            eq(monitors.isActive, true),
+            isNull(monitors.deletedAt)
+          )
     )
     .orderBy(asc(monitors.name));
 
@@ -533,7 +590,7 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
 
   const reportMetrics = monitorIds.length === 0
     ? emptyReportMetrics()
-    : await loadReportMetrics(userId, monitorIds, period);
+    : await loadReportMetrics(userId, monitorIds, period, workspaceId);
 
   return {
     companyId: company?.id ?? null,
@@ -546,16 +603,17 @@ async function loadScopedReportData(userId: string, input: ReportPreviewInput, n
 async function loadReportMetrics(
   userId: string,
   monitorIds: string[],
-  period: { startedAt: Date; endedAt: Date }
+  period: { startedAt: Date; endedAt: Date },
+  workspaceId?: string
 ) {
   const checkWhere = and(
-    eq(monitorChecks.userId, userId),
+    checkOwnershipCondition(userId, workspaceId),
     inArray(monitorChecks.monitorId, monitorIds),
     gte(monitorChecks.createdAt, period.startedAt),
     lte(monitorChecks.createdAt, period.endedAt)
   );
   const failureWhere = and(
-    eq(monitorEvents.userId, userId),
+    eventOwnershipCondition(userId, workspaceId),
     inArray(monitorEvents.monitorId, monitorIds),
     eq(monitorEvents.eventType, "failure"),
     gte(monitorEvents.createdAt, period.startedAt),
@@ -665,11 +723,12 @@ function emptyReportMetrics() {
   };
 }
 
-export function resolveReportPeriod(now: Date) {
+export function resolveReportPeriod(now: Date, cadence: ReportCadence = "weekly") {
+  const windowDays = cadence === "weekly" ? 7 : 30;
   return {
-    startedAt: new Date(now.getTime() - REPORT_WINDOW_DAYS * REPORT_DAY_MS),
+    startedAt: new Date(now.getTime() - windowDays * REPORT_DAY_MS),
     endedAt: now,
-    label: "Last 7 days",
+    label: `Last ${windowDays} days`,
   };
 }
 
@@ -678,7 +737,7 @@ export function resolveReportTitle(
   scope: ReportPreviewInput["scope"],
   companyName: string | null
 ) {
-  const cadenceLabel = cadence === "weekly" ? "Weekly" : "7-Day";
+  const cadenceLabel = cadence === "weekly" ? "Weekly" : "Monthly";
   return scope === "company" ? `${cadenceLabel} ${companyName ?? "Company"} Report` : `${cadenceLabel} Workspace Report`;
 }
 
@@ -1005,7 +1064,11 @@ function resolveNextRunAt(nextRunAt: string | null | undefined) {
   return nextRunAt ? new Date(nextRunAt) : new Date(Date.now() + DEFAULT_FIRST_RUN_DELAY_MS);
 }
 
-async function resolveScopedCompanyId(userId: string, input: ReportScheduleInput) {
+async function resolveScopedCompanyId(
+  userId: string,
+  input: ReportScheduleInput,
+  workspaceId?: string
+) {
   if (input.scope !== "company") {
     return null;
   }
@@ -1014,7 +1077,7 @@ async function resolveScopedCompanyId(userId: string, input: ReportScheduleInput
     throw new Error("A company must be selected for company reports.");
   }
 
-  const company = await getCompanyById(userId, input.companyId);
+  const company = await getCompanyById(companySubject(userId, workspaceId), input.companyId);
   if (!company) {
     throw new Error("The selected company could not be found.");
   }
@@ -1022,12 +1085,12 @@ async function resolveScopedCompanyId(userId: string, input: ReportScheduleInput
   return company.id;
 }
 
-async function resolveCompanyName(userId: string, companyId: string | null) {
+async function resolveCompanyName(userId: string, companyId: string | null, workspaceId?: string) {
   if (!companyId) {
     return null;
   }
 
-  const company = await getCompanyById(userId, companyId);
+  const company = await getCompanyById(companySubject(userId, workspaceId), companyId);
   return company?.name ?? null;
 }
 
@@ -1180,7 +1243,12 @@ async function claimDueReportSchedule(
   return claimed ?? null;
 }
 
-async function claimReportScheduleForManualSend(userId: string, scheduleId: string, now: Date) {
+async function claimReportScheduleForManualSend(
+  userId: string,
+  scheduleId: string,
+  now: Date,
+  workspaceId?: string
+) {
   const claimToken = crypto.randomUUID();
   const [claimed] = await db
     .update(reportSchedules)
@@ -1195,7 +1263,7 @@ async function claimReportScheduleForManualSend(userId: string, scheduleId: stri
     .where(
       and(
         eq(reportSchedules.id, scheduleId),
-        eq(reportSchedules.userId, userId),
+        reportOwnershipCondition(userId, workspaceId),
         reportScheduleCompanyAvailable(),
         reportScheduleClaimAvailable(now)
       )
@@ -1222,7 +1290,7 @@ function reportScheduleCompanyAvailable() {
         .from(companies)
         .where(and(
           eq(companies.id, reportSchedules.companyId),
-          eq(companies.userId, reportSchedules.userId),
+          eq(companies.workspaceId, reportSchedules.workspaceId),
           isNull(companies.deletedAt)
         ))
     )
@@ -1284,7 +1352,8 @@ async function completeManualReportSchedule(
     lastDeliveredAt?: Date | null;
     lastStatus: ReportScheduleStatus;
     lastErrorMessage: string | null;
-  }
+  },
+  workspaceId?: string
 ) {
   const [updated] = await db
     .update(reportSchedules)
@@ -1297,7 +1366,7 @@ async function completeManualReportSchedule(
     .where(
       and(
         eq(reportSchedules.id, claimedSchedule.id),
-        eq(reportSchedules.userId, userId),
+        reportOwnershipCondition(userId, workspaceId),
         eq(reportSchedules.claimToken, claimedSchedule.claimToken ?? "")
       )
     )

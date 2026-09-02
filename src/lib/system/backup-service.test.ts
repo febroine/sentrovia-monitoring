@@ -295,6 +295,37 @@ describe("workspace backup validation", () => {
     expect(verifyWorkspaceRestoreToken(token, "user-1", "json", "backup-content", "revision-1", new Date(issuedAt.getTime() + 10 * 60_000))).toBe(false);
   });
 
+  it("does not allow a restore approval token to cross workspace boundaries", () => {
+    const issuedAt = new Date("2026-07-16T12:00:00.000Z");
+    const token = createWorkspaceRestoreToken(
+      "user-1",
+      "json",
+      "backup-content",
+      "revision-1",
+      issuedAt,
+      "workspace-1"
+    );
+
+    expect(verifyWorkspaceRestoreToken(
+      token,
+      "user-1",
+      "json",
+      "backup-content",
+      "revision-1",
+      issuedAt,
+      "workspace-1"
+    )).toBe(true);
+    expect(verifyWorkspaceRestoreToken(
+      token,
+      "user-1",
+      "json",
+      "backup-content",
+      "revision-1",
+      issuedAt,
+      "workspace-2"
+    )).toBe(false);
+  });
+
   it("ignores worker runtime fields but detects configuration changes in restore revisions", () => {
     const base = {
       companies: [],

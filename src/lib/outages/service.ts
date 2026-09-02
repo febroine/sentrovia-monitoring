@@ -44,11 +44,12 @@ export async function openOrUpdateOutage(
     })
     .returning();
 
-  return outage ?? getOpenOutage(input.userId, input.monitorId, database);
+  return outage ?? getOpenOutage(input.userId, input.monitorId, database, workspaceId);
 }
 
 export async function resolveOutage(input: OutageStateInput, database: DatabaseExecutor = db) {
-  const existing = await getOpenOutage(input.userId, input.monitorId, database);
+  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId, database);
+  const existing = await getOpenOutage(input.userId, input.monitorId, database, workspaceId);
   if (!existing) {
     return null;
   }
@@ -79,14 +80,17 @@ export async function resolveOutage(input: OutageStateInput, database: DatabaseE
 async function getOpenOutage(
   userId: string,
   monitorId: string,
-  database: DatabaseExecutor = db
+  database: DatabaseExecutor = db,
+  workspaceId?: string
 ) {
   const [outage] = await database
     .select()
     .from(monitorOutages)
     .where(
       and(
-        eq(monitorOutages.userId, userId),
+        workspaceId
+          ? eq(monitorOutages.workspaceId, workspaceId)
+          : eq(monitorOutages.userId, userId),
         eq(monitorOutages.monitorId, monitorId),
         eq(monitorOutages.status, "open"),
         isNull(monitorOutages.resolvedAt)

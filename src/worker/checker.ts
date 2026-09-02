@@ -67,6 +67,17 @@ export function calculateVerificationCheckAt(checkedAt: Date, completedAt = chec
   return new Date(Math.max(checkedAt.getTime() + VERIFICATION_INTERVAL_MS, completedAt.getTime()));
 }
 
+export function calculateOutageRecheckAt(
+  monitor: Monitor,
+  checkedAt: Date,
+  completedAt = checkedAt
+) {
+  const regularCheckAt = calculateNextCheckAt(monitor, checkedAt, completedAt);
+  const verificationCheckAt = calculateVerificationCheckAt(checkedAt, completedAt);
+
+  return regularCheckAt < verificationCheckAt ? regularCheckAt : verificationCheckAt;
+}
+
 function buildConfigurationFailure(checkedAt: Date, errorMessage: string): CheckResult {
   return {
     ok: false,

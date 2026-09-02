@@ -83,7 +83,12 @@ export async function GET(request: NextRequest) {
         })
       : state;
 
-    const observability = await getWorkerObservability(session.id, normalizedState, observabilityRange);
+    const observability = await getWorkerObservability(
+      session.id,
+      normalizedState,
+      observabilityRange,
+      session.activeWorkspaceId!
+    );
     return NextResponse.json(serializeWorkerState(normalizedState, staleThresholdMs, observability));
   } catch (error) {
     const authError = toAuthError(error, "Unable to load worker state right now.");
@@ -120,7 +125,12 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    const observability = await getWorkerObservability(session.id, state);
+    const observability = await getWorkerObservability(
+      session.id,
+      state,
+      "24h",
+      session.activeWorkspaceId!
+    );
     return NextResponse.json(serializeWorkerState(state, Math.max(env.workerPollIntervalMs * 6, 180_000), observability));
   } catch (error) {
     const authError = toAuthError(error, "Unable to update worker state right now.");

@@ -47,10 +47,18 @@ export function createWorkspaceRestoreToken(
   format: "json" | "yaml",
   content: string,
   workspaceRevision: string,
-  now = new Date()
+  now = new Date(),
+  workspaceId?: string
 ) {
   const expiresAt = now.getTime() + RESTORE_PREVIEW_TOKEN_TTL_MS;
-  const signature = signWorkspaceRestoreToken(userId, format, content, workspaceRevision, expiresAt);
+  const signature = signWorkspaceRestoreToken(
+    userId,
+    format,
+    content,
+    workspaceRevision,
+    expiresAt,
+    workspaceId
+  );
   return `${expiresAt}.${signature}`;
 }
 
@@ -60,7 +68,8 @@ export function verifyWorkspaceRestoreToken(
   format: "json" | "yaml",
   content: string,
   workspaceRevision: string,
-  now = new Date()
+  now = new Date(),
+  workspaceId?: string
 ) {
   const [expiresAtRaw, suppliedSignature, ...extraParts] = token.split(".");
   const expiresAt = Number(expiresAtRaw);
@@ -74,7 +83,14 @@ export function verifyWorkspaceRestoreToken(
     return false;
   }
 
-  const expectedSignature = signWorkspaceRestoreToken(userId, format, content, workspaceRevision, expiresAt);
+  const expectedSignature = signWorkspaceRestoreToken(
+    userId,
+    format,
+    content,
+    workspaceRevision,
+    expiresAt,
+    workspaceId
+  );
   const supplied = Buffer.from(suppliedSignature);
   const expected = Buffer.from(expectedSignature);
   return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
@@ -82,13 +98,24 @@ export function verifyWorkspaceRestoreToken(
 
 export async function getWorkspaceRestoreRevision(
   userId: string,
-  database: DatabaseExecutor = db
+  database: DatabaseExecutor = db,
+  workspaceId?: string
 ) {
   const [companyRows, monitorRows, publicStatusPageRows, reportScheduleRows, settingsRows, userRows] = await Promise.all([
-    database.select().from(companies).where(eq(companies.userId, userId)),
-    database.select().from(monitors).where(eq(monitors.userId, userId)),
-    database.select().from(publicStatusPages).where(eq(publicStatusPages.userId, userId)),
-    database.select().from(reportSchedules).where(eq(reportSchedules.userId, userId)),
+    database.select().from(companies).where(
+      workspaceId ? eq(companies.workspaceId, workspaceId) : eq(companies.userId, userId)
+    ),
+    database.select().from(monitors).where(
+      workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId)
+    ),
+    database.select().from(publicStatusPages).where(
+      workspaceId
+        ? eq(publicStatusPages.workspaceId, workspaceId)
+        : eq(publicStatusPages.userId, userId)
+    ),
+    database.select().from(reportSchedules).where(
+      workspaceId ? eq(reportSchedules.workspaceId, workspaceId) : eq(reportSchedules.userId, userId)
+    ),
     database.select().from(userSettings).where(eq(userSettings.userId, userId)),
     database
       .select({
@@ -140,12 +167,13 @@ function signWorkspaceRestoreToken(
   format: "json" | "yaml",
   content: string,
   workspaceRevision: string,
-  expiresAt: number
+  expiresAt: number,
+  workspaceId?: string
 ) {
   const contentDigest = crypto.createHash("sha256").update(content, "utf8").digest("base64url");
   return crypto
     .createHmac("sha256", getAuthSecret())
-    .update(`${userId}\n${format}\n${workspaceRevision}\n${expiresAt}\n${contentDigest}`, "utf8")
+    .update(`${userId}\n${workspaceId ?? ""}\n${format}\n${workspaceRevision}\n${expiresAt}\n${contentDigest}`, "utf8")
     .digest("base64url");
 }
 

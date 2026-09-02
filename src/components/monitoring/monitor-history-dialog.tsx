@@ -7,6 +7,7 @@ import type {
   MonitorOutageEventRecord,
   MonitorRecord,
 } from "@/lib/monitors/types";
+import { buildMonitorHistoryWindow } from "@/lib/monitors/history-window";
 import { toEnglishUppercase } from "@/lib/text/casing";
 
 export function MonitorHistoryDialog({
@@ -16,6 +17,7 @@ export function MonitorHistoryDialog({
   diagnostics,
   outageEvents,
   selectedPointId,
+  onSelectPoint,
   onOpenChange,
 }: {
   open: boolean;
@@ -24,9 +26,10 @@ export function MonitorHistoryDialog({
   diagnostics: MonitorDiagnosticRecord[];
   outageEvents: MonitorOutageEventRecord[];
   selectedPointId: string | null;
+  onSelectPoint: (pointId: string) => void;
   onOpenChange: (open: boolean) => void;
 }) {
-  const selection = buildSelection(points, selectedPointId);
+  const selection = buildMonitorHistoryWindow(points, selectedPointId);
   const latestDiagnostic = diagnostics.length > 0 ? diagnostics[diagnostics.length - 1] : null;
 
   return (
@@ -52,9 +55,9 @@ export function MonitorHistoryDialog({
                 helper={getStateHelper(selection.point.status)}
               />
               <HistoryStat
-                label="Window length"
-                value={selection.durationLabel}
-                helper="Continuous state duration"
+                label="Observed span"
+                value={formatDuration(selection.observedDurationMs)}
+                helper="Based only on completed checks"
               />
               <HistoryStat
                 label="Status code"
@@ -70,15 +73,21 @@ export function MonitorHistoryDialog({
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
               <div className="border-y py-4">
-                <p className="text-sm font-medium">Selected window</p>
+                <p className="text-sm font-medium">Selected check and state window</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  This range covers the uninterrupted period where the monitor stayed in the same state.
+                  Consecutive completed checks with the same state are grouped here. This is not a running request.
                 </p>
                 <div className="mt-4 space-y-3 text-sm">
-                  <DetailRow label="Started at" value={formatDateTime(selection.windowStart.createdAt)} />
-                  <DetailRow label="Ended at" value={selection.windowEnd ? formatDateTime(selection.windowEnd.createdAt) : "Current latest check"} />
-                  <DetailRow label="Checks in window" value={String(selection.windowPoints.length)} />
+                  <DetailRow label="Selected check at" value={formatDateTime(selection.point.createdAt)} />
+                  <DetailRow label="First shown check" value={formatDateTime(selection.windowStart.createdAt)} />
+                  <DetailRow label="Latest completed check" value={formatDateTime(selection.latestWindowPoint.createdAt)} />
+                  <DetailRow
+                    label="Window state"
+                    value={formatWindowState(selection)}
+                  />
+                  <DetailRow label="Completed checks" value={String(selection.windowPoints.length)} />
                   <DetailRow label="Current monitor status" value={getCurrentMonitorStatusLabel(monitor)} />
+                  <DetailRow label="Next scheduled check" value={getNextCheckLabel(monitor)} />
                 </div>
               </div>
 
@@ -87,10 +96,11 @@ export function MonitorHistoryDialog({
                 <p className="mt-1 text-xs text-muted-foreground">{buildStateSummary(selection, monitor)}</p>
                 <div className="mt-4 flex flex-wrap gap-1.5">
                   {points.map((point) => (
-                    <div
+                    <button
+                      type="button"
                       key={point.id}
                       className={[
-                        "h-3 w-6 rounded-full border transition",
+                        "h-3 w-6 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         point.status === "up"
                           ? "border-emerald-500/30 bg-emerald-500/80"
                           : point.status === "pending"
@@ -99,6 +109,9 @@ export function MonitorHistoryDialog({
                         point.id === selection.point.id ? "scale-110 ring-2 ring-ring/50" : "opacity-70",
                       ].join(" ")}
                       title={`${toEnglishUppercase(point.status)} · ${formatDateTime(point.createdAt)}`}
+                      aria-label={`Select ${toEnglishUppercase(point.status)} check at ${formatDateTime(point.createdAt)}`}
+                      aria-pressed={point.id === selection.point.id}
+                      onClick={() => onSelectPoint(point.id)}
                     />
                   ))}
                 </div>
@@ -159,12 +172,15 @@ export function MonitorHistoryDialog({
               <p className="text-sm font-medium">Recent state flow</p>
               <div className="mt-3 divide-y">
                 {points.map((point) => (
-                  <div
+                  <button
+                    type="button"
                     key={point.id}
                     className={[
-                      "flex items-center justify-between py-3 text-sm",
+                      "flex w-full items-center justify-between py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                       point.id === selection.point.id ? "bg-primary/5" : "",
                     ].join(" ")}
+                    aria-pressed={point.id === selection.point.id}
+                    onClick={() => onSelectPoint(point.id)}
                   >
                     <div className="flex items-center gap-3">
                       <span
@@ -185,7 +201,7 @@ export function MonitorHistoryDialog({
                       <span>{point.statusCode ? `HTTP ${point.statusCode}` : "No code"}</span>
                       <span>{point.latencyMs ? `${point.latencyMs}ms` : "--"}</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -232,53 +248,18 @@ function DiagnosticPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-function buildSelection(points: MonitorHistoryPoint[], selectedPointId: string | null) {
-  if (!selectedPointId) {
-    return null;
-  }
-
-  const index = points.findIndex((point) => point.id === selectedPointId);
-  if (index === -1) {
-    return null;
-  }
-
-  const point = points[index];
-  let startIndex = index;
-  while (startIndex > 0 && points[startIndex - 1]?.status === point.status) {
-    startIndex -= 1;
-  }
-
-  let endIndex = index;
-  while (endIndex < points.length - 1 && points[endIndex + 1]?.status === point.status) {
-    endIndex += 1;
-  }
-
-  const windowStart = points[startIndex];
-  const windowEnd = endIndex < points.length - 1 ? points[endIndex + 1] : null;
-  const currentWindowEnd = windowEnd ? new Date(windowEnd.createdAt) : new Date();
-  const durationMs = Math.max(0, currentWindowEnd.getTime() - new Date(windowStart.createdAt).getTime());
-
-  return {
-    point,
-    previousPoint: startIndex > 0 ? points[startIndex - 1] : null,
-    nextPoint: endIndex < points.length - 1 ? points[endIndex + 1] : null,
-    windowStart,
-    windowEnd,
-    windowPoints: points.slice(startIndex, endIndex + 1),
-    durationLabel: formatDuration(durationMs),
-  };
-}
-
 function buildStateSummary(
-  selection: NonNullable<ReturnType<typeof buildSelection>>,
+  selection: NonNullable<ReturnType<typeof buildMonitorHistoryWindow>>,
   monitor: MonitorRecord
 ) {
+  const durationLabel = formatDuration(selection.observedDurationMs);
+
   if (!monitor.isActive) {
-    return `This monitor is paused. The selected historical window lasted ${selection.durationLabel}.`;
+    return `This monitor is paused. Completed checks in the selected window span ${durationLabel}.`;
   }
 
   if (selection.point.status === "pending") {
-    return `This check landed in verification mode for ${selection.durationLabel}. ${
+    return `Completed verification checks in this window span ${durationLabel}. ${
       monitor.verificationMode
         ? `The worker is still confirming the outage (${monitor.verificationFailureCount}/${Math.max(1, monitor.retries)} attempts).`
         : "The monitor later returned to a confirmed state."
@@ -286,12 +267,12 @@ function buildStateSummary(
   }
 
   if (selection.point.status === "up") {
-    return `The monitor remained healthy for ${selection.durationLabel}. ${
+    return `Completed healthy checks in this window span ${durationLabel}. ${
       monitor.verificationMode ? "It is currently in verification mode after a recent anomaly." : "No failure confirmation is active right now."
     }`;
   }
 
-  return `The monitor stayed down for ${selection.durationLabel}. ${
+  return `Completed failed checks in this window span ${durationLabel}. ${
     monitor.verificationMode
       ? `Verification is still running (${monitor.verificationFailureCount}/${Math.max(1, monitor.retries)} attempts).`
       : "This state has already been confirmed as an outage."
@@ -304,6 +285,14 @@ function getCurrentMonitorStatusLabel(monitor: MonitorRecord) {
   }
 
   return monitor.verificationMode ? "Verification mode" : toEnglishUppercase(monitor.status);
+}
+
+function getNextCheckLabel(monitor: MonitorRecord) {
+  if (!monitor.isActive) {
+    return "Paused";
+  }
+
+  return monitor.nextCheckAt ? formatDateTime(monitor.nextCheckAt) : "Awaiting schedule";
 }
 
 function getStateLabel(status: MonitorHistoryPoint["status"]) {
@@ -334,8 +323,22 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString();
 }
 
+function formatWindowState(
+  selection: NonNullable<ReturnType<typeof buildMonitorHistoryWindow>>
+) {
+  if (selection.isOngoing || !selection.nextPoint) {
+    return "Ongoing (latest recorded state)";
+  }
+
+  return `Ended at ${formatDateTime(selection.nextPoint.createdAt)}`;
+}
+
 function formatDuration(durationMs: number) {
-  const totalMinutes = Math.max(1, Math.round(durationMs / 60000));
+  if (durationMs < 60_000) {
+    return "<1m";
+  }
+
+  const totalMinutes = Math.floor(durationMs / 60_000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
 

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid delivery test payload." }, { status: 400 });
     }
 
-    const result = await sendDeliveryTest(session.id, parsed.data);
+    const result = await sendDeliveryTest(session.id, parsed.data, session.activeWorkspaceId ?? undefined);
     if (result?.status !== "delivered") {
       return NextResponse.json(
         { delivery: result, message: result?.errorMessage ?? "Delivery test failed." },

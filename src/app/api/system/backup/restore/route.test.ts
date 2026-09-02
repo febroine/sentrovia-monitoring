@@ -29,7 +29,10 @@ vi.mock("@/lib/system/restore-approval", () => ({
 describe("workspace backup restore route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireAdminSession).mockResolvedValue({ id: "admin-1" } as never);
+    vi.mocked(requireAdminSession).mockResolvedValue({
+      id: "admin-1",
+      activeWorkspaceId: "workspace-1",
+    } as never);
     vi.mocked(parseWorkspaceBackup).mockReturnValue({ source: "sentrovia" } as never);
     vi.mocked(previewWorkspaceBackupRestore).mockResolvedValue({
       preview: { incoming: { monitors: 1 } },
@@ -50,7 +53,9 @@ describe("workspace backup restore route", () => {
       "admin-1",
       "json",
       "{\"source\":\"sentrovia\"}",
-      "workspace-revision"
+      "workspace-revision",
+      expect.any(Date),
+      "workspace-1"
     );
     expect(restoreWorkspaceBackup).not.toHaveBeenCalled();
   });
@@ -77,12 +82,14 @@ describe("workspace backup restore route", () => {
       "admin-1",
       "json",
       "{\"source\":\"sentrovia\"}",
-      "workspace-revision"
+      "workspace-revision",
+      expect.any(Date),
+      "workspace-1"
     );
     expect(restoreWorkspaceBackup).toHaveBeenCalledWith(
       "admin-1",
       { source: "sentrovia" },
-      { expectedRevision: "workspace-revision" }
+      { expectedRevision: "workspace-revision", workspaceId: "workspace-1" }
     );
   });
 

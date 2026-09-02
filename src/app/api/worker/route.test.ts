@@ -14,6 +14,7 @@ const memberSession = {
   department: null,
   role: "operator" as const,
   sessionVersion: 1,
+  activeWorkspaceId: "workspace-1",
 };
 
 const adminSession = {
@@ -94,7 +95,12 @@ describe("worker route authorization", () => {
 
     expect(response.status).toBe(200);
     expect(getWorkerState).toHaveBeenCalledTimes(1);
-    expect(getWorkerObservability).toHaveBeenCalledWith("admin-1", expect.any(Object), "24h");
+    expect(getWorkerObservability).toHaveBeenCalledWith(
+      "admin-1",
+      expect.any(Object),
+      "24h",
+      "workspace-1"
+    );
   });
 
   it("does not expose persisted SQL details in worker telemetry", async () => {

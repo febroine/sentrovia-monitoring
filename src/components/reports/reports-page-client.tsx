@@ -232,7 +232,7 @@ function ManualReportWorkspace({
                 draft={previewDraft}
                 subjectTitle={buildDraftReportTitle(previewDraft.scope, previewDraft.cadence, previewDraft.companyId, companies)}
                 subjectScope={resolveDraftScopeLabel(previewDraft, companies)}
-                subjectPeriod={resolveDraftPeriodLabel()}
+                subjectPeriod={resolveDraftPeriodLabel(previewDraft.cadence)}
                 onTemplateChange={(template) => setPreviewDraft((current) => ({ ...current, template }))}
                 onChange={(patch) => setPreviewDraft((current) => ({ ...current, ...patch }))}
               />
@@ -366,7 +366,7 @@ function ScheduleBuilder({ state }: { state: ReturnType<typeof useReportsPageSta
           draft={scheduleDraft}
           subjectTitle={buildDraftReportTitle(scheduleDraft.scope, scheduleDraft.cadence, scheduleDraft.companyId, companies)}
           subjectScope={resolveDraftScopeLabel(scheduleDraft, companies)}
-          subjectPeriod={resolveDraftPeriodLabel()}
+          subjectPeriod={resolveDraftPeriodLabel(scheduleDraft.cadence)}
           onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
           onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
         />

@@ -1,16 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { hasPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorBulkDeleteSchema, monitorInputSchema } from "@/lib/monitors/schemas";
-import { createMonitor, deleteMonitors, listMonitors, SOFT_DELETE_UNDO_MS } from "@/lib/monitors/service";
+import {
+  createMonitor,
+  deleteMonitors,
+  listMonitors,
+  listMonitorsPage,
+  SOFT_DELETE_UNDO_MS,
+} from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { getSettings } from "@/lib/settings/service";
 import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
+
+const monitorListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  pageSize: z.coerce.number().int().min(10).max(100).default(50),
+  search: z.string().trim().max(200).optional(),
+  companyId: z.string().trim().max(120).optional(),
+  status: z.enum(["up", "down", "pending"]).optional(),
+  sort: z.enum(["createdAt", "name", "status", "lastCheckedAt", "latencyMs"]).default("createdAt"),
+  direction: z.enum(["asc", "desc"]).default("desc"),
+});
 
 function serializeMonitor(
   monitor: Awaited<ReturnType<typeof listMonitors>>[number],
@@ -19,12 +36,37 @@ function serializeMonitor(
   return serializeMonitorRecord(monitor, includeSecrets);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
 
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const searchParams = Object.fromEntries(request.nextUrl.searchParams.entries());
+    const usesServerQuery = request.nextUrl.searchParams.size > 0;
+    if (usesServerQuery) {
+      const parsedQuery = monitorListQuerySchema.safeParse(searchParams);
+      if (!parsedQuery.success) {
+        return NextResponse.json(
+          { message: parsedQuery.error.issues[0]?.message ?? "Invalid monitor query." },
+          { status: 400 }
+        );
+      }
+      const result = await listMonitorsPage(
+        session.id,
+        parsedQuery.data,
+        undefined,
+        session.activeWorkspaceId!
+      );
+
+      return NextResponse.json({
+        monitors: result.monitors.map((monitor) =>
+          serializeMonitor(monitor, hasPermission(session.role, "monitors.manage"))
+        ),
+        pagination: result.pagination,
+      });
     }
 
     const monitors = await listMonitors(session.id, undefined, session.activeWorkspaceId!);

@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
     const session = await requireAdminSession();
 
     const format = request.nextUrl.searchParams.get("format") === "yaml" ? "yaml" : "json";
-    const bundle = await buildWorkspaceBackupBundle(session.id);
+    const bundle = await buildWorkspaceBackupBundle(
+      session.id,
+      session.activeWorkspaceId ?? undefined
+    );
     const body = serializeWorkspaceBackup(bundle, format);
     try {
       await recordWorkspaceBackupExport(session.id, bundle.exportedAt);

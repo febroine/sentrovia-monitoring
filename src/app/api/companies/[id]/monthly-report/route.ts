@@ -15,7 +15,12 @@ export async function GET(_request: NextRequest, context: { params: Params }) {
     }
 
     const { id } = await context.params;
-    const report = await getCompanyMonthlyUptimeReport(session.id, id);
+    const report = await getCompanyMonthlyUptimeReport(
+      session.id,
+      id,
+      new Date(),
+      session.activeWorkspaceId!
+    );
 
     if (!report) {
       return NextResponse.json({ message: "Company report not found." }, { status: 404 });

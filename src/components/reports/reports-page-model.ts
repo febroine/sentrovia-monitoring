@@ -126,7 +126,7 @@ export function buildScheduleName(scope: ReportScope, cadence: ReportCadence, co
 }
 
 export function buildDraftReportTitle(scope: ReportScope, cadence: ReportCadence, companyId: string, companies: CompanyRecord[]) {
-  const periodLabel = cadence === "weekly" ? "Weekly" : "7-Day";
+  const periodLabel = cadence === "weekly" ? "Weekly" : "Monthly";
 
   return buildScopedReportName(scope, companyId, companies, periodLabel);
 }
@@ -152,8 +152,8 @@ export function resolveDraftScopeLabel(
   return companies.find((company) => company.id === draft.companyId)?.name ?? "Company";
 }
 
-export function resolveDraftPeriodLabel() {
-  return "Last 7 days";
+export function resolveDraftPeriodLabel(cadence: ReportCadence = "weekly") {
+  return cadence === "weekly" ? "Last 7 days" : "Last 30 days";
 }
 
 export function getCadenceLabel(cadence: ReportCadence) {
@@ -220,4 +220,3 @@ export function downloadFile(content: string, filename: string, mimeType: string
   anchor.click();
   URL.revokeObjectURL(url);
 }
-

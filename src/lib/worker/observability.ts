@@ -42,6 +42,22 @@ const OBSERVABILITY_LIMITS: Record<WorkerObservabilityRange, { checks: number; c
   "7d": { checks: 16_000, cycles: 3_000 },
 };
 
+function monitorOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId);
+}
+
+function checkOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(monitorChecks.workspaceId, workspaceId)
+    : eq(monitorChecks.userId, userId);
+}
+
+function eventOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(monitorEvents.workspaceId, workspaceId)
+    : eq(monitorEvents.userId, userId);
+}
+
 export async function recordWorkerCycleMetric(input: {
   cycleStartedAt: Date;
   cycleFinishedAt: Date;
@@ -82,7 +98,8 @@ export async function getWorkerObservability(
     lastCyclePendingCount: number;
     lastCycleAverageLatencyMs: number | null;
   },
-  range: WorkerObservabilityRange = "24h"
+  range: WorkerObservabilityRange = "24h",
+  workspaceId?: string
 ): Promise<WorkerObservability> {
   const config = RANGE_CONFIG[range];
   const limits = OBSERVABILITY_LIMITS[range];
@@ -104,7 +121,7 @@ export async function getWorkerObservability(
       .from(monitors)
       .where(
         and(
-          eq(monitors.userId, userId),
+          monitorOwnershipCondition(userId, workspaceId),
           eq(monitors.isActive, true),
           isNull(monitors.deletedAt),
           or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
@@ -123,7 +140,11 @@ export async function getWorkerObservability(
         timeout: monitors.timeout,
       })
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), eq(monitors.isActive, true), isNull(monitors.deletedAt)))
+      .where(and(
+        monitorOwnershipCondition(userId, workspaceId),
+        eq(monitors.isActive, true),
+        isNull(monitors.deletedAt)
+      ))
       .orderBy(desc(monitors.updatedAt)),
     db
       .select({
@@ -134,7 +155,7 @@ export async function getWorkerObservability(
         createdAt: monitorChecks.createdAt,
       })
       .from(monitorChecks)
-      .where(and(eq(monitorChecks.userId, userId), gte(monitorChecks.createdAt, rangeStart)))
+      .where(and(checkOwnershipCondition(userId, workspaceId), gte(monitorChecks.createdAt, rangeStart)))
       .orderBy(desc(monitorChecks.createdAt))
       .limit(limits.checks),
     db
@@ -146,7 +167,7 @@ export async function getWorkerObservability(
       .from(monitorEvents)
       .where(
         and(
-          eq(monitorEvents.userId, userId),
+          eventOwnershipCondition(userId, workspaceId),
           eq(monitorEvents.eventType, "failure"),
           gte(monitorEvents.createdAt, rangeStart)
         )
@@ -156,13 +177,13 @@ export async function getWorkerObservability(
     db
       .select({ total: count() })
       .from(monitorChecks)
-      .where(and(eq(monitorChecks.userId, userId), gte(monitorChecks.createdAt, rangeStart))),
+      .where(and(checkOwnershipCondition(userId, workspaceId), gte(monitorChecks.createdAt, rangeStart))),
     db
       .select({ total: count() })
       .from(monitorEvents)
       .where(
         and(
-          eq(monitorEvents.userId, userId),
+          eventOwnershipCondition(userId, workspaceId),
           eq(monitorEvents.eventType, "failure"),
           gte(monitorEvents.createdAt, rangeStart)
         )

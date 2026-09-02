@@ -83,8 +83,9 @@ describe("worker phase connectivity guard", () => {
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
 
-  it("does not start outbound work when stopped after monitor checks", async () => {
+  it("finishes an already-started delivery retry before honoring a stop after monitor checks", async () => {
     const isRunRequested = vi.fn()
+      .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
@@ -92,7 +93,7 @@ describe("worker phase connectivity guard", () => {
     await expect(runWorkerPhases(isRunRequested)).resolves.toEqual({ status: "stopped" });
 
     expect(runMonitoringCycle).toHaveBeenCalledOnce();
-    expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
+    expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
 

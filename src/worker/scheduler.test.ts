@@ -110,6 +110,14 @@ vi.mock("@/lib/worker/observability", () => ({
 vi.mock("@/worker/checker", () => ({
   calculateNextCheckAt: (monitor: Monitor, checkedAt: Date) =>
     new Date(checkedAt.getTime() + monitor.intervalValue * 60_000),
+  calculateOutageRecheckAt: (monitor: Monitor, checkedAt: Date) => {
+    const intervalMs = monitor.intervalUnit === "sn"
+      ? monitor.intervalValue * 1_000
+      : monitor.intervalUnit === "sa"
+        ? monitor.intervalValue * 60 * 60_000
+        : monitor.intervalValue * 60_000;
+    return new Date(checkedAt.getTime() + Math.min(intervalMs, 60_000));
+  },
   calculateVerificationCheckAt: (checkedAt: Date) => new Date(checkedAt.getTime() + 60_000),
   checkMonitor: mocks.checkMonitor,
 }));
@@ -212,6 +220,31 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.refreshMonitorUptime).not.toHaveBeenCalled();
   });
 
+  it("keeps checking every minute when verification confirms an outage", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "pending",
+        retries: 2,
+        intervalValue: 15,
+        verificationMode: true,
+        verificationFailureCount: 1,
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "down",
+        nextCheckAt: new Date("2026-05-08T07:01:00.000Z"),
+        verificationMode: false,
+        verificationFailureCount: 0,
+      }),
+      "lease-1"
+    );
+  });
+
   it("records diagnostics and outage timeline events for failed verification attempts", async () => {
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
@@ -249,7 +282,7 @@ describe("monitoring scheduler verification flow", () => {
       "monitor-1",
       expect.objectContaining({
         status: "down",
-        nextCheckAt: new Date("2026-05-08T07:05:00.000Z"),
+        nextCheckAt: new Date("2026-05-08T07:01:00.000Z"),
         verificationMode: false,
         verificationFailureCount: 0,
       }),

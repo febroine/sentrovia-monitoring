@@ -7,7 +7,7 @@ vi.mock("@/worker/check-ping", () => ({ checkPingMonitor: vi.fn() }));
 vi.mock("@/worker/check-port", () => ({ checkPortMonitor: vi.fn() }));
 vi.mock("@/worker/check-postgres", () => ({ checkPostgresMonitor: vi.fn() }));
 
-import { calculateNextCheckAt, checkMonitor } from "@/worker/checker";
+import { calculateNextCheckAt, calculateOutageRecheckAt, checkMonitor } from "@/worker/checker";
 import { checkHttpMonitor } from "@/worker/check-http";
 
 describe("monitor checker dispatch", () => {
@@ -48,6 +48,24 @@ describe("monitor checker dispatch", () => {
 
     expect(calculateNextCheckAt(monitor, checkedAt)).toEqual(
       new Date("2026-05-08T07:06:00.001Z")
+    );
+  });
+
+  it("rechecks a confirmed outage within one minute when the normal interval is longer", () => {
+    const monitor = { intervalValue: 15, intervalUnit: "dk" } as Monitor;
+    const checkedAt = new Date("2026-09-01T11:06:00.000Z");
+
+    expect(calculateOutageRecheckAt(monitor, checkedAt)).toEqual(
+      new Date("2026-09-01T11:07:00.000Z")
+    );
+  });
+
+  it("does not slow confirmed outage checks that already run more frequently", () => {
+    const monitor = { intervalValue: 30, intervalUnit: "sn" } as Monitor;
+    const checkedAt = new Date("2026-09-01T11:06:00.000Z");
+
+    expect(calculateOutageRecheckAt(monitor, checkedAt)).toEqual(
+      new Date("2026-09-01T11:06:30.000Z")
     );
   });
 });

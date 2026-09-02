@@ -28,6 +28,7 @@ import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { getWorkspaceRestoreRevision } from "@/lib/system/restore-approval";
 import { createPublicStatusPage, listPublicStatusPages } from "@/lib/public-status/pages-service";
+import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
 import {
   publicStatusBackupPageSchema,
   type PublicStatusBackupPage,
@@ -39,12 +40,17 @@ type ExistingPostgresMonitorSecret = {
   databasePasswordEncrypted: string | null;
 };
 
-export async function buildWorkspaceBackupBundle(userId: string): Promise<WorkspaceBackupBundle> {
+export async function buildWorkspaceBackupBundle(
+  userId: string,
+  workspaceId?: string
+): Promise<WorkspaceBackupBundle> {
+  const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId);
+  const subject = { userId, workspaceId: resolvedWorkspaceId };
   const [settings, companyRows, monitorRows, publicStatusPageRows] = await Promise.all([
     getSettings(userId),
-    listCompanies(userId),
-    listMonitors(userId),
-    listPublicStatusPages(userId),
+    listCompanies(subject),
+    listMonitors(userId, db, resolvedWorkspaceId),
+    listPublicStatusPages(userId, db, resolvedWorkspaceId),
   ]);
 
   const exportedAt = new Date().toISOString();
@@ -149,17 +155,19 @@ export function parseWorkspaceBackup(raw: string, format: "json" | "yaml") {
 export async function restoreWorkspaceBackup(
   userId: string,
   bundle: WorkspaceBackupBundle,
-  options: { expectedRevision?: string } = {}
+  options: { expectedRevision?: string; workspaceId?: string } = {}
 ) {
   if (!bundle.settings || !Array.isArray(bundle.companies) || !Array.isArray(bundle.monitors)) {
     throw new Error("The backup file does not match the Sentrovia workspace format.");
   }
 
   const validated = validateWorkspaceBackupBundle(bundle);
+  const workspaceId = options.workspaceId ?? await requireWorkspaceIdForUser(userId);
+  const subject = { userId, workspaceId };
 
   await db.transaction(async (tx) => {
     if (options.expectedRevision) {
-      const currentRevision = await getWorkspaceRestoreRevision(userId, tx);
+      const currentRevision = await getWorkspaceRestoreRevision(userId, tx, workspaceId);
       if (currentRevision !== options.expectedRevision) {
         throw new AuthError(
           "Workspace data changed after the restore analysis. Analyze the backup again.",
@@ -168,7 +176,7 @@ export async function restoreWorkspaceBackup(
       }
     }
 
-    const existingMonitorSecrets = await listExistingPostgresMonitorSecrets(userId, tx);
+    const existingMonitorSecrets = await listExistingPostgresMonitorSecrets(userId, tx, workspaceId);
     const restorableMonitors = restorePostgresMonitorPasswords(
       validated.monitors,
       existingMonitorSecrets
@@ -177,17 +185,17 @@ export async function restoreWorkspaceBackup(
       .select({ scheduleId: reportSchedules.id, companyName: companies.name })
       .from(reportSchedules)
       .innerJoin(companies, eq(reportSchedules.companyId, companies.id))
-      .where(eq(reportSchedules.userId, userId));
+      .where(eq(reportSchedules.workspaceId, workspaceId));
 
-    await tx.delete(monitorChecks).where(eq(monitorChecks.userId, userId));
-    await tx.delete(monitorEvents).where(eq(monitorEvents.userId, userId));
-    await tx.delete(monitorOutages).where(eq(monitorOutages.userId, userId));
-    await tx.delete(monitors).where(eq(monitors.userId, userId));
-    await tx.delete(publicStatusPages).where(eq(publicStatusPages.userId, userId));
-    await tx.delete(companies).where(eq(companies.userId, userId));
+    await tx.delete(monitorChecks).where(eq(monitorChecks.workspaceId, workspaceId));
+    await tx.delete(monitorEvents).where(eq(monitorEvents.workspaceId, workspaceId));
+    await tx.delete(monitorOutages).where(eq(monitorOutages.workspaceId, workspaceId));
+    await tx.delete(monitors).where(eq(monitors.workspaceId, workspaceId));
+    await tx.delete(publicStatusPages).where(eq(publicStatusPages.workspaceId, workspaceId));
+    await tx.delete(companies).where(eq(companies.workspaceId, workspaceId));
 
     const restoredCompanies = await Promise.all(
-      validated.companies.map((company) => createCompany(userId, company, tx))
+      validated.companies.map((company) => createCompany(subject, company, tx))
     );
 
     const companyIdByName = buildCompanyIdByName(restoredCompanies);
@@ -197,19 +205,19 @@ export async function restoreWorkspaceBackup(
       companyIdByName
     );
     await upsertSettings(userId, restoredSettings, tx, true);
-    await restorePublicStatusPages(userId, validated.publicStatusPages, companyIdByName, tx);
-    await remapReportScheduleCompanies(userId, scheduleCompanyMappings, companyIdByName, tx);
+    await restorePublicStatusPages(userId, validated.publicStatusPages, companyIdByName, tx, workspaceId);
+    await remapReportScheduleCompanies(workspaceId, scheduleCompanyMappings, companyIdByName, tx);
     const restoredMonitors = restorableMonitors.map((monitor) => ({
       ...monitor,
       companyId: resolveRestoredCompanyId(monitor.company, companyIdByName),
     }));
 
-    await createManyMonitors(userId, restoredMonitors, tx);
+    await createManyMonitors(userId, restoredMonitors, tx, workspaceId);
   }, { isolationLevel: "serializable" });
 
   return {
-    companies: await listCompanies(userId),
-    monitors: await listMonitors(userId),
+    companies: await listCompanies(subject),
+    monitors: await listMonitors(userId, db, workspaceId),
   };
 }
 
@@ -279,7 +287,8 @@ export function restorePostgresMonitorPasswords(
 
 async function listExistingPostgresMonitorSecrets(
   userId: string,
-  database: DatabaseExecutor
+  database: DatabaseExecutor,
+  workspaceId?: string
 ) {
   return database
     .select({
@@ -288,11 +297,20 @@ async function listExistingPostgresMonitorSecrets(
       databasePasswordEncrypted: monitors.databasePasswordEncrypted,
     })
     .from(monitors)
-    .where(and(eq(monitors.userId, userId), eq(monitors.monitorType, "postgres")));
+    .where(and(
+      workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId),
+      eq(monitors.monitorType, "postgres")
+    ));
 }
 
-export async function previewWorkspaceBackupRestore(userId: string, bundle: WorkspaceBackupBundle) {
+export async function previewWorkspaceBackupRestore(
+  userId: string,
+  bundle: WorkspaceBackupBundle,
+  workspaceId?: string
+) {
   const validated = validateWorkspaceBackupBundle(bundle);
+  const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId);
+  const subject = { userId, workspaceId: resolvedWorkspaceId };
   return db.transaction(async (tx) => {
     const [
       currentCompanies,
@@ -301,18 +319,18 @@ export async function previewWorkspaceBackupRestore(userId: string, bundle: Work
       scheduleCompanyMappings,
       workspaceRevision,
     ] = await Promise.all([
-      listCompanies(userId, tx),
-      listMonitors(userId, tx),
-      listExistingPostgresMonitorSecrets(userId, tx),
+      listCompanies(subject, tx),
+      listMonitors(userId, tx, resolvedWorkspaceId),
+      listExistingPostgresMonitorSecrets(userId, tx, resolvedWorkspaceId),
       tx
         .select({ companyName: companies.name })
         .from(reportSchedules)
         .innerJoin(companies, eq(reportSchedules.companyId, companies.id))
         .where(and(
-          eq(reportSchedules.userId, userId),
+          eq(reportSchedules.workspaceId, resolvedWorkspaceId),
           isNotNull(reportSchedules.companyId)
         )),
-      getWorkspaceRestoreRevision(userId, tx),
+      getWorkspaceRestoreRevision(userId, tx, resolvedWorkspaceId),
     ]);
 
     restorePostgresMonitorPasswords(validated.monitors, existingMonitorSecrets);
@@ -369,7 +387,7 @@ export function buildWorkspaceRestorePreview(
 }
 
 async function remapReportScheduleCompanies(
-  userId: string,
+  workspaceId: string,
   mappings: Array<{ scheduleId: string; companyName: string }>,
   companyIdByName: Map<string, string>,
   database: DatabaseExecutor
@@ -387,7 +405,10 @@ async function remapReportScheduleCompanies(
             lastErrorMessage: "The assigned company was not included in the restored backup.",
             updatedAt: new Date(),
           })
-      .where(and(eq(reportSchedules.userId, userId), eq(reportSchedules.id, mapping.scheduleId)));
+      .where(and(
+        eq(reportSchedules.workspaceId, workspaceId),
+        eq(reportSchedules.id, mapping.scheduleId)
+      ));
   }
 }
 
@@ -484,11 +505,12 @@ async function restorePublicStatusPages(
   userId: string,
   pages: PublicStatusBackupPage[],
   companyIdByName: Map<string, string>,
-  database: DatabaseExecutor
+  database: DatabaseExecutor,
+  workspaceId?: string
 ) {
   const remappedPages = remapPublicStatusPages(pages, companyIdByName);
   for (const page of remappedPages) {
-    await createPublicStatusPage(userId, page, database);
+    await createPublicStatusPage(userId, page, database, workspaceId);
   }
 }
 

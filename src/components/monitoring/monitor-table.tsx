@@ -2,11 +2,10 @@ import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Power, Send, Setti
 import type { KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MonitorHistoryStrip } from "@/components/monitoring/monitor-history-strip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getMonitorTargetDisplay, getMonitorTypeLabel } from "@/lib/monitors/targets";
-import type { MonitorHistoryPoint, MonitorRecord, NotificationPref, SiteStatus } from "@/lib/monitors/types";
+import type { MonitorRecord, NotificationPref, SiteStatus } from "@/lib/monitors/types";
 import { formatLastChecked } from "@/components/monitoring/utils";
 
 function StatusBadge({
@@ -81,7 +80,6 @@ export function MonitorTable({
   monitors,
   readOnly = false,
   loading,
-  historyByMonitor,
   selectedIds,
   activeTogglePendingId,
   flagPendingId,
@@ -92,12 +90,11 @@ export function MonitorTable({
   onToggleActive,
   onToggleFlag,
   onEdit,
-  onSelectTimelinePoint,
+  onOpenTimeline,
 }: {
   monitors: MonitorRecord[];
   readOnly?: boolean;
   loading: boolean;
-  historyByMonitor: Record<string, MonitorHistoryPoint[]>;
   selectedIds: Set<string>;
   activeTogglePendingId: string | null;
   flagPendingId: string | null;
@@ -108,7 +105,7 @@ export function MonitorTable({
   onToggleActive: (monitor: MonitorRecord) => void;
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
   onEdit: (monitor: MonitorRecord) => void;
-  onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
+  onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
   return (
     <>
@@ -234,12 +231,10 @@ export function MonitorTable({
                 </TableCell>
                 <TableCell className="px-1.5"><NotificationBadge pref={monitor.notificationPref} /></TableCell>
                 <TableCell className="overflow-hidden px-1.5"><span className="block truncate" title={monitor.company ?? undefined}>{monitor.company ?? "--"}</span></TableCell>
-                <TableCell className="px-1.5">
-                  <MonitorHistoryStrip
-                    points={historyByMonitor[monitor.id] ?? []}
-                    onSelect={(point) => onSelectTimelinePoint(monitor, point)}
-                    compact
-                  />
+                <TableCell className="px-1.5" onClick={(event) => event.stopPropagation()}>
+                  <Button variant="ghost" size="sm" onClick={() => onOpenTimeline(monitor)}>
+                    View
+                  </Button>
                 </TableCell>
                 <TableCell className="overflow-hidden px-1.5"><span className="block truncate text-muted-foreground" title={formatLastChecked(monitor.lastCheckedAt)}>{formatLastChecked(monitor.lastCheckedAt)}</span></TableCell>
                 <TableCell className="px-1.5">{monitor.uptime}</TableCell>
@@ -290,7 +285,6 @@ export function MonitorTable({
       monitors={monitors}
       readOnly={readOnly}
       loading={loading}
-      historyByMonitor={historyByMonitor}
       selectedIds={selectedIds}
       activeTogglePendingId={activeTogglePendingId}
       flagPendingId={flagPendingId}
@@ -301,7 +295,7 @@ export function MonitorTable({
       onToggleActive={onToggleActive}
       onToggleFlag={onToggleFlag}
       onEdit={onEdit}
-      onSelectTimelinePoint={onSelectTimelinePoint}
+      onOpenTimeline={onOpenTimeline}
       />
     </>
   );
@@ -311,7 +305,6 @@ function MobileMonitorList({
   monitors,
   readOnly,
   loading,
-  historyByMonitor,
   selectedIds,
   activeTogglePendingId,
   flagPendingId,
@@ -322,12 +315,11 @@ function MobileMonitorList({
   onToggleActive,
   onToggleFlag,
   onEdit,
-  onSelectTimelinePoint,
+  onOpenTimeline,
 }: {
   monitors: MonitorRecord[];
   readOnly: boolean;
   loading: boolean;
-  historyByMonitor: Record<string, MonitorHistoryPoint[]>;
   selectedIds: Set<string>;
   activeTogglePendingId: string | null;
   flagPendingId: string | null;
@@ -338,7 +330,7 @@ function MobileMonitorList({
   onToggleActive: (monitor: MonitorRecord) => void;
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
   onEdit: (monitor: MonitorRecord) => void;
-  onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
+  onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
   if (loading) {
     return <div className="border-y border-border px-4 py-8 text-center text-sm text-muted-foreground md:hidden">Loading monitors...</div>;
@@ -368,7 +360,6 @@ function MobileMonitorList({
           key={monitor.id}
           monitor={monitor}
           readOnly={readOnly}
-          history={historyByMonitor[monitor.id] ?? []}
           selected={selectedIds.has(monitor.id)}
           activePending={activeTogglePendingId === monitor.id}
           flagPending={flagPendingId === monitor.id}
@@ -376,7 +367,7 @@ function MobileMonitorList({
           onToggleActive={onToggleActive}
           onToggleFlag={onToggleFlag}
           onEdit={onEdit}
-          onSelectTimelinePoint={onSelectTimelinePoint}
+          onOpenTimeline={onOpenTimeline}
         />
       ))}
     </div>
@@ -386,7 +377,6 @@ function MobileMonitorList({
 function MobileMonitorCard({
   monitor,
   readOnly,
-  history,
   selected,
   activePending,
   flagPending,
@@ -394,11 +384,10 @@ function MobileMonitorCard({
   onToggleActive,
   onToggleFlag,
   onEdit,
-  onSelectTimelinePoint,
+  onOpenTimeline,
 }: {
   monitor: MonitorRecord;
   readOnly: boolean;
-  history: MonitorHistoryPoint[];
   selected: boolean;
   activePending: boolean;
   flagPending: boolean;
@@ -406,7 +395,7 @@ function MobileMonitorCard({
   onToggleActive: (monitor: MonitorRecord) => void;
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
   onEdit: (monitor: MonitorRecord) => void;
-  onSelectTimelinePoint: (monitor: MonitorRecord, point: MonitorHistoryPoint) => void;
+  onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
   function openOnEnter(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Enter" || event.key === " ") {
@@ -447,7 +436,9 @@ function MobileMonitorCard({
         <MobileMetric label="Uptime" value={monitor.uptime} />
       </div>
       <div className="mt-3" onClick={(event) => event.stopPropagation()}>
-        <MonitorHistoryStrip points={history} onSelect={(point) => onSelectTimelinePoint(monitor, point)} compact />
+        <Button variant="outline" size="sm" onClick={() => onOpenTimeline(monitor)}>
+          View timeline
+        </Button>
       </div>
       {!readOnly ? <div className="mt-3 flex items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
         <button type="button" onClick={() => onToggleOne(monitor.id)} className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground">

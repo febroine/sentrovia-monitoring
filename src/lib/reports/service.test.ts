@@ -76,20 +76,28 @@ describe("scheduleNextRunAfter", () => {
 describe("resolveReportPeriod", () => {
   const now = new Date("2026-08-14T12:00:00.000Z");
 
-  it("always uses a rolling seven-day window", () => {
+  it("uses a rolling seven-day window for weekly reports", () => {
     const period = resolveReportPeriod(now);
 
     expect(period.startedAt.toISOString()).toBe("2026-08-07T12:00:00.000Z");
     expect(period.endedAt).toBe(now);
     expect(period.label).toBe("Last 7 days");
   });
+
+  it("uses a rolling thirty-day window for monthly reports", () => {
+    const period = resolveReportPeriod(now, "monthly");
+
+    expect(period.startedAt.toISOString()).toBe("2026-07-15T12:00:00.000Z");
+    expect(period.endedAt).toBe(now);
+    expect(period.label).toBe("Last 30 days");
+  });
 });
 
 describe("resolveReportTitle", () => {
-  it("does not label a rolling seven-day report as monthly or all-time", () => {
+  it("labels weekly and monthly report periods accurately", () => {
     expect(resolveReportTitle("weekly", "global", null)).toBe("Weekly Workspace Report");
-    expect(resolveReportTitle("monthly", "global", null)).toBe("7-Day Workspace Report");
-    expect(resolveReportTitle("all_time", "company", "Payments")).toBe("7-Day Payments Report");
+    expect(resolveReportTitle("monthly", "global", null)).toBe("Monthly Workspace Report");
+    expect(resolveReportTitle("all_time", "company", "Payments")).toBe("Monthly Payments Report");
   });
 });
 
