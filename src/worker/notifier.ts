@@ -11,6 +11,7 @@ import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
 import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
+import { getActiveNotificationSuppression } from "@/lib/maintenance/service";
 
 type NotificationDeliveryResult = { status: string } | null | undefined;
 const SSL_EXPIRY_DEDUP_MINUTES = 24 * 60;
@@ -20,7 +21,15 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     return false;
   }
 
-  const settings = await getSettings(context.monitor.userId);
+  const suppression = await getActiveNotificationSuppression(
+    context.monitor.workspaceId,
+    context.monitor.id
+  );
+  if (shouldSuppressNotificationForMaintenance(context.kind, suppression)) {
+    return false;
+  }
+
+  const settings = await getSettings(context.monitor.userId, true, context.monitor.workspaceId);
   const decision = await evaluateNotificationDecisionWithSettings(context, settings);
   if (!decision.wouldNotify) {
     return false;
@@ -43,6 +52,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     deliveryResults.push(
       await sendEmailDelivery({
         userId: context.monitor.userId,
+        workspaceId: context.monitor.workspaceId,
         kind: context.kind,
         monitorId: context.monitor.id,
         destinationOverride: routing?.emailRecipients ?? context.monitor.notifEmail,
@@ -59,6 +69,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     deliveryResults.push(
       await sendTelegramDelivery({
         userId: context.monitor.userId,
+        workspaceId: context.monitor.workspaceId,
         kind: context.kind,
         monitorId: context.monitor.id,
         botToken: routing?.telegramBotToken ?? context.monitor.telegramBotToken ?? "",
@@ -72,12 +83,20 @@ export async function sendMonitorNotifications(context: NotificationContext) {
 
   if (settings.notifications.discordEnabled && settings.notifications.discordWebhookUrl) {
     deliveryResults.push(
-      await sendChannelWebhookDelivery(context.monitor.userId, "discord", context.kind, rendered.textBody, context.monitor.id)
+      await sendChannelWebhookDelivery(
+        context.monitor.userId,
+        "discord",
+        context.kind,
+        rendered.textBody,
+        context.monitor.id,
+        context.monitor.workspaceId
+      )
     );
   }
 
   const webhookPayload = await buildNotificationWebhookPayload({
     userId: context.monitor.userId,
+    workspaceId: context.monitor.workspaceId,
     kind: context.kind,
     monitorName: context.monitor.name,
     url: context.monitor.url,
@@ -89,7 +108,15 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     rcaTitle: context.rca.title,
     rcaSummary: context.rca.summary,
   });
-  deliveryResults.push(await sendWebhookDelivery(context.monitor.userId, context.kind, webhookPayload, context.monitor.id));
+  deliveryResults.push(
+    await sendWebhookDelivery(
+      context.monitor.userId,
+      context.kind,
+      webhookPayload,
+      context.monitor.id,
+      context.monitor.workspaceId
+    )
+  );
 
   return deliveryResults.some(isAcceptedDelivery);
 }
@@ -132,8 +159,23 @@ export async function evaluateNotificationDecision(context: NotificationContext)
     return suppress("Routine checks do not generate notifications.");
   }
 
-  const settings = await getSettings(context.monitor.userId);
+  const suppression = await getActiveNotificationSuppression(
+    context.monitor.workspaceId,
+    context.monitor.id
+  );
+  if (shouldSuppressNotificationForMaintenance(context.kind, suppression)) {
+    return suppress(`Notifications are silenced by ${suppression?.title ?? "an active maintenance window"}.`);
+  }
+
+  const settings = await getSettings(context.monitor.userId, true, context.monitor.workspaceId);
   return evaluateNotificationDecisionWithSettings(context, settings);
+}
+
+export function shouldSuppressNotificationForMaintenance(
+  kind: NotificationContext["kind"],
+  suppression: { id: string } | null | undefined
+) {
+  return kind !== "check" && Boolean(suppression);
 }
 
 async function evaluateNotificationDecisionWithSettings(

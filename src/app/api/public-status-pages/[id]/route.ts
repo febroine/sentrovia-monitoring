@@ -45,8 +45,9 @@ export async function PATCH(request: NextRequest, context: PublicStatusPageRoute
       return NextResponse.json({ message: "Public status page not found." }, { status: 404 });
     }
 
-    await recordAuditEventSafely({
-      userId: session.id,
+await recordAuditEventSafely({
+userId: session.id,
+workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "settings",
@@ -82,8 +83,9 @@ export async function DELETE(_request: NextRequest, context: PublicStatusPageRou
       return NextResponse.json({ message: "Public status page not found." }, { status: 404 });
     }
 
-    await recordAuditEventSafely({
-      userId: session.id,
+await recordAuditEventSafely({
+userId: session.id,
+workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "settings",

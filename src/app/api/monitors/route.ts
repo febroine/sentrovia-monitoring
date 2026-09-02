@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
-import { hasPermission } from "@/lib/auth/permissions";
+import { assertPermission, hasPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorBulkDeleteSchema, monitorInputSchema } from "@/lib/monitors/schemas";
@@ -89,9 +89,10 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
-    const settings = await getSettings(session.id);
+    const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     const parsed = monitorInputSchema.safeParse(applyMonitorDefaults(body, settings));
 
     if (!parsed.success) {
@@ -101,6 +102,7 @@ export async function POST(request: NextRequest) {
     const monitor = await createMonitor(session.id, parsed.data, session.activeWorkspaceId!);
     await recordAuditEventSafely({
       userId: session.id,
+      workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "monitor",
@@ -124,6 +126,7 @@ export async function DELETE(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    assertPermission(session.role, "monitors.manage");
 
     const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
     const parsed = monitorBulkDeleteSchema.safeParse(body);
@@ -135,6 +138,7 @@ export async function DELETE(request: NextRequest) {
     const deleted = await deleteMonitors(session.id, parsed.data.ids, session.activeWorkspaceId!);
     await Promise.all(deleted.map((monitor) => recordAuditEventSafely({
       userId: session.id,
+      workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "monitor",

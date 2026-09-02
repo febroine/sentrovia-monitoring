@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
@@ -33,7 +34,8 @@ export async function PATCH(request: NextRequest, context: MonitorRouteContext) 
 
     const { id } = await context.params;
     const body = await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES);
-    const settings = await getSettings(session.id);
+    assertPermission(session.role, "monitors.manage");
+    const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     const parsed = monitorInputSchema.safeParse(applyMonitorDefaults(body, settings));
 
     if (!parsed.success) {
@@ -45,9 +47,9 @@ export async function PATCH(request: NextRequest, context: MonitorRouteContext) 
     if (!monitor) {
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });
     }
-
     await recordAuditEventSafely({
       userId: session.id,
+      workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "monitor",
@@ -73,14 +75,15 @@ export async function DELETE(_request: NextRequest, context: MonitorRouteContext
     }
 
     const { id } = await context.params;
+    assertPermission(session.role, "monitors.manage");
     const deleted = await deleteMonitors(session.id, [id], session.activeWorkspaceId!);
 
     if (deleted.length === 0) {
       return NextResponse.json({ message: "Monitor not found." }, { status: 404 });
     }
-
     await recordAuditEventSafely({
       userId: session.id,
+      workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "monitor",

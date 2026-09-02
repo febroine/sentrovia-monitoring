@@ -1,6 +1,7 @@
 import type { CompanyRecord } from "@/lib/companies/types";
 import type {
   ReportCadence,
+  ReportPeriodRange,
   ReportScheduleRecord,
   ReportScope,
   ReportTemplateVariant,
@@ -26,6 +27,10 @@ export type DraftReport = {
   emailSubjectTemplate: string;
   emailIntroTemplate: string;
   reportBrandName: string;
+  periodRange: ReportPeriodRange;
+  periodStartedAt: string;
+  periodEndedAt: string;
+  timeZone: string;
 };
 
 export type DraftSchedule = {
@@ -57,6 +62,10 @@ export const EMPTY_REPORT_DRAFT: DraftReport = {
   emailSubjectTemplate: "",
   emailIntroTemplate: "",
   reportBrandName: "",
+  periodRange: "7d",
+  periodStartedAt: "",
+  periodEndedAt: "",
+  timeZone: "",
 };
 
 export const EMPTY_SCHEDULE_DRAFT: DraftSchedule = {
@@ -125,8 +134,14 @@ export function buildScheduleName(scope: ReportScope, cadence: ReportCadence, co
   return buildScopedReportName(scope, companyId, companies, cadenceLabel);
 }
 
-export function buildDraftReportTitle(scope: ReportScope, cadence: ReportCadence, companyId: string, companies: CompanyRecord[]) {
-  const periodLabel = cadence === "weekly" ? "Weekly" : "Monthly";
+export function buildDraftReportTitle(
+  scope: ReportScope,
+  cadence: ReportCadence,
+  companyId: string,
+  companies: CompanyRecord[],
+  periodRange?: ReportPeriodRange
+) {
+  const periodLabel = periodRange === "custom" ? "Custom" : cadence === "weekly" ? "Weekly" : "Monthly";
 
   return buildScopedReportName(scope, companyId, companies, periodLabel);
 }
@@ -152,8 +167,35 @@ export function resolveDraftScopeLabel(
   return companies.find((company) => company.id === draft.companyId)?.name ?? "Company";
 }
 
-export function resolveDraftPeriodLabel(cadence: ReportCadence = "weekly") {
-  return cadence === "weekly" ? "Last 7 days" : "Last 30 days";
+export function resolveDraftPeriodLabel(draft: Pick<DraftReport, "periodRange" | "periodStartedAt" | "periodEndedAt" | "timeZone">) {
+  const timeZone = draft.timeZone || "Local time";
+  if (draft.periodRange === "custom") {
+    return draft.periodStartedAt && draft.periodEndedAt
+      ? `${draft.periodStartedAt} – ${draft.periodEndedAt} (${timeZone})`
+      : `Custom range (${timeZone})`;
+  }
+  return draft.periodRange === "30d" ? `Last 30 days (${timeZone})` : `Last 7 days (${timeZone})`;
+}
+
+export function buildReportPeriodPayload(draft: DraftReport) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (draft.periodRange !== "custom") {
+    return { periodRange: draft.periodRange, timeZone };
+  }
+
+  return {
+    periodRange: draft.periodRange,
+    periodStartedAt: toLocalDayBoundaryIso(draft.periodStartedAt, false),
+    periodEndedAt: toLocalDayBoundaryIso(draft.periodEndedAt, true),
+    timeZone,
+  };
+}
+
+function toLocalDayBoundaryIso(value: string, endExclusive: boolean) {
+  if (!value) return undefined;
+  const date = new Date(`${value}T00:00:00`);
+  if (endExclusive) date.setDate(date.getDate() + 1);
+  return date.toISOString();
 }
 
 export function getCadenceLabel(cadence: ReportCadence) {

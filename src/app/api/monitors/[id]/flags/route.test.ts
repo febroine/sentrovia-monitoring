@@ -13,7 +13,11 @@ import { PATCH } from "@/app/api/monitors/[id]/flags/route";
 describe("monitor dashboard flags route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ id: "user-1", activeWorkspaceId: "workspace-1" });
+    mocks.getSession.mockResolvedValue({
+      id: "user-1",
+      activeWorkspaceId: "workspace-1",
+      role: "operator",
+    });
     mocks.updateMonitorFlags.mockResolvedValue({ id: "monitor-1", isFavorite: true, isCritical: false });
   });
 
@@ -47,6 +51,26 @@ describe("monitor dashboard flags route", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(mocks.updateMonitorFlags).not.toHaveBeenCalled();
+  });
+
+  it("rejects monitor mutations from viewers", async () => {
+    mocks.getSession.mockResolvedValueOnce({
+      id: "viewer-1",
+      activeWorkspaceId: "workspace-1",
+      role: "viewer",
+    });
+
+    const response = await PATCH(
+      new Request("http://localhost/api/monitors/monitor-1/flags", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ isFavorite: true }),
+      }) as never,
+      { params: Promise.resolve({ id: "monitor-1" }) }
+    );
+
+    expect(response.status).toBe(403);
     expect(mocks.updateMonitorFlags).not.toHaveBeenCalled();
   });
 });

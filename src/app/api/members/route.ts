@@ -57,8 +57,9 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await createMember(session.activeWorkspaceId!, parsed.data);
-    await recordAuditEventSafely({
-      userId: session.id,
+await recordAuditEventSafely({
+userId: session.id,
+workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "member",
@@ -94,8 +95,9 @@ export async function DELETE(request: NextRequest) {
       parsed.data.ids
     );
     const deletedIds = deleted.map((member) => member.id);
-    await Promise.all(deleted.map((member) => recordAuditEventSafely({
-      userId: member.id === session.id ? null : session.id,
+await Promise.all(deleted.map((member) => recordAuditEventSafely({
+userId: member.id === session.id ? null : session.id,
+workspaceId: session.activeWorkspaceId!,
       actorUserId: member.id === session.id ? null : session.id,
       actorLabel: session.email,
       entityType: "member",

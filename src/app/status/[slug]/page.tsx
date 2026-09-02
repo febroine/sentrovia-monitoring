@@ -48,8 +48,50 @@ function PublicStatusView({ statusPage }: { statusPage: StatusPageData }) {
         />
         <StatusOverview overall={overall} statusPage={statusPage} />
         <ServiceStatusBoard services={statusPage.services} timeDisplaySettings={timeDisplaySettings} />
+        <PublicIncidentHistory incidents={statusPage.incidents} timeDisplaySettings={timeDisplaySettings} />
       </div>
     </main>
+  );
+}
+
+function PublicIncidentHistory({
+  incidents,
+  timeDisplaySettings,
+}: {
+  incidents: StatusPageData["incidents"];
+  timeDisplaySettings: TimeDisplaySettings;
+}) {
+  if (incidents.length === 0) return null;
+
+  return (
+    <section className="border-t border-border pt-5">
+      <div>
+        <h2 className="text-lg font-semibold">Incident history</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Public updates from the last 30 days.</p>
+      </div>
+      <div className="mt-4 divide-y divide-border border-y border-border">
+        {incidents.map((incident) => (
+          <article className="py-5" key={incident.id}>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="break-all font-semibold">{incident.monitorUrl}</h3>
+              <span className="text-sm text-muted-foreground">
+                {incident.resolvedAt ? "Resolved" : "Active"} · {formatDateTime(incident.startedAt, timeDisplaySettings)}
+              </span>
+            </div>
+            <ol className="mt-4 space-y-4 border-l border-border pl-4">
+              {incident.updates.map((update) => (
+                <li key={update.id}>
+                  <p className="text-sm leading-6">{update.message}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {formatDateTime(update.createdAt, timeDisplaySettings, { includeTimeZone: true })}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { and, asc, eq, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { automaticBackupRuns, users, userSettings, workspaceMembers } from "@/lib/db/schema";
+import { automaticBackupRuns, users, userSettings, workspaceMembers, workspaceSettings } from "@/lib/db/schema";
 import { env, getAppEncryptionSecret, getDatabaseUrl } from "@/lib/env";
 import {
   calculateFileSha256,
@@ -59,7 +59,7 @@ export async function runAutomaticDatabaseBackup(now = new Date()) {
   const run = await claimBackupRun(schedule.workspaceId, schedule.userId, scheduledDate, now);
   if (!run) return { status: "already-claimed" as const };
 
-  await markBackupSettings(schedule.userId, "running", null).catch(() => undefined);
+  await markBackupSettings(schedule.workspaceId, schedule.userId, "running", null).catch(() => undefined);
   try {
     const result = await createVerifiedBackup(scheduledDate, schedule.retentionCount, now);
     await db.transaction(async (tx) => {
@@ -75,15 +75,11 @@ export async function runAutomaticDatabaseBackup(now = new Date()) {
           updatedAt: new Date(),
         })
         .where(eq(automaticBackupRuns.id, run.id));
-      await tx
-        .update(userSettings)
-        .set({
-          lastAutomaticBackupAt: now,
-          lastBackupStatus: "completed",
-          lastBackupError: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(userSettings.userId, schedule.userId));
+      await persistBackupSettingsState(tx, schedule.workspaceId, schedule.userId, {
+        lastAutomaticBackupAt: now.toISOString(),
+        lastBackupStatus: "completed",
+        lastBackupError: null,
+      });
     });
     return { status: "completed" as const, ...result };
   } catch (error) {
@@ -93,10 +89,10 @@ export async function runAutomaticDatabaseBackup(now = new Date()) {
         .update(automaticBackupRuns)
         .set({ status: "failed", errorMessage: message, completedAt: new Date(), updatedAt: new Date() })
         .where(eq(automaticBackupRuns.id, run.id));
-      await tx
-        .update(userSettings)
-        .set({ lastBackupStatus: "failed", lastBackupError: message, updatedAt: new Date() })
-        .where(eq(userSettings.userId, schedule.userId));
+      await persistBackupSettingsState(tx, schedule.workspaceId, schedule.userId, {
+        lastBackupStatus: "failed",
+        lastBackupError: message,
+      });
     });
     throw error;
   }
@@ -111,6 +107,46 @@ export function isAutomaticBackupDue(schedule: BackupSchedule, now: Date) {
 }
 
 async function readBackupSchedule(): Promise<BackupSchedule | null> {
+  try {
+    const sharedSchedule = await readWorkspaceBackupSchedule();
+    if (sharedSchedule) return sharedSchedule;
+  } catch (error) {
+    if (!isMissingWorkspaceSettingsTable(error)) throw error;
+  }
+
+  return readLegacyBackupSchedule();
+}
+
+async function readWorkspaceBackupSchedule(): Promise<BackupSchedule | null> {
+  const rows = await db
+    .select({
+      workspaceId: workspaceSettings.workspaceId,
+      userId: users.id,
+      values: workspaceSettings.valuesJson,
+      timeZone: userSettings.timeZone,
+    })
+    .from(workspaceSettings)
+    .innerJoin(workspaceMembers, and(
+      eq(workspaceMembers.workspaceId, workspaceSettings.workspaceId),
+      eq(workspaceMembers.role, "admin")
+    ))
+    .innerJoin(users, eq(users.id, workspaceMembers.userId))
+    .innerJoin(userSettings, eq(userSettings.userId, users.id))
+    .orderBy(asc(users.createdAt));
+  const row = rows.find((item) => readWorkspaceBoolean(item.values, "autoBackupEnabled", "auto_backup_enabled"));
+  if (!row) return null;
+  return {
+    workspaceId: row.workspaceId,
+    userId: row.userId,
+    enabled: true,
+    window: readWorkspaceString(row.values, "backupWindow", "backup_window", "03:00"),
+    retentionCount: Math.min(90, Math.max(2, readWorkspaceNumber(row.values, "backupRetentionCount", "backup_retention_count", 7))),
+    timeZone: row.timeZone,
+    lastBackupAt: readWorkspaceDate(row.values, "lastAutomaticBackupAt", "last_automatic_backup_at"),
+  };
+}
+
+async function readLegacyBackupSchedule(): Promise<BackupSchedule | null> {
   const [row] = await db
     .select({
       workspaceId: workspaceMembers.workspaceId,
@@ -252,11 +288,68 @@ async function rotateBackups(directory: string, retentionCount: number) {
   await Promise.all(files.slice(retentionCount).map((file) => fs.promises.rm(file.path, { force: true })));
 }
 
-async function markBackupSettings(userId: string, status: "running" | "failed" | "completed", error: string | null) {
-  await db
-    .update(userSettings)
-    .set({ lastBackupStatus: status, lastBackupError: error, updatedAt: new Date() })
-    .where(eq(userSettings.userId, userId));
+async function markBackupSettings(
+  workspaceId: string,
+  userId: string,
+  status: "running" | "failed" | "completed",
+  error: string | null
+) {
+  await db.transaction((tx) => persistBackupSettingsState(tx, workspaceId, userId, {
+    lastBackupStatus: status,
+    lastBackupError: error,
+  }));
+}
+
+async function persistBackupSettingsState(
+  executor: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  workspaceId: string,
+  userId: string,
+  patch: Record<string, unknown>
+) {
+  const updatedAt = new Date();
+  await Promise.all([
+    executor.update(workspaceSettings).set({
+      valuesJson: sql`${workspaceSettings.valuesJson} || ${JSON.stringify(patch)}::jsonb`,
+      updatedAt,
+    }).where(eq(workspaceSettings.workspaceId, workspaceId)),
+    executor.update(userSettings).set({
+      lastAutomaticBackupAt: patch.lastAutomaticBackupAt ? new Date(String(patch.lastAutomaticBackupAt)) : undefined,
+      lastBackupStatus: String(patch.lastBackupStatus) as "running" | "failed" | "completed",
+      lastBackupError: typeof patch.lastBackupError === "string" ? patch.lastBackupError : null,
+      updatedAt,
+    }).where(eq(userSettings.userId, userId)),
+  ]);
+}
+
+function readWorkspaceValue(values: Record<string, unknown>, property: string, legacyColumn: string) {
+  return Object.hasOwn(values, property) ? values[property] : values[legacyColumn];
+}
+
+function readWorkspaceBoolean(values: Record<string, unknown>, property: string, legacyColumn: string) {
+  return readWorkspaceValue(values, property, legacyColumn) === true;
+}
+
+function readWorkspaceString(values: Record<string, unknown>, property: string, legacyColumn: string, fallback: string) {
+  const value = readWorkspaceValue(values, property, legacyColumn);
+  return typeof value === "string" && value ? value : fallback;
+}
+
+function readWorkspaceNumber(values: Record<string, unknown>, property: string, legacyColumn: string, fallback: number) {
+  const value = Number(readWorkspaceValue(values, property, legacyColumn));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function readWorkspaceDate(values: Record<string, unknown>, property: string, legacyColumn: string) {
+  const value = readWorkspaceValue(values, property, legacyColumn);
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isMissingWorkspaceSettingsTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const current = error as { code?: string; cause?: unknown };
+  return current.code === "42P01" || isMissingWorkspaceSettingsTable(current.cause);
 }
 
 function getZonedDateAndTime(date: Date, timeZone: string) {

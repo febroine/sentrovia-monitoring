@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Invalid notification preview payload." }, { status: 400 });
     }
 
-    const settings = await getSettings(session.id);
+    const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     if (!settings) {
       return NextResponse.json(
         { message: "Complete workspace setup before previewing notification templates." },

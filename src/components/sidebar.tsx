@@ -7,18 +7,17 @@ import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp,
 import { SentroviaMark } from '@/components/brand/sentrovia-mark';
 import LogoutButton from '@/components/logout-button';
 import { cn } from '@/lib/utils';
-import { useTranslation } from '@/context/translation-context';
 import { SIDEBAR_ACCENT_UPDATED_EVENT } from '@/stores/use-settings-store';
 
 const navItems = [
-  { href: '/dashboard', i18nKey: 'nav.dashboard', icon: LayoutDashboard },
-  { href: '/monitoring', i18nKey: 'nav.monitors', icon: Activity },
-  { href: '/companies', i18nKey: 'nav.companies', icon: Building2 },
-  { href: '/logs', i18nKey: 'nav.logs', icon: ScrollText },
-  { href: '/delivery', i18nKey: 'nav.delivery', icon: BellRing },
-  { href: '/reports', i18nKey: 'nav.reports', icon: BarChart3 },
-  { href: '/members', i18nKey: 'nav.members', icon: UsersRound },
-  { href: '/settings', i18nKey: 'nav.settings', icon: Settings },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/monitoring', label: 'Monitors', icon: Activity },
+  { href: '/companies', label: 'Companies', icon: Building2 },
+  { href: '/logs', label: 'Logs', icon: ScrollText },
+  { href: '/delivery', label: 'Delivery', icon: BellRing },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/members', label: 'Members', icon: UsersRound },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 const secondaryItems = [
@@ -27,7 +26,7 @@ const secondaryItems = [
   { href: '/about', label: 'About', icon: Info },
 ];
 
-type SidebarProps = React.HTMLAttributes<HTMLDivElement>;
+type SidebarProps = React.HTMLAttributes<HTMLDivElement> & { initialAccent?: string };
 type SidebarAccent = 'amber' | 'emerald' | 'sky' | 'rose' | 'violet' | 'slate';
 
 const accentClasses: Record<
@@ -70,15 +69,12 @@ const accentClasses: Record<
   },
 };
 
-export default function Sidebar({ className, ...props }: SidebarProps) {
+export default function Sidebar({ className, initialAccent, ...props }: SidebarProps) {
   const pathname = usePathname();
-  const { t } = useTranslation();
-  const [accent, setAccent] = useState<SidebarAccent>('emerald');
+  const [accent, setAccent] = useState<SidebarAccent>(isSidebarAccent(initialAccent) ? initialAccent : 'emerald');
   const palette = accentClasses[accent];
 
   useEffect(() => {
-    let active = true;
-
     function handleAccentUpdate(event: Event) {
       const detail = (event as CustomEvent<{ accent?: SidebarAccent }>).detail;
       if (detail?.accent) {
@@ -86,21 +82,9 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
       }
     }
 
-    void fetch('/api/settings', { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const data = (await response.json()) as { settings?: { appearance?: { sidebarAccent?: SidebarAccent } } };
-        if (active && data.settings?.appearance?.sidebarAccent) {
-          setAccent(data.settings.appearance.sidebarAccent);
-        }
-        return null;
-      })
-      .catch(() => undefined);
-
     window.addEventListener(SIDEBAR_ACCENT_UPDATED_EVENT, handleAccentUpdate);
 
     return () => {
-      active = false;
       window.removeEventListener(SIDEBAR_ACCENT_UPDATED_EVENT, handleAccentUpdate);
     };
   }, []);
@@ -124,7 +108,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
         </div>
 
         <nav className="flex flex-col gap-1.5">
-          {navItems.map(({ href, i18nKey, icon: Icon }) => {
+          {navItems.map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href;
             return (
               <Link
@@ -138,7 +122,7 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
                 )}
               >
                 <Icon className={cn("size-4 shrink-0 transition-colors", isActive ? palette.activeIcon : "text-muted-foreground group-hover:text-foreground")} />
-                <span className="flex-1 truncate">{t(i18nKey)}</span>
+                <span className="flex-1 truncate">{label}</span>
                 <span
                   className={cn(
                     'h-5 w-0.5 transition-colors',
@@ -188,4 +172,8 @@ export default function Sidebar({ className, ...props }: SidebarProps) {
       </div>
     </div>
   );
+}
+
+function isSidebarAccent(value: string | undefined): value is SidebarAccent {
+  return Boolean(value && Object.hasOwn(accentClasses, value));
 }

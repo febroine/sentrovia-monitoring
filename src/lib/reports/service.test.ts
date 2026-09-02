@@ -91,6 +91,20 @@ describe("resolveReportPeriod", () => {
     expect(period.endedAt).toBe(now);
     expect(period.label).toBe("Last 30 days");
   });
+
+  it("uses explicit inclusive calendar dates and reports their timezone", () => {
+    const period = resolveReportPeriod(now, "weekly", {
+      periodRange: "custom",
+      periodStartedAt: "2026-08-01T21:00:00.000Z",
+      periodEndedAt: "2026-08-05T21:00:00.000Z",
+      timeZone: "Europe/Istanbul",
+    });
+
+    expect(period.startedAt.toISOString()).toBe("2026-08-01T21:00:00.000Z");
+    expect(period.endedAt.toISOString()).toBe("2026-08-05T21:00:00.000Z");
+    expect(period.timeZone).toBe("Europe/Istanbul");
+    expect(period.label).toContain("2 Aug 2026");
+  });
 });
 
 describe("resolveReportTitle", () => {
@@ -98,6 +112,7 @@ describe("resolveReportTitle", () => {
     expect(resolveReportTitle("weekly", "global", null)).toBe("Weekly Workspace Report");
     expect(resolveReportTitle("monthly", "global", null)).toBe("Monthly Workspace Report");
     expect(resolveReportTitle("all_time", "company", "Payments")).toBe("Monthly Payments Report");
+    expect(resolveReportTitle("weekly", "global", null, "custom")).toBe("Custom Workspace Report");
   });
 });
 
@@ -223,6 +238,7 @@ function buildReport(): GeneratedReport {
     periodStartedAt: "2026-08-13T08:00:00.000Z",
     periodEndedAt: "2026-08-20T08:00:00.000Z",
     periodLabel: "Last 7 days",
+    timeZone: "UTC",
     summary: {
       monitorCount: 4,
       currentlyUp: 4,

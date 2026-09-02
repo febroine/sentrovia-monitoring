@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { decryptValue } from "@/lib/security/encryption";
-import { resolveConfiguredSecretEncrypted, resolveSmtpPasswordEncrypted } from "@/lib/settings/service";
+import {
+  mergeSettingsScopes,
+  resolveConfiguredSecretEncrypted,
+  resolveSmtpPasswordEncrypted,
+} from "@/lib/settings/service";
 
 describe("settings service", () => {
   it("keeps an existing SMTP password when the form leaves the password blank", () => {
@@ -26,5 +30,26 @@ describe("configured notification secrets", () => {
 
     const replacement = resolveConfiguredSecretEncrypted(" new-token ", true, "encrypted-token");
     expect(decryptValue(replacement)).toBe("new-token");
+  });
+});
+
+describe("workspace settings scope", () => {
+  it("overrides operational values while preserving each member's personal preferences", () => {
+    const merged = mergeSettingsScopes(
+      {
+        smtpHost: "personal.invalid",
+        compactDensity: true,
+        timeZone: "Europe/Istanbul",
+      },
+      {
+        smtp_host: "smtp.workspace.test",
+        compact_density: false,
+        time_zone: "UTC",
+      }
+    );
+
+    expect(merged.smtpHost).toBe("smtp.workspace.test");
+    expect(merged.compactDensity).toBe(true);
+    expect(merged.timeZone).toBe("Europe/Istanbul");
   });
 });

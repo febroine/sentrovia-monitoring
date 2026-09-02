@@ -46,7 +46,7 @@ function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; 
           <div>
             <CardTitle>{report.title}</CardTitle>
             <CardDescription>
-              {report.periodLabel} / Generated {new Date(report.generatedAt).toLocaleString()}
+              {report.periodLabel} ({report.timeZone}) / {new Date(report.periodStartedAt).toLocaleString("en-GB", { timeZone: report.timeZone })} – {new Date(report.periodEndedAt).toLocaleString("en-GB", { timeZone: report.timeZone })}
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -283,4 +283,3 @@ function StateChip({
     </div>
   );
 }
-

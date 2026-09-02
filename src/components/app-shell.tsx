@@ -24,23 +24,23 @@ const DEFAULT_APPEARANCE: AppearanceState = {
 export default function AppShell({
   children,
   initialAuthenticated,
+  initialAppearance,
 }: {
   children: React.ReactNode;
   initialAuthenticated: boolean;
+  initialAppearance: (AppearanceState & { sidebarAccent?: string }) | null;
 }) {
   const pathname = usePathname();
   const isAuth = AUTH_ROUTES.some((r) => pathname.startsWith(r));
   const isPublicRoute = PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
   const isRootTransition = pathname === '/';
   const isProtectedRoute = !isAuth && !isPublicRoute && !isRootTransition;
-  const [appearance, setAppearance] = useState<AppearanceState>(DEFAULT_APPEARANCE);
+  const [appearance, setAppearance] = useState<AppearanceState>(initialAppearance ?? DEFAULT_APPEARANCE);
 
   useEffect(() => {
     if (isAuth || isPublicRoute || isRootTransition || !initialAuthenticated) {
       return;
     }
-
-    let active = true;
 
     function handleAppearanceUpdate(event: Event) {
       const detail = (event as CustomEvent<{ appearance?: AppearanceState }>).detail;
@@ -53,27 +53,9 @@ export default function AppShell({
       }
     }
 
-    void fetch('/api/settings', { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const data = (await response.json()) as {
-          settings?: { appearance?: AppearanceState };
-        };
-        if (active && data.settings?.appearance) {
-          setAppearance({
-            reduceMotion: data.settings.appearance.reduceMotion,
-            compactDensity: data.settings.appearance.compactDensity,
-            highContrastSurfaces: data.settings.appearance.highContrastSurfaces,
-          });
-        }
-        return null;
-      })
-      .catch(() => undefined);
-
     window.addEventListener(APPEARANCE_SETTINGS_UPDATED_EVENT, handleAppearanceUpdate);
 
     return () => {
-      active = false;
       window.removeEventListener(APPEARANCE_SETTINGS_UPDATED_EVENT, handleAppearanceUpdate);
     };
   }, [initialAuthenticated, isAuth, isPublicRoute, isRootTransition]);
@@ -96,6 +78,7 @@ export default function AppShell({
       )}
     >
       <Sidebar
+        initialAccent={initialAppearance?.sidebarAccent}
         className={cn(
           'hidden fixed inset-y-0 left-0 z-50 flex-col border-r border-border bg-surface-low md:flex',
           appearance.compactDensity ? 'w-56' : 'w-60'

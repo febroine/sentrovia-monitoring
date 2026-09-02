@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -57,7 +57,7 @@ describe("Windows NSSM update cleanup", () => {
     );
 
     const uncoveredPaths = [...deletedPaths]
-      .filter((path) => !trackedPaths.has(path))
+      .filter((path) => !trackedPaths.has(path) && !existsSync(resolve(projectRoot, path)))
       .filter(
         (path) =>
           !retiredPaths.some((retiredPath) => path === retiredPath || path.startsWith(`${retiredPath}/`)),

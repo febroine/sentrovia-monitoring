@@ -19,7 +19,8 @@ export async function GET() {
 
     const settings = await getSettings(
       session.id,
-      hasPermission(session.role, "settings.manage")
+      hasPermission(session.role, "settings.manage"),
+      session.activeWorkspaceId!
     );
     return NextResponse.json({ settings });
   } catch (error) {
@@ -44,9 +45,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid settings payload." }, { status: 400 });
     }
 
-    const settings = await upsertSettings(session.id, parsed.data);
+    const settings = await upsertSettings(
+      session.id,
+      parsed.data,
+      undefined,
+      false,
+      session.activeWorkspaceId!
+    );
     await recordAuditEventSafely({
       userId: session.id,
+      workspaceId: session.activeWorkspaceId!,
       actorUserId: session.id,
       actorLabel: session.email,
       entityType: "settings",

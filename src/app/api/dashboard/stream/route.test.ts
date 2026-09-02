@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/dashboard/stream/route";
 import { getSession } from "@/lib/auth/session";
 import { getActiveSessionUser } from "@/lib/auth/service";
-import { getDashboardData } from "@/lib/dashboard/service";
+import { getCachedDashboardData } from "@/lib/dashboard/service";
 
 vi.mock("@/lib/auth/session", () => ({
   getSession: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock("@/lib/auth/service", () => ({
 }));
 
 vi.mock("@/lib/dashboard/service", () => ({
-  getDashboardData: vi.fn(),
+  getCachedDashboardData: vi.fn(),
 }));
 
 const session = {
@@ -39,7 +39,7 @@ describe("dashboard stream route", () => {
     const response = await GET(buildRequest());
 
     expect(response.status).toBe(401);
-    expect(getDashboardData).not.toHaveBeenCalled();
+    expect(getCachedDashboardData).not.toHaveBeenCalled();
   });
 
   it("closes the stream when the session version has been revoked", async () => {
@@ -57,13 +57,13 @@ describe("dashboard stream route", () => {
       session.sessionVersion,
       session.activeWorkspaceId
     );
-    expect(getDashboardData).not.toHaveBeenCalled();
+    expect(getCachedDashboardData).not.toHaveBeenCalled();
   });
 
   it("sends dashboard data only after revalidating the session", async () => {
     vi.mocked(getSession).mockResolvedValueOnce(session);
     vi.mocked(getActiveSessionUser).mockResolvedValueOnce(session);
-    vi.mocked(getDashboardData).mockResolvedValueOnce({ summary: { total: 2 } } as never);
+    vi.mocked(getCachedDashboardData).mockResolvedValueOnce({ summary: { total: 2 } } as never);
 
     const response = await GET(buildRequest());
     const reader = response.body?.getReader();
@@ -71,8 +71,8 @@ describe("dashboard stream route", () => {
     const body = frame?.value ? new TextDecoder().decode(frame.value) : "";
 
     expect(body).toContain('data: {"summary":{"total":2}}');
-    expect(getActiveSessionUser).toHaveBeenCalledBefore(vi.mocked(getDashboardData));
-    expect(getDashboardData).toHaveBeenCalledWith("user-1", "workspace-1");
+    expect(getActiveSessionUser).toHaveBeenCalledBefore(vi.mocked(getCachedDashboardData));
+    expect(getCachedDashboardData).toHaveBeenCalledWith("user-1", "workspace-1");
 
     await reader?.cancel();
   });

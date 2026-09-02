@@ -13,7 +13,7 @@ export default async function RootPage() {
     redirect("/login");
   }
 
-  const settings = await getSettings(session.id);
+  const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
   const landingPage = settings?.appearance.dashboardLandingPage ?? "dashboard";
   redirect(`/${landingPage}`);
 }

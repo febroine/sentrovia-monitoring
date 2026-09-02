@@ -13,9 +13,8 @@
   "scripts/update-production-windows-nssm.bat",
   "scripts/update-production-windows-pm2.bat",
   "src/app/api/app-update",
-  "src/app/api/incidents",
-  "src/app/api/maintenance",
   "src/app/api/auth/register",
+  "src/app/api/incidents/[id]/ack",
   "src/app/api/monitors/overview",
   "src/app/incidents",
   "src/app/maintenance",
@@ -32,7 +31,6 @@
   "src/components/settings/maintenance-windows-editor.tsx",
   "src/components/update-banner.tsx",
   "src/lib/app-update",
-  "src/lib/incidents",
-  "src/lib/maintenance",
+  "src/lib/maintenance/service.test.ts",
   "src/lib/reports/pdf.ts"
 ]

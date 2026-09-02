@@ -20,4 +20,21 @@ describe("report schemas", () => {
   it("rejects non-recurring all-time cadence for report schedules", () => {
     expect(reportSchedulePatchSchema.safeParse({ cadence: "all_time" }).success).toBe(false);
   });
+
+  it("requires ordered boundaries for custom report ranges", () => {
+    const base = { scope: "global", cadence: "weekly", periodRange: "custom" } as const;
+    expect(reportPreviewSchema.safeParse(base).success).toBe(false);
+    expect(reportPreviewSchema.safeParse({
+      ...base,
+      periodStartedAt: "2026-08-03T00:00:00.000Z",
+      periodEndedAt: "2026-08-02T00:00:00.000Z",
+      timeZone: "Europe/Istanbul",
+    }).success).toBe(false);
+    expect(reportPreviewSchema.safeParse({
+      ...base,
+      periodStartedAt: "2026-08-01T00:00:00.000Z",
+      periodEndedAt: "2026-08-02T00:00:00.000Z",
+      timeZone: "Europe/Istanbul",
+    }).success).toBe(true);
+  });
 });

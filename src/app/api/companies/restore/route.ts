@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyBulkActionSchema } from "@/lib/companies/schemas";
 import { restoreCompanies } from "@/lib/companies/service";
-import { apiErrorResponse, parseJsonRequest, requireMutationSession } from "@/lib/http/api-route";
+import { apiErrorResponse, parseJsonRequest, requireMutationPermission } from "@/lib/http/api-route";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireMutationSession(request);
+    const session = await requireMutationPermission(request, "companies.manage");
     const input = await parseJsonRequest(
       request,
       companyBulkActionSchema.pick({ ids: true }),

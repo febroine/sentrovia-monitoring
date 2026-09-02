@@ -2,6 +2,7 @@ export type ReportCadence = "weekly" | "monthly" | "all_time";
 export type ReportScope = "global" | "company";
 export type ReportScheduleStatus = "idle" | "running" | "delivered" | "failed";
 export type ReportTemplateVariant = "executive" | "operations" | "client";
+export type ReportPeriodRange = "7d" | "30d" | "custom";
 
 export interface ReportPreviewInput {
   scope: ReportScope;
@@ -14,6 +15,10 @@ export interface ReportPreviewInput {
   emailSubjectTemplate?: string | null;
   emailIntroTemplate?: string | null;
   reportBrandName?: string | null;
+  periodRange?: ReportPeriodRange;
+  periodStartedAt?: string;
+  periodEndedAt?: string;
+  timeZone?: string;
 }
 
 export interface ReportScheduleInput extends ReportPreviewInput {
@@ -62,6 +67,7 @@ export interface GeneratedReport {
   periodStartedAt: string;
   periodEndedAt: string;
   periodLabel: string;
+  timeZone: string;
   summary: {
     monitorCount: number;
     currentlyUp: number;

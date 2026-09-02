@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiErrorResponse, parseJsonRequest, requireMutationSession } from "@/lib/http/api-route";
+import { apiErrorResponse, parseJsonRequest, requireMutationPermission } from "@/lib/http/api-route";
 import { monitorBulkDeleteSchema } from "@/lib/monitors/schemas";
 import { restoreMonitors } from "@/lib/monitors/service";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireMutationSession(request);
+    const session = await requireMutationPermission(request, "monitors.manage");
     const input = await parseJsonRequest(
       request,
       monitorBulkDeleteSchema,

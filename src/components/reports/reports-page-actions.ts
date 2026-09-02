@@ -4,6 +4,7 @@ import type { GeneratedReport, ReportScheduleRecord } from "@/lib/reports/types"
 import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
 import {
   buildReportDeliveryPayload,
+  buildReportPeriodPayload,
   downloadFile,
   EMPTY_SCHEDULE_DRAFT,
   normalizeCadence,
@@ -33,6 +34,7 @@ export async function generateReportPreview(
         cadence: draft.cadence,
         template: draft.template,
         companyId: draft.scope === "company" ? draft.companyId : null,
+        ...buildReportPeriodPayload(draft),
         ...buildReportDeliveryPayload(draft),
       }),
     });
@@ -63,6 +65,7 @@ export async function sendReportPreview(
         template: draft.template,
         companyId: draft.scope === "company" ? draft.companyId : null,
         recipientEmails: recipients,
+        ...buildReportPeriodPayload(draft),
         ...buildReportDeliveryPayload(draft),
       }),
     });

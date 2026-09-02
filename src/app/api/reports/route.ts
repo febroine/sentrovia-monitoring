@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/authorization";
-import { apiErrorResponse, parseJsonRequest, requireMutationSession } from "@/lib/http/api-route";
+import { apiErrorResponse, parseJsonRequest, requireMutationPermission } from "@/lib/http/api-route";
 import { reportScheduleSchema } from "@/lib/reports/schemas";
 import { createReportSchedule, listReportSchedules } from "@/lib/reports/service";
 
@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireMutationSession(request);
+    const session = await requireMutationPermission(request, "reports.manage");
     const input = await parseJsonRequest(request, reportScheduleSchema, "Invalid report schedule payload.");
     const schedule = await createReportSchedule(
       session.id,

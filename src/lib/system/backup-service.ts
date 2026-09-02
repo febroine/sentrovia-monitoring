@@ -47,7 +47,7 @@ export async function buildWorkspaceBackupBundle(
   const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId);
   const subject = { userId, workspaceId: resolvedWorkspaceId };
   const [settings, companyRows, monitorRows, publicStatusPageRows] = await Promise.all([
-    getSettings(userId),
+    getSettings(userId, true, resolvedWorkspaceId),
     listCompanies(subject),
     listMonitors(userId, db, resolvedWorkspaceId),
     listPublicStatusPages(userId, db, resolvedWorkspaceId),
@@ -204,7 +204,7 @@ export async function restoreWorkspaceBackup(
       validated.publicStatusCompanyName,
       companyIdByName
     );
-    await upsertSettings(userId, restoredSettings, tx, true);
+    await upsertSettings(userId, restoredSettings, tx, true, workspaceId);
     await restorePublicStatusPages(userId, validated.publicStatusPages, companyIdByName, tx, workspaceId);
     await remapReportScheduleCompanies(workspaceId, scheduleCompanyMappings, companyIdByName, tx);
     const restoredMonitors = restorableMonitors.map((monitor) => ({

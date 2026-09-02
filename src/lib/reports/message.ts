@@ -41,7 +41,7 @@ export function buildReportMessage(report: GeneratedReport, options: ReportDeliv
     `${report.workspaceName}`,
     `${report.templateLabel}`,
     intro,
-    `${report.periodLabel} (${new Date(report.periodStartedAt).toLocaleString()} - ${new Date(report.periodEndedAt).toLocaleString()})`,
+    `${report.periodLabel} (${formatReportTimestamp(report.periodStartedAt, report.timeZone)} - ${formatReportTimestamp(report.periodEndedAt, report.timeZone)} ${report.timeZone})`,
     "",
     `Health score: ${formatReportHealthScore(report.summary)} (${report.summary.healthStatus})`,
     `URLs tracked: ${report.summary.monitorCount}`,
@@ -73,16 +73,16 @@ export function buildReportMessage(report: GeneratedReport, options: ReportDeliv
 
 function buildReportEmailHtml(report: GeneratedReport, introLine: string, options: ReportDeliveryOptions) {
   const scopeLabel = report.scope === "company" ? report.companyName ?? "Company" : "Workspace";
-  const generatedAt = new Date(report.generatedAt).toLocaleString();
-  const periodStartedAt = new Date(report.periodStartedAt).toLocaleString();
-  const periodEndedAt = new Date(report.periodEndedAt).toLocaleString();
+  const generatedAt = formatReportTimestamp(report.generatedAt, report.timeZone);
+  const periodStartedAt = formatReportTimestamp(report.periodStartedAt, report.timeZone);
+  const periodEndedAt = formatReportTimestamp(report.periodEndedAt, report.timeZone);
   const healthTheme = getEmailHealthTheme(report.summary.healthStatus);
   const preheader = `${report.title}: ${formatReportHealthScore(report.summary)} health, ${formatReportUptime(report.summary)} uptime.`;
 
   return [
     renderEmailDocumentStart(preheader),
     renderEmailReportHeader(report, scopeLabel, introLine),
-    renderEmailReportingWindow(periodStartedAt, periodEndedAt),
+    renderEmailReportingWindow(periodStartedAt, periodEndedAt, report.timeZone),
     renderEmailHealthBanner(report, healthTheme),
     renderEmailMetricsTable(report, healthTheme),
     renderEmailSnapshotSection(report),
@@ -149,15 +149,19 @@ function renderEmailReportHeader(report: GeneratedReport, scopeLabel: string, in
     </tr>`;
 }
 
-function renderEmailReportingWindow(periodStartedAt: string, periodEndedAt: string) {
+function renderEmailReportingWindow(periodStartedAt: string, periodEndedAt: string, timeZone: string) {
   return `
     <tr>
       <td style="padding:14px 24px 2px;">
         <div class="sentrovia-email-text" style="border-left:3px solid #2563eb;background-color:#f8fafc;padding:11px 13px;color:#1e3a8a;font-size:12px;line-height:1.6;">
-          <strong>Reporting window:</strong> ${escapeHtml(periodStartedAt)} - ${escapeHtml(periodEndedAt)}
+          <strong>Reporting window:</strong> ${escapeHtml(periodStartedAt)} - ${escapeHtml(periodEndedAt)} (${escapeHtml(timeZone)})
         </div>
       </td>
     </tr>`;
+}
+
+function formatReportTimestamp(value: string, timeZone: string) {
+  return new Date(value).toLocaleString("en-GB", { timeZone });
 }
 
 function renderEmailMetricsTable(report: GeneratedReport, healthTheme: ReturnType<typeof getEmailHealthTheme>) {

@@ -22,6 +22,7 @@ describe("monitor config import route", () => {
     vi.mocked(getSession).mockResolvedValue({
       id: "user-1",
       activeWorkspaceId: "workspace-1",
+      role: "operator",
     } as never);
     vi.mocked(getSettings).mockResolvedValue(DEFAULT_SETTINGS);
     vi.mocked(createManyMonitors).mockResolvedValue([]);
