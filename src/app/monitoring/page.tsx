@@ -63,6 +63,7 @@ export default function MonitoringPage() {
   const {
     monitors,
     pagination,
+    summary,
     loading,
     saving,
     error,
@@ -270,6 +271,7 @@ export default function MonitoringPage() {
     const updated = await updateMonitor(editingMonitor.id, payload);
     if (updated) {
       setEditingMonitor(null);
+      await loadMonitorPage();
     }
   }
 
@@ -297,7 +299,7 @@ export default function MonitoringPage() {
     try {
       const updated = await updateMonitorActiveState(monitor.id, !monitor.isActive);
       if (updated) {
-        await loadSupportingData();
+        await Promise.all([loadMonitorPage(), loadSupportingData()]);
       }
     } finally {
       setActiveTogglePendingId(null);
@@ -498,7 +500,7 @@ export default function MonitoringPage() {
 
       {workspaceSettings?.profile.role === "admin" ? <WorkerPulseCard /> : null}
       <OperationsConsole monitors={monitors} canManage={canManageMonitors} />
-      <MonitorStats monitors={monitors} />
+      <MonitorStats summary={summary} />
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">

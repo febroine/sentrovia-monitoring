@@ -1,15 +1,10 @@
-import type { MonitorRecord } from "@/lib/monitors/types";
+import type { MonitorSummary } from "@/lib/monitors/types";
 
-export function MonitorStats({ monitors }: { monitors: MonitorRecord[] }) {
-  const total = monitors.length;
-  const activeMonitors = monitors.filter((monitor) => monitor.isActive);
-  const paused = total - activeMonitors.length;
-  const online = activeMonitors.filter((monitor) => monitor.status === "up").length;
-  const offline = activeMonitors.filter((monitor) => monitor.status === "down").length;
-  const pending = activeMonitors.filter((monitor) => monitor.status === "pending").length;
+export function MonitorStats({ summary }: { summary: MonitorSummary }) {
+  const { total, active, paused, online, offline, pending } = summary;
 
   const items = [
-    { label: "Total monitors", value: String(total), sub: `${activeMonitors.length} active / ${paused} paused`, tone: "" },
+    { label: "Total monitors", value: String(total), sub: `${active} active / ${paused} paused`, tone: "" },
     { label: "Online", value: String(online), sub: "Responding normally", tone: "text-emerald-600 dark:text-emerald-400" },
     { label: "Offline", value: String(offline), sub: "Require attention", tone: "text-destructive" },
     { label: "Paused", value: String(paused), sub: pending > 0 ? `${pending} awaiting first check` : "Excluded from checks", tone: "text-amber-600 dark:text-amber-400" },

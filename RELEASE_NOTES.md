@@ -5,6 +5,7 @@
 - Added real workspace ownership and membership roles with server-enforced data isolation.
 - Split member-specific appearance preferences from shared workspace operations settings.
 - Added server-side monitor search, filtering, sorting, pagination, and lazy timeline loading.
+- Made monitor overview counts independent of the selected table page size, and added first/last-page controls to delivery history.
 - Corrected weekly and monthly report windows; manual reports now support 7-day, 30-day, and custom timezone-aware ranges.
 - Added maintenance windows and temporary silences that suppress notifications while checks continue.
 - Added incident acknowledgement, assignee, escalation, internal notes, and explicitly public status updates.

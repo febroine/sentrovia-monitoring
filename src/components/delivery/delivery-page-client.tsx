@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   CircleX,
   Clock3,
   ListRestart,
@@ -473,6 +475,15 @@ export function DeliveryPageClient() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                aria-label="First delivery history page"
+                onClick={() => void loadOverview(1)}
+                disabled={loading || historyPage <= 1}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
                 aria-label="Previous delivery history page"
                 onClick={() => void loadOverview(historyPage - 1)}
                 disabled={loading || historyPage <= 1}
@@ -490,6 +501,15 @@ export function DeliveryPageClient() {
                 disabled={loading || historyPage >= overview.pagination.totalPages}
               >
                 <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label="Last delivery history page"
+                onClick={() => void loadOverview(overview.pagination.totalPages)}
+                disabled={loading || historyPage >= overview.pagination.totalPages}
+              >
+                <ChevronsRight className="h-4 w-4" />
               </Button>
             </div>
           </div>

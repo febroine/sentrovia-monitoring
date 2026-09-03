@@ -107,6 +107,15 @@ export interface MonitorRecord {
   sendOutageScreenshot: boolean;
 }
 
+export interface MonitorSummary {
+  total: number;
+  active: number;
+  paused: number;
+  online: number;
+  offline: number;
+  pending: number;
+}
+
 export interface MonitorHistoryPoint {
   id: string;
   monitorId: string;

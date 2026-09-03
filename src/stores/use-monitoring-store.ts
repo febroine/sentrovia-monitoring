@@ -1,12 +1,13 @@
 "use client";
 
 import { create } from "zustand";
-import type { MonitorPayload, MonitorRecord } from "@/lib/monitors/types";
+import type { MonitorPayload, MonitorRecord, MonitorSummary } from "@/lib/monitors/types";
 import { showToast } from "@/lib/client-toast";
 
 interface MonitoringState {
   monitors: MonitorRecord[];
   pagination: MonitorPagination;
+  summary: MonitorSummary;
   loading: boolean;
   saving: boolean;
   error: string | null;
@@ -41,6 +42,15 @@ type MonitorPagination = {
 
 type SoftDeleteResult = { ids: string[]; undoUntil: string | null };
 
+const EMPTY_MONITOR_SUMMARY: MonitorSummary = {
+  total: 0,
+  active: 0,
+  paused: 0,
+  online: 0,
+  offline: 0,
+  pending: 0,
+};
+
 async function readJsonOrNull<T>(response: Response): Promise<T | null> {
   return (await response.json().catch(() => null)) as T | null;
 }
@@ -48,6 +58,7 @@ async function readJsonOrNull<T>(response: Response): Promise<T | null> {
 export const useMonitoringStore = create<MonitoringState>((set) => ({
   monitors: [],
   pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 1 },
+  summary: EMPTY_MONITOR_SUMMARY,
   loading: true,
   saving: false,
   error: null,
@@ -61,6 +72,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         message?: string;
         monitors?: MonitorRecord[];
         pagination?: MonitorPagination;
+        summary?: MonitorSummary;
       }>(response);
 
       if (!response.ok || !data) {
@@ -75,6 +87,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
           totalItems: data.monitors?.length ?? 0,
           totalPages: 1,
         },
+        summary: data.summary ?? EMPTY_MONITOR_SUMMARY,
         loading: false,
         error: null,
       }));
