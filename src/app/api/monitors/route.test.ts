@@ -29,6 +29,7 @@ describe("monitor list route", () => {
     mocks.listMonitorsPage.mockResolvedValue({
       monitors: [],
       pagination: { page: 2, pageSize: 10, totalItems: 14, totalPages: 2 },
+      summary: { total: 14, active: 12, paused: 2, online: 10, offline: 1, pending: 1 },
     });
   });
 
@@ -52,6 +53,9 @@ describe("monitor list route", () => {
       undefined,
       "workspace-1"
     );
+    await expect(response.json()).resolves.toMatchObject({
+      summary: { total: 14, active: 12, paused: 2, online: 10, offline: 1, pending: 1 },
+    });
   });
 
   it("rejects unsupported page sizes before querying", async () => {

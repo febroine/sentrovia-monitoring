@@ -10,6 +10,7 @@ import { MAX_MONITORS_PER_USER } from "@/lib/import-limits";
 import { resolveOutage } from "@/lib/outages/service";
 import { MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import type { MonitorInput } from "@/lib/monitors/schemas";
+import type { MonitorSummary } from "@/lib/monitors/types";
 import {
   buildCanonicalMonitorTarget,
   buildHeartbeatMonitorTarget,
@@ -139,8 +140,18 @@ export async function listMonitorsPage(
     latencyMs: monitors.latencyMs,
   }[query.sort];
   const order = query.direction === "asc" ? asc : desc;
-  const [totalRows, monitorRows] = await Promise.all([
-    database.select({ total: count() }).from(monitors).where(where),
+  const [summaryRows, monitorRows] = await Promise.all([
+    database
+      .select({
+        total: count(),
+        active: sql<number>`count(*) filter (where ${monitors.isActive})`,
+        paused: sql<number>`count(*) filter (where not ${monitors.isActive})`,
+        online: sql<number>`count(*) filter (where ${monitors.isActive} and ${monitors.status} = 'up')`,
+        offline: sql<number>`count(*) filter (where ${monitors.isActive} and ${monitors.status} = 'down')`,
+        pending: sql<number>`count(*) filter (where ${monitors.isActive} and ${monitors.status} = 'pending')`,
+      })
+      .from(monitors)
+      .where(where),
     database
       .select()
       .from(monitors)
@@ -149,7 +160,15 @@ export async function listMonitorsPage(
       .limit(query.pageSize)
       .offset((query.page - 1) * query.pageSize),
   ]);
-  const totalItems = Number(totalRows[0]?.total ?? 0);
+  const summary: MonitorSummary = {
+    total: Number(summaryRows[0]?.total ?? 0),
+    active: Number(summaryRows[0]?.active ?? 0),
+    paused: Number(summaryRows[0]?.paused ?? 0),
+    online: Number(summaryRows[0]?.online ?? 0),
+    offline: Number(summaryRows[0]?.offline ?? 0),
+    pending: Number(summaryRows[0]?.pending ?? 0),
+  };
+  const totalItems = summary.total;
   const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
   const uptimeByMonitorId = await getMonitorUptimeById(
     userId,
@@ -170,6 +189,7 @@ export async function listMonitorsPage(
       totalItems,
       totalPages,
     },
+    summary,
   };
 }
 

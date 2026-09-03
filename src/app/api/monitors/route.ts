@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
           serializeMonitor(monitor, hasPermission(session.role, "monitors.manage"))
         ),
         pagination: result.pagination,
+        summary: result.summary,
       });
     }
 
