@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   calculateFileSha256,
   decryptDatabaseBackup,
@@ -56,6 +56,54 @@ describe("encrypted database backup archives", () => {
 
     await expect(decryptDatabaseBackup(source, path.join(directory, "out.dump"), "secret"))
       .rejects.toThrow(/not a Sentrovia/);
+  });
+
+  it("decrypts from the verified file even if its path is replaced", async () => {
+    const directory = await createTemporaryDirectory();
+    const originalSource = path.join(directory, "original.dump");
+    const replacementSource = path.join(directory, "replacement.dump");
+    const encrypted = path.join(directory, "backup.sentrovia");
+    const replacement = path.join(directory, "replacement.sentrovia");
+    const restored = path.join(directory, "restored.dump");
+    const originalPayload = Buffer.concat([Buffer.from("PGDMP"), crypto.randomBytes(128)]);
+    const replacementPayload = Buffer.concat([Buffer.from("PGDMP"), crypto.randomBytes(128)]);
+    await Promise.all([
+      fs.promises.writeFile(originalSource, originalPayload),
+      fs.promises.writeFile(replacementSource, replacementPayload),
+    ]);
+    await Promise.all([
+      encryptDatabaseDump(originalSource, encrypted, "test-secret"),
+      encryptDatabaseDump(replacementSource, replacement, "test-secret"),
+    ]);
+
+    const openFile = fs.promises.open.bind(fs.promises);
+    let pathWasReplaced = false;
+    const openSpy = vi.spyOn(fs.promises, "open").mockImplementation(async (filePath, flags, mode) => {
+      const handle = await openFile(filePath, flags, mode);
+      if (path.resolve(String(filePath)) !== path.resolve(encrypted)) {
+        return handle;
+      }
+
+      const closeFile = handle.close.bind(handle);
+      handle.close = async () => {
+        await closeFile();
+        if (!pathWasReplaced) {
+          pathWasReplaced = true;
+          await fs.promises.rm(encrypted, { force: true });
+          await fs.promises.rename(replacement, encrypted);
+        }
+      };
+      return handle;
+    });
+
+    try {
+      await decryptDatabaseBackup(encrypted, restored, "test-secret");
+    } finally {
+      openSpy.mockRestore();
+    }
+
+    expect(pathWasReplaced).toBe(true);
+    expect(await fs.promises.readFile(restored)).toEqual(originalPayload);
   });
 });
 
