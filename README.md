@@ -1,4 +1,4 @@
-# Sentrovia — Open-Source, Self-Hosted Website Uptime Monitoring
+# Sentrovia
 
 <p align="center">
   <strong>Verify outages before they become alerts.</strong><br>
