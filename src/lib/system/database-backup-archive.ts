@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -27,19 +28,32 @@ export async function encryptDatabaseDump(sourcePath: string, destinationPath: s
 }
 
 export async function decryptDatabaseBackup(sourcePath: string, destinationPath: string, secret: string) {
-  const metadata = await readArchiveMetadata(sourcePath);
-  const decipher = crypto.createDecipheriv("aes-256-gcm", deriveBackupKey(secret), metadata.initializationVector);
-  decipher.setAuthTag(metadata.authenticationTag);
-
+  const sourceHandle = await fs.promises.open(sourcePath, "r");
   try {
-    await pipeline(
-      fs.createReadStream(sourcePath, { start: metadata.payloadStart, end: metadata.payloadEnd }),
-      decipher,
-      fs.createWriteStream(destinationPath, { flags: "wx", mode: 0o600 })
+    const metadata = await readArchiveMetadata(sourceHandle);
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      deriveBackupKey(secret),
+      metadata.initializationVector
     );
-  } catch (error) {
-    await fs.promises.rm(destinationPath, { force: true }).catch(() => undefined);
-    throw new Error("The database backup is corrupt or was encrypted with a different key.", { cause: error });
+    decipher.setAuthTag(metadata.authenticationTag);
+
+    try {
+      await pipeline(
+        sourceHandle.createReadStream({
+          start: metadata.payloadStart,
+          end: metadata.payloadEnd,
+          autoClose: false,
+        }),
+        decipher,
+        fs.createWriteStream(destinationPath, { flags: "wx", mode: 0o600 })
+      );
+    } catch (error) {
+      await fs.promises.rm(destinationPath, { force: true }).catch(() => undefined);
+      throw new Error("The database backup is corrupt or was encrypted with a different key.", { cause: error });
+    }
+  } finally {
+    await sourceHandle.close();
   }
 }
 
@@ -51,33 +65,28 @@ export async function calculateFileSha256(filePath: string) {
   return hash.digest("hex");
 }
 
-async function readArchiveMetadata(filePath: string) {
-  const stats = await fs.promises.stat(filePath);
+async function readArchiveMetadata(handle: FileHandle) {
+  const stats = await handle.stat();
   const minimumSize = BACKUP_MAGIC.length + INITIALIZATION_VECTOR_BYTES + AUTHENTICATION_TAG_BYTES + 1;
   if (!stats.isFile() || stats.size < minimumSize) {
     throw new Error("The database backup file is incomplete.");
   }
 
-  const handle = await fs.promises.open(filePath, "r");
-  try {
-    const header = Buffer.alloc(BACKUP_MAGIC.length);
-    const initializationVector = Buffer.alloc(INITIALIZATION_VECTOR_BYTES);
-    const authenticationTag = Buffer.alloc(AUTHENTICATION_TAG_BYTES);
-    await handle.read(header, 0, header.length, 0);
-    if (!crypto.timingSafeEqual(header, BACKUP_MAGIC)) {
-      throw new Error("The file is not a Sentrovia database backup.");
-    }
-    await handle.read(initializationVector, 0, initializationVector.length, BACKUP_MAGIC.length);
-    await handle.read(authenticationTag, 0, authenticationTag.length, stats.size - AUTHENTICATION_TAG_BYTES);
-    return {
-      initializationVector,
-      authenticationTag,
-      payloadStart: BACKUP_MAGIC.length + INITIALIZATION_VECTOR_BYTES,
-      payloadEnd: stats.size - AUTHENTICATION_TAG_BYTES - 1,
-    };
-  } finally {
-    await handle.close();
+  const header = Buffer.alloc(BACKUP_MAGIC.length);
+  const initializationVector = Buffer.alloc(INITIALIZATION_VECTOR_BYTES);
+  const authenticationTag = Buffer.alloc(AUTHENTICATION_TAG_BYTES);
+  await handle.read(header, 0, header.length, 0);
+  if (!crypto.timingSafeEqual(header, BACKUP_MAGIC)) {
+    throw new Error("The file is not a Sentrovia database backup.");
   }
+  await handle.read(initializationVector, 0, initializationVector.length, BACKUP_MAGIC.length);
+  await handle.read(authenticationTag, 0, authenticationTag.length, stats.size - AUTHENTICATION_TAG_BYTES);
+  return {
+    initializationVector,
+    authenticationTag,
+    payloadStart: BACKUP_MAGIC.length + INITIALIZATION_VECTOR_BYTES,
+    payloadEnd: stats.size - AUTHENTICATION_TAG_BYTES - 1,
+  };
 }
 
 function deriveBackupKey(secret: string) {
