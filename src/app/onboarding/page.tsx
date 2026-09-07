@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   ArrowLeft,
+  ChevronRight,
   Eye,
   EyeOff,
   LoaderCircle,
@@ -17,19 +18,27 @@ import { cn } from "@/lib/utils";
 type OnboardingStep = "intro" | "form";
 
 const inputClassName =
-  "h-11 rounded-md border-white/10 bg-[#0d0e11] text-foreground placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:ring-primary/20";
-
-const productSteps = [
-  { title: "Monitor", description: "Add websites, APIs, TCP, PostgreSQL, ping, and heartbeat checks." },
-  { title: "Verify", description: "Confirm failures before the first outage message is sent." },
-  { title: "Notify", description: "Send alerts with the reason, timing, and latest evidence." },
-];
+  "h-11 rounded-md border-white/10 bg-[#0d0e11] text-foreground placeholder:text-zinc-500 focus-visible:border-primary/60 focus-visible:ring-primary/20";
 
 const setupItems = [
-  { label: "Administrator", value: "First account" },
-  { label: "Members", value: "Admin-managed" },
-  { label: "Access", value: "Admin-controlled" },
-  { label: "Storage", value: "PostgreSQL" },
+  { label: "Role", value: "Workspace administrator" },
+  { label: "Scope", value: "All settings and members" },
+  { label: "Storage", value: "Self-hosted PostgreSQL" },
+];
+
+const setupNotes = [
+  {
+    title: "One administrator to start",
+    description: "This account owns initial access. You can invite and manage members after signing in.",
+  },
+  {
+    title: "No sample data",
+    description: "The workspace starts empty so you can add only the monitors and delivery routes you need.",
+  },
+  {
+    title: "Configuration stays local",
+    description: "Account and monitoring data are stored in the PostgreSQL database connected to this installation.",
+  },
 ];
 
 export default function OnboardingPage() {
@@ -92,9 +101,8 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#090a0c] text-foreground">
-      <div className="relative min-h-screen">
-        <div className="relative mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-7 px-5 py-6 sm:px-8 lg:px-12">
+    <main className="min-h-screen bg-[#090a0c] text-foreground">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1240px] flex-col px-5 py-6 sm:px-8 lg:px-12">
           <OnboardingHeader currentStep={step} />
 
           {step === "intro" ? (
@@ -113,7 +121,6 @@ export default function OnboardingPage() {
               onTogglePassword={() => setShowPassword((value) => !value)}
             />
           )}
-        </div>
       </div>
     </main>
   );
@@ -147,47 +154,54 @@ async function handleReadinessResponse(
 
 function OnboardingHeader({ currentStep }: { currentStep: OnboardingStep }) {
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
+    <header className="flex items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
       <div className="flex items-center gap-3">
-        <SentroviaMark className="size-9 text-emerald-300" />
+        <SentroviaMark className="size-8 text-primary" />
         <div>
-          <p className="text-sm font-semibold tracking-tight">Sentrovia</p>
-          <p className="text-xs text-muted-foreground">First launch setup</p>
+          <p className="text-sm font-semibold tracking-[-0.02em]">Sentrovia</p>
+          <p className="text-[13px] text-zinc-400">Workspace initialization</p>
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="hidden text-xs text-muted-foreground sm:inline">Workspace setup</span>
-        <StepIndicator currentStep={currentStep} />
-      </div>
+      <StepIndicator currentStep={currentStep} />
     </header>
   );
 }
 
 function StepIndicator({ currentStep }: { currentStep: OnboardingStep }) {
   return (
-    <div className="hidden items-center gap-2 sm:flex">
-      <StepDot active={currentStep === "intro"} label="Overview" />
-      <span className="h-px w-8 bg-white/15" />
-      <StepDot active={currentStep === "form"} label="Admin account" />
-    </div>
+    <ol className="flex items-center gap-3 text-[13px]" aria-label="Setup progress">
+      <SetupStepNumber number="Step 1" label="Overview" active={currentStep === "intro"} complete={currentStep === "form"} />
+      <span className="text-zinc-700" aria-hidden="true">/</span>
+      <SetupStepNumber number="Step 2" label="Administrator" active={currentStep === "form"} />
+    </ol>
   );
 }
 
-function StepDot({ active, label }: { active: boolean; label: string }) {
+function SetupStepNumber({
+  number,
+  label,
+  active,
+  complete = false,
+}: {
+  number: string;
+  label: string;
+  active: boolean;
+  complete?: boolean;
+}) {
   return (
-    <div className={cn("flex items-center gap-2 text-xs", active ? "text-foreground" : "text-muted-foreground")}>
-      <span className={cn("size-2 rounded-full", active ? "bg-primary" : "bg-white/15")} />
-      <span>{label}</span>
-    </div>
+    <li className={cn("flex items-center gap-2", active ? "text-zinc-100" : complete ? "text-zinc-400" : "text-zinc-500")}>
+      <span className={cn("text-[13px]", active && "text-primary")}>{number}</span>
+      <span className="hidden sm:inline">{label}</span>
+    </li>
   );
 }
 
 function IntroStep({ ready, error, onContinue }: { ready: boolean; error: string | null; onContinue: () => void }) {
   return (
-    <section className="flex flex-1 items-center py-8 lg:py-12">
-      <div className="flex w-full max-w-4xl flex-col gap-8">
+    <section className="flex flex-1 py-12 sm:py-16 lg:py-20">
+      <div className="grid w-full max-w-[1080px] content-start gap-12 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-20">
         <IntroCopy ready={ready} error={error} onContinue={onContinue} />
-        <ProductStepList />
+        <SetupNotes />
       </div>
     </section>
   );
@@ -195,21 +209,23 @@ function IntroStep({ ready, error, onContinue }: { ready: boolean; error: string
 
 function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string | null; onContinue: () => void }) {
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <div className="flex flex-col gap-4">
-        <h1 className="max-w-2xl text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
-          Create the workspace administrator
+    <div className="auth-reveal flex max-w-[650px] flex-col">
+      <div>
+        <p className="text-sm font-medium text-primary">First-time setup</p>
+        <h1 className="mt-4 max-w-2xl text-3xl leading-[1.12] font-semibold tracking-[-0.035em] text-balance sm:text-[2.65rem]">
+          Create the administrator for this workspace.
         </h1>
-        <p className="max-w-xl text-base leading-7 text-zinc-400 sm:text-lg">
-          Create the first account. Monitors and delivery channels come next.
+        <p className="mt-5 max-w-[580px] text-[0.95rem] leading-7 text-zinc-400 sm:text-base">
+          The first account controls members, monitoring settings, and incident delivery. You can change the profile details later.
         </p>
       </div>
-      {error ? <FormError message={error} /> : null}
-      <div>
-        <Button type="button" size="lg" disabled={!ready} onClick={onContinue} className="h-11 rounded-lg px-4">
+      {error ? <div className="mt-6"><FormError message={error} /></div> : null}
+      <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3">
+        <Button type="button" size="lg" disabled={!ready} onClick={onContinue} className="h-11 rounded-md px-4 font-semibold">
           {ready ? (
             <>
-              Continue setup
+              Create administrator
+              <ChevronRight data-icon="inline-end" />
             </>
           ) : (
             <>
@@ -218,21 +234,28 @@ function IntroCopy({ ready, error, onContinue }: { ready: boolean; error: string
             </>
           )}
         </Button>
+        <span className="text-[13px] text-zinc-400">Step 1 of 2 · About one minute</span>
       </div>
     </div>
   );
 }
 
-function ProductStepList() {
+function SetupNotes() {
   return (
-    <div className="grid gap-5 border-y border-white/10 py-1 sm:grid-cols-3 sm:divide-x sm:divide-white/10">
-      {productSteps.map((item) => (
-        <div key={item.title} className="py-4 sm:px-5 sm:first:pl-0 sm:last:pr-0">
-          <h2 className="text-sm font-semibold">{item.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
-        </div>
-      ))}
-    </div>
+    <aside className="auth-reveal auth-delay-1 border-t border-white/[0.08] pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-9">
+      <h2 className="text-sm font-semibold tracking-[-0.01em] text-zinc-200">Before you continue</h2>
+      <div className="mt-5 space-y-5">
+        {setupNotes.map((note, index) => (
+          <section key={note.title} className="grid grid-cols-[24px_1fr] gap-3">
+            <span className="pt-0.5 text-[13px] text-zinc-400">{index + 1}.</span>
+            <div>
+              <h3 className="text-sm font-medium text-zinc-300">{note.title}</h3>
+              <p className="mt-1.5 text-[13px] leading-5 text-zinc-400">{note.description}</p>
+            </div>
+          </section>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -260,7 +283,7 @@ function AdminSetupStep({
   onTogglePassword: () => void;
 }) {
   return (
-    <section className="grid flex-1 items-center gap-8 py-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+    <section className="grid w-full max-w-[1080px] flex-1 content-start gap-10 py-10 sm:py-14 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-16">
       <SetupPanel onBack={onBack} />
       <AdminFormCard
         busy={busy}
@@ -279,20 +302,21 @@ function AdminSetupStep({
 
 function SetupPanel({ onBack }: { onBack: () => void }) {
   return (
-    <aside className="border-y border-white/10 py-5">
-      <h2 className="text-lg font-semibold tracking-tight">Workspace access</h2>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        The first account becomes the administrator. Additional accounts are created by an admin.
+    <aside>
+      <p className="text-sm font-medium text-primary">Step 2 of 2</p>
+      <h1 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">Administrator details</h1>
+      <p className="mt-3 text-sm leading-6 text-zinc-400">
+        This account receives full access to the workspace.
       </p>
-      <dl className="mt-5 divide-y divide-white/10 border-t border-white/10">
+      <dl className="mt-6 divide-y divide-white/[0.08] border-y border-white/[0.08]">
         {setupItems.map((item) => (
           <div key={item.label} className="flex items-center justify-between gap-4 py-3">
-            <dt className="text-sm text-muted-foreground">{item.label}</dt>
-            <dd className="text-sm font-medium">{item.value}</dd>
+            <dt className="text-[13px] text-zinc-400">{item.label}</dt>
+            <dd className="text-[13px] text-right text-zinc-300">{item.value}</dd>
           </div>
         ))}
       </dl>
-      <Button type="button" variant="ghost" onClick={onBack} className="mt-4 justify-start px-0 text-muted-foreground hover:bg-transparent hover:text-foreground">
+      <Button type="button" variant="ghost" onClick={onBack} className="mt-5 justify-start px-0 text-zinc-400 hover:bg-transparent hover:text-zinc-200">
         <ArrowLeft data-icon="inline-start" />
         Back to overview
       </Button>
@@ -322,11 +346,11 @@ function AdminFormCard({
   onTogglePassword: () => void;
 }) {
   return (
-    <section className="border-y border-white/10 py-6">
-      <div className="mb-6 border-b border-white/10 pb-5">
-        <h2 className="text-2xl font-semibold tracking-tight">Create administrator</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          This first account receives administrator access.
+    <section className="max-w-[680px] border-t border-white/[0.08] pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-12">
+      <div className="mb-7">
+        <h2 className="text-xl font-semibold tracking-[-0.025em]">Create administrator</h2>
+        <p className="mt-2 text-sm leading-6 text-zinc-400">
+          Use an individual account rather than a shared team login.
         </p>
       </div>
         <AdminForm
@@ -373,8 +397,9 @@ function AdminForm({
         <PasswordField id="confirmPassword" label="Confirm password" visible={showConfirmPassword} onToggle={onToggleConfirmPassword} disabled={!ready} />
       </div>
       {error ? <FormError message={error} /> : null}
-      <div className="flex justify-end">
-        <Button type="submit" size="lg" disabled={!ready || busy} className="h-11 rounded-lg px-4">
+      <div className="flex items-center justify-between gap-4 border-t border-white/[0.08] pt-5">
+        <p className="hidden text-[13px] text-zinc-400 sm:block">You will be signed in after this step.</p>
+        <Button type="submit" size="lg" disabled={!ready || busy} className="h-11 rounded-md px-4">
           {busy ? (
             <>
               <LoaderCircle data-icon="inline-start" className="animate-spin" />
@@ -411,10 +436,6 @@ function AdminIdentityFields({ ready }: { ready: boolean }) {
           <Input id="email" name="email" type="email" autoComplete="email" required disabled={!ready} placeholder="name@company.com" className={inputClassName} />
         </FieldBlock>
       </div>
-
-      <FieldBlock label="Department" htmlFor="department" aside={<span className="text-[11px] text-muted-foreground">Optional</span>}>
-        <Input id="department" name="department" autoComplete="organization-title" disabled={!ready} placeholder="Operations, SRE, IT" className={inputClassName} />
-      </FieldBlock>
     </>
   );
 }
@@ -436,7 +457,7 @@ function PasswordField({
     <FieldBlock label={label} htmlFor={id}>
       <div className="relative">
         <Input id={id} name={id} type={visible ? "text" : "password"} autoComplete="new-password" minLength={12} maxLength={128} required disabled={disabled} placeholder={id === "password" ? "Minimum 12 characters" : "Repeat password"} className={cn(inputClassName, "pr-12")} />
-        <Button type="button" variant="ghost" size="icon-sm" onClick={onToggle} disabled={disabled} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg text-muted-foreground hover:bg-muted/70 hover:text-foreground" aria-label={visible ? "Hide password" : "Show password"}>
+        <Button type="button" variant="ghost" size="icon-sm" onClick={onToggle} disabled={disabled} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:bg-muted/70 hover:text-foreground" aria-label={visible ? "Hide password" : "Show password"}>
           {visible ? <Eye /> : <EyeOff />}
         </Button>
       </div>
@@ -463,7 +484,6 @@ function readOnboardingPayload(form: HTMLFormElement) {
     lastName: String(formData.get("lastName") ?? ""),
     username: String(formData.get("username") ?? ""),
     email: String(formData.get("email") ?? ""),
-    department: String(formData.get("department") ?? ""),
     password: String(formData.get("password") ?? ""),
     confirmPassword: String(formData.get("confirmPassword") ?? ""),
   };
@@ -504,7 +524,7 @@ function FieldBlock({
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-3">
-        <Label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
+        <Label htmlFor={htmlFor} className="text-[13px] font-medium text-zinc-400">
           {label}
         </Label>
         {aside}
