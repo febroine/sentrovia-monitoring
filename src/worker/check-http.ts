@@ -212,7 +212,13 @@ async function requestWithRedirects(
           && !isCustomExpectedStatusCode(monitor.expectedStatusCodes, statusCode)
         ) {
           response.resume();
-          const nextUrl = new URL(location, parsed).toString();
+          let nextUrl: string;
+          try {
+            nextUrl = new URL(location, parsed).toString();
+          } catch {
+            rejectOnce(new Error("Service returned an invalid redirect location."));
+            return;
+          }
           resolveOnce(requestWithRedirects(
             monitor,
             nextUrl,

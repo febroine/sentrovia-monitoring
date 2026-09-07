@@ -141,6 +141,7 @@ async function captureScreenshotAttachment(
   try {
     const context = await browser.newContext({
       ignoreHTTPSErrors: monitor.ignoreSslErrors,
+      serviceWorkers: "block",
       viewport: SCREENSHOT_VIEWPORT,
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
@@ -203,26 +204,23 @@ function buildScreenshotAttachment(
 }
 
 async function createScreenshotPage(context: BrowserContext, targetUrl: string) {
+  await context.route("**/*", (route) => handleScreenshotRoute(route, targetUrl));
   const page = await context.newPage();
   page.setDefaultTimeout(SCREENSHOT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(SCREENSHOT_TIMEOUT_MS);
-  await page.route("**/*", (route) => handleScreenshotRoute(route, targetUrl));
   return page;
 }
 
 function handleScreenshotRoute(route: Route, targetUrl: string) {
   const request = route.request();
-  if (
-    shouldAllowScreenshotRequest(targetUrl, request.url(), {
-      isNavigationRequest: request.isNavigationRequest(),
-      redirectedFromUrl: request.redirectedFrom()?.url() ?? null,
-    })
-  ) {
-    void route.continue();
-    return;
+  if (shouldAllowScreenshotRequest(targetUrl, request.url(), {
+    isNavigationRequest: request.isNavigationRequest(),
+    redirectedFromUrl: request.redirectedFrom()?.url() ?? null,
+  })) {
+    return route.continue();
   }
 
-  void route.abort("blockedbyclient");
+  return route.abort("blockedbyclient");
 }
 
 export function shouldAllowScreenshotRequest(
@@ -275,7 +273,7 @@ function acquireScreenshotSlot() {
 function buildHostResolverRule(target: ResolvedNetworkTarget) {
   const address = selectResolvedAddress(target);
   const mappedAddress = address.includes(":") ? `[${address}]` : address;
-  return `--host-resolver-rules=MAP ${target.hostname} ${mappedAddress}`;
+  return `--host-resolver-rules=MAP ${target.hostname} ${mappedAddress}, MAP * ~NOTFOUND`;
 }
 
 function resolvePrivateTargetAccess(monitor: Monitor) {

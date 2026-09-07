@@ -70,6 +70,24 @@ describe("http monitor checks", () => {
     expect(result.statusCode).toBe(200);
   });
 
+  it("treats a malformed redirect location as a failed check", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(302, { Location: "http://[::1" });
+      response.end();
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        url: `http://127.0.0.1:${resolveServerPort(server)}/redirect`,
+        maxRedirects: 1,
+      })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("down");
+    expect(result.errorMessage).toContain("invalid redirect location");
+  });
+
   it("allows configured non-2xx status codes as healthy responses", async () => {
     const server = await createServer((_, response) => {
       response.writeHead(401, { "Content-Type": "text/plain" });
