@@ -74,6 +74,17 @@ describe("runMonitorDiagnostics", () => {
     expect(diagnostic.httpStatusCode).toBe(200);
   });
 
+  it("reports a malformed redirect location without crashing diagnostics", async () => {
+    const { server, url } = await startMalformedRedirectServer();
+    activeServer = server;
+
+    const diagnostic = await runMonitorDiagnostics(buildMonitor({ url, maxRedirects: 1 }));
+
+    expect(diagnostic.httpStatus).toBe("failed");
+    expect(diagnostic.httpStatusCode).toBe(302);
+    expect(diagnostic.errorMessage).toContain("invalid redirect location");
+  });
+
   it("treats a custom expected HTTP status as healthy", async () => {
     const { server, url } = await startStatusServer(401);
     activeServer = server;
@@ -141,6 +152,15 @@ function startRedirectServer() {
 
     response.statusCode = 200;
     response.end("ok");
+  });
+
+  return listen(server, "/redirect");
+}
+
+function startMalformedRedirectServer() {
+  const server = http.createServer((_request, response) => {
+    response.writeHead(302, { Location: "http://[::1" });
+    response.end();
   });
 
   return listen(server, "/redirect");

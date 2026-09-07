@@ -340,7 +340,18 @@ async function checkHttp(
           && !isCustomExpectedStatusCode(monitor.expectedStatusCodes, statusCode)
         ) {
           response.resume();
-          const nextUrl = new URL(location, parsed).toString();
+          let nextUrl: string;
+          try {
+            nextUrl = new URL(location, parsed).toString();
+          } catch {
+            resolveAndClear({
+              status: "failed",
+              statusCode,
+              responseTimeMs: Math.max(1, Date.now() - startedAt),
+              errorMessage: "Service returned an invalid redirect location.",
+            });
+            return;
+          }
           resolveAndClear(checkHttp(
             nextUrl,
             monitor,
