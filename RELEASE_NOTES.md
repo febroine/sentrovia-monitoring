@@ -1,22 +1,14 @@
-# Sentrovia v0.3.7
+# Sentrovia v0.3.8
 
 ## Highlights
 
-- Added real workspace ownership and membership roles with server-enforced data isolation.
-- Split member-specific appearance preferences from shared workspace operations settings.
-- Added server-side monitor search, filtering, sorting, pagination, and lazy timeline loading.
-- Made monitor overview counts independent of the selected table page size, and added first/last-page controls to delivery history.
-- Corrected weekly and monthly report windows; manual reports now support 7-day, 30-day, and custom timezone-aware ranges.
-- Added maintenance windows and temporary silences that suppress notifications while checks continue.
-- Added incident acknowledgement, assignee, escalation, internal notes, and explicitly public status updates.
-- Added an activation checklist derived from monitor, worker, and delivery state.
-- Reduced dashboard stream work with short-lived scoped snapshots and unchanged-frame heartbeats.
-- Removed the incomplete sidebar-only translation layer to keep the interface language consistent.
-- Aligned outage upserts with the workspace-scoped open-incident constraint and tracked the retired translation files in the upgrade cleanup manifest.
-- Made clean database bootstrap baseline historical manual migrations after schema creation, while preserving the normal migration path for existing installations.
+- Added workspace operations for maintenance, incident coordination, delivery, and activation guidance.
+- Hardened worker redirect validation, monitor leases, workspace access boundaries, and backup archive handling.
+- Updated vulnerable build dependencies.
+- Redesigned first-run workspace setup and administrator creation for a clearer, accessible onboarding flow.
+- Expanded Help and About product guidance.
+- Added Chromium installation to CI so screenshot coverage runs reliably on GitHub Actions.
 
 ## Upgrade notes
 
-Run the normal database sync before starting the web and worker processes. Migrations `0079`, `0080`, and `0081` backfill workspace ownership, create shared workspace settings, and add incident/maintenance operations without deleting existing data.
-
-Existing user settings remain as a compatibility copy. Shared operational settings are read from the active workspace, while dashboard, appearance, timezone, and notification-language preferences stay member-specific.
+Run the normal database sync before starting the web and worker processes. Existing installations should review their configured backup storage permissions before upgrading.
