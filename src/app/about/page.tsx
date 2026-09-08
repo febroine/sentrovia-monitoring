@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Settings2 } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { SentroviaMark } from "@/components/brand/sentrovia-mark";
 import packageJson from "../../../package.json";
 
 const linkButtonClassName =
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
-const ghostLinkClassName =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
+const resourceLinkClassName =
+  "inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 const capabilities = [
   {
@@ -24,12 +25,20 @@ const capabilities = [
     title: "HTML reports",
     description: "Manual and scheduled reports summarize availability, latency, and failures for a workspace or company.",
   },
+  {
+    title: "Incident coordination",
+    description: "Acknowledge incidents, assign owners, and publish updates with the monitoring history in reach.",
+  },
+  {
+    title: "Public status pages",
+    description: "Share service availability through company-specific pages or an optional workspace-wide page.",
+  },
 ];
 
 const runtime = [
   {
     title: "Web application",
-    description: "Stores monitor configuration, members, settings, reports, and company-scoped public status pages.",
+    description: "Your control surface for monitors, members, incidents, and reports. Checks continue when the browser is closed.",
   },
   {
     title: "Worker",
@@ -60,32 +69,61 @@ const monitorTypes = [
 ] as const;
 
 const projectDetails = [
-  ["Version", packageJson.version],
+  ["Installed version", packageJson.version],
   ["License", "MIT"],
-  ["Runtime", `Node.js ${packageJson.engines.node}`],
-  ["Source", "github.com/febroine/sentrovia-monitoring"],
+  ["Node.js requirement", packageJson.engines.node],
+  ["Deployment", "Docker Compose or Windows services"],
+] as const;
+
+const resources = [
+  { label: "Source code", href: packageJson.homepage, description: "Explore the implementation and contribute." },
+  { label: "Releases", href: `${packageJson.homepage}/releases`, description: "Read release notes before updating your installation." },
+  { label: "Report an issue", href: packageJson.bugs.url, description: "Include your version and reproduction steps; remove credentials and private data." },
 ] as const;
 
 export default function AboutPage() {
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="flex w-full max-w-6xl flex-col gap-10 pb-4">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">About Sentrovia</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Version, runtime, supported checks, and operating rules.</p>
+          <p className="mt-1 text-sm text-muted-foreground">The product, this installation, and the project behind it.</p>
         </div>
         <div className="flex gap-2">
           <Link href="/help" className={linkButtonClassName}>Open help</Link>
         </div>
       </header>
 
+      <section aria-labelledby="product-title" className="grid gap-8 border-y py-7 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,1fr)] lg:gap-12">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <SentroviaMark className="size-10" />
+            <h2 id="product-title" className="text-2xl font-semibold tracking-tight" translate="no">Sentrovia</h2>
+          </div>
+          <p className="mt-5 max-w-xl text-lg font-medium leading-7 text-balance">Self-hosted monitoring, with verification before the alert.</p>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
+            Keep websites, APIs, databases, and scheduled jobs in one operations workspace.
+            Investigate failures, follow notification delivery, and share service status from your own infrastructure.
+          </p>
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">Open source under the MIT license. Built and maintained by Febroine.</p>
+        </div>
+        <dl className="divide-y self-start border-t lg:border-t-0">
+          {projectDetails.map(([label, value]) => (
+            <div key={label} className="grid grid-cols-[1fr_1fr] gap-4 py-3 lg:first:pt-0">
+              <dt className="text-[13px] text-muted-foreground">{label}</dt>
+              <dd className="text-sm font-medium break-words">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
       <section aria-labelledby="capabilities-title">
         <div className="mb-3">
           <h2 id="capabilities-title" className="text-base font-semibold">What Sentrovia does</h2>
         </div>
-        <div className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
+        <div className="grid gap-x-8 sm:grid-cols-2 xl:grid-cols-3">
           {capabilities.map((item) => (
-            <div key={item.title} className="py-5 xl:px-5 xl:first:pl-0 xl:last:pr-0">
+            <div key={item.title} className="border-t py-4">
               <h3 className="text-sm font-medium">{item.title}</h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
             </div>
@@ -95,16 +133,20 @@ export default function AboutPage() {
 
       <section aria-labelledby="runtime-title">
         <div className="mb-3">
-          <h2 id="runtime-title" className="text-base font-semibold">Runtime architecture</h2>
+          <h2 id="runtime-title" className="text-base font-semibold">Three parts, one installation</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">The web console and worker use the same PostgreSQL database.</p>
         </div>
-          <div className="grid border-y lg:grid-cols-3 lg:divide-x">
-            {runtime.map((item) => (
-              <div key={item.title} className="p-5 first:pl-0 last:pr-0">
-              <h3 className="text-sm font-medium">{item.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.description}</p>
-              </div>
+          <ol className="grid gap-x-8 border-y md:grid-cols-3">
+            {runtime.map((item, index) => (
+              <li key={item.title} className="flex gap-3 py-5">
+                <span aria-hidden="true" className="text-sm font-medium text-primary">{index + 1}.</span>
+                <div>
+                  <h3 className="text-sm font-medium">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                </div>
+              </li>
             ))}
-        </div>
+        </ol>
       </section>
 
       <div className="grid gap-8 xl:grid-cols-[1.05fr_0.95fr]">
@@ -122,6 +164,7 @@ export default function AboutPage() {
 
         <section aria-labelledby="monitor-types-title">
           <h2 id="monitor-types-title" className="text-base font-semibold">Monitor types</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Service reachability and response health. CPU, memory, and disk telemetry are outside this scope.</p>
           <dl className="mt-4 divide-y border-y">
             {monitorTypes.map(([name, description]) => (
               <div key={name} className="grid gap-1 py-3 sm:grid-cols-[110px_1fr]">
@@ -133,39 +176,20 @@ export default function AboutPage() {
         </section>
       </div>
 
-      <section aria-labelledby="project-title">
-        <div className="mb-3">
-          <h2 id="project-title" className="text-base font-semibold">Project information</h2>
-        </div>
-        <dl className="grid border-y sm:grid-cols-2 xl:grid-cols-4 xl:divide-x">
-          {projectDetails.map(([label, value]) => (
-            <div key={label} className="py-4 xl:px-5 xl:first:pl-0 xl:last:pr-0">
-              <dt className="text-sm text-muted-foreground">{label}</dt>
-              <dd className="mt-1 break-words text-sm font-medium">
-                {label === "Source" ? (
-                  <a
-                    href="https://github.com/febroine/sentrovia-monitoring"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline-offset-4 hover:underline"
-                  >
-                    {value}
-                  </a>
-                ) : value}
-              </dd>
+      <footer aria-labelledby="resources-title" className="border-t pt-6">
+        <h2 id="resources-title" className="text-base font-semibold">Project resources</h2>
+        <div className="mt-4 grid gap-6 sm:grid-cols-3">
+          {resources.map((resource) => (
+            <div key={resource.label}>
+              <a href={resource.href} target="_blank" rel="noreferrer" className={resourceLinkClassName}>
+                {resource.label}<ArrowUpRight aria-hidden="true" className="size-4" />
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{resource.description}</p>
             </div>
           ))}
-        </dl>
-      </section>
-
-      <footer className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          Deployment, update, backup, and troubleshooting instructions are maintained in Help and README.
-        </p>
-        <Link href="/settings" className={ghostLinkClassName}>
-          <Settings2 data-icon="inline-start" />
-          Open settings
-        </Link>
+        </div>
+        <p className="mt-6 text-sm leading-6 text-muted-foreground">For deployment and troubleshooting, visit <Link href="/help" className="text-foreground underline underline-offset-4 hover:text-primary">Help</Link>. Manage your installation through <Link href="/settings" className="text-foreground underline underline-offset-4 hover:text-primary">Settings</Link>.</p>
       </footer>
     </div>
   );
