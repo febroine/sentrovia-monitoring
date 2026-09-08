@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { applyAuthResponseHeaders } from "@/lib/auth/response";
-import { flattenValidationIssues, onboardingSchema } from "@/lib/auth/schemas";
+import { flattenValidationIssues, getValidationFieldErrors, onboardingSchema } from "@/lib/auth/schemas";
 import { applySessionCookie } from "@/lib/auth/session";
 import { createInitialAdmin, isOnboardingRequired } from "@/lib/auth/service";
 import { readJsonBody } from "@/lib/http/json-body";
@@ -27,7 +27,15 @@ export async function POST(request: NextRequest) {
     const body = await readJsonBody(request, AUTH_JSON_BODY_LIMIT_BYTES);
     const parsed = onboardingSchema.safeParse(body);
     if (!parsed.success) {
-      throw new AuthError(flattenValidationIssues(parsed.error), 400);
+      return applyAuthResponseHeaders(
+        NextResponse.json(
+          {
+            message: flattenValidationIssues(parsed.error),
+            fieldErrors: getValidationFieldErrors(parsed.error),
+          },
+          { status: 400 }
+        )
+      );
     }
 
     const result = await createInitialAdmin(parsed.data);

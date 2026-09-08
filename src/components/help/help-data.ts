@@ -41,6 +41,26 @@ export const helpCategories: HelpCategory[] = [
           "Sentrovia currently supports HTTP or HTTPS, keyword, JSON assertion, TCP or port, PostgreSQL, ping or ICMP, and cron or heartbeat monitors. They all share the same worker, verification, timeline, and delivery pipeline while using type-specific check logic.",
       },
       {
+        question: "Which monitor type should I choose for a website or API?",
+        answer:
+          "Start with HTTP or HTTPS to check whether the endpoint responds successfully. Choose keyword when a page must contain a particular phrase, or JSON assertion when an API response must contain a field or match an expected value. A TCP check only tests the port, so it cannot confirm that the application returns the correct content.",
+      },
+      {
+        question: "Why can a page return HTTP 200 but still fail a check?",
+        answer:
+          "A successful status code does not guarantee that the expected content is present. Keyword and JSON monitors also validate the response body. Open the monitor history, read the failure detail, and compare the configured phrase or JSON path with the actual response from the monitored endpoint.",
+      },
+      {
+        question: "When should I use a heartbeat instead of polling an endpoint?",
+        answer:
+          "Use a heartbeat for scheduled jobs that should report completion, such as a backup or nightly import. Have the job call its generated heartbeat endpoint after the work succeeds. Polling a website can prove that the website responds, but it cannot prove that a separate background job completed.",
+      },
+      {
+        question: "Why does a service work on my laptop but fail in Sentrovia?",
+        answer:
+          "Checks run from the worker host, which may have different DNS, firewall rules, routing, and access permissions from your laptop. Inspect the recorded failure first, then verify that the target is reachable from the worker environment. For private addresses, also check the administrator-only private-target setting and the network restrictions described below.",
+      },
+      {
         question: "How does a new monitor move from pending to a live state?",
         answer:
           "A monitor starts as pending, waits for the worker to pick it up, then receives its first persisted check result. That result writes status, code, latency, timestamps, and next check time back into PostgreSQL.",
@@ -164,6 +184,16 @@ export const helpCategories: HelpCategory[] = [
           "Yes. Settings > Notifications includes a notification language option. Email and Telegram default templates are rendered in the selected language unless a monitor-level custom template overrides the workspace default.",
       },
       {
+        question: "Why did a notification go to a different recipient than expected?",
+        answer:
+          "Email and Telegram destinations can come from monitor, company, or workspace settings. Check the monitor's destination first, then its company and workspace fallback. Discord and generic webhooks use workspace-level channels. Inspect the Delivery history for the event before changing a destination.",
+      },
+      {
+        question: "Why is a monitor failing without sending an outage alert yet?",
+        answer:
+          "The monitor may still be in Verification Mode. A failed probe is not immediately a confirmed outage. Check the monitor's verification state and history first. If the outage is already confirmed, inspect Delivery for a failed or retrying channel attempt and verify the configured destination.",
+      },
+      {
         question: "Can I test channels without triggering a real outage?",
         answer:
           "Yes. The Delivery area includes test tooling so you can validate SMTP, Telegram, Discord, and webhook destinations without waiting for a real monitor failure.",
@@ -223,6 +253,16 @@ export const helpCategories: HelpCategory[] = [
           "Scheduled and manual report delivery sends one browser-ready HTML attachment.",
       },
       {
+        question: "Why does a monthly report contain only seven days of history?",
+        answer:
+          "Monthly controls how often the report is sent. Each generated report still covers the rolling previous seven days. Use the report's displayed period when comparing results; a monthly delivery schedule does not turn it into a calendar-month report.",
+      },
+      {
+        question: "What should I check if a scheduled report did not arrive?",
+        answer:
+          "Open Reports > Schedules and confirm that the schedule is active and its recipient list is correct. Then check worker health and host connectivity, because the worker sends scheduled reports. A successful preview alone does not confirm that the worker or email delivery is working; use the send-now action to check delivery separately.",
+      },
+      {
         question: "Can I change the report name and email subject?",
         answer:
           "Yes. In Reports, open report customization to set the brand or sender name and a complete email subject template. The brand is used in the email header, attached HTML report, and default subject prefix. Subject templates support the tokens listed beside the field, and the preview shows the resolved subject before sending.",
@@ -265,6 +305,31 @@ export const helpCategories: HelpCategory[] = [
         question: "What happens on the first install?",
         answer:
           "The first boot starts with onboarding. The first user enters their own email, username, and password, then Sentrovia creates that account with admin privileges. After setup, future access uses login and admins manage accounts from the Members page.",
+      },
+      {
+        question: "What should I do after creating the first administrator?",
+        answer:
+          "Confirm that the worker is healthy, add your first monitor, and wait for a recorded check result. Configure notification destinations and test delivery before relying on alerts. You can then organize monitors by company and add team members with the access they need.",
+      },
+      {
+        question: "What are the username and password requirements?",
+        answer:
+          "Usernames must be 3–80 characters and may contain letters, numbers, dots, underscores, and hyphens. They are stored in lowercase. Passwords must be 12–128 characters and include a lowercase letter, an uppercase letter, a number, and a special character. The confirmation must match the password.",
+      },
+      {
+        question: "Can new team members sign up through onboarding?",
+        answer:
+          "No. Onboarding creates the first administrator and closes once an account exists. An administrator manages additional accounts from Members. Team members then use the login page with their assigned credentials.",
+      },
+      {
+        question: "Do I have to enter a department during setup?",
+        answer:
+          "No. The initial administrator form asks for your name, username, email, and password. Department is optional profile information and can be added later in your profile settings.",
+      },
+      {
+        question: "Why can I view the workspace but not change its settings?",
+        answer:
+          "Available actions depend on your role. Viewers have read-only access. Operators can manage routine monitoring operations and settings; managers can also manage operator and viewer accounts. Administrator access is required for worker management, backups, and private network targets. Ask your administrator if your role does not match your responsibilities.",
       },
       {
         question: "What if an existing workspace has no admin?",
@@ -319,6 +384,11 @@ export const helpCategories: HelpCategory[] = [
         question: "Where does dashboard data come from?",
         answer:
           "Dashboard panels read durable state from PostgreSQL, including current monitor status, worker heartbeat, recent checks, events, delivery outcomes, and report schedule state. The browser is never the source of truth.",
+      },
+      {
+        question: "Will monitoring stop if I close the browser or sign out?",
+        answer:
+          "No. Monitoring continues while the worker and database remain available. Closing the browser only closes your view of the workspace. Use Worker Pulse or System Health when you return to confirm that checks continued to run.",
       },
       {
         question: "Can I customize my dashboard?",
