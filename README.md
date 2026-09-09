@@ -133,6 +133,8 @@ Sentrovia routes notifications from monitor-specific settings to company setting
 
 Screenshots are best effort, so an unavailable Chromium process never blocks an alert.
 
+Delivery tests use real channel transports: Telegram uses the bot token and chat ID entered in Delivery, while Discord uses the enabled webhook configured in Settings. Test attempts remain in Delivery history but are excluded from delivery summary counters and channel health metrics. A failed test is recorded in history with its delivery status.
+
 ## Screenshots
 
 <table>

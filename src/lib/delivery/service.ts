@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { deliveryEvents, webhookEndpoints, workspaceMembers } from "@/lib/db/schema";
 import { escapeHtml } from "@/lib/html";
@@ -105,6 +105,7 @@ export async function getDeliveryOverview(
   workspaceId?: string
 ): Promise<DeliveryOverview> {
   const ownership = deliveryOwnershipCondition(userId, workspaceId);
+  const operationalMetrics = and(ownership, ne(deliveryEvents.kind, "test"));
   const healthSince = new Date(Date.now() - DELIVERY_HEALTH_WINDOW_MS);
   const [endpoint, totalRows, summary, healthRows, latestHealthRows] = await Promise.all([
     getWebhookEndpoint(userId, workspaceId),
@@ -116,7 +117,7 @@ export async function getDeliveryOverview(
     db
       .select({ channel: deliveryEvents.channel, status: deliveryEvents.status, total: count() })
       .from(deliveryEvents)
-      .where(and(ownership, deliveryHealthWindowWhere(healthSince)))
+      .where(and(operationalMetrics, deliveryHealthWindowWhere(healthSince)))
       .groupBy(deliveryEvents.channel, deliveryEvents.status),
     Promise.all(DELIVERY_CHANNELS.map((channel) =>
       db
@@ -129,7 +130,7 @@ export async function getDeliveryOverview(
         })
         .from(deliveryEvents)
         .where(and(
-          ownership,
+          operationalMetrics,
           eq(deliveryEvents.channel, channel),
           deliveryHealthWindowWhere(healthSince)
         ))
@@ -182,7 +183,10 @@ export async function getDeliverySummary(
       deadLettered: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed' and ${deliveryEvents.deadLetteredAt} is not null)::integer`,
     })
     .from(deliveryEvents)
-    .where(workspaceId ? eq(deliveryEvents.workspaceId, workspaceId) : eq(deliveryEvents.userId, userId));
+    .where(and(
+      deliveryOwnershipCondition(userId, workspaceId),
+      ne(deliveryEvents.kind, "test")
+    ));
 
   return normalizeDeliverySummary(row);
 }

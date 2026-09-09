@@ -43,7 +43,7 @@ const EMPTY_OVERVIEW: DeliveryOverview = {
   pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 1 },
 };
 
-type MessageResponse = { message?: string };
+type MessageResponse = { message?: string; delivery?: DeliveryHistoryRecord };
 type HistoryDeletionRange = "last_7_days" | "last_30_days" | "custom";
 type DeliveryPageMessage = { text: string; tone: "error" | "success" };
 
@@ -181,11 +181,14 @@ export function DeliveryPageClient() {
       });
       const data = await readJsonOrNull<MessageResponse>(response);
       if (!response.ok) {
+        if (data?.delivery) {
+          await loadOverview(1);
+          return;
+        }
         throw new Error(data?.message ?? `Unable to send ${channel} test.`);
       }
 
       await loadOverview(1);
-      setMessage({ text: `${toTitleCase(channel)} test sent.`, tone: "success" });
     } catch (error) {
       setMessage({ text: toMessage(error, `Unable to send ${channel} test.`), tone: "error" });
     } finally {
@@ -407,7 +410,7 @@ export function DeliveryPageClient() {
                 variant="outline"
                 size="sm"
                 onClick={() => void retryQueue()}
-                disabled={pendingAction !== null || overview.summary.pendingRetries === 0}
+                disabled={pendingAction !== null || overview.pagination.totalItems === 0}
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Retry queue
@@ -417,7 +420,7 @@ export function DeliveryPageClient() {
                 size="sm"
                 className="text-destructive hover:text-destructive"
                 onClick={() => setClearHistoryOpen(true)}
-                disabled={pendingAction !== null || overview.summary.delivered + overview.summary.failed === 0}
+                disabled={pendingAction !== null || overview.pagination.totalItems === 0}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Clear history
