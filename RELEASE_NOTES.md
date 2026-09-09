@@ -1,14 +1,12 @@
-# Sentrovia v0.3.8
+# Sentrovia v0.3.9
 
 ## Highlights
 
-- Added workspace operations for maintenance, incident coordination, delivery, and activation guidance.
-- Hardened worker redirect validation, monitor leases, workspace access boundaries, and backup archive handling.
-- Updated vulnerable build dependencies.
-- Redesigned first-run workspace setup and administrator creation for a clearer, accessible onboarding flow.
-- Expanded Help and About product guidance.
-- Added Chromium installation to CI so screenshot coverage runs reliably on GitHub Actions.
+- Excluded test deliveries from delivery summary counters, dashboard delivery metrics, and channel health calculations while keeping them in Delivery history.
+- Refresh Delivery history after recorded test failures and avoid duplicate test-result banners.
+- Keep history cleanup and retry controls available when the history contains only test deliveries.
+- Added delivery test API coverage and documented Telegram and Discord test configuration in the README.
 
 ## Upgrade notes
 
-Run the normal database sync before starting the web and worker processes. Existing installations should review their configured backup storage permissions before upgrading.
+No new database migrations are introduced in this release. Existing test records are preserved and automatically excluded from operational delivery metrics after upgrading.
