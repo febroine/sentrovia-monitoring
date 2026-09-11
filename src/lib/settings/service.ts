@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql as drizzleSql } from "drizzle-orm";
 import { db, sql, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, workspaceSettings } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
@@ -601,18 +601,19 @@ export async function upsertSettings(
   input: SettingsInput,
   database?: DatabaseExecutor,
   skipReadback = false,
-  workspaceId?: string
+  workspaceId?: string,
+  allowBackupPolicyChanges = true
 ) {
   if (input.notifications.discordWebhookUrl.trim().length > 0) {
     await assertSafeWebhookUrl(input.notifications.discordWebhookUrl);
   }
 
   if (!database) {
-    await db.transaction((tx) => persistSettings(userId, input, tx, workspaceId));
+    await db.transaction((tx) => persistSettings(userId, input, tx, workspaceId, allowBackupPolicyChanges));
     return skipReadback ? null : getSettings(userId, true, workspaceId);
   }
 
-  await persistSettings(userId, input, database, workspaceId);
+  await persistSettings(userId, input, database, workspaceId, allowBackupPolicyChanges);
   return skipReadback ? null : getSettings(userId, true, workspaceId);
 }
 
@@ -723,7 +724,8 @@ async function persistSettings(
   userId: string,
   input: SettingsInput,
   executor: DatabaseExecutor,
-  workspaceId?: string
+  workspaceId: string | undefined,
+  allowBackupPolicyChanges: boolean
 ) {
   const [settingsColumns, personalSettings, sharedSettings] = await Promise.all([
     getTableColumns("user_settings"),
@@ -747,9 +749,8 @@ async function persistSettings(
   }
 
   const encryptedPassword = resolveSmtpPasswordEncrypted(
-    input.notifications.smtpPassword,
-    input.notifications.smtpPasswordConfigured,
-    stringOrEmpty(existing?.smtpPasswordEncrypted)
+    input.notifications,
+    existing
   );
   const encryptedTelegramBotToken = resolveConfiguredSecretEncrypted(
     input.notifications.defaultTelegramBotToken,
@@ -832,9 +833,11 @@ async function persistSettings(
     publicStatusCompanyId: emptyToNull(input.publicStatus.companyId),
     dataRetentionDays: input.data.retentionDays,
     deliveryRetentionDays: input.data.deliveryRetentionDays,
-    autoBackupEnabled: input.data.autoBackupEnabled,
-    backupWindow: input.data.backupWindow,
-    backupRetentionCount: input.data.backupRetentionCount,
+    ...(allowBackupPolicyChanges ? {
+      autoBackupEnabled: input.data.autoBackupEnabled,
+      backupWindow: input.data.backupWindow,
+      backupRetentionCount: input.data.backupRetentionCount,
+    } : {}),
     lastBackupStatus: toBackupStatus(existing?.lastBackupStatus),
     lastBackupError: stringOrNull(existing?.lastBackupError),
     lastAutomaticBackupAt: dateOrNull(existing?.lastAutomaticBackupAt),
@@ -864,7 +867,13 @@ async function persistSettings(
       .values({ workspaceId, valuesJson: workspaceValues, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: workspaceSettings.workspaceId,
-        set: { valuesJson: workspaceValues, updatedAt: new Date() },
+        set: {
+          // Merge at write time so an older non-admin form cannot revert a concurrent backup-policy update.
+          valuesJson: allowBackupPolicyChanges
+            ? workspaceValues
+            : drizzleSql`coalesce(${workspaceSettings.valuesJson}, '{}'::jsonb) || ${JSON.stringify(workspaceValues)}::jsonb`,
+          updatedAt: new Date(),
+        },
       });
   }
 
@@ -950,11 +959,23 @@ async function clearInheritedMonitorTemplate(
 }
 
 export function resolveSmtpPasswordEncrypted(
-  nextPassword: string,
-  passwordConfigured: boolean,
-  existingEncryptedPassword: string
+  input: SettingsInput["notifications"],
+  existing: Record<string, unknown>
 ) {
-  return resolveConfiguredSecretEncrypted(nextPassword, passwordConfigured, existingEncryptedPassword);
+  const existingEncryptedPassword = stringOrEmpty(existing.smtpPasswordEncrypted);
+  if (!input.smtpPassword.trim() && input.smtpPasswordConfigured && existingEncryptedPassword) {
+    const connectionChanged = input.smtpHost.trim().toLowerCase() !== stringOrEmpty(existing.smtpHost).trim().toLowerCase()
+      || input.smtpPort !== numberOrDefault(existing.smtpPort, DEFAULT_SETTINGS.notifications.smtpPort)
+      || input.smtpUsername.trim() !== stringOrEmpty(existing.smtpUsername).trim()
+      || input.smtpSecure !== booleanOrDefault(existing.smtpSecure, DEFAULT_SETTINGS.notifications.smtpSecure)
+      || input.smtpRequireTls !== booleanOrDefault(existing.smtpRequireTls, DEFAULT_SETTINGS.notifications.smtpRequireTls)
+      || input.smtpInsecureSkipVerify !== booleanOrDefault(existing.smtpInsecureSkipVerify, DEFAULT_SETTINGS.notifications.smtpInsecureSkipVerify);
+    if (connectionChanged) {
+      throw new AuthError("Re-enter the SMTP password after changing connection settings.", 400);
+    }
+  }
+
+  return resolveConfiguredSecretEncrypted(input.smtpPassword, input.smtpPasswordConfigured, existingEncryptedPassword);
 }
 
 export function resolveConfiguredSecretEncrypted(

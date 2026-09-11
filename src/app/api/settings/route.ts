@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { toAuthError } from "@/lib/auth/errors";
+import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { assertPermission, hasPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { settingsSchema } from "@/lib/settings/schemas";
@@ -45,12 +45,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid settings payload." }, { status: 400 });
     }
 
+    const allowBackupPolicyChanges = hasPermission(session.role, "backups.manage");
+    if (!allowBackupPolicyChanges) {
+      const current = await getSettings(session.id, false, session.activeWorkspaceId!);
+      if (!current) {
+        throw new AuthError("Unable to load current settings.", 409);
+      }
+      if (
+        parsed.data.data.autoBackupEnabled !== current.data.autoBackupEnabled ||
+        parsed.data.data.backupWindow !== current.data.backupWindow ||
+        parsed.data.data.backupRetentionCount !== current.data.backupRetentionCount
+      ) {
+        assertPermission(session.role, "backups.manage");
+      }
+    }
+
     const settings = await upsertSettings(
       session.id,
       parsed.data,
       undefined,
       false,
-      session.activeWorkspaceId!
+      session.activeWorkspaceId!,
+      allowBackupPolicyChanges
     );
     await recordAuditEventSafely({
       userId: session.id,

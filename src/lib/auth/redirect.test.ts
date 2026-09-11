@@ -15,4 +15,10 @@ describe("resolveSafeAuthRedirect", () => {
     expect(resolveSafeAuthRedirect("")).toBe("/dashboard");
     expect(resolveSafeAuthRedirect("\\\\example.com")).toBe("/dashboard");
   });
+
+  it.each(["\n", "\r", "\t"])("rejects protocol-relative redirects obscured by %j", (control) => {
+    const result = resolveSafeAuthRedirect(`/${control}/example.com/path`);
+    expect(new URL(result, "https://sentrovia.test").origin).toBe("https://sentrovia.test");
+    expect(result).toBe("/dashboard");
+  });
 });

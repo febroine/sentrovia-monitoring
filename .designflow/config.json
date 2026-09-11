@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "configured": true,
+  "watch_globs": [
+    "src/**",
+    "app/**",
+    "apps/**",
+    "pages/**",
+    "components/**",
+    "screens/**",
+    "styles/**",
+    "theme/**",
+    "themes/**",
+    "tokens/**",
+    "assets/**",
+    "public/**",
+    "lib/**",
+    "web/**",
+    "native/**",
+    "ios/**",
+    "android/**",
+    "design-system/**",
+    "*.html",
+    "*.css",
+    "*.scss",
+    "*.sass",
+    "*.less",
+    "*.tsx",
+    "*.jsx",
+    "*.vue",
+    "*.svelte",
+    "*.dart",
+    "*.swift",
+    "*.kt",
+    "*.js",
+    "*.ts",
+    "*.json",
+    "*.yaml",
+    "*.yml",
+    "*.toml"
+  ],
+  "exclude_globs": [
+    "**/node_modules/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/.next/**",
+    "**/.expo/**",
+    "**/Pods/**",
+    "**/.gradle/**",
+    "**/coverage/**",
+    "**/__pycache__/**",
+    "**/.venv/**"
+  ],
+  "artifact_paths": [
+    "design/INDEX.md"
+  ],
+  "checks": [
+    {
+      "name": "typecheck",
+      "argv": ["npm", "run", "typecheck"]
+    },
+    {
+      "name": "monitoring-lint",
+      "argv": ["npx", "eslint", "src/app/monitoring/page.tsx", "src/components/monitoring", "src/app/api/monitors"]
+    }
+  ],
+  "checks_omitted_reason": "",
+  "max_snapshot_files": 20000,
+  "max_file_bytes": 67108864,
+  "max_total_bytes": 536870912,
+  "checks_omitted_by_mode": {},
+  "design_sources": [
+    "src/app/globals.css",
+    "src/app/monitoring/page.tsx",
+    "src/components/ui/button.tsx",
+    "src/components/ui/dialog.tsx",
+    "src/components/ui/select.tsx",
+    "src/components/monitoring/monitor-table.tsx"
+  ]
+}

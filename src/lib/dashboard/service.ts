@@ -23,7 +23,7 @@ const dashboardSnapshotCache = new Map<string, { expiresAt: number; value: Promi
 export async function getDashboardData(userId: string, workspaceId?: string) {
   const [monitorSection, settingsSection] = await Promise.all([
     loadDashboardSection("monitor status", getDashboardMonitors(userId, workspaceId), []),
-    loadDashboardSection("workspace settings", getSettings(userId, true, workspaceId), null),
+    loadDashboardSection("workspace settings", getSettings(userId, false, workspaceId), null),
   ]);
   const monitorRows = monitorSection.data;
   const settings = settingsSection.data;

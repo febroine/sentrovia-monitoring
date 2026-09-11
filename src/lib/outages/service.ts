@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitorOutages } from "@/lib/db/schema";
-import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
+import { resolveMonitorHistoryWorkspace } from "@/lib/monitors/runtime-store";
 
 type OutageStateInput = {
   monitorId: string;
@@ -15,7 +15,7 @@ export async function openOrUpdateOutage(
   input: OutageStateInput & { errorMessage: string | null },
   database: DatabaseExecutor = db
 ) {
-  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId, database);
+  const workspaceId = await resolveMonitorHistoryWorkspace(input, database);
   const [outage] = await database
     .insert(monitorOutages)
     .values({
@@ -48,7 +48,7 @@ export async function openOrUpdateOutage(
 }
 
 export async function resolveOutage(input: OutageStateInput, database: DatabaseExecutor = db) {
-  const workspaceId = input.workspaceId ?? await requireWorkspaceIdForUser(input.userId, database);
+  const workspaceId = await resolveMonitorHistoryWorkspace(input, database);
   const existing = await getOpenOutage(input.userId, input.monitorId, database, workspaceId);
   if (!existing) {
     return null;

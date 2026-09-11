@@ -1282,6 +1282,18 @@ function resolveDatabasePassword(
     return encryptValue(input.databasePassword.trim());
   }
 
+  if (existingMonitor?.databasePasswordEncrypted) {
+    const targetChanged = buildMonitorIdentityKey({
+      monitorType: "postgres",
+      url: buildCanonicalMonitorTarget(input),
+    }) !== buildMonitorIdentityKey({ monitorType: "postgres", url: existingMonitor.url });
+    const transportChanged = input.databaseSsl !== existingMonitor.databaseSsl
+      || input.databaseTlsVerify !== existingMonitor.databaseTlsVerify;
+    if (targetChanged || transportChanged) {
+      throw new AuthError("Re-enter the database password after changing connection settings.", 400);
+    }
+  }
+
   return existingMonitor?.databasePasswordEncrypted ?? null;
 }
 

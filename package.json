@@ -1,6 +1,6 @@
 {
   "name": "sentrovia",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "description": "Self-hosted uptime monitoring that verifies outages before alerting, with HTTP, TCP, Ping, PostgreSQL, evidence, and Windows deployment.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
@@ -52,7 +52,7 @@
     "jose": "^6.2.2",
     "lucide-react": "^1.7.0",
     "next": "^16.3.1",
-    "nodemailer": "9.0.3",
+    "nodemailer": "9.1.1",
     "playwright": "^1.60.0",
     "postgres": "^3.4.9",
     "react": "19.2.4",
@@ -60,6 +60,7 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.22.5",
+    "write-excel-file": "^4.1.1",
     "yaml": "^2.8.3",
     "zod": "^4.3.6",
     "zustand": "^5.0.12"
@@ -85,12 +86,12 @@
     },
     "nanoid": "3.3.18",
     "postcss": "8.5.26",
-    "sharp": "0.35.3"
+    "sharp": "0.35.4"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,
     "esbuild@0.28.1": true,
-    "sharp@0.35.3": true,
+    "sharp@0.35.4": true,
     "unrs-resolver@1.11.1": true
   }
 }
