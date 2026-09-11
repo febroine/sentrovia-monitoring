@@ -10,7 +10,7 @@ export function SentroviaMark({ className, ...props }: SentroviaMarkProps) {
       aria-hidden="true"
       className={cn("size-7", className)}
       height={64}
-      src="/sentrovia-mark.png"
+      src="/sentrovia-mark-v2.png"
       unoptimized
       width={64}
       {...props}

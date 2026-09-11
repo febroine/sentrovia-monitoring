@@ -132,6 +132,7 @@ export const userSettings = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     notificationLanguage: varchar("notification_language", { length: 8 }).default("en").notNull(),
+    defaultMonitorNotificationPref: varchar("default_monitor_notification_pref", { length: 16 }).default("both").notNull(),
     notifyOnDown: boolean("notify_on_down").default(true).notNull(),
     notifyOnRecovery: boolean("notify_on_recovery").default(true).notNull(),
     notifyOnStatusChange: boolean("notify_on_status_change").default(false).notNull(),
@@ -350,7 +351,8 @@ export const monitors = pgTable("monitors", {
   statusCode: integer("status_code"),
   uptime: varchar("uptime", { length: 32 }).default("--").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
-  publishOnStatusPage: boolean("publish_on_status_page").default(false).notNull(),
+  pausedUntil: timestamp("paused_until", { withTimezone: true }),
+  publishOnStatusPage: boolean("publish_on_status_page").default(true).notNull(),
   isFavorite: boolean("is_favorite").default(false).notNull(),
   isCritical: boolean("is_critical").default(false).notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -367,7 +369,7 @@ export const monitors = pgTable("monitors", {
   verificationMode: boolean("verification_mode").default(false).notNull(),
   verificationFailureCount: integer("verification_failure_count").default(0).notNull(),
   latencyMs: integer("latency_ms"),
-  notificationPref: varchar("notification_pref", { length: 16 }).default("none").notNull(),
+  notificationPref: varchar("notification_pref", { length: 16 }).default("both").notNull(),
   notificationLanguage: varchar("notification_language", { length: 8 }).default("default").notNull(),
   notifEmail: text("notif_email"),
   telegramBotToken: text("telegram_bot_token"),
@@ -493,10 +495,6 @@ export const monitorOutages = pgTable(
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
     statusCode: integer("status_code"),
     errorMessage: text("error_message"),
-    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
-    acknowledgedByUserId: text("acknowledged_by_user_id").references(() => users.id, { onDelete: "set null" }),
-    assignedToUserId: text("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
-    escalationLevel: integer("escalation_level").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -505,55 +503,6 @@ export const monitorOutages = pgTable(
     uniqueIndex("monitor_outages_single_open_unique")
       .on(table.workspaceId, table.monitorId)
       .where(sql`${table.status} = 'open' and ${table.resolvedAt} is null`),
-  ]
-);
-
-export const maintenanceWindows = pgTable(
-  "maintenance_windows",
-  {
-    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-    workspaceId: text("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
-    monitorId: text("monitor_id").references(() => monitors.id, { onDelete: "cascade" }),
-    createdByUserId: text("created_by_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    kind: varchar("kind", { length: 16 }).default("maintenance").notNull(),
-    title: varchar("title", { length: 160 }).notNull(),
-    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
-    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
-    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("maintenance_windows_workspace_time_idx").on(table.workspaceId, table.startsAt, table.endsAt),
-    index("maintenance_windows_monitor_time_idx").on(table.monitorId, table.startsAt, table.endsAt),
-  ]
-);
-
-export const incidentUpdates = pgTable(
-  "incident_updates",
-  {
-    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-    workspaceId: text("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
-    outageId: text("outage_id")
-      .notNull()
-      .references(() => monitorOutages.id, { onDelete: "cascade" }),
-    authorUserId: text("author_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    visibility: varchar("visibility", { length: 16 }).default("internal").notNull(),
-    updateType: varchar("update_type", { length: 24 }).default("note").notNull(),
-    message: text("message").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("incident_updates_workspace_created_idx").on(table.workspaceId, table.createdAt),
-    index("incident_updates_outage_created_idx").on(table.outageId, table.createdAt),
   ]
 );
 

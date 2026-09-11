@@ -330,11 +330,15 @@ async function assertRequiredTables(sql) {
     from information_schema.tables
     where table_schema = 'public'
   `;
-  const existing = new Set(rows.map((row) => row.table_name));
-  const missing = [...EXPECTED_TABLES].filter((table) => !existing.has(table));
+  const missing = findMissingRequiredTables(rows.map((row) => row.table_name));
   if (missing.length > 0) {
     throw new Error(`Database schema is incomplete. Missing tables: ${missing.join(", ")}. Run npm run db:sync first.`);
   }
+}
+
+export function findMissingRequiredTables(existingTableNames) {
+  const existing = new Set(existingTableNames);
+  return [...EXPECTED_TABLES].filter((table) => !existing.has(table));
 }
 
 async function acquireMaintenanceLock(sql) {

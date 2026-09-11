@@ -73,7 +73,6 @@ export function GeneralMonitorSettings({
   onTagsTextChange: (value: string) => void;
 }) {
   const isBulkEditMode = mode === "bulk";
-  const selectedMonitorType = MONITOR_TYPE_OPTIONS.find((option) => option.value === values.monitorType);
   const isHttpMonitor = values.monitorType === "http";
   const isKeywordMonitor = values.monitorType === "keyword";
   const isJsonMonitor = values.monitorType === "json";
@@ -109,18 +108,6 @@ export function GeneralMonitorSettings({
               </SelectContent>
             </Select>
           </Field>
-
-          {selectedMonitorType ? (
-            <div className="border-y py-3">
-              <div className="flex items-start gap-3">
-                <selectedMonitorType.icon className="mt-0.5 size-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-sm font-medium">{getMonitorTypeLabel(selectedMonitorType.value)}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedMonitorType.description}</p>
-                </div>
-              </div>
-            </div>
-          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Monitor name">

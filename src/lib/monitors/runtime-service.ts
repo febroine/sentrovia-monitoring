@@ -70,6 +70,7 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
         ),
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
+        buildMonitorRunnablePredicate(now),
         or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
         or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
       )
@@ -136,9 +137,14 @@ function buildDueMonitorPredicate(now: Date) {
   return and(
     eq(monitors.isActive, true),
     isNull(monitors.deletedAt),
+    buildMonitorRunnablePredicate(now),
     or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
     or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
   );
+}
+
+function buildMonitorRunnablePredicate(now: Date) {
+  return or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now));
 }
 
 export function calculateMonitorLeaseMs(
@@ -163,10 +169,16 @@ export function calculateMonitorLeaseMs(
 }
 
 export async function isMonitorActive(monitorId: string) {
+  const now = new Date();
   const [monitor] = await db
     .select({ isActive: monitors.isActive })
     .from(monitors)
-    .where(and(eq(monitors.id, monitorId), isNull(monitors.deletedAt)))
+    .where(and(
+      eq(monitors.id, monitorId),
+      eq(monitors.isActive, true),
+      isNull(monitors.deletedAt),
+      buildMonitorRunnablePredicate(now)
+    ))
     .limit(1);
 
   return monitor?.isActive === true;
@@ -211,6 +223,7 @@ export async function recordMonitorResult(
         eq(monitors.id, monitorId),
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
+        buildMonitorRunnablePredicate(leaseCheckTime),
         expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined,
         expectedLeaseToken ? gt(monitors.leaseExpiresAt, leaseCheckTime) : undefined
       )
@@ -237,6 +250,7 @@ export async function refreshMonitorUptime(
       eq(monitors.userId, userId),
       eq(monitors.isActive, true),
       isNull(monitors.deletedAt),
+      buildMonitorRunnablePredicate(leaseCheckTime),
       expectedLeaseToken ? eq(monitors.leaseToken, expectedLeaseToken) : undefined,
       expectedLeaseToken ? gt(monitors.leaseExpiresAt, leaseCheckTime) : undefined
     ))
@@ -271,6 +285,7 @@ export async function renewMonitorLease(
         eq(monitors.id, monitorId),
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
+        buildMonitorRunnablePredicate(leaseCheckTime),
         eq(monitors.leaseToken, expectedLeaseToken),
         gt(monitors.leaseExpiresAt, leaseCheckTime)
       )

@@ -52,6 +52,7 @@ export interface MonitorRecord {
   statusCode: number | null;
   uptime: string;
   isActive: boolean;
+  pausedUntil: string | null;
   publishOnStatusPage: boolean;
   isFavorite: boolean;
   isCritical: boolean;
@@ -114,6 +115,7 @@ export interface MonitorSummary {
   online: number;
   offline: number;
   pending: number;
+  nextPauseExpiryAt: string | null;
 }
 
 export interface MonitorHistoryPoint {
@@ -368,7 +370,7 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   jsonMatchMode: "equals",
   companyId: "",
   company: "",
-  notificationPref: "email",
+  notificationPref: "both",
   notificationLanguage: "default",
   notifEmail: "",
   telegramBotToken: "",
@@ -399,5 +401,5 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   slowResponseTelegramTemplate: "",
   sendOutageScreenshot: true,
   isActive: true,
-  publishOnStatusPage: false,
+  publishOnStatusPage: true,
 };

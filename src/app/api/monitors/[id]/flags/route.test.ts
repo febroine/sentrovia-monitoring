@@ -10,7 +10,7 @@ vi.mock("@/lib/monitors/service", () => ({ updateMonitorFlags: mocks.updateMonit
 
 import { PATCH } from "@/app/api/monitors/[id]/flags/route";
 
-describe("monitor dashboard flags route", () => {
+describe("monitor flags route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({
@@ -36,6 +36,25 @@ describe("monitor dashboard flags route", () => {
       "user-1",
       "monitor-1",
       { isFavorite: true },
+      "workspace-1"
+    );
+  });
+
+  it("updates public status publication without changing monitor configuration", async () => {
+    const response = await PATCH(
+      new Request("http://localhost/api/monitors/monitor-1/flags", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ publishOnStatusPage: true }),
+      }) as never,
+      { params: Promise.resolve({ id: "monitor-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateMonitorFlags).toHaveBeenCalledWith(
+      "user-1",
+      "monitor-1",
+      { publishOnStatusPage: true },
       "workspace-1"
     );
   });

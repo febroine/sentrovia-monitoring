@@ -8,6 +8,7 @@ import type {
   MonitorRecord,
 } from "@/lib/monitors/types";
 import { buildMonitorHistoryWindow } from "@/lib/monitors/history-window";
+import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 import { toEnglishUppercase } from "@/lib/text/casing";
 import { formatLatency } from "@/components/monitoring/utils";
 
@@ -256,7 +257,11 @@ function buildStateSummary(
   const durationLabel = formatDuration(selection.observedDurationMs);
 
   if (!monitor.isActive) {
-    return `This monitor is paused. Completed checks in the selected window span ${durationLabel}.`;
+    return `This monitor is disabled. Completed checks in the selected window span ${durationLabel}.`;
+  }
+
+  if (isMonitorTemporarilyPaused(monitor.pausedUntil)) {
+    return `This monitor is paused until ${formatDateTime(monitor.pausedUntil!)}. Completed checks in the selected window span ${durationLabel}.`;
   }
 
   if (selection.point.status === "pending") {
@@ -282,7 +287,10 @@ function buildStateSummary(
 
 function getCurrentMonitorStatusLabel(monitor: MonitorRecord) {
   if (!monitor.isActive) {
-    return "Paused";
+    return "Disabled";
+  }
+  if (isMonitorTemporarilyPaused(monitor.pausedUntil)) {
+    return `Paused until ${formatDateTime(monitor.pausedUntil!)}`;
   }
 
   return monitor.verificationMode ? "Verification mode" : toEnglishUppercase(monitor.status);
@@ -290,7 +298,10 @@ function getCurrentMonitorStatusLabel(monitor: MonitorRecord) {
 
 function getNextCheckLabel(monitor: MonitorRecord) {
   if (!monitor.isActive) {
-    return "Paused";
+    return "Disabled";
+  }
+  if (isMonitorTemporarilyPaused(monitor.pausedUntil)) {
+    return `Resumes ${formatDateTime(monitor.pausedUntil!)}`;
   }
 
   return monitor.nextCheckAt ? formatDateTime(monitor.nextCheckAt) : "Awaiting schedule";

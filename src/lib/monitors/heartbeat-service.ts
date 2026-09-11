@@ -2,6 +2,7 @@ import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitors } from "@/lib/db/schema";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 import { appendMonitorEvent } from "@/lib/monitors/runtime-store";
 import { buildHeartbeatMonitorTarget } from "@/lib/monitors/targets";
 import { encryptValue, hashSecretValue } from "@/lib/security/encryption";
@@ -30,7 +31,7 @@ async function receiveHeartbeatTransaction(
     normalizedToken,
     tokenHash
   );
-  if (!existingMonitor.isActive) {
+  if (!existingMonitor.isActive || isMonitorTemporarilyPaused(existingMonitor.pausedUntil, receivedAt)) {
     return { accepted: false, paused: true, monitor: existingMonitor, receivedAt };
   }
 
@@ -96,6 +97,7 @@ async function updateHeartbeatReceipt(tx: DatabaseExecutor, monitorId: string, r
     eq(monitors.id, monitorId),
     eq(monitors.isActive, true),
     isNull(monitors.deletedAt),
+    or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, receivedAt)),
     or(isNull(monitors.heartbeatLastReceivedAt), lte(monitors.heartbeatLastReceivedAt, receivedAt))
   )).returning();
   return monitor ?? null;
@@ -113,7 +115,7 @@ async function resolveHeartbeatUpdateRace(
     or(eq(monitors.heartbeatTokenHash, tokenHash), eq(monitors.heartbeatToken, token)),
     isNull(monitors.deletedAt)
   )).limit(1);
-  return currentMonitor?.isActive
+  return currentMonitor?.isActive && !isMonitorTemporarilyPaused(currentMonitor.pausedUntil, receivedAt)
     ? { accepted: true, paused: false, monitor: currentMonitor, receivedAt }
     : { accepted: false, paused: true, monitor: currentMonitor ?? existingMonitor, receivedAt };
 }

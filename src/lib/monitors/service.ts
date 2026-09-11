@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
@@ -9,6 +9,7 @@ import { recordAuditEventSafely } from "@/lib/audit/service";
 import { MAX_MONITORS_PER_USER } from "@/lib/import-limits";
 import { resolveOutage } from "@/lib/outages/service";
 import { MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { MAX_MONITOR_PAUSE_MS } from "@/lib/monitors/pause";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import type { MonitorSummary } from "@/lib/monitors/types";
 import {
@@ -116,6 +117,9 @@ export async function listMonitorsPage(
   database: DatabaseExecutor = db,
   workspaceId?: string
 ) {
+  const now = new Date();
+  const temporarilyPaused = gt(monitors.pausedUntil, now);
+  const runnablePauseState = or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now));
   const search = query.search?.trim();
   const searchPattern = search ? `%${search}%` : null;
   const where = and(
@@ -144,11 +148,12 @@ export async function listMonitorsPage(
     database
       .select({
         total: count(),
-        active: sql<number>`count(*) filter (where ${monitors.isActive})`,
-        paused: sql<number>`count(*) filter (where not ${monitors.isActive})`,
-        online: sql<number>`count(*) filter (where ${monitors.isActive} and ${monitors.status} = 'up')`,
-        offline: sql<number>`count(*) filter (where ${monitors.isActive} and ${monitors.status} = 'down')`,
-        pending: sql<number>`count(*) filter (where ${monitors.isActive} and ${monitors.status} = 'pending')`,
+        active: sql<number>`count(*) filter (where ${monitors.isActive} and ${runnablePauseState})`,
+        paused: sql<number>`count(*) filter (where not ${monitors.isActive} or ${temporarilyPaused})`,
+        online: sql<number>`count(*) filter (where ${monitors.isActive} and ${runnablePauseState} and ${monitors.status} = 'up')`,
+        offline: sql<number>`count(*) filter (where ${monitors.isActive} and ${runnablePauseState} and ${monitors.status} = 'down')`,
+        pending: sql<number>`count(*) filter (where ${monitors.isActive} and ${runnablePauseState} and ${monitors.status} = 'pending')`,
+        nextPauseExpiryAt: sql<Date | null>`min(${monitors.pausedUntil}) filter (where ${temporarilyPaused})`,
       })
       .from(monitors)
       .where(where),
@@ -160,6 +165,7 @@ export async function listMonitorsPage(
       .limit(query.pageSize)
       .offset((query.page - 1) * query.pageSize),
   ]);
+  const nextPauseExpiryAt = summaryRows[0]?.nextPauseExpiryAt;
   const summary: MonitorSummary = {
     total: Number(summaryRows[0]?.total ?? 0),
     active: Number(summaryRows[0]?.active ?? 0),
@@ -167,6 +173,7 @@ export async function listMonitorsPage(
     online: Number(summaryRows[0]?.online ?? 0),
     offline: Number(summaryRows[0]?.offline ?? 0),
     pending: Number(summaryRows[0]?.pending ?? 0),
+    nextPauseExpiryAt: nextPauseExpiryAt ? new Date(nextPauseExpiryAt).toISOString() : null,
   };
   const totalItems = summary.total;
   const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
@@ -245,6 +252,7 @@ export async function buildMonitorForTest(
       status: "pending",
       statusCode: null,
       uptime: "--",
+      pausedUntil: null,
       deletedAt: null,
       deletedWasActive: null,
       lastCheckedAt: null,
@@ -325,6 +333,7 @@ export async function updateMonitor(
         ...activeStateUpdate,
         ...scheduleUpdate,
         ...targetResetUpdate,
+        ...(existingMonitor.isActive === values.isActive ? {} : { pausedUntil: null }),
         userId,
         updatedAt: now,
       })
@@ -409,6 +418,7 @@ export async function updateMonitorActiveState(
       .update(monitors)
       .set({
         isActive,
+        pausedUntil: null,
         ...buildActiveStateUpdate(existingMonitor.isActive, isActive, now),
         updatedAt: now,
       })
@@ -428,14 +438,100 @@ export async function updateMonitorActiveState(
   });
 }
 
+export async function updateMonitorPause(
+  userId: string,
+  ids: string[],
+  pausedUntil: Date | null,
+  workspaceId?: string
+) {
+  const now = new Date();
+  if (
+    pausedUntil
+    && (
+      !Number.isFinite(pausedUntil.getTime())
+      || pausedUntil <= now
+      || pausedUntil.getTime() - now.getTime() > MAX_MONITOR_PAUSE_MS
+    )
+  ) {
+    throw new AuthError("Pause end time must be valid, in the future, and no more than 365 days away.", 400);
+  }
+
+  return db.transaction(async (tx) => {
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+    const pauseStateCondition = pausedUntil
+      ? eq(monitors.isActive, true)
+      : and(eq(monitors.isActive, true), gt(monitors.pausedUntil, now));
+    const existingMonitors = await tx
+      .select()
+      .from(monitors)
+      .where(and(
+        eq(monitors.workspaceId, resolvedWorkspaceId),
+        inArray(monitors.id, uniqueIds),
+        isNull(monitors.deletedAt),
+        pauseStateCondition
+      ));
+
+    if (existingMonitors.length === 0) {
+      return [];
+    }
+
+    const updated = await tx
+      .update(monitors)
+      .set({
+        pausedUntil,
+        status: "pending",
+        statusCode: null,
+        nextCheckAt: pausedUntil ?? now,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        lastFailureAt: null,
+        lastErrorMessage: null,
+        consecutiveFailures: 0,
+        verificationMode: false,
+        verificationFailureCount: 0,
+        latencyMs: null,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(monitors.workspaceId, resolvedWorkspaceId),
+        inArray(monitors.id, existingMonitors.map((monitor) => monitor.id)),
+        eq(monitors.isActive, true),
+        isNull(monitors.deletedAt)
+      ))
+      .returning();
+
+    if (pausedUntil) {
+      for (const monitor of existingMonitors) {
+        await resolveOutage({
+          monitorId: monitor.id,
+          userId: monitor.userId,
+          workspaceId: resolvedWorkspaceId,
+          checkedAt: now,
+          statusCode: monitor.statusCode,
+        }, tx);
+      }
+    }
+
+    return updated;
+  });
+}
+
 export async function updateMonitorFlags(
   userId: string,
   monitorId: string,
-  input: { isFavorite?: boolean; isCritical?: boolean },
+  input: { isFavorite?: boolean; isCritical?: boolean; publishOnStatusPage?: boolean },
   workspaceId?: string
 ) {
-  if (input.isFavorite === undefined && input.isCritical === undefined) {
-    throw new AuthError("At least one dashboard flag is required.", 400);
+  if (
+    input.isFavorite === undefined
+    && input.isCritical === undefined
+    && input.publishOnStatusPage === undefined
+  ) {
+    throw new AuthError("At least one monitor flag is required.", 400);
   }
 
   const [monitor] = await db
@@ -443,6 +539,9 @@ export async function updateMonitorFlags(
     .set({
       ...(input.isFavorite === undefined ? {} : { isFavorite: input.isFavorite }),
       ...(input.isCritical === undefined ? {} : { isCritical: input.isCritical }),
+      ...(input.publishOnStatusPage === undefined
+        ? {}
+        : { publishOnStatusPage: input.publishOnStatusPage }),
       updatedAt: new Date(),
     })
     .where(and(
@@ -591,6 +690,7 @@ export async function deleteMonitors(userId: string, ids: string[], workspaceId?
         deletedAt: now,
         deletedWasActive: sql`${monitors.isActive}`,
         isActive: false,
+        pausedUntil: null,
         nextCheckAt: null,
         leaseToken: null,
         leaseExpiresAt: null,

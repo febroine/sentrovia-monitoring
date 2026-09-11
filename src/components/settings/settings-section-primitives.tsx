@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Check, type LucideIcon } from "lucide-react";
+import { Field as FieldPrimitive } from "@base-ui/react/field";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { SettingsSaveSection } from "@/lib/settings/section-save";
-import { cn } from "@/lib/utils";
 
 export function useSectionSave(saveSettings: (section?: SettingsSaveSection) => Promise<void>) {
   const [savingSection, setSavingSection] = useState<string | null>(null);
@@ -59,42 +57,33 @@ export function SectionCard({
   description,
   children,
   action,
-  icon: Icon,
-  iconClassName,
 }: {
   title: string;
   description: string;
   children: ReactNode;
   action?: ReactNode;
-  icon?: LucideIcon;
-  iconClassName?: string;
 }) {
   return (
-    <Card>
-      <CardHeader className="border-b px-4 py-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base">
-              {Icon ? <Icon aria-hidden="true" className={cn("size-4 shrink-0", iconClassName)} /> : null}
-              <span>{title}</span>
-            </CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-          {action ? <div className="sm:pt-0.5">{action}</div> : null}
+    <section className="border-t py-6 first:border-t-0 first:pt-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">{title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-5 p-4 md:p-5">{children}</CardContent>
-    </Card>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+      <div className="mt-5 space-y-5 [&>div:has([role=switch])+div:has([role=switch])]:mt-0">{children}</div>
+    </section>
   );
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-sm">{label}</Label>
+    <FieldPrimitive.Root className="space-y-1.5">
+      <FieldPrimitive.Label className="text-sm font-medium leading-none">{label}</FieldPrimitive.Label>
       {children}
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
+      {hint ? <FieldPrimitive.Description className="text-xs text-muted-foreground">{hint}</FieldPrimitive.Description> : null}
+    </FieldPrimitive.Root>
   );
 }
 
@@ -110,7 +99,7 @@ export function ToggleRow({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-y py-4">
+    <div className="flex items-center justify-between gap-4 border-t py-3 first:border-t-0">
       <div>
         <p className="text-sm font-medium">{label}</p>
         <p className="mt-1 text-xs text-muted-foreground">{description}</p>
@@ -132,7 +121,7 @@ export function ToggleCard({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="border-y py-4">
+    <div className="py-2">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium">{label}</p>

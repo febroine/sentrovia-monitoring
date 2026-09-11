@@ -13,8 +13,6 @@ describe("buildSystemHealthAlarms", () => {
       connectivityStatus: "online",
       connectivityMessage: null,
       delayedMonitorCount: 0,
-      failedDeliveryCount: 0,
-      queuedDeliveryCount: 0,
     })).toEqual([]);
   });
 
@@ -26,16 +24,12 @@ describe("buildSystemHealthAlarms", () => {
       connectivityStatus: "online",
       connectivityMessage: null,
       delayedMonitorCount: 12,
-      failedDeliveryCount: 2,
-      queuedDeliveryCount: 1,
     });
 
     expect(alarms.filter((alarm) => alarm.severity === "critical")).toHaveLength(2);
     expect(alarms.map((alarm) => alarm.id)).toEqual([
       "worker-unhealthy",
       "checks-delayed",
-      "delivery-failures",
-      "delivery-queued",
     ]);
   });
 
@@ -47,8 +41,6 @@ describe("buildSystemHealthAlarms", () => {
       connectivityStatus: "offline",
       connectivityMessage: "Internet is unavailable.",
       delayedMonitorCount: 0,
-      failedDeliveryCount: 0,
-      queuedDeliveryCount: 0,
     })).toEqual([]);
   });
 
@@ -60,8 +52,6 @@ describe("buildSystemHealthAlarms", () => {
       connectivityStatus: "offline",
       connectivityMessage: "Monitoring is paused while all canaries are unavailable.",
       delayedMonitorCount: 25,
-      failedDeliveryCount: 0,
-      queuedDeliveryCount: 0,
     });
 
     expect(alarms).toEqual([{
@@ -80,8 +70,6 @@ describe("buildSystemHealthAlarms", () => {
       connectivityStatus: "offline",
       connectivityMessage: null,
       delayedMonitorCount: 1,
-      failedDeliveryCount: 0,
-      queuedDeliveryCount: 0,
     });
 
     expect(alarms[0]?.detail).toBe(

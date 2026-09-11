@@ -8,6 +8,7 @@ function serializeMonitorDates<T extends Record<string, unknown>>(monitor: T) {
     updatedAt: serializeDate(monitor.updatedAt),
     lastCheckedAt: serializeDate(monitor.lastCheckedAt),
     nextCheckAt: serializeDate(monitor.nextCheckAt),
+    pausedUntil: serializeDate(monitor.pausedUntil),
     lastSuccessAt: serializeDate(monitor.lastSuccessAt),
     lastFailureAt: serializeDate(monitor.lastFailureAt),
     sslExpiresAt: serializeDate(monitor.sslExpiresAt),

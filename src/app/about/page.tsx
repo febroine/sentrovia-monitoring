@@ -26,10 +26,6 @@ const capabilities = [
     description: "Manual and scheduled reports summarize availability, latency, and failures for a workspace or company.",
   },
   {
-    title: "Incident coordination",
-    description: "Acknowledge incidents, assign owners, and publish updates with the monitoring history in reach.",
-  },
-  {
     title: "Public status pages",
     description: "Share service availability through company-specific pages or an optional workspace-wide page.",
   },
@@ -38,7 +34,7 @@ const capabilities = [
 const runtime = [
   {
     title: "Web application",
-    description: "Your control surface for monitors, members, incidents, and reports. Checks continue when the browser is closed.",
+    description: "Your control surface for monitors, members, status pages, and reports. Checks continue when the browser is closed.",
   },
   {
     title: "Worker",

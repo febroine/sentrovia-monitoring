@@ -81,6 +81,7 @@ const USER_SETTINGS_COLUMN_MAP = {
   id: "id",
   userId: "user_id",
   notificationLanguage: "notification_language",
+  defaultMonitorNotificationPref: "default_monitor_notification_pref",
   notifyOnDown: "notify_on_down",
   notifyOnRecovery: "notify_on_recovery",
   notifyOnStatusChange: "notify_on_status_change",
@@ -282,6 +283,13 @@ export async function getSettings(
     },
     notifications: {
       notificationLanguage,
+      defaultMonitorNotificationPref:
+        settings?.defaultMonitorNotificationPref === "email"
+        || settings?.defaultMonitorNotificationPref === "telegram"
+        || settings?.defaultMonitorNotificationPref === "both"
+        || settings?.defaultMonitorNotificationPref === "none"
+          ? settings.defaultMonitorNotificationPref
+          : DEFAULT_SETTINGS.notifications.defaultMonitorNotificationPref,
       notifyOnDown: booleanOrDefault(settings?.notifyOnDown, DEFAULT_SETTINGS.notifications.notifyOnDown),
       notifyOnRecovery: booleanOrDefault(settings?.notifyOnRecovery, DEFAULT_SETTINGS.notifications.notifyOnRecovery),
       notifyOnStatusChange: booleanOrDefault(
@@ -761,6 +769,7 @@ async function persistSettings(
   const values = {
     userId,
     notificationLanguage: input.notifications.notificationLanguage,
+    defaultMonitorNotificationPref: input.notifications.defaultMonitorNotificationPref,
     notifyOnDown: input.notifications.notifyOnDown,
     notifyOnRecovery: input.notifications.notifyOnRecovery,
     notifyOnStatusChange: input.notifications.notifyOnStatusChange,

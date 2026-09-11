@@ -4,8 +4,8 @@ import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { DateField, SuggestionField } from "@/components/logs/log-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { LogFilters, LogPresetRecord } from "@/lib/logs/types";
 
@@ -62,29 +62,22 @@ export function LogsFiltersPanel({
   const activeFilterChips = buildActiveFilterChips(filters);
 
   return (
-    <Card className="border-border/80">
-      <CardHeader className={`${filtersOpen ? "border-b" : ""} bg-muted/10 pb-4`}>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-baseline gap-3">
-            <CardTitle className="text-base">Filters</CardTitle>
-            <span className="text-xs text-muted-foreground">
-              {activeFilterChips.length} active · {presets.length} saved
-            </span>
-          </div>
-
-          <Button variant="outline" size="sm" onClick={onToggleOpen}>
+    <section className="border-y py-3" aria-label="Event log filters">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">
+          {activeFilterChips.length ? `${activeFilterChips.length} active filter${activeFilterChips.length === 1 ? "" : "s"}` : "No active filters"}
+          {presets.length ? ` · ${presets.length} saved` : ""}
+        </span>
+        <Button variant="outline" size="sm" onClick={onToggleOpen}>
             {filtersOpen ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
             {filtersOpen ? "Hide filters" : "Show filters"}
-          </Button>
-        </div>
-      </CardHeader>
+        </Button>
+      </div>
 
       {filtersOpen ? (
-        <CardContent className="space-y-5 pt-5">
-          <div className="border-b pb-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <p className="text-sm font-medium">Presets</p>
-              <div className="flex flex-wrap gap-2">
+        <div className="space-y-4 border-t pt-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
                 {QUICK_DATE_PRESETS.map((preset) => (
                   <Button
                     key={preset.id}
@@ -97,28 +90,25 @@ export function LogsFiltersPanel({
                   </Button>
                 ))}
                 <Button type="button" variant="ghost" size="sm" onClick={onResetFilters}>
-                  Clear all
+                  Reset log filters
                 </Button>
-              </div>
             </div>
-            <div className="mt-4">
-              <FilterPresetRow
-                presetName={presetName}
-                presets={presets}
-                selectedPresetId={selectedPresetId}
-                onPresetNameChange={onSavePresetName}
-                onApplyPreset={onApplyPreset}
-                onRemovePreset={onRemovePreset}
-                onSavePreset={onSavePreset}
-              />
-            </div>
+            <FilterPresetRow
+              presetName={presetName}
+              presets={presets}
+              selectedPresetId={selectedPresetId}
+              onPresetNameChange={onSavePresetName}
+              onApplyPreset={onApplyPreset}
+              onRemovePreset={onRemovePreset}
+              onSavePreset={onSavePreset}
+            />
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <div className="space-y-4 border-y py-4">
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_160px]">
+          <div className="grid gap-3 lg:grid-cols-3 2xl:grid-cols-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="log-level">Level</Label>
                 <Select value={filters.level} onValueChange={(value) => onUpdateFilter("level", String(value))}>
-                  <SelectTrigger>
+                  <SelectTrigger id="log-level">
                     <SelectValue placeholder="Level" />
                   </SelectTrigger>
                   <SelectContent>
@@ -129,18 +119,17 @@ export function LogsFiltersPanel({
                     <SelectItem value="info">Info</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="log-status-code">Status code</Label>
                 <Input
+                  id="log-status-code"
                   inputMode="numeric"
                   value={filters.statusCode}
                   onChange={(event) => onUpdateFilter("statusCode", event.target.value.replace(/\D/g, "").slice(0, 3))}
                   placeholder="Status code"
                 />
-                <Button variant="outline" onClick={onResetFilters}>
-                  Reset filters
-                </Button>
               </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
                 <SuggestionField
                   label="Company"
                   placeholder="Type a company name"
@@ -155,22 +144,14 @@ export function LogsFiltersPanel({
                   suggestions={monitorSuggestions.map((item) => item.name)}
                   onChange={(value) => onUpdateFilter("monitorQuery", value)}
                 />
-              </div>
-            </div>
-
-            <div className="space-y-4 border-y py-4">
-              <p className="text-sm font-medium">Time window</p>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-                <DateField label="From date" value={filters.from} onChange={(value) => onUpdateFilter("from", value)} />
-                <DateField label="To date" value={filters.to} onChange={(value) => onUpdateFilter("to", value)} />
-              </div>
-            </div>
+                <DateField label="From" value={filters.from} onChange={(value) => onUpdateFilter("from", value)} />
+                <DateField label="To" value={filters.to} onChange={(value) => onUpdateFilter("to", value)} />
           </div>
 
           <ActiveFiltersRow chips={activeFilterChips} onRemove={(key) => onUpdateFilter(key, getDefaultValue(key))} />
-        </CardContent>
+        </div>
       ) : null}
-    </Card>
+    </section>
   );
 }
 
@@ -182,20 +163,16 @@ function ActiveFiltersRow({
   onRemove: (key: keyof LogFilters) => void;
 }) {
   if (chips.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">No active filters</p>
-    );
+    return null;
   }
 
   return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium">Active filters</p>
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2">
         {chips.map((chip) => (
           <Badge
             key={chip.key}
             variant="outline"
-            className="h-auto gap-2 rounded-full border-border/70 bg-background px-3 py-1.5 text-xs font-medium"
+            className="h-auto gap-2 rounded-md border-border/70 bg-background px-2 py-1 text-xs font-medium"
           >
             <span>
               {chip.label}: {chip.value}
@@ -209,7 +186,6 @@ function ActiveFiltersRow({
             </button>
           </Badge>
         ))}
-      </div>
     </div>
   );
 }
@@ -232,15 +208,15 @@ function FilterPresetRow({
   onSavePreset: () => void;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
+    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_180px_auto_auto]">
         <Input
+          aria-label="Saved filter name"
           value={presetName}
           onChange={(event) => onPresetNameChange(event.target.value)}
           placeholder="Save current filters as..."
         />
         <Select value={selectedPresetId} onValueChange={(value) => onApplyPreset(String(value))}>
-          <SelectTrigger>
+          <SelectTrigger aria-label="Saved filter">
             <SelectValue placeholder="Saved filters" />
           </SelectTrigger>
           <SelectContent>
@@ -263,26 +239,9 @@ function FilterPresetRow({
         <Button variant="outline" onClick={onSavePreset} disabled={!presetName.trim()}>
           Save filter
         </Button>
-      </div>
-
-      {presets.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {presets.map((preset) => (
-            <div key={preset.id} className="flex items-center gap-1 rounded-full border bg-background px-3 py-1.5">
-              <button type="button" onClick={() => onApplyPreset(preset.id)} className="text-xs font-medium">
-                {preset.name}
-              </button>
-              <button
-                type="button"
-                onClick={() => onRemovePreset(preset.id)}
-                className="text-xs text-muted-foreground transition hover:text-foreground"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
+        <Button variant="ghost" onClick={() => onRemovePreset(selectedPresetId)} disabled={selectedPresetId === "placeholder"}>
+          Remove saved
+        </Button>
     </div>
   );
 }

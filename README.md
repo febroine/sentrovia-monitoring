@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Verify outages before they become alerts.</strong><br>
-  Sentrovia is an open-source, self-hosted website uptime monitoring platform for websites, APIs, servers, PostgreSQL databases, ports, cron jobs, and heartbeat endpoints. It combines verified outage alerts, screenshot evidence, public status pages, incident coordination, and auditable notification delivery in one operations workspace.
+  Sentrovia is an open-source, self-hosted website uptime monitoring platform for websites, APIs, servers, PostgreSQL databases, ports, cron jobs, and heartbeat endpoints. It combines verified outage alerts, screenshot evidence, public status pages, and auditable notification delivery in one operations workspace.
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/demo.gif" alt="Sentrovia self-hosted uptime monitoring dashboard, incident workflow, status pages, reports, and alert delivery" width="100%">
+  <img src="docs/screenshots/demo.gif" alt="Sentrovia self-hosted uptime monitoring dashboard, status pages, reports, and alert delivery" width="100%">
 </p>
 
 <p align="center"><sub>Product walkthrough with synthetic example data.</sub></p>
@@ -35,7 +35,6 @@ Most uptime monitoring tools treat a single failed request as an outage. Sentrov
 - **Fewer false alarms:** retries, verification mode, and a final confirmation probe protect against transient failures.
 - **Evidence you can inspect:** HTTP-style outages can include screenshots, diagnostics, timelines, and response details.
 - **Delivery you can audit:** email, Telegram, Discord, and generic webhooks have bounded retries and visible outcomes.
-- **Operations in context:** acknowledge incidents, assign owners, escalate, publish updates, and schedule maintenance windows.
 - **Data ownership:** run the complete stack on your infrastructure with Docker Compose or native Windows services.
 - **Workspace isolation:** role-based access protects monitors, status pages, reports, delivery history, and settings.
 
@@ -106,19 +105,9 @@ docker compose up -d --build
 
 For production Docker settings, native Windows installation with NSSM, safe updates, restore procedures, and environment rules, read the [deployment guide](docs/deployment.md).
 
-## Public Status Pages and Incident Management
+## Public Status Pages
 
-Publish a self-hosted status page for the whole workspace or separate public status pages for individual companies. Each page has its own slug, title, summary, publish state, service history, and public incident timeline.
-
-When an outage is open, operators can:
-
-- acknowledge it and assign a workspace member;
-- set an escalation level;
-- add internal notes or publish selected updates;
-- silence notifications for one monitor or the whole workspace;
-- continue collecting checks and evidence during maintenance.
-
-Private notes, assignees, and escalation details never appear on public status pages.
+Publish a self-hosted status page for the whole workspace or separate public status pages for individual companies. Each page has its own slug, title, summary, publish state, and service availability history.
 
 ## Alerts, Evidence, and Reports
 
@@ -139,12 +128,12 @@ Delivery tests use real channel transports: Telegram uses the bot token and chat
 
 <table>
   <tr>
-    <td width="50%"><img src="./docs/screenshots/dashboard.png" alt="Sentrovia website monitoring dashboard with uptime, worker health, incidents, and recent activity" /></td>
+    <td width="50%"><img src="./docs/screenshots/dashboard.png" alt="Sentrovia website monitoring dashboard with uptime, worker health, outages, and recent activity" /></td>
     <td width="50%"><img src="./docs/screenshots/monitoring.png" alt="Sentrovia uptime monitor inventory with HTTP, API, TCP, ping, PostgreSQL, and heartbeat checks" /></td>
   </tr>
   <tr>
     <td><sub>Workspace health, worker state, activation progress, and operational visibility.</sub></td>
-    <td><sub>Server-paginated monitors, bulk actions, incident coordination, and timelines.</sub></td>
+    <td><sub>Server-paginated monitors, bulk actions, and outage timelines.</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="./docs/screenshots/delivery.png" alt="Sentrovia alert delivery history for email, Telegram, Discord, and webhooks" /></td>
@@ -213,9 +202,9 @@ Next.js 16, React 19, TypeScript, PostgreSQL, Drizzle ORM, Zod, Zustand, Nodemai
 
 ## Project Status
 
-Sentrovia is usable today as an internal website and API uptime monitoring console. Its strongest fit is a team that needs verified alerts, screenshot evidence, PostgreSQL monitoring, incident coordination, report delivery, and Windows-friendly deployment.
+Sentrovia is usable today as an internal website and API uptime monitoring console. Its strongest fit is a team that needs verified alerts, screenshot evidence, PostgreSQL monitoring, report delivery, and Windows-friendly deployment.
 
-Planned areas include multi-region workers, DNS-specific monitors, escalation policies, and a hosted read-only demo. These are not presented as current features.
+Planned areas include multi-region workers, DNS-specific monitors, and a hosted read-only demo. These are not presented as current features.
 
 ## Contributing and Security
 

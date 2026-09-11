@@ -286,7 +286,7 @@ export default function LogsPage() {
           </Button>
           <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={total === 0}>
             <Trash2 className="mr-2 h-4 w-4" />
-            Clear all
+            Clear logs
           </Button>
         </div>
       </header>
@@ -350,7 +350,7 @@ export default function LogsPage() {
       <Dialog open={clearConfirmationOpen} onOpenChange={setClearConfirmationOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Clear all event logs?</DialogTitle>
+            <DialogTitle>Clear event logs?</DialogTitle>
             <DialogDescription>
               This permanently removes {total.toLocaleString()} event log records from this workspace.
             </DialogDescription>
@@ -358,7 +358,7 @@ export default function LogsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setClearConfirmationOpen(false)} disabled={clearing}>Cancel</Button>
             <Button variant="destructive" onClick={() => void clearAllLogs()} disabled={clearing}>
-              {clearing ? "Clearing..." : "Clear all logs"}
+              {clearing ? "Clearing..." : "Clear logs"}
             </Button>
           </DialogFooter>
         </DialogContent>

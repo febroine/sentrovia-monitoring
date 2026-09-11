@@ -197,6 +197,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 200,
     uptime: "100%",
     isActive: true,
+    pausedUntil: null,
     publishOnStatusPage: false,
     isFavorite: false,
     isCritical: false,

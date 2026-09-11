@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MONITOR_CSV_IMPORT_LIMITS } from "@/lib/import-limits";
-import { DEFAULT_MONITOR_FORM, type MonitorPayload, type MonitorRecord } from "@/lib/monitors/types";
+import { parseMonitorCsv, toMonitorImportRecord } from "@/lib/monitors/csv-import";
+import type { MonitorRecord } from "@/lib/monitors/types";
 
 const DEFAULT_MAPPING = [
   "name=name",
@@ -50,6 +51,7 @@ const DEFAULT_MAPPING = [
   "saveSuccessPages=saveSuccessPages",
   "responseMaxLength=responseMaxLength",
   "isActive=isActive",
+  "publishOnStatusPage=publishOnStatusPage",
 ].join("\n");
 
 export function MonitorImportDialog({
@@ -82,9 +84,33 @@ export function MonitorImportDialog({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setFileName(file.name);
-    setCsvText(await file.text());
-    setError(null);
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      event.target.value = "";
+      setFileName(null);
+      setCsvText("");
+      setError("Choose a .csv file.");
+      return;
+    }
+
+    if (file.size > MONITOR_CSV_IMPORT_LIMITS.maxFileBytes) {
+      event.target.value = "";
+      setFileName(null);
+      setCsvText("");
+      setError(`CSV file is too large. Choose a file no larger than ${MONITOR_CSV_IMPORT_LIMITS.maxFileBytesLabel}.`);
+      return;
+    }
+
+    try {
+      setFileName(file.name);
+      setCsvText(await file.text());
+      setError(null);
+    } catch {
+      setFileName(null);
+      setCsvText("");
+      setError("Unable to read the selected CSV file.");
+    } finally {
+      event.target.value = "";
+    }
   }
 
   async function handleImport() {
@@ -92,18 +118,25 @@ export function MonitorImportDialog({
     setError(null);
 
     try {
-      const rows = parseCsv(csvText);
+      const rows = parseMonitorCsv(csvText);
       if (rows.length < 2) {
         throw new Error("CSV file must include a header row and at least one data row.");
       }
 
       const headers = rows[0];
-      const monitors = rows.slice(1).filter((row) => row.some((cell) => cell.trim().length > 0)).map((row) => toPayload(headers, row, mapping));
+      const importRows = rows
+        .slice(1)
+        .map((row, index) => ({ row, lineNumber: index + 2 }))
+        .filter(({ row }) => row.some((cell) => cell.trim().length > 0));
+      const monitors = importRows.map(({ row }) => toMonitorImportRecord(headers, row, mapping));
 
       const response = await fetch("/api/monitors/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monitors }),
+        body: JSON.stringify({
+          monitors,
+          lineNumbers: importRows.map(({ lineNumber }) => lineNumber),
+        }),
       });
       const data = (await response.json()) as { message?: string; monitors?: MonitorRecord[] };
 
@@ -132,7 +165,7 @@ export function MonitorImportDialog({
             Import CSV
           </DialogTitle>
           <DialogDescription>
-            Upload HTTP, TCP/port, or PostgreSQL monitors. Missing optional fields fall back to the workspace defaults.
+            A minimal file only needs name and url. Monitor type defaults to HTTP, and other missing columns use workspace defaults.
             Import accepts up to {MONITOR_CSV_IMPORT_LIMITS.maxRows} monitor rows per CSV file.
           </DialogDescription>
         </DialogHeader>
@@ -163,7 +196,7 @@ export function MonitorImportDialog({
           </div>
 
           {error ? (
-            <div className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive">
+            <div role="alert" aria-live="polite" className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive">
               {error}
             </div>
           ) : null}
@@ -179,142 +212,4 @@ export function MonitorImportDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function parseCsv(input: string) {
-  const rows: string[][] = [];
-  let current = "";
-  let row: string[] = [];
-  let inQuotes = false;
-
-  for (let index = 0; index < input.length; index += 1) {
-    const char = input[index];
-    const next = input[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      row.push(current);
-      current = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") {
-        index += 1;
-      }
-      row.push(current);
-      rows.push(row);
-      row = [];
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0 || row.length > 0) {
-    row.push(current);
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function toPayload(headers: string[], row: string[], mapping: Map<string, string>): MonitorPayload {
-  const values = Object.fromEntries(headers.map((header, index) => [header.trim(), row[index]?.trim() ?? ""]));
-
-  const read = (target: string) => values[mapping.get(target) ?? target] ?? "";
-  const booleanValue = (target: string) => read(target).toLowerCase() === "true";
-  const numberValue = (target: string, fallback: number) => {
-    const raw = read(target);
-    if (raw.length === 0) {
-      return fallback;
-    }
-
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-  const nullableNumberValue = (target: string) => {
-    const raw = read(target);
-    if (raw.length === 0) {
-      return null;
-    }
-
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  return {
-    ...DEFAULT_MONITOR_FORM,
-    name: read("name"),
-    monitorType: (read("monitorType") || DEFAULT_MONITOR_FORM.monitorType) as MonitorPayload["monitorType"],
-    url: read("url"),
-    portHost: read("portHost"),
-    portNumber: numberValue("portNumber", DEFAULT_MONITOR_FORM.portNumber),
-    databaseHost: read("databaseHost"),
-    databasePort: numberValue("databasePort", DEFAULT_MONITOR_FORM.databasePort),
-    databaseName: read("databaseName"),
-    databaseUsername: read("databaseUsername"),
-    databasePassword: read("databasePassword"),
-    databasePasswordConfigured: booleanValue("databasePasswordConfigured"),
-    databaseSsl: read("databaseSsl") ? booleanValue("databaseSsl") : DEFAULT_MONITOR_FORM.databaseSsl,
-    databaseTlsVerify: read("databaseTlsVerify")
-      ? booleanValue("databaseTlsVerify")
-      : DEFAULT_MONITOR_FORM.databaseTlsVerify,
-    keywordQuery: read("keywordQuery"),
-    keywordInvert: booleanValue("keywordInvert"),
-    jsonPath: read("jsonPath"),
-    jsonExpectedValue: read("jsonExpectedValue"),
-    jsonMatchMode: (read("jsonMatchMode") || DEFAULT_MONITOR_FORM.jsonMatchMode) as MonitorPayload["jsonMatchMode"],
-    company: read("company"),
-    notificationPref: (read("notificationPref") || DEFAULT_MONITOR_FORM.notificationPref) as MonitorPayload["notificationPref"],
-    notificationLanguage: (read("notificationLanguage") || DEFAULT_MONITOR_FORM.notificationLanguage) as MonitorPayload["notificationLanguage"],
-    notifEmail: read("notifEmail"),
-    telegramBotToken: read("telegramBotToken"),
-    telegramChatId: read("telegramChatId"),
-    intervalValue: numberValue("intervalValue", DEFAULT_MONITOR_FORM.intervalValue),
-    intervalUnit: (read("intervalUnit") || DEFAULT_MONITOR_FORM.intervalUnit) as MonitorPayload["intervalUnit"],
-    timeout: numberValue("timeout", DEFAULT_MONITOR_FORM.timeout),
-    slowResponseThresholdMs: nullableNumberValue("slowResponseThresholdMs"),
-    slowResponseAlertsEnabled: read("slowResponseAlertsEnabled")
-      ? booleanValue("slowResponseAlertsEnabled")
-      : DEFAULT_MONITOR_FORM.slowResponseAlertsEnabled,
-    expectedStatusCodes: read("expectedStatusCodes"),
-    retries: numberValue("retries", DEFAULT_MONITOR_FORM.retries),
-    method: (read("method") || DEFAULT_MONITOR_FORM.method) as MonitorPayload["method"],
-    tags: read("tags").split("|").map((tag) => tag.trim()).filter(Boolean),
-    renotifyCount: read("renotifyCount") ? Number(read("renotifyCount")) : null,
-    maxRedirects: numberValue("maxRedirects", DEFAULT_MONITOR_FORM.maxRedirects),
-    ipFamily: (read("ipFamily") || DEFAULT_MONITOR_FORM.ipFamily) as MonitorPayload["ipFamily"],
-    checkSslExpiry: booleanValue("checkSslExpiry"),
-    ignoreSslErrors: read("ignoreSslErrors") ? booleanValue("ignoreSslErrors") : DEFAULT_MONITOR_FORM.ignoreSslErrors,
-    cacheBuster: booleanValue("cacheBuster"),
-    saveErrorPages: booleanValue("saveErrorPages"),
-    saveSuccessPages: booleanValue("saveSuccessPages"),
-    responseMaxLength: numberValue("responseMaxLength", DEFAULT_MONITOR_FORM.responseMaxLength),
-    telegramTemplate: read("telegramTemplate") || DEFAULT_MONITOR_FORM.telegramTemplate,
-    emailSubject: read("emailSubject") || DEFAULT_MONITOR_FORM.emailSubject,
-    emailBody: read("emailBody") || DEFAULT_MONITOR_FORM.emailBody,
-    slowResponseEmailSubject:
-      read("slowResponseEmailSubject") || DEFAULT_MONITOR_FORM.slowResponseEmailSubject,
-    slowResponseEmailBody:
-      read("slowResponseEmailBody") || DEFAULT_MONITOR_FORM.slowResponseEmailBody,
-    slowResponseTelegramTemplate:
-      read("slowResponseTelegramTemplate") || DEFAULT_MONITOR_FORM.slowResponseTelegramTemplate,
-    sendOutageScreenshot: read("sendOutageScreenshot")
-      ? booleanValue("sendOutageScreenshot")
-      : read("sendIncidentScreenshot")
-        ? booleanValue("sendIncidentScreenshot")
-        : DEFAULT_MONITOR_FORM.sendOutageScreenshot,
-    isActive: read("isActive") ? booleanValue("isActive") : DEFAULT_MONITOR_FORM.isActive,
-  };
 }

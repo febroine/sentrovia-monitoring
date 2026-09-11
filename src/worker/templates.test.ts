@@ -16,6 +16,8 @@ describe("notification templates", () => {
     expect(rendered.htmlBody).toContain("Sentrovia monitoring notification");
     expect(rendered.htmlBody).not.toContain("Open monitoring");
     expect(rendered.htmlBody).toContain("API");
+    expect(rendered.htmlBody).toContain("font-family:'IBM Plex Sans'");
+    expect(rendered.htmlBody).not.toMatch(/Arial|Helvetica/);
   });
 
   it("does not let markdown formatting corrupt links containing underscores", () => {
@@ -434,6 +436,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 500,
     uptime: "0%",
     isActive: true,
+    pausedUntil: null,
     publishOnStatusPage: false,
     isFavorite: false,
     isCritical: false,

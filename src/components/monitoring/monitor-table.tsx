@@ -1,4 +1,4 @@
-import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Power, Send, Settings2, Square, Star, XCircle } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Play, Power, RadioTower, Send, Settings2, Square, Star, XCircle } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getMonitorTargetDisplay, getMonitorTypeLabel } from "@/lib/monitors/targets";
 import type { MonitorRecord, NotificationPref, SiteStatus } from "@/lib/monitors/types";
 import { formatLastChecked, formatLatency } from "@/components/monitoring/utils";
+import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 
 function StatusBadge({
   status,
   code,
   isActive,
+  pausedUntil,
   verificationMode,
   verificationFailureCount,
   threshold,
@@ -20,13 +22,18 @@ function StatusBadge({
   status: SiteStatus;
   code: number | null;
   isActive: boolean;
+  pausedUntil: string | null;
   verificationMode: boolean;
   verificationFailureCount: number;
   threshold: number;
   slow: boolean;
 }) {
   if (!isActive) {
-    return <Badge variant="outline" className="text-muted-foreground">PAUSED</Badge>;
+    return <Badge variant="outline" className="text-muted-foreground">DISABLED</Badge>;
+  }
+
+  if (isMonitorTemporarilyPaused(pausedUntil)) {
+    return <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400"><Clock className="size-3" />PAUSED</Badge>;
   }
 
   if (verificationMode) {
@@ -82,12 +89,15 @@ export function MonitorTable({
   loading,
   selectedIds,
   activeTogglePendingId,
+  pausePendingId,
   flagPendingId,
   allPageSelected,
   somePageSelected,
   onToggleAll,
   onToggleOne,
   onToggleActive,
+  onPause,
+  onResumePause,
   onToggleFlag,
   onEdit,
   onOpenTimeline,
@@ -97,27 +107,30 @@ export function MonitorTable({
   loading: boolean;
   selectedIds: Set<string>;
   activeTogglePendingId: string | null;
+  pausePendingId: string | null;
   flagPendingId: string | null;
   allPageSelected: boolean;
   somePageSelected: boolean;
   onToggleAll: () => void;
   onToggleOne: (id: string) => void;
   onToggleActive: (monitor: MonitorRecord) => void;
-  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
+  onPause: (monitor: MonitorRecord) => void;
+  onResumePause: (monitor: MonitorRecord) => void;
+  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
   return (
     <>
-      <div className="hidden min-w-0 max-w-full overflow-hidden rounded-lg border border-border md:block">
-      <Table className="min-w-0 table-fixed text-[11px] xl:text-xs [&_th]:overflow-hidden [&_th]:text-ellipsis">
+      <div className="hidden min-w-0 max-w-full overflow-x-auto rounded-lg border border-border md:block">
+      <Table className="min-w-[1180px] table-fixed text-xs">
         <colgroup>
           <col className="w-[3%]" />
           <col className="w-[11%]" />
           <col className="w-[16%]" />
           <col className="w-[7%]" />
           <col className="w-[10%]" />
-          <col className="w-[4%]" />
+          <col className="w-[6%]" />
           <col className="w-[4%]" />
           <col className="w-[5%]" />
           <col className="w-[5%]" />
@@ -125,7 +138,7 @@ export function MonitorTable({
           <col className="w-[7%]" />
           <col className="w-[7%]" />
           <col className="w-[4%]" />
-          <col className="w-[12%]" />
+          <col className="w-[10%]" />
         </colgroup>
         <TableHeader>
           <TableRow className="bg-surface-high hover:bg-surface-high">
@@ -142,7 +155,7 @@ export function MonitorTable({
             <TableHead className="px-1">HTTP</TableHead>
             <TableHead className="px-1">Latency</TableHead>
             <TableHead className="px-1">Notify</TableHead>
-            <TableHead className="px-1" title="Company">Co.</TableHead>
+            <TableHead className="px-1.5">Company</TableHead>
             <TableHead className="px-1">Timeline</TableHead>
             <TableHead className="px-1">Last check</TableHead>
             <TableHead className="px-1">Uptime</TableHead>
@@ -203,6 +216,7 @@ export function MonitorTable({
                       status={monitor.status}
                       code={monitor.statusCode}
                       isActive={monitor.isActive}
+                      pausedUntil={monitor.pausedUntil}
                       verificationMode={monitor.verificationMode}
                       verificationFailureCount={monitor.verificationFailureCount}
                       threshold={Math.max(1, monitor.retries)}
@@ -223,6 +237,19 @@ export function MonitorTable({
                     >
                       <Power className={`size-3.5 ${monitor.isActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
                     </Button>
+                    {monitor.isActive ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        disabled={readOnly || pausePendingId === monitor.id}
+                        aria-label={isMonitorTemporarilyPaused(monitor.pausedUntil) ? `Resume ${monitor.name} now` : `Temporarily pause ${monitor.name}`}
+                        title={isMonitorTemporarilyPaused(monitor.pausedUntil) ? "Resume monitoring now" : "Pause for a duration"}
+                        onClick={() => isMonitorTemporarilyPaused(monitor.pausedUntil) ? onResumePause(monitor) : onPause(monitor)}
+                      >
+                        {isMonitorTemporarilyPaused(monitor.pausedUntil) ? <Play className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <Clock className="size-3.5 text-muted-foreground" />}
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
                 <TableCell className="px-1.5">{monitor.statusCode ?? "--"}</TableCell>
@@ -240,6 +267,17 @@ export function MonitorTable({
                 <TableCell className="px-1.5">{monitor.uptime}</TableCell>
                 <TableCell className="px-0.5" onClick={(event) => event.stopPropagation()}>
                   <div className="flex items-center justify-end gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={readOnly || flagPendingId === monitor.id}
+                      aria-label={monitor.publishOnStatusPage ? `Remove ${monitor.name} from public status pages` : `Publish ${monitor.name} on public status pages`}
+                      title={monitor.publishOnStatusPage ? "Remove from public status" : "Publish on public status"}
+                      onClick={() => onToggleFlag(monitor, "publishOnStatusPage")}
+                    >
+                      <RadioTower className={`size-3.5 ${monitor.publishOnStatusPage ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground"}`} />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -287,12 +325,15 @@ export function MonitorTable({
       loading={loading}
       selectedIds={selectedIds}
       activeTogglePendingId={activeTogglePendingId}
+      pausePendingId={pausePendingId}
       flagPendingId={flagPendingId}
       allPageSelected={allPageSelected}
       somePageSelected={somePageSelected}
       onToggleAll={onToggleAll}
       onToggleOne={onToggleOne}
       onToggleActive={onToggleActive}
+      onPause={onPause}
+      onResumePause={onResumePause}
       onToggleFlag={onToggleFlag}
       onEdit={onEdit}
       onOpenTimeline={onOpenTimeline}
@@ -307,12 +348,15 @@ function MobileMonitorList({
   loading,
   selectedIds,
   activeTogglePendingId,
+  pausePendingId,
   flagPendingId,
   allPageSelected,
   somePageSelected,
   onToggleAll,
   onToggleOne,
   onToggleActive,
+  onPause,
+  onResumePause,
   onToggleFlag,
   onEdit,
   onOpenTimeline,
@@ -322,13 +366,16 @@ function MobileMonitorList({
   loading: boolean;
   selectedIds: Set<string>;
   activeTogglePendingId: string | null;
+  pausePendingId: string | null;
   flagPendingId: string | null;
   allPageSelected: boolean;
   somePageSelected: boolean;
   onToggleAll: () => void;
   onToggleOne: (id: string) => void;
   onToggleActive: (monitor: MonitorRecord) => void;
-  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
+  onPause: (monitor: MonitorRecord) => void;
+  onResumePause: (monitor: MonitorRecord) => void;
+  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
@@ -362,9 +409,12 @@ function MobileMonitorList({
           readOnly={readOnly}
           selected={selectedIds.has(monitor.id)}
           activePending={activeTogglePendingId === monitor.id}
+          pausePending={pausePendingId === monitor.id}
           flagPending={flagPendingId === monitor.id}
           onToggleOne={onToggleOne}
           onToggleActive={onToggleActive}
+          onPause={onPause}
+          onResumePause={onResumePause}
           onToggleFlag={onToggleFlag}
           onEdit={onEdit}
           onOpenTimeline={onOpenTimeline}
@@ -379,9 +429,12 @@ function MobileMonitorCard({
   readOnly,
   selected,
   activePending,
+  pausePending,
   flagPending,
   onToggleOne,
   onToggleActive,
+  onPause,
+  onResumePause,
   onToggleFlag,
   onEdit,
   onOpenTimeline,
@@ -390,10 +443,13 @@ function MobileMonitorCard({
   readOnly: boolean;
   selected: boolean;
   activePending: boolean;
+  pausePending: boolean;
   flagPending: boolean;
   onToggleOne: (id: string) => void;
   onToggleActive: (monitor: MonitorRecord) => void;
-  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical") => void;
+  onPause: (monitor: MonitorRecord) => void;
+  onResumePause: (monitor: MonitorRecord) => void;
+  onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
@@ -422,6 +478,7 @@ function MobileMonitorCard({
             status={monitor.status}
             code={monitor.statusCode}
             isActive={monitor.isActive}
+            pausedUntil={monitor.pausedUntil}
             verificationMode={monitor.verificationMode}
             verificationFailureCount={monitor.verificationFailureCount}
             threshold={Math.max(1, monitor.retries)}
@@ -448,6 +505,14 @@ function MobileMonitorCard({
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={activePending} aria-label={monitor.isActive ? `Disable ${monitor.name}` : `Enable ${monitor.name}`} onClick={() => onToggleActive(monitor)}>
             <Power className={`size-4 ${monitor.isActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
+          </Button>
+          {monitor.isActive ? (
+            <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={pausePending} aria-label={isMonitorTemporarilyPaused(monitor.pausedUntil) ? `Resume ${monitor.name} now` : `Temporarily pause ${monitor.name}`} onClick={() => isMonitorTemporarilyPaused(monitor.pausedUntil) ? onResumePause(monitor) : onPause(monitor)}>
+              {isMonitorTemporarilyPaused(monitor.pausedUntil) ? <Play className="size-4 text-emerald-600 dark:text-emerald-400" /> : <Clock className="size-4 text-muted-foreground" />}
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={flagPending} aria-label={monitor.publishOnStatusPage ? `Remove ${monitor.name} from public status pages` : `Publish ${monitor.name} on public status pages`} onClick={() => onToggleFlag(monitor, "publishOnStatusPage")}>
+            <RadioTower className={`size-4 ${monitor.publishOnStatusPage ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground"}`} />
           </Button>
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={flagPending} aria-label={monitor.isFavorite ? `Remove ${monitor.name} from favorites` : `Add ${monitor.name} to favorites`} onClick={() => onToggleFlag(monitor, "isFavorite")}>
             <Star className={`size-4 ${monitor.isFavorite ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} />
@@ -483,10 +548,15 @@ function isSlowMonitor(monitor: MonitorRecord) {
 }
 
 function getStatusDescription(monitor: MonitorRecord) {
-  if (!monitor.isActive) return "Paused";
+  if (!monitor.isActive) return "Disabled";
+  if (isMonitorTemporarilyPaused(monitor.pausedUntil)) return `Paused until ${formatPauseUntil(monitor.pausedUntil!)}`;
   if (monitor.verificationMode) return `Verification pending · ${monitor.verificationFailureCount}/${Math.max(1, monitor.retries)}`;
   if (isSlowMonitor(monitor)) return "Online but above the configured latency threshold";
   if (monitor.status === "up") return "Online";
   if (monitor.status === "down") return monitor.statusCode ? `Offline · HTTP ${monitor.statusCode}` : "Offline";
   return "Pending first check";
+}
+
+function formatPauseUntil(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }

@@ -8,6 +8,7 @@ import type {
 } from "@/lib/reports/types";
 
 export type ScheduleFilter = "all" | "active" | "paused" | "failed";
+export type ReportsTab = "analytics" | "preview" | "schedules";
 export type DeliveryResult = {
   status: string;
   deliveredAt: string | null;

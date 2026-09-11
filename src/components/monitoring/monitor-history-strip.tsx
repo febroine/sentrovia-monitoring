@@ -30,7 +30,7 @@ export function MonitorHistoryStrip({
             onSelect?.(point);
           }}
           className={cn(
-            "transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
             compact ? "h-2.5 min-w-0 flex-1 rounded-[2px]" : "h-2.5 w-5 rounded-full",
             point.status === "up"
               ? "bg-emerald-500/85"

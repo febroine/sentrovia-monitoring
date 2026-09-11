@@ -3,16 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  ArchiveX,
-  BadgeCheck,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   CircleX,
-  Clock3,
-  ListRestart,
   MailCheck,
   MessageCircle,
   RefreshCw,
@@ -22,7 +18,6 @@ import {
   Webhook,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -73,39 +68,35 @@ export function DeliveryPageClient() {
         value: String(overview.summary.delivered),
         sub: "All completed deliveries",
         tone: "text-emerald-600 dark:text-emerald-400",
-        icon: BadgeCheck,
       },
       {
         label: "Retry queue",
         value: String(overview.summary.pendingRetries),
         sub: "Delivery items waiting for retry",
-        tone: "text-sky-600 dark:text-sky-400",
-        icon: ListRestart,
+        tone: "text-primary",
       },
       {
         label: "Failed",
         value: String(overview.summary.failed),
         sub: "Review failed attempts",
         tone: "text-rose-600 dark:text-rose-400",
-        icon: CircleX,
       },
       {
         label: "Retrying",
         value: String(overview.summary.retrying),
         sub: "Waiting for the next attempt",
         tone: "text-amber-600 dark:text-amber-400",
-        icon: Clock3,
       },
       {
         label: "Dead-lettered",
         value: String(overview.summary.deadLettered),
         sub: "Exhausted or permanent failures",
         tone: "text-rose-700 dark:text-rose-300",
-        icon: ArchiveX,
       },
     ],
     [overview.summary]
   );
+  const isFirstRun = isDeliveryFirstRun(overview);
 
   const loadOverview = useCallback(async (requestedPage = 1) => {
     setLoading(true);
@@ -309,40 +300,41 @@ export function DeliveryPageClient() {
         </div>
       ) : null}
 
-      <dl className="grid border-y md:grid-cols-2 xl:grid-cols-5 xl:divide-x">
-        {cards.map((card) => (
-          <div key={card.label} className="border-b px-4 py-4 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
-              <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <card.icon className={`size-3.5 ${card.tone}`} />
-                {card.label}
-              </dt>
-              <dd className={`mt-2 text-xl font-semibold tracking-tight ${card.tone}`}>{card.value}</dd>
-              <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
-          </div>
-        ))}
-      </dl>
-
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/15 pb-3">
-          <CardTitle className="text-base">Channel health</CardTitle>
-          <CardDescription>Attempts and failures from the last 24 hours.</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y">
-            {overview.channelHealth.map((channel) => (
-              <ChannelHealthRow key={channel.channel} channel={channel} />
+      {isFirstRun ? (
+        <FirstRunDeliveryGuide />
+      ) : (
+        <>
+          <dl className="grid border-y md:grid-cols-2 xl:grid-cols-5 xl:divide-x">
+            {cards.map((card) => (
+              <div key={card.label} className="border-b px-4 py-3 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+                <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
+                <dd className={`mt-1 text-lg font-semibold tabular-nums ${card.tone}`}>{card.value}</dd>
+                <p className="mt-0.5 text-xs text-muted-foreground">{card.sub}</p>
+              </div>
             ))}
-          </div>
-        </CardContent>
-      </Card>
+          </dl>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="overflow-hidden">
-          <CardHeader className="border-b bg-muted/15 pb-3">
-            <CardTitle className="text-base">Webhook endpoint</CardTitle>
-            <CardDescription>Failed POST requests are retried automatically.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 p-5">
+          <section className="border-y" aria-labelledby="channel-health-title">
+            <div className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-baseline sm:justify-between">
+              <h2 id="channel-health-title" className="text-base font-medium">Channel health</h2>
+              <p className="text-xs text-muted-foreground">Attempts and failures from the last 24 hours.</p>
+            </div>
+            <div className="divide-y">
+              {overview.channelHealth.map((channel) => (
+                <ChannelHealthRow key={channel.channel} channel={channel} />
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <section id="webhook-setup" className="border-y py-4" aria-labelledby="webhook-title">
+          <div className="mb-4">
+            <h2 id="webhook-title" className="text-base font-medium">Webhook endpoint</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Failed POST requests are retried automatically.</p>
+          </div>
+          <div className="space-y-4">
             <Field label="URL" id="webhook-url" value={webhookUrl} onChange={setWebhookUrl} placeholder="https://hooks.example.com/sentrovia" />
             <Field label="Secret" id="webhook-secret" value={webhookSecret} onChange={setWebhookSecret} placeholder={overview.webhook?.secretConfigured ? "Secret already configured" : "Optional HMAC shared secret"} />
             <div className="flex items-center justify-between border-y py-3">
@@ -362,14 +354,12 @@ export function DeliveryPageClient() {
                 Send test webhook
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="overflow-hidden">
-          <CardHeader className="border-b bg-muted/15 pb-3">
-            <CardTitle className="text-base">Test delivery</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 p-5">
+        <section id="delivery-test" className="border-y py-4" aria-labelledby="delivery-test-title">
+          <h2 id="delivery-test-title" className="mb-4 text-base font-medium">Test delivery</h2>
+          <div className="space-y-4">
             {pendingAction ? <ActionProgress label={pendingAction} /> : null}
             <Field label="Email target" id="email-target" value={emailTarget} onChange={setEmailTarget} placeholder="alerts@example.com" />
             <div className="grid gap-4 md:grid-cols-2">
@@ -386,24 +376,24 @@ export function DeliveryPageClient() {
                 Test email
               </Button>
               <Button variant="outline" onClick={() => void sendTest("telegram")} disabled={pendingAction !== null}>
-                <Send className="size-4 text-sky-600 dark:text-sky-400" />
+                <Send className="size-4" />
                 Test Telegram
               </Button>
               <Button variant="outline" onClick={() => void sendTest("discord")} disabled={pendingAction !== null}>
-                <MessageCircle className="size-4 text-violet-600 dark:text-violet-400" />
+                <MessageCircle className="size-4" />
                 Test Discord
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/15 pb-3">
+      <section className="border-y" aria-labelledby="delivery-history-title">
+        <div className="border-b py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1.5">
-              <CardTitle className="text-base">Delivery history</CardTitle>
-              <CardDescription>Newest attempts first. Failed deliveries can be retried.</CardDescription>
+              <h2 id="delivery-history-title" className="text-base font-medium">Delivery history</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Newest attempts first. Failed deliveries can be retried.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -427,8 +417,8 @@ export function DeliveryPageClient() {
               </Button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
+        </div>
+        <div>
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
@@ -516,8 +506,8 @@ export function DeliveryPageClient() {
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <Dialog open={clearHistoryOpen} onOpenChange={(open) => pendingAction === null && setClearHistoryOpen(open)}>
         <DialogContent className="sm:max-w-lg">
@@ -638,6 +628,28 @@ function normalizeOverview(value: DeliveryOverview | undefined): DeliveryOvervie
   };
 }
 
+function isDeliveryFirstRun(overview: DeliveryOverview) {
+  const summaryTotal = Object.values(overview.summary).reduce((total, count) => total + count, 0);
+  return summaryTotal === 0 && overview.pagination.totalItems === 0 && !overview.webhook?.url;
+}
+
+function FirstRunDeliveryGuide() {
+  return (
+    <section className="border-y py-4" aria-labelledby="delivery-setup-title">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 id="delivery-setup-title" className="text-base font-medium">Set up a delivery channel</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Add a webhook or send a test message. Delivery activity appears here after the first attempt.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a className="inline-flex h-8 items-center rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" href="#webhook-setup">Configure webhook</a>
+          <a className="inline-flex h-8 items-center rounded-md border border-border bg-background px-2.5 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" href="#delivery-test">Send a test</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function buildEmptyChannelHealth(): DeliveryChannelHealth[] {
   return ["email", "telegram", "discord", "webhook"].map((channel) => ({
     channel: channel as DeliveryChannelHealth["channel"],
@@ -657,7 +669,7 @@ function ChannelHealthRow({ channel }: { channel: DeliveryChannelHealth }) {
   return (
     <div className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex items-center gap-3">
-        <span className={status.textClass}>{status.icon}</span>
+        {status.icon ? <span className={status.textClass}>{status.icon}</span> : null}
         <div>
           <p className="text-sm font-medium">{toTitleCase(channel.channel)}</p>
           <p className="text-xs text-muted-foreground">
@@ -700,7 +712,7 @@ function channelStatusPresentation(status: DeliveryChannelHealth["status"]) {
   if (status === "degraded") {
     return { label: "Degraded", textClass: "text-amber-600 dark:text-amber-400", icon: <AlertTriangle className="h-4 w-4" /> };
   }
-  return { label: "No data", textClass: "text-muted-foreground", icon: <AlertTriangle className="h-4 w-4" /> };
+  return { label: "No data", textClass: "text-muted-foreground", icon: null };
 }
 
 function ActionProgress({ label }: { label: string }) {

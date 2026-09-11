@@ -1237,7 +1237,9 @@ describe("monitoring scheduler verification flow", () => {
   });
 
   it("does not write side effects when a monitor is paused after result persistence", async () => {
-    mocks.isMonitorActive.mockResolvedValue(false);
+    mocks.isMonitorActive
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
     await runMonitoringCycle();
@@ -1278,6 +1280,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 200,
     uptime: "100%",
     isActive: true,
+    pausedUntil: null,
     publishOnStatusPage: false,
     isFavorite: false,
     isCritical: false,

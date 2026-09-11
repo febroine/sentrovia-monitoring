@@ -27,11 +27,20 @@ export async function POST(request: NextRequest) {
     }
     assertPermission(session.role, "monitors.manage");
 
-    const body = (await readJsonBody(request, MONITOR_CSV_IMPORT_LIMITS.maxRequestBytes)) as { monitors?: unknown };
+    const body = (await readJsonBody(request, MONITOR_CSV_IMPORT_LIMITS.maxRequestBytes)) as {
+      monitors?: unknown;
+      source?: unknown;
+      lineNumbers?: unknown;
+    };
     const items: unknown[] = Array.isArray(body?.monitors) ? body.monitors : [];
+    const source = body?.source === "txt" ? "txt" : "csv";
+    const lineNumbers = Array.isArray(body?.lineNumbers) ? body.lineNumbers : [];
 
     if (items.length === 0) {
-      return NextResponse.json({ message: "Upload at least one CSV row." }, { status: 400 });
+      return NextResponse.json(
+        { message: source === "txt" ? "Upload at least one domain." : "Upload at least one CSV row." },
+        { status: 400 }
+      );
     }
 
     if (items.length > MONITOR_CSV_IMPORT_LIMITS.maxRows) {
@@ -45,10 +54,22 @@ export async function POST(request: NextRequest) {
     const intervalDefaults = parseIntervalSetting(settings?.monitoring.interval ?? "1m");
 
     const parsed = items.map((item, index) => {
-      const withDefaults = applyImportDefaults(applyMonitorDefaults(item, settings), settings, intervalDefaults);
+      const withDefaults = applyMonitorDefaults(
+        applyImportDefaults(item, settings, intervalDefaults),
+        settings
+      );
       const result = monitorInputSchema.safeParse(withDefaults);
       if (!result.success) {
-        throw new Error(`Row ${index + 2}: ${result.error.issues[0]?.message ?? "Invalid monitor data."}`);
+        const issue = result.error.issues[0];
+        const field = issue?.path.length ? `${issue.path.join(".")}: ` : "";
+        const requestedLineNumber = lineNumbers[index];
+        const lineNumber = typeof requestedLineNumber === "number"
+          && Number.isInteger(requestedLineNumber)
+          && requestedLineNumber > 0
+          ? requestedLineNumber
+          : source === "txt" ? index + 1 : index + 2;
+        const itemLabel = source === "txt" ? `Line ${lineNumber}` : `Row ${lineNumber}`;
+        throw new Error(`${itemLabel}: ${field}${issue?.message ?? "Invalid monitor data."}`);
       }
       return result.data;
     });
@@ -69,6 +90,7 @@ export async function POST(request: NextRequest) {
       error instanceof Error
       && (
         error.message.startsWith("Row ")
+        || error.message.startsWith("Line ")
         || error.message.includes("PostgreSQL monitor passwords are not included")
       )
     ) {

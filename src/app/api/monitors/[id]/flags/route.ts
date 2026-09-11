@@ -17,9 +17,14 @@ const monitorFlagsSchema = z
   .object({
     isFavorite: z.boolean().optional(),
     isCritical: z.boolean().optional(),
+    publishOnStatusPage: z.boolean().optional(),
   })
-  .refine((value) => value.isFavorite !== undefined || value.isCritical !== undefined, {
-    message: "At least one dashboard flag is required.",
+  .refine((value) => (
+    value.isFavorite !== undefined
+    || value.isCritical !== undefined
+    || value.publishOnStatusPage !== undefined
+  ), {
+    message: "At least one monitor flag is required.",
   });
 
 export async function PATCH(request: NextRequest, context: MonitorFlagsRouteContext) {
@@ -35,7 +40,7 @@ export async function PATCH(request: NextRequest, context: MonitorFlagsRouteCont
     const parsed = monitorFlagsSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { message: parsed.error.issues[0]?.message ?? "Invalid dashboard flag payload." },
+        { message: parsed.error.issues[0]?.message ?? "Invalid monitor flag payload." },
         { status: 400 }
       );
     }
@@ -52,7 +57,7 @@ export async function PATCH(request: NextRequest, context: MonitorFlagsRouteCont
 
     return NextResponse.json({ monitor: serializeMonitorRecord(monitor) });
   } catch (error) {
-    const authError = toAuthError(error, "Unable to update monitor dashboard flags right now.");
+    const authError = toAuthError(error, "Unable to update monitor flags right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });
   }
 }

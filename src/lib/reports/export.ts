@@ -38,17 +38,16 @@ const PRINTABLE_REPORT_STYLES = `
     margin: 0;
     background: var(--bg);
     color: var(--ink);
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     -webkit-locale: "en";
   }
   main { max-width: 1120px; margin: 0 auto; padding: 36px 28px 48px; }
-  .report-shell { display: grid; gap: 22px; }
+  .report-shell { display: grid; gap: 18px; }
   .hero {
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    background: linear-gradient(135deg, #0f172a 0%, #172554 58%, #1e3a8a 100%);
+    border-block: 1px solid var(--line);
+    background: #0f172a;
     color: #fff;
-    padding: 28px;
+    padding: 22px;
   }
   .hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
   .period-chip {
@@ -68,23 +67,18 @@ const PRINTABLE_REPORT_STYLES = `
   .report-type { color: #bfdbfe; font-size: 13px; font-weight: 700; }
   h1 { margin: 10px 0 0; font-size: 30px; line-height: 1.12; letter-spacing: 0; }
   .summary { margin: 12px 0 0; color: #dbeafe; font-size: 14px; line-height: 1.6; }
-  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--line); }
   .stat {
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background: var(--surface);
-    padding: 16px;
-    min-height: 104px;
+    border-right: 1px solid var(--line);
+    padding: 14px;
   }
-  .stat.emphasis { border-color: #93c5fd; background: #eff6ff; }
+  .stat:nth-child(4n) { border-right: 0; }
+  .stat.emphasis { box-shadow: inset 2px 0 0 var(--accent); }
   .stat-label { color: var(--muted); font-size: 12px; font-weight: 700; }
   .stat-value { margin-top: 8px; font-size: 26px; line-height: 1.1; font-weight: 750; }
   .stat-note { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.45; }
   .panel {
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    background: var(--surface);
-    overflow: hidden;
+    border-block: 1px solid var(--line);
   }
   .panel-header {
     display: flex;
@@ -92,29 +86,24 @@ const PRINTABLE_REPORT_STYLES = `
     justify-content: space-between;
     gap: 18px;
     border-bottom: 1px solid var(--line);
-    background: var(--surface-soft);
-    padding: 18px 20px;
+    padding: 14px 0;
   }
   .panel-title { margin: 0; font-size: 17px; font-weight: 750; }
   .panel-note { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-  .panel-body { padding: 18px 20px; }
+  .panel-body { padding: 14px 0; }
   .recommendations {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
   .recommendations li {
-    border: 1px solid #bfdbfe;
-    border-radius: 14px;
-    background: #eff6ff;
-    color: #1e3a8a;
-    padding: 13px 14px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+    padding: 12px 0;
     font-size: 13px;
     line-height: 1.55;
   }
+  .recommendations li:last-child { border-bottom: 0; }
   .grid-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { border-bottom: 1px solid var(--line); padding: 12px 10px; text-align: left; vertical-align: top; }
@@ -138,7 +127,9 @@ const PRINTABLE_REPORT_STYLES = `
   .report-footer { color: var(--muted); font-size: 12px; line-height: 1.5; text-align: right; }
   @media (max-width: 820px) {
     main { padding: 18px 12px 28px; }
-    .stats, .grid-two, .recommendations { grid-template-columns: 1fr; }
+    .stats, .grid-two { grid-template-columns: 1fr; }
+    .stat { border-right: 0; border-bottom: 1px solid var(--line); }
+    .stat:last-child { border-bottom: 0; }
     .panel-header { display: block; }
     .hero-top { display: block; }
     .period-chip { display: inline-block; margin-top: 14px; }
@@ -147,7 +138,7 @@ const PRINTABLE_REPORT_STYLES = `
   @media print {
     body { background: #fff; }
     main { padding: 12px; max-width: none; }
-    .panel, .stat, .hero { break-inside: avoid; }
+    .panel, .hero { break-inside: avoid; }
   }
 `;
 
@@ -155,7 +146,9 @@ export function buildPrintableReportHtml(
   report: GeneratedReport,
   options: { autoPrint?: boolean } = {}
 ) {
-  const breakdownRows = report.monitorBreakdown.map(renderMonitorBreakdownRow).join("");
+  const breakdownRows = report.monitorBreakdown
+    .map((monitor) => renderMonitorBreakdownRow(monitor, report.timeZone))
+    .join("");
   const recentFailureRows = buildRecentFailureRows(report).map(renderRecentFailureRow).join("");
   const slowMonitorRows = buildSlowMonitorRows(report).map(renderTwoColumnRow).join("");
   const failingMonitorRows = buildFailingMonitorRows(report).map(renderThreeColumnRow).join("");
@@ -200,9 +193,9 @@ function renderPrintableDocumentStart(report: GeneratedReport, autoPrint: boolea
 
 function renderPrintableHero(report: GeneratedReport) {
   const scope = report.scope === "company" ? report.companyName ?? "Company" : "Workspace";
-  const startedAt = new Date(report.periodStartedAt).toLocaleString("en-GB", { timeZone: report.timeZone });
-  const endedAt = new Date(report.periodEndedAt).toLocaleString("en-GB", { timeZone: report.timeZone });
-  const generatedAt = new Date(report.generatedAt).toLocaleString("en-GB", { timeZone: report.timeZone });
+  const startedAt = formatReportDateTime(report.periodStartedAt, report.timeZone);
+  const endedAt = formatReportDateTime(report.periodEndedAt, report.timeZone);
+  const generatedAt = formatReportDateTime(report.generatedAt, report.timeZone);
   return `
     <section class="hero">
       <div class="hero-top">
@@ -225,6 +218,7 @@ function renderPrintableStats(report: GeneratedReport) {
     ["Failure rate", formatReportFailureRate(summary), summary.hasCompletedChecks ? "Share of completed checks that were down" : "No completed checks in this period", false],
     ["Up now", String(summary.currentlyUp), "Currently healthy URLs", false],
     ["Pending now", String(summary.currentlyPending), "Awaiting confirmation", false],
+    ["Paused now", String(summary.currentlyPaused), "Excluded from current checks", false],
   ] as const;
   return `<section class="stats">${stats.map(renderPrintableStat).join("")}</section>`;
 }
@@ -308,20 +302,26 @@ function renderPrintableDocumentEnd() {
   `;
 }
 
-function renderMonitorBreakdownRow(monitor: GeneratedReport["monitorBreakdown"][number]) {
-  const statusClass = monitor.status === "up" ? "status-up" : monitor.status === "down" ? "status-down" : "status-pending";
+function renderMonitorBreakdownRow(
+  monitor: GeneratedReport["monitorBreakdown"][number],
+  timeZone: string
+) {
+  const statusClass = monitor.pausedUntil ? "status-pending" : monitor.status === "up" ? "status-up" : monitor.status === "down" ? "status-down" : "status-pending";
+  const statusLabel = monitor.pausedUntil
+    ? `paused until ${formatReportDateTime(monitor.pausedUntil, timeZone)}`
+    : monitor.status;
 
   return `
     <tr>
       <td><div class="url">${escapeHtml(reportValue(monitor.url))}</div>${monitor.lastErrorMessage ? `<div class="muted">${escapeHtml(monitor.lastErrorMessage)}</div>` : ""}</td>
       <td>${escapeHtml(reportValue(monitor.companyName))}</td>
-      <td><span class="status ${statusClass}">${escapeHtml(reportValue(monitor.status))}</span></td>
+      <td><span class="status ${statusClass}">${escapeHtml(statusLabel)}</span></td>
       <td>${escapeHtml(reportValue(monitor.currentStatusCode))}</td>
       <td>${escapeHtml(formatMonitorUptime(monitor))}</td>
       <td>${escapeHtml(formatMonitorAverageLatency(monitor))}</td>
       <td>${escapeHtml(formatMonitorP95Latency(monitor))}</td>
       <td>${escapeHtml(String(monitor.failures))}</td>
-      <td>${escapeHtml(monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE)}</td>
+      <td>${escapeHtml(monitor.lastFailureAt ? formatReportDateTime(monitor.lastFailureAt, timeZone) : EMPTY_REPORT_VALUE)}</td>
     </tr>
   `;
 }
@@ -384,7 +384,7 @@ function buildFailingMonitorRows(report: GeneratedReport) {
   return report.failingMonitors.map((monitor) => [
     monitor.url,
     String(monitor.failures),
-    monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : EMPTY_REPORT_VALUE,
+    monitor.lastFailureAt ? formatReportDateTime(monitor.lastFailureAt, report.timeZone) : EMPTY_REPORT_VALUE,
   ]);
 }
 
@@ -396,9 +396,13 @@ function buildRecentFailureRows(report: GeneratedReport) {
   return report.recentFailures.map((event) => [
     event.url,
     reportValue(event.statusCode),
-    new Date(event.createdAt).toLocaleString(),
+    formatReportDateTime(event.createdAt, report.timeZone),
     event.detail,
   ]);
+}
+
+function formatReportDateTime(value: string, timeZone: string) {
+  return new Date(value).toLocaleString("en-GB", { timeZone });
 }
 
 function reportValue(value: string | number | null | undefined) {

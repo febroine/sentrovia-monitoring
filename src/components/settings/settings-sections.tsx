@@ -2,16 +2,7 @@
 
 import type { ReactNode } from "react";
 import {
-  Archive,
-  Braces,
   ChevronRight,
-  DatabaseBackup,
-  HardDriveDownload,
-  MailCheck,
-  PanelsTopLeft,
-  ScanSearch,
-  ShieldAlert,
-  Waypoints,
 } from "lucide-react";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
 import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
@@ -99,8 +90,6 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       <SectionCard
         title="Alert conditions"
         description="Choose which monitor state changes produce notifications."
-        icon={ShieldAlert}
-        iconClassName="text-rose-600 dark:text-rose-400"
         action={
           <SectionSaveButton
             sectionId="alert-conditions"
@@ -121,6 +110,25 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             <SelectContent>
               <SelectItem value="en">English</SelectItem>
               <SelectItem value="tr">Turkish</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field
+          label="Default monitor notification"
+          hint="Applied to new monitors and CSV rows that do not provide notificationPref."
+        >
+          <Select
+            value={settings.notifications.defaultMonitorNotificationPref}
+            onValueChange={(value) => updateSetting("notifications.defaultMonitorNotificationPref", String(value))}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="both">Email + Telegram</SelectItem>
+              <SelectItem value="email">Email</SelectItem>
+              <SelectItem value="telegram">Telegram</SelectItem>
+              <SelectItem value="none">None</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -185,8 +193,6 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       <SectionCard
         title="SMTP delivery"
         description="Credentials used by the worker. Stored passwords are encrypted."
-        icon={MailCheck}
-        iconClassName="text-sky-600 dark:text-sky-400"
         action={
           <SectionSaveButton
             sectionId="smtp-delivery"
@@ -276,8 +282,6 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       <SectionCard
         title="Additional channels"
         description="Send worker notifications to Discord and webhook destinations."
-        icon={Waypoints}
-        iconClassName="text-violet-600 dark:text-violet-400"
         action={
           <SectionSaveButton
             sectionId="additional-notification-channels"
@@ -293,8 +297,6 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       <SectionCard
         title="Notification templates"
         description="Workspace defaults used when a monitor has no template override."
-        icon={Braces}
-        iconClassName="text-amber-600 dark:text-amber-400"
         action={
           <SectionSaveButton
             sectionId="notification-templates"
@@ -449,8 +451,6 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
     <SectionCard
       title="Monitor defaults"
       description="Applied when a monitor or CSV import omits a value."
-      icon={ScanSearch}
-      iconClassName="text-emerald-600 dark:text-emerald-400"
       action={
         <SectionSaveButton
           sectionId="default-monitor-configuration"
@@ -623,8 +623,6 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
     <SectionCard
       title="Display preferences"
       description="Density, contrast, time format, and dashboard defaults."
-      icon={PanelsTopLeft}
-      iconClassName="text-violet-600 dark:text-violet-400"
       action={
         <SectionSaveButton
           sectionId="workspace-experience"
@@ -677,7 +675,7 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
       />
       <Field label="Sidebar accent">
         <Select
-          value={settings.appearance.sidebarAccent}
+          value={settings.appearance.sidebarAccent === "violet" ? "emerald" : settings.appearance.sidebarAccent}
           onValueChange={(value) => updateSetting("appearance.sidebarAccent", String(value))}
         >
           <SelectTrigger>
@@ -688,7 +686,6 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
             <SelectItem value="emerald">Emerald</SelectItem>
             <SelectItem value="sky">Sky</SelectItem>
             <SelectItem value="rose">Rose</SelectItem>
-            <SelectItem value="violet">Violet</SelectItem>
             <SelectItem value="slate">Slate</SelectItem>
           </SelectContent>
         </Select>
@@ -735,8 +732,6 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
       <SectionCard
         title="Data retention"
         description="How long operational history remains in PostgreSQL."
-        icon={Archive}
-        iconClassName="text-cyan-600 dark:text-cyan-400"
         action={
           <SectionSaveButton
             sectionId="retention-and-backups"
@@ -784,8 +779,6 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
         <SectionCard
           title="Automatic database backup"
           description="Create a daily encrypted PostgreSQL backup on the worker host."
-          icon={DatabaseBackup}
-          iconClassName="text-emerald-600 dark:text-emerald-400"
         >
           <ToggleRow
             label="Enable automatic backups"
@@ -836,8 +829,6 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
       <SectionCard
         title="Workspace backup"
         description="Export or restore configuration. Database records remain under the deployment backup policy."
-        icon={HardDriveDownload}
-        iconClassName="text-sky-600 dark:text-sky-400"
       >
         {isAdmin ? (
           <BackupRestorePanel

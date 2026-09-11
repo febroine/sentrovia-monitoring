@@ -4,10 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Clock,
   Download,
   FileCode2,
   FileSpreadsheet,
+  FileText,
   Plus,
+  Play,
   RefreshCw,
   Search,
   Tags,
@@ -19,11 +22,12 @@ import { MonitorExportDialog } from "@/components/monitoring/monitor-export-dial
 import { MonitorForm } from "@/components/monitoring/monitor-form";
 import { MonitorHistoryDialog } from "@/components/monitoring/monitor-history-dialog";
 import { MonitorImportDialog } from "@/components/monitoring/monitor-import-dialog";
+import { MonitorPauseDialog } from "@/components/monitoring/monitor-pause-dialog";
 import { MonitorStats } from "@/components/monitoring/monitor-stats";
 import { MonitorTable } from "@/components/monitoring/monitor-table";
 import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
+import { MonitorTextImportDialog } from "@/components/monitoring/monitor-text-import-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
-import { OperationsConsole } from "@/components/monitoring/operations-console";
 import { payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { CompanyRecord } from "@/lib/companies/types";
 import { buildDefaultMonitorForm } from "@/lib/monitors/defaults";
+import { isMonitorTemporarilyPaused, type MonitorPauseUnit } from "@/lib/monitors/pause";
 import {
   DEFAULT_MONITOR_FORM,
   type MonitorDiagnosticRecord,
@@ -48,6 +53,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const;
 const PAGE_NUMBER_WINDOW = 5;
 const BULK_ACTION_DELAY_MS = 10_000;
+const MAX_BROWSER_TIMEOUT_MS = 2_147_000_000;
 
 interface PendingBulkAction {
   title: string;
@@ -73,6 +79,7 @@ export default function MonitoringPage() {
     createMonitor,
     updateMonitor,
     updateMonitorActiveState,
+    updateMonitorPause,
     updateMonitorFlags,
     bulkUpdateMonitors,
     deleteMonitors,
@@ -89,6 +96,7 @@ export default function MonitoringPage() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [textImportOpen, setTextImportOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [editingMonitor, setEditingMonitor] = useState<MonitorRecord | null>(null);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
@@ -103,6 +111,8 @@ export default function MonitoringPage() {
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
   const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
+  const [pausePendingId, setPausePendingId] = useState<string | null>(null);
+  const [pauseTargetIds, setPauseTargetIds] = useState<string[]>([]);
   const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [pendingBulkAction, setPendingBulkAction] = useState<PendingBulkAction | null>(null);
@@ -113,7 +123,7 @@ export default function MonitoringPage() {
     : false;
 
   const problematicCount = useMemo(
-    () => monitors.filter((monitor) => monitor.isActive && (monitor.status === "down" || monitor.verificationMode)).length,
+    () => monitors.filter((monitor) => monitor.isActive && !isMonitorTemporarilyPaused(monitor.pausedUntil) && (monitor.status === "down" || monitor.verificationMode)).length,
     [monitors]
   );
 
@@ -128,6 +138,16 @@ export default function MonitoringPage() {
     return firstSelected ? payloadFromMonitor(firstSelected) : defaultForm;
   }, [defaultForm, monitors, selectedIds]);
   const deleteTargets = monitors.filter((monitor) => deleteTargetIds.includes(monitor.id));
+  const selectedActiveMonitors = monitors.filter((monitor) => selectedIds.has(monitor.id) && monitor.isActive);
+  const selectedPausedMonitorIds = selectedActiveMonitors
+    .filter((monitor) => isMonitorTemporarilyPaused(monitor.pausedUntil))
+    .map((monitor) => monitor.id);
+  const parsedNextPauseExpiryMs = summary.nextPauseExpiryAt
+    ? Date.parse(summary.nextPauseExpiryAt)
+    : Number.NaN;
+  const nextPauseExpiryMs = Number.isFinite(parsedNextPauseExpiryMs)
+    ? parsedNextPauseExpiryMs
+    : null;
 
   const loadSupportingData = useCallback(async () => {
     try {
@@ -194,6 +214,29 @@ export default function MonitoringPage() {
     const timeoutId = window.setTimeout(() => void loadMonitorPage(), 250);
     return () => window.clearTimeout(timeoutId);
   }, [loadMonitorPage]);
+
+  useEffect(() => {
+    if (nextPauseExpiryMs === null) {
+      return;
+    }
+
+    let timeoutId: number;
+    const scheduleRefresh = () => {
+      const remainingMs = nextPauseExpiryMs - Date.now();
+      if (remainingMs >= MAX_BROWSER_TIMEOUT_MS) {
+        timeoutId = window.setTimeout(scheduleRefresh, MAX_BROWSER_TIMEOUT_MS);
+        return;
+      }
+
+      timeoutId = window.setTimeout(
+        () => void loadMonitorPage(),
+        Math.max(0, remainingMs) + 250
+      );
+    };
+
+    scheduleRefresh();
+    return () => window.clearTimeout(timeoutId);
+  }, [loadMonitorPage, nextPauseExpiryMs]);
 
   useEffect(() => {
     queueMicrotask(() => void loadSupportingData());
@@ -309,16 +352,43 @@ export default function MonitoringPage() {
     }
   }
 
+  function openPauseDialog(ids: string[]) {
+    const activeIds = monitors
+      .filter((monitor) => ids.includes(monitor.id) && monitor.isActive)
+      .map((monitor) => monitor.id);
+    if (activeIds.length > 0) {
+      setPauseTargetIds(activeIds);
+    }
+  }
+
+  async function handlePauseMonitors(durationValue: number, durationUnit: MonitorPauseUnit) {
+    const updated = await updateMonitorPause(pauseTargetIds, { action: "pause", durationValue, durationUnit });
+    if (updated !== null) {
+      setPauseTargetIds([]);
+      await loadMonitorPage();
+    }
+  }
+
+  async function handleResumePaused(ids: string[], pendingId: string | null = null) {
+    setPausePendingId(pendingId);
+    try {
+      const updated = await updateMonitorPause(ids, { action: "resume" });
+      if (updated !== null) {
+        await loadMonitorPage();
+      }
+    } finally {
+      setPausePendingId(null);
+    }
+  }
+
   async function handleToggleMonitorFlag(
     monitor: MonitorRecord,
-    field: "isFavorite" | "isCritical"
+    field: "isFavorite" | "isCritical" | "publishOnStatusPage"
   ) {
     setFlagPendingId(monitor.id);
 
     try {
-      const flags = field === "isFavorite"
-        ? { isFavorite: !monitor.isFavorite }
-        : { isCritical: !monitor.isCritical };
+      const flags = { [field]: !monitor[field] };
       await updateMonitorFlags(monitor.id, flags);
     } finally {
       setFlagPendingId(null);
@@ -502,7 +572,6 @@ export default function MonitoringPage() {
       ) : null}
 
       {workspaceSettings?.profile.role === "admin" ? <WorkerPulseCard /> : null}
-      <OperationsConsole monitors={monitors} canManage={canManageMonitors} />
       <MonitorStats summary={summary} />
 
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -557,7 +626,9 @@ export default function MonitoringPage() {
 
       {canManageMonitors && selectedIds.size > 0 ? (
         <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-sm font-medium">{selectedIds.size} monitor selected</span>
+          <span className="text-sm font-medium">
+            {selectedIds.size} monitor{selectedIds.size === 1 ? "" : "s"} selected
+          </span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)} disabled={Boolean(pendingBulkAction)}>
               Bulk edit
@@ -566,6 +637,16 @@ export default function MonitoringPage() {
               <Tags className="mr-1 size-3.5" />
               Tags
             </Button>
+            <Button variant="outline" size="sm" onClick={() => openPauseDialog(Array.from(selectedIds))} disabled={saving || selectedActiveMonitors.length === 0 || Boolean(pendingBulkAction)}>
+              <Clock className="mr-1 size-3.5" />
+              Pause
+            </Button>
+            {selectedPausedMonitorIds.length > 0 ? (
+              <Button variant="outline" size="sm" onClick={() => void handleResumePaused(selectedPausedMonitorIds)} disabled={saving || Boolean(pendingBulkAction)}>
+                <Play className="mr-1 size-3.5" />
+                Resume paused
+              </Button>
+            ) : null}
             <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())} disabled={Boolean(pendingBulkAction)}>
               Clear
             </Button>
@@ -583,12 +664,15 @@ export default function MonitoringPage() {
         loading={loading}
         selectedIds={selectedIds}
         activeTogglePendingId={activeTogglePendingId}
+        pausePendingId={pausePendingId}
         flagPendingId={flagPendingId}
         allPageSelected={allPageSelected}
         somePageSelected={somePageSelected}
         onToggleAll={toggleAll}
         onToggleOne={toggleOne}
         onToggleActive={(monitor) => void handleToggleMonitorActive(monitor)}
+        onPause={(monitor) => openPauseDialog([monitor.id])}
+        onResumePause={(monitor) => void handleResumePaused([monitor.id], monitor.id)}
         onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
         onEdit={setEditingMonitor}
         onOpenTimeline={(monitor) => void handleOpenTimeline(monitor)}
@@ -674,6 +758,17 @@ export default function MonitoringPage() {
             >
               <FileSpreadsheet className="mr-2 size-4" />
               Import CSV
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setToolsOpen(false);
+                setTextImportOpen(true);
+              }}
+            >
+              <FileText className="mr-2 size-4" />
+              Import TXT domain list
             </Button>
             <Button
               variant="outline"
@@ -767,6 +862,14 @@ export default function MonitoringPage() {
         </DialogContent>
       </Dialog>
 
+      <MonitorPauseDialog
+        open={pauseTargetIds.length > 0}
+        monitorCount={pauseTargetIds.length}
+        submitting={saving}
+        onOpenChange={(open) => !open && setPauseTargetIds([])}
+        onSubmit={handlePauseMonitors}
+      />
+
       <Dialog open={deleteTargetIds.length > 0} onOpenChange={(open) => !open && closeDeleteConfirmation()}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -824,6 +927,19 @@ export default function MonitoringPage() {
           void loadMonitorPage();
         }}
       />
+      {textImportOpen ? (
+        <MonitorTextImportDialog
+          open
+          onOpenChange={setTextImportOpen}
+          initialDefaults={defaultForm}
+          companies={companies}
+          onImported={(imported) => {
+            importMonitors(imported);
+            clearError();
+            void loadMonitorPage();
+          }}
+        />
+      ) : null}
       <MonitorConfigDialog
         open={configOpen}
         onOpenChange={setConfigOpen}

@@ -68,8 +68,8 @@ describe("dashboard service", () => {
 
   it("keeps a company named Unassigned separate from monitors without a company", () => {
     const groups = buildCompanyHealth([
-      { companyId: "company-1", company: "Unassigned", isActive: true, status: "up" },
-      { companyId: null, company: null, isActive: true, status: "down" },
+      { companyId: "company-1", company: "Unassigned", isActive: true, pausedUntil: null, status: "up" },
+      { companyId: null, company: null, isActive: true, pausedUntil: null, status: "down" },
     ]);
 
     expect(groups).toHaveLength(2);
@@ -77,6 +77,16 @@ describe("dashboard service", () => {
       expect.objectContaining({ name: "Unassigned", up: 1, down: 0 }),
       expect.objectContaining({ name: "Unassigned", up: 0, down: 1 }),
     ]));
+  });
+
+  it("counts temporarily paused monitors outside active company health", () => {
+    const now = new Date("2026-09-11T10:00:00.000Z");
+    const [group] = buildCompanyHealth([
+      { companyId: "company-1", company: "Acme", isActive: true, pausedUntil: new Date("2026-09-11T11:00:00.000Z"), status: "down" },
+      { companyId: "company-1", company: "Acme", isActive: true, pausedUntil: null, status: "up" },
+    ], now);
+
+    expect(group).toMatchObject({ active: 1, paused: 1, up: 1, down: 0 });
   });
 
   it("keeps optional dashboard sections from crashing the entire page", async () => {

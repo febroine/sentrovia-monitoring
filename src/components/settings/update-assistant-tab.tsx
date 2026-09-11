@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, Clipboard, ExternalLink, PackageCheck, RefreshCw, Terminal } from "lucide-react";
+import { Check, Clipboard, ExternalLink, RefreshCw, Terminal } from "lucide-react";
 import { SectionCard } from "@/components/settings/settings-section-primitives";
 import { Button } from "@/components/ui/button";
 
@@ -75,8 +75,6 @@ export function UpdateAssistantTab() {
     <SectionCard
       title="Updates"
       description="Check the latest GitHub release and copy host-side update commands."
-      icon={PackageCheck}
-      iconClassName="text-cyan-600 dark:text-cyan-400"
     >
       {message ? <div className="border-l-2 border-border px-4 py-2 text-sm">{message}</div> : null}
       <dl className="grid border-y md:grid-cols-3 md:divide-x">

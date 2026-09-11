@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyImportDefaults } from "@/lib/monitors/import-defaults";
+import { applyImportDefaults, normalizeImportedMonitorUrl } from "@/lib/monitors/import-defaults";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const intervalDefaults = { intervalValue: 5, intervalUnit: "dk" as const };
@@ -38,5 +38,31 @@ describe("applyImportDefaults", () => {
 
     expect(inherited.slowResponseThresholdMs).toBe(20_000);
     expect(explicit.slowResponseThresholdMs).toBe(12_000);
+  });
+
+  it("uses workspace notification and public visibility defaults", () => {
+    const settings = structuredClone(DEFAULT_SETTINGS);
+    settings.notifications.defaultMonitorNotificationPref = "telegram";
+
+    expect(applyImportDefaults({}, settings, intervalDefaults)).toMatchObject({
+      notificationPref: "telegram",
+      publishOnStatusPage: true,
+    });
+    expect(applyImportDefaults({ notificationPref: "none", publishOnStatusPage: false }, settings, intervalDefaults))
+      .toMatchObject({ notificationPref: "none", publishOnStatusPage: false });
+  });
+
+  it.each([
+    ["example.com/health", "https://example.com/health"],
+    ["www.example.com", "https://www.example.com"],
+    ["http://example.com", "http://example.com"],
+    ["https://example.com", "https://example.com"],
+    ["//example.com/status", "https://example.com/status"],
+  ])("normalizes imported HTTP target %s", (input, expected) => {
+    expect(normalizeImportedMonitorUrl(input, "http")).toBe(expected);
+  });
+
+  it("does not rewrite non-HTTP monitor targets", () => {
+    expect(normalizeImportedMonitorUrl("db.example.com:5432", "postgres")).toBe("db.example.com:5432");
   });
 });

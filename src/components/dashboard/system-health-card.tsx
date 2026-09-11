@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 interface SystemHealthResponse {
@@ -31,10 +30,6 @@ interface SystemHealthResponse {
   queue: {
     dueBacklog: number;
     delayedMonitorCount: number;
-  };
-  delivery: {
-    failedLast24Hours: number;
-    queuedLast24Hours: number;
   };
 }
 
@@ -89,12 +84,12 @@ export function SystemHealthCard() {
   const visibleAlarms = health?.alarms.slice(0, 2) ?? [];
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="border-b border-border/70 pb-3">
+    <section className="border-t py-4">
+      <header className="border-b border-border/70 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base">System Health</CardTitle>
+              <h2 className="text-base">System Health</h2>
               <Badge variant="outline" className={statusBadgeClass(health?.overallStatus)}>
                 {status}
               </Badge>
@@ -112,16 +107,16 @@ export function SystemHealthCard() {
             <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           </Button>
         </div>
-      </CardHeader>
+      </header>
 
-      <CardContent className="space-y-3 pt-4">
+      <div className="space-y-3 pt-4">
         {error ? (
           <div className="border-l-2 border-amber-500 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             {error}
           </div>
         ) : null}
 
-        <dl className="grid border-y sm:grid-cols-2 lg:grid-cols-4 lg:divide-x">
+        <dl className="grid border-y sm:grid-cols-3 sm:divide-x">
           <HealthMetric label="Worker" value={workerStatus} tone={workerRunning ? "healthy" : "critical"} />
           <HealthMetric
             label="Internet"
@@ -129,7 +124,6 @@ export function SystemHealthCard() {
             tone={health?.worker.connectivityStatus === "online" ? "healthy" : health?.worker.connectivityStatus === "offline" ? "critical" : "neutral"}
           />
           <HealthMetric label="Due queue" value={health ? String(health.queue.dueBacklog) : "--"} tone={health && health.queue.delayedMonitorCount > 0 ? "warning" : "neutral"} />
-          <HealthMetric label="Failed delivery" value={health ? String(health.delivery.failedLast24Hours) : "--"} tone={health && health.delivery.failedLast24Hours > 0 ? "critical" : "neutral"} />
         </dl>
 
         {loading && !health ? (
@@ -154,17 +148,16 @@ export function SystemHealthCard() {
         ) : (
           <div className="flex items-center gap-2 border-l-2 border-emerald-500 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="size-3.5" />
-            No active worker, queue, or delivery alarms.
+            No active worker, connectivity, or queue alarms.
           </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-          <span>Queued deliveries: {health?.delivery.queuedLast24Hours ?? "--"}</span>
           <span>Last cycle: {formatDateTime(health?.worker.lastCycleAt)}</span>
           <span>Updated: {formatDateTime(health?.generatedAt)}</span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 

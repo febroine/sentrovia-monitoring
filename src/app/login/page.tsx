@@ -15,7 +15,7 @@ import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 
 const inputClassName =
-  "h-12 rounded-md border-white/10 bg-[#090a0c] px-3.5 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-zinc-600 hover:border-white/15 focus-visible:border-primary/70 focus-visible:bg-[#0b0c0e] focus-visible:ring-2 focus-visible:ring-primary/20";
+  "h-11 rounded-md border-white/10 bg-[#090a0c] px-3.5 text-foreground transition-[border-color,background-color] duration-150 placeholder:text-zinc-600 hover:border-white/15 focus-visible:border-primary/70 focus-visible:bg-[#0b0c0e] focus-visible:ring-2 focus-visible:ring-primary/20";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -162,7 +162,7 @@ export default function LoginPage() {
           type="submit"
           size="lg"
           disabled={busy}
-          className="h-12 rounded-md bg-primary font-semibold shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_8px_24px_rgba(79,70,229,0.16)] transition-[background-color,transform,box-shadow] duration-150 hover:bg-primary/90 hover:shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_10px_28px_rgba(79,70,229,0.22)] active:translate-y-px active:shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
+          className="h-11 rounded-md bg-primary font-semibold transition-colors hover:bg-primary/90"
         >
           {busy ? (
             <>

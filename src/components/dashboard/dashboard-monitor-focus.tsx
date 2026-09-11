@@ -1,8 +1,8 @@
 "use client";
 
-import { ExternalLink, Flag, Star } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, ExternalLink, Flag, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DashboardData } from "@/lib/dashboard/service";
 
 type DashboardMonitor = DashboardData["monitors"][number];
@@ -18,29 +18,103 @@ export function DashboardMonitorFocus({
   pendingId: string | null;
   onFlag: (monitorId: string, field: "isFavorite" | "isCritical", value: boolean) => void;
 }) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const [canScrollBack, setCanScrollBack] = useState(false);
+  const [canScrollForward, setCanScrollForward] = useState(false);
   const title = focus === "favorites" ? "Favorite monitors" : focus === "critical" ? "Critical monitors" : "Monitor focus";
   const emptyMessage = focus === "favorites" ? "Mark monitors as favorites to build this view." : focus === "critical" ? "Mark monitors as critical to build this view." : "No active monitors in this scope.";
 
+  const updateScrollControls = useCallback(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+
+    setCanScrollBack(rail.scrollLeft > 1);
+    setCanScrollForward(rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+
+    updateScrollControls();
+    const resizeObserver = new ResizeObserver(updateScrollControls);
+    resizeObserver.observe(rail);
+    rail.addEventListener("scroll", updateScrollControls, { passive: true });
+    return () => {
+      resizeObserver.disconnect();
+      rail.removeEventListener("scroll", updateScrollControls);
+    };
+  }, [monitors, updateScrollControls]);
+
+  function scrollRail(direction: -1 | 1) {
+    const rail = railRef.current;
+    if (!rail) return;
+
+    rail.scrollBy({
+      left: direction * Math.max(280, rail.clientWidth * 0.8),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <section className="border-t py-4">
+      <header className="pb-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <CardTitle className="text-base">{title}</CardTitle>
+            <h2 className="text-base">{title}</h2>
           </div>
-          <span className="text-xs tabular-nums text-muted-foreground">{monitors.length} monitors</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs tabular-nums text-muted-foreground">{monitors.length} monitors</span>
+            {monitors.length > 1 ? (
+              <div className="flex items-center gap-1" role="group" aria-label="Monitor focus navigation">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Scroll monitors back"
+                  disabled={!canScrollBack}
+                  onClick={() => scrollRail(-1)}
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Scroll monitors forward"
+                  disabled={!canScrollForward}
+                  onClick={() => scrollRail(1)}
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </div>
-      </CardHeader>
-      <CardContent>
+      </header>
+      <div>
         {monitors.length === 0 ? (
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         ) : (
-          <div className="grid border-y md:grid-cols-2 md:divide-x">
-            {monitors.map((monitor) => <MonitorFocusRow key={monitor.id} monitor={monitor} pending={pendingId === monitor.id} onFlag={onFlag} />)}
+          <div
+            ref={railRef}
+            tabIndex={0}
+            role="region"
+            aria-label={`${title} list`}
+            className="flex snap-x snap-mandatory overflow-x-auto border-y outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            {monitors.map((monitor) => (
+              <div
+                key={monitor.id}
+                className="min-w-[min(19rem,calc(100vw-4.5rem))] snap-start border-r last:border-r-0 md:min-w-80 xl:min-w-88"
+              >
+                <MonitorFocusRow monitor={monitor} pending={pendingId === monitor.id} onFlag={onFlag} />
+              </div>
+            ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -73,7 +147,9 @@ function MonitorFocusRow({
             <span className={`shrink-0 text-xs font-medium ${statusClass}`}>{statusLabel}</span>
           </div>
           <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span>{monitor.company ?? "Unassigned"}{monitor.latencyMs !== null ? ` · ${monitor.latencyMs}ms` : ""}</span>
+            <span className="truncate" title={monitor.company ?? "Unassigned"}>
+              {monitor.company ?? "Unassigned"}{monitor.latencyMs !== null ? ` · ${monitor.latencyMs}ms` : ""}
+            </span>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon-sm" disabled={pending} onClick={() => onFlag(monitor.id, "isFavorite", !monitor.isFavorite)} aria-label={monitor.isFavorite ? `Remove ${monitor.name} from favorites` : `Add ${monitor.name} to favorites`} title={monitor.isFavorite ? "Remove favorite" : "Add favorite"}>
                 <Star className={`h-4 w-4 ${monitor.isFavorite ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} />

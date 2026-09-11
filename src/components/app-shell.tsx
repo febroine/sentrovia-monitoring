@@ -92,8 +92,10 @@ export default function AppShell({
       >
         <main
           className={cn(
-            'mx-auto w-full min-w-0 max-w-[1600px] flex-1 overflow-x-hidden',
-            appearance.compactDensity ? 'p-4 md:p-6' : 'p-5 md:p-8'
+            'mx-auto w-full min-w-0 max-w-[1760px] flex-1 overflow-x-hidden',
+            appearance.compactDensity
+              ? 'p-4 md:px-5 md:py-6'
+              : 'p-5 md:px-6 md:py-8'
           )}
         >
           {children}
