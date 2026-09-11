@@ -6,7 +6,7 @@ export function resolveSafeAuthRedirect(value: string | null | undefined) {
   }
 
   const trimmed = value.trim();
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("\\")) {
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || /[\\\r\n\t]/.test(trimmed)) {
     return DEFAULT_AUTH_REDIRECT_PATH;
   }
 

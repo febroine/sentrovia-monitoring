@@ -13,9 +13,9 @@ export function buildCsv(rows: LogRecord[]) {
     header.join(","),
     ...rows.map((log) =>
       [
-        log.createdAt,
-        log.level,
-        log.eventType,
+        wrap(log.createdAt),
+        wrap(log.level),
+        wrap(log.eventType),
         wrap(log.companyName ?? ""),
         wrap(log.monitorName ?? ""),
         wrap(log.message ?? ""),
@@ -27,5 +27,11 @@ export function buildCsv(rows: LogRecord[]) {
 }
 
 function wrap(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
+  const trimmed = value.trimStart();
+  const leadingWhitespace = value.slice(0, value.length - trimmed.length);
+  const hasLeadingControl = [...leadingWhitespace].some((character) => character.charCodeAt(0) < 32)
+    || (trimmed.length > 0 && trimmed.charCodeAt(0) < 32);
+  // CSV quoting escapes delimiters but does not stop spreadsheet formula interpretation.
+  const text = /^[=+@-]/.test(trimmed) || hasLeadingControl ? `'${value}` : value;
+  return `"${text.replaceAll('"', '""')}"`;
 }

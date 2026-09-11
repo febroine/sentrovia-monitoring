@@ -16,6 +16,7 @@
   "src/app/api/auth/register",
   "src/app/api/incidents/[id]/ack",
   "src/app/api/monitors/overview",
+  "src/app/icon.svg",
   "src/app/incidents",
   "src/app/maintenance",
   "src/app/observability",

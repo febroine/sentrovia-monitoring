@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decryptValue } from "@/lib/security/encryption";
+import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import {
   mergeSettingsScopes,
   resolveConfiguredSecretEncrypted,
@@ -7,19 +8,33 @@ import {
 } from "@/lib/settings/service";
 
 describe("settings service", () => {
+  const smtp = { ...DEFAULT_SETTINGS.notifications, smtpHost: "smtp.example.com", smtpUsername: "mailer", smtpPasswordConfigured: true };
+  const existing = { ...smtp, smtpPasswordEncrypted: "encrypted-secret" };
+
   it("keeps an existing SMTP password when the form leaves the password blank", () => {
-    expect(resolveSmtpPasswordEncrypted("", true, "encrypted-secret")).toBe("encrypted-secret");
+    expect(resolveSmtpPasswordEncrypted(smtp, existing)).toBe("encrypted-secret");
   });
 
   it("clears an existing SMTP password when the payload says no password is configured", () => {
-    expect(resolveSmtpPasswordEncrypted("", false, "encrypted-secret")).toBeNull();
+    expect(resolveSmtpPasswordEncrypted({ ...smtp, smtpPasswordConfigured: false }, existing)).toBeNull();
   });
 
   it("stores a new SMTP password when one is provided", () => {
-    const encrypted = resolveSmtpPasswordEncrypted(" new-secret ", true, "old-secret");
+    const encrypted = resolveSmtpPasswordEncrypted({ ...smtp, smtpPassword: " new-secret ", smtpHost: "new.example.com" }, existing);
 
     expect(encrypted).not.toBe("old-secret");
     expect(decryptValue(encrypted)).toBe("new-secret");
+  });
+
+  it.each([
+    { smtpHost: "attacker.example.com" }, { smtpPort: 2525 }, { smtpUsername: "attacker" },
+    { smtpSecure: true }, { smtpRequireTls: false }, { smtpInsecureSkipVerify: true },
+  ])("rejects retained credentials after SMTP connection changes: %j", (changes) => {
+    expect(() => resolveSmtpPasswordEncrypted({ ...smtp, ...changes }, existing)).toThrow(/re-enter.*password/i);
+  });
+
+  it("allows hostname casing and unrelated notification changes", () => {
+    expect(resolveSmtpPasswordEncrypted({ ...smtp, smtpHost: "SMTP.EXAMPLE.COM", notifyOnDown: false }, existing)).toBe("encrypted-secret");
   });
 });
 

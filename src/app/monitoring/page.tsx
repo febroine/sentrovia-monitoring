@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Download,
   FileCode2,
   FileSpreadsheet,
   Plus,
@@ -14,6 +15,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { MonitorConfigDialog } from "@/components/monitoring/monitor-config-dialog";
+import { MonitorExportDialog } from "@/components/monitoring/monitor-export-dialog";
 import { MonitorForm } from "@/components/monitoring/monitor-form";
 import { MonitorHistoryDialog } from "@/components/monitoring/monitor-history-dialog";
 import { MonitorImportDialog } from "@/components/monitoring/monitor-import-dialog";
@@ -85,6 +87,7 @@ export default function MonitoringPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [editingMonitor, setEditingMonitor] = useState<MonitorRecord | null>(null);
@@ -650,7 +653,7 @@ export default function MonitoringPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Monitor tools</DialogTitle>
-            <DialogDescription>Import monitors or manage configuration files.</DialogDescription>
+            <DialogDescription>Import, export, or manage monitor configuration files.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-2">
             <a
@@ -671,6 +674,17 @@ export default function MonitoringPage() {
             >
               <FileSpreadsheet className="mr-2 size-4" />
               Import CSV
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setToolsOpen(false);
+                setExportOpen(true);
+              }}
+            >
+              <Download className="mr-2 size-4" />
+              Export monitors
             </Button>
             <Button
               variant="outline"
@@ -847,6 +861,13 @@ export default function MonitoringPage() {
           }
         }}
       />
+      {exportOpen ? (
+        <MonitorExportDialog
+          open
+          onOpenChange={setExportOpen}
+          selectedIds={Array.from(selectedIds)}
+        />
+      ) : null}
     </div>
   );
 }

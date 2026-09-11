@@ -408,12 +408,15 @@ export async function sendEmailDelivery(input: {
 }) {
   const smtp = await getSmtpSettings(input.userId, input.workspaceId);
   const destination = input.destinationOverride?.trim() || smtp?.defaultToEmail?.trim() || "";
+  const attachments = smtp?.fromEmail && destination
+    ? await resolveEmailAttachments(input)
+    : input.attachments;
   const event = await createDeliveryEvent(input.userId, "email", input.kind, destination || "Email not configured", {
     subject: input.subject,
     textBody: input.textBody,
     htmlBody: input.htmlBody,
     to: destination,
-    attachments: serializeEmailAttachments(input.attachments),
+    attachments: serializeEmailAttachments(attachments),
   }, input.monitorId, input.workspaceId);
 
   if (!smtp || !smtp.fromEmail || !destination) {
@@ -422,8 +425,6 @@ export async function sendEmailDelivery(input: {
 
   try {
     const transporter = await createSafeSmtpTransport(input.userId, smtp, input.workspaceId);
-
-    const attachments = await resolveEmailAttachments(input);
     await transporter.sendMail(buildEmailMessage({ ...input, attachments }, smtp.fromEmail, destination));
 
     return markDeliveryDelivered(event.id, 250);

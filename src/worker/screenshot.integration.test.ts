@@ -59,6 +59,42 @@ describe("failure screenshot browser isolation", () => {
 
     expect(attachment?.content).toBeInstanceOf(Buffer);
   }, 25_000);
+
+  it.each(["page", "worker"])("blocks private WebSocket handshakes from %s scripts", async (realm) => {
+    let privateRequests = 0;
+    let publicRequests = 0;
+    let scriptRequests = 0;
+    const privateServer = await createServer((_, response) => {
+      privateRequests += 1;
+      response.end();
+    });
+    privateServer.on("upgrade", (_request, socket) => {
+      privateRequests += 1;
+      socket.destroy();
+    });
+    let script = "";
+    const publicServer = await createServer((request, response) => {
+      if (request.url === "/executed") {
+        scriptRequests += 1;
+        response.end("ok");
+        return;
+      }
+      publicRequests += 1;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end(`<h1>Public page</h1><script>${realm === "worker"
+        ? `new Worker(URL.createObjectURL(new Blob([${JSON.stringify(script)}], {type: 'text/javascript'})));`
+        : script}</script>`);
+    });
+    script = `new WebSocket('ws://127.0.0.1:${resolveServerPort(privateServer)}/private'); fetch('http://fixture.test:${resolveServerPort(publicServer)}/executed');`;
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(publicServer)}/socket`,
+    }));
+    expect(attachment?.content).toBeInstanceOf(Buffer);
+    expect(publicRequests).toBeGreaterThan(0);
+    expect(scriptRequests).toBeGreaterThan(0);
+    expect(privateRequests).toBe(0);
+  }, 25_000);
 });
 
 function createServer(handler: http.RequestListener) {

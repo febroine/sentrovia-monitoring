@@ -4,6 +4,7 @@ import type Mail from "nodemailer/lib/mailer";
 const mocks = vi.hoisted(() => ({
   createTransport: vi.fn(),
   getSmtpSettings: vi.fn(),
+  insertValues: vi.fn(),
   insertReturning: vi.fn(),
   sendMail: vi.fn(),
   updateSet: vi.fn(),
@@ -73,9 +74,8 @@ describe("delivery service", () => {
     mocks.sendMail.mockResolvedValue({ accepted: ["alerts@example.com"] });
     mocks.insertReturning.mockResolvedValue([{ id: "delivery-1" }]);
     mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "delivered" }]);
-    mocks.db.insert.mockReturnValue({
-      values: vi.fn(() => ({ returning: mocks.insertReturning })),
-    });
+    mocks.insertValues.mockReturnValue({ returning: mocks.insertReturning });
+    mocks.db.insert.mockReturnValue({ values: mocks.insertValues });
     mocks.updateSet.mockImplementation(() => ({
       where: vi.fn(() => ({ returning: mocks.updateReturning })),
     }));
@@ -133,9 +133,15 @@ describe("delivery service", () => {
     );
   });
 
-  it("queues transient SMTP failures instead of dead-lettering them immediately", async () => {
+  it("keeps lazy screenshot attachments when transient SMTP failures are queued", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-14T10:00:00.000Z"));
+    const attachment = {
+      filename: "sentrovia-api.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    const buildAttachments = vi.fn().mockResolvedValue([attachment]);
     mocks.getSmtpSettings.mockResolvedValue(buildSmtpSettings());
     mocks.sendMail.mockRejectedValueOnce(Object.assign(new Error("Connection reset"), { code: "ECONNECTION" }));
     mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "retrying" }]);
@@ -147,6 +153,7 @@ describe("delivery service", () => {
       subject: "Down",
       textBody: "Down",
       htmlBody: "<p>Down</p>",
+      buildAttachments,
     });
 
     try {
@@ -157,6 +164,17 @@ describe("delivery service", () => {
           attempts: 1,
           deadLetteredAt: null,
           nextRetryAt: new Date("2026-07-14T10:01:00.000Z"),
+        })
+      );
+      expect(JSON.parse(mocks.insertValues.mock.calls[0][0].payloadJson)).toEqual(
+        expect.objectContaining({
+          attachments: [{
+            filename: "sentrovia-api.jpg",
+            contentType: "image/jpeg",
+            contentDisposition: "attachment",
+            content: Buffer.from("image").toString("base64"),
+            encoding: "base64",
+          }],
         })
       );
     } finally {
