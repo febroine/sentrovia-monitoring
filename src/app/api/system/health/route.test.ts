@@ -63,7 +63,6 @@ describe("system health route", () => {
         connectivityMessage: "Internet connectivity confirmed.",
       },
       queue: { dueBacklog: 0, delayedMonitorCount: 0, delayedMonitors: [] },
-      delivery: { failedLast24Hours: 0, queuedLast24Hours: 0, recentFailures: [] },
     });
 
     const response = await GET();

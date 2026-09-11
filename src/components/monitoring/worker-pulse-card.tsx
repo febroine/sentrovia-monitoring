@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Play, Square, WifiOff } from "lucide-react";
+import { Activity, ChevronDown, Play, Square, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { useWorkerStore } from "@/stores/use-worker-store";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
@@ -27,10 +26,10 @@ export function WorkerPulseCard() {
   }, []);
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="border-l-2 border-l-sky-500 px-4 py-3">
+    <section aria-label="Worker status" className="border-y py-3">
+      <div>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">Worker Pulse</p>
               <span
@@ -47,25 +46,28 @@ export function WorkerPulseCard() {
                 {connectivityOffline ? "Connectivity degraded" : worker?.running ? "Running" : worker?.processAlive ? "Standby" : "Offline"}
               </span>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>Heartbeat: {heartbeatAge === null ? "--" : `${heartbeatAge}s ago`}</span>
-              <span>Last Cycle: {worker?.lastCycleAt ? new Date(worker.lastCycleAt).toLocaleString() : "--"}</span>
-              <span>PID: {worker?.processAlive ? worker?.pid ?? "--" : "Offline"}</span>
-              <span>Backlog: {worker?.observability?.summary.dueBacklog ?? 0}</span>
-              <span>Cycle Duration: {formatNullableMs(worker?.lastCycleDurationMs)}</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {sanitizeWorkerStatusMessage(error ?? worker?.statusMessage)
-                ?? "Worker status will appear here."}
-            </p>
+            <p className="text-xs text-muted-foreground">Heartbeat: {heartbeatAge === null ? "--" : `${heartbeatAge}s ago`}</p>
+            <details className="group text-xs text-muted-foreground">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-foreground">
+                Details <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-l pl-3">
+                <span>Last cycle: {worker?.lastCycleAt ? new Date(worker.lastCycleAt).toLocaleString() : "--"}</span>
+                <span>PID: {worker?.processAlive ? worker?.pid ?? "--" : "Offline"}</span>
+                <span>Backlog: {worker?.observability?.summary.dueBacklog ?? 0}</span>
+                <span>Cycle duration: {formatNullableMs(worker?.lastCycleDurationMs)}</span>
+                <span>{sanitizeWorkerStatusMessage(error ?? worker?.statusMessage) ?? "Worker status will appear here."}</span>
+              </div>
+            </details>
+            {error ? <p role="alert" className="text-xs text-destructive">{sanitizeWorkerStatusMessage(error)}</p> : null}
           </div>
 
           <Button
             type="button"
-            variant="default"
+            variant={shouldOfferStop ? "outline" : "default"}
             className={
               shouldOfferStop
-                ? "bg-destructive text-white hover:bg-destructive/90"
+                ? "border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 : ""
             }
             onClick={() => void toggleWorker()}
@@ -88,8 +90,8 @@ export function WorkerPulseCard() {
             {worker.connectivityMessage ?? "Internet connectivity is unavailable. Monitor checks, webhook retries, and scheduled reports are paused without changing monitor states."}
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 

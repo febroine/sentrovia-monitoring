@@ -14,7 +14,11 @@ export const WORKSPACE_BACKUP_IMPORT_LIMITS = {
 };
 
 export const MONITOR_CSV_IMPORT_LIMITS = {
-  maxRequestBytes: 2_000_000,
+  maxFileBytes: 2_000_000,
+  maxFileBytesLabel: "2 MB",
+  // Imported CSV text may grow when it is JSON-escaped and TXT imports also
+  // include the selected defaults for every monitor.
+  maxRequestBytes: 4_100_000,
   maxRows: 500,
 };
 

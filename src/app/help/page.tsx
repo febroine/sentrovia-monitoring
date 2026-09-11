@@ -38,7 +38,7 @@ export default function HelpPage() {
             <TabsList variant="line" className="w-full max-w-full justify-start overflow-x-auto border-b bg-transparent p-0">
               {helpCategories.map((category) => (
                 <TabsTrigger key={category.value} value={category.value} className="flex-none rounded-md px-3">
-                  <category.icon data-icon="inline-start" className={category.accent} />
+                  <category.icon data-icon="inline-start" className="text-muted-foreground" />
                   {category.label}
                 </TabsTrigger>
               ))}
@@ -100,7 +100,7 @@ function HelpSearchResult({ match }: { match: HelpMatch }) {
 
   return (
     <article className="px-4 py-4 sm:px-5">
-      <p className={`flex items-center gap-1.5 text-xs font-medium ${match.category.accent}`}>
+      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <CategoryIcon className="size-3.5" />
         {match.category.label}
       </p>

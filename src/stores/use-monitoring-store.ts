@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { MonitorPayload, MonitorRecord, MonitorSummary } from "@/lib/monitors/types";
 import { showToast } from "@/lib/client-toast";
+import type { MonitorPauseUnit } from "@/lib/monitors/pause";
 
 interface MonitoringState {
   monitors: MonitorRecord[];
@@ -15,7 +16,14 @@ interface MonitoringState {
   createMonitor: (payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitor: (id: string, payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitorActiveState: (id: string, isActive: boolean) => Promise<MonitorRecord | null>;
-  updateMonitorFlags: (id: string, flags: { isFavorite?: boolean; isCritical?: boolean }) => Promise<MonitorRecord | null>;
+  updateMonitorPause: (
+    ids: string[],
+    input: { action: "pause"; durationValue: number; durationUnit: MonitorPauseUnit } | { action: "resume" }
+  ) => Promise<MonitorRecord[] | null>;
+  updateMonitorFlags: (
+    id: string,
+    flags: { isFavorite?: boolean; isCritical?: boolean; publishOnStatusPage?: boolean }
+  ) => Promise<MonitorRecord | null>;
   bulkUpdateMonitors: (ids: string[], payload: MonitorPayload) => Promise<MonitorRecord[]>;
   deleteMonitors: (ids: string[]) => Promise<SoftDeleteResult | null>;
   restoreMonitors: (ids: string[]) => Promise<MonitorRecord[]>;
@@ -49,6 +57,7 @@ const EMPTY_MONITOR_SUMMARY: MonitorSummary = {
   online: 0,
   offline: 0,
   pending: 0,
+  nextPauseExpiryAt: null,
 };
 
 async function readJsonOrNull<T>(response: Response): Promise<T | null> {
@@ -181,7 +190,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
-      showToast(isActive ? "Monitor enabled." : "Monitor paused.", "success");
+      showToast(isActive ? "Monitor enabled." : "Monitor disabled.", "success");
 
       return monitor;
     } catch (error) {
@@ -190,6 +199,40 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: message,
       });
+      showToast(message, "error");
+      return null;
+    }
+  },
+  updateMonitorPause: async (ids, input) => {
+    set({ saving: true });
+
+    try {
+      const response = await fetch("/api/monitors/pause", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, ...input }),
+      });
+      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      if (!response.ok || !data?.monitors) {
+        throw new Error(data?.message ?? "Unable to update monitor pause state.");
+      }
+
+      const updatedMap = new Map(data.monitors.map((monitor) => [monitor.id, monitor]));
+      set((state) => ({
+        monitors: state.monitors.map((monitor) => updatedMap.get(monitor.id) ?? monitor),
+        saving: false,
+        error: null,
+      }));
+      if (data.monitors.length > 0) {
+        const verb = input.action === "pause" ? "paused" : "resumed";
+        showToast(`${data.monitors.length} monitor${data.monitors.length === 1 ? "" : "s"} ${verb}.`, "success");
+      } else {
+        showToast("No monitor pause state needed to change.", "info");
+      }
+      return data.monitors;
+    } catch (error) {
+      const message = getErrorMessage(error, "Unable to update monitor pause state.");
+      set({ saving: false, error: message });
       showToast(message, "error");
       return null;
     }
@@ -206,7 +249,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       const data = await readJsonOrNull<{ message?: string; monitor?: MonitorRecord }>(response);
 
       if (!response.ok || !data?.monitor) {
-        throw new Error(data?.message ?? "Unable to update monitor focus flags.");
+        throw new Error(data?.message ?? "Unable to update monitor flags.");
       }
 
       const monitor = data.monitor;
@@ -215,11 +258,11 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
-      showToast("Monitor focus flags updated.", "success");
+      showToast("Monitor flags updated.", "success");
 
       return monitor;
     } catch (error) {
-      const message = getErrorMessage(error, "Unable to update monitor focus flags.");
+      const message = getErrorMessage(error, "Unable to update monitor flags.");
       set({ saving: false, error: message });
       showToast(message, "error");
       return null;

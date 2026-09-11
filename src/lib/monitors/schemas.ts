@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getMonitorPauseDurationMs, MAX_MONITOR_PAUSE_MS } from "@/lib/monitors/pause";
 import { env } from "@/lib/env";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import { isMonitorNetworkHostnameLiteralAllowed } from "@/lib/security/public-network-target";
@@ -92,7 +93,7 @@ function normalizeEmailRecipients(value: string) {
 
 const monitorInputObjectSchema = z
   .object({
-    name: z.string().trim().min(2).max(120),
+    name: z.string().trim().min(1, "Monitor name is required.").max(120),
     monitorType: monitorTypeSchema.default("http"),
     url: optionalRequiredString(2000),
     portHost: optionalRequiredString(255),
@@ -118,7 +119,7 @@ const monitorInputObjectSchema = z
       .optional()
       .transform((value) => (value && value.length > 0 ? value : null)),
     company: optionalString(160),
-    notificationPref: notificationPrefSchema,
+    notificationPref: notificationPrefSchema.default("both"),
     notificationLanguage: notificationLanguageSchema.default("default"),
     notifEmail: z
       .string()
@@ -160,7 +161,7 @@ const monitorInputObjectSchema = z
     slowResponseTelegramTemplate: optionalString(4000),
     sendOutageScreenshot: z.boolean().default(true),
     isActive: z.boolean().default(true),
-    publishOnStatusPage: z.boolean().default(false),
+    publishOnStatusPage: z.boolean().default(true),
   })
   .superRefine((value, context) => {
     if (value.monitorType === "http" || value.monitorType === "keyword" || value.monitorType === "json") {
@@ -345,6 +346,24 @@ export const monitorBulkUpdateSchema = z.object({
 export const monitorActiveStateSchema = z.object({
   isActive: z.boolean(),
 });
+
+const monitorPauseIdsSchema = z.array(z.string().uuid()).min(1).max(500);
+const monitorPauseDurationSchema = z.object({
+  ids: monitorPauseIdsSchema,
+  action: z.literal("pause"),
+  durationValue: z.number().int().min(1).max(525_600),
+  durationUnit: z.enum(["minutes", "hours", "days"]),
+}).refine((value) => {
+  return getMonitorPauseDurationMs(value.durationValue, value.durationUnit) <= MAX_MONITOR_PAUSE_MS;
+}, {
+  message: "Pause duration must be between 1 minute and 365 days.",
+  path: ["durationValue"],
+});
+
+export const monitorPauseSchema = z.discriminatedUnion("action", [
+  monitorPauseDurationSchema,
+  z.object({ ids: monitorPauseIdsSchema, action: z.literal("resume") }),
+]);
 
 export type MonitorInput = z.infer<typeof monitorInputSchema>;
 

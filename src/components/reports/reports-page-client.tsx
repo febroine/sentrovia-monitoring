@@ -3,6 +3,7 @@
 import type { ElementType } from "react";
 import {
   CalendarClock,
+  ChartNoAxesCombined,
   ChevronDown,
   CircleCheckBig,
   FileChartColumn,
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TemplateEditor } from "@/components/settings/template-editor";
 import { ReportPreviewPanel } from "@/components/reports/report-preview-panel";
+import { ReportAnalyticsWorkspace } from "@/components/reports/report-analytics-workspace";
 import { useReportsPageState } from "@/components/reports/use-reports-page-state";
 import {
   buildDraftReportTitle,
@@ -101,23 +103,32 @@ export default function ReportsPageClient() {
 
       <div className="inline-flex w-full rounded-md border bg-muted/30 p-1 sm:w-auto">
         <ReportModeButton
+          active={activeTab === "analytics"}
+          title="Analytics"
+          icon={ChartNoAxesCombined}
+          tone="text-muted-foreground"
+          onClick={() => setActiveTab("analytics")}
+        />
+        <ReportModeButton
           active={activeTab === "preview"}
           title="Preview"
           icon={FileChartColumn}
-          tone="text-sky-600 dark:text-sky-400"
+          tone="text-muted-foreground"
           onClick={() => setActiveTab("preview")}
         />
         <ReportModeButton
           active={activeTab === "schedules"}
           title="Schedules"
           icon={CalendarClock}
-          tone="text-violet-600 dark:text-violet-400"
+          tone="text-muted-foreground"
           onClick={() => setActiveTab("schedules")}
         />
       </div>
 
       <div className="space-y-4">
-          {activeTab === "preview" ? (
+          {activeTab === "analytics" ? (
+            <ReportAnalyticsWorkspace />
+          ) : activeTab === "preview" ? (
             <ManualReportWorkspace state={pageState} />
           ) : (
             <ScheduledReportWorkspace state={pageState} />
@@ -139,7 +150,7 @@ function ReportsHeader({ nextRunAt }: { nextRunAt?: string }) {
     <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div>
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">Reports</h1>
-        <p className="text-sm text-muted-foreground">Generate and schedule seven-day workspace reports.</p>
+        <p className="text-sm text-muted-foreground">Analyze reliability, generate reports, and schedule delivery.</p>
       </div>
       <div className="flex items-center gap-2 text-sm md:justify-end">
         <CalendarClock className={cn(
@@ -609,6 +620,7 @@ function ReportModeButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
         "flex-1 rounded-md px-4 py-2 text-center text-sm font-medium transition-colors sm:flex-none",

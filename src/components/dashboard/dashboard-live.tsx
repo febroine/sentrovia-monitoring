@@ -9,14 +9,13 @@ import {
   ChevronRight,
   Clock3,
   SlidersHorizontal,
+  X,
   XCircle,
 } from "lucide-react";
-import { SystemStatus } from "@/components/system-status";
 import { DashboardCustomizationPanel } from "@/components/dashboard/dashboard-customization-panel";
 import { DashboardMonitorFocus } from "@/components/dashboard/dashboard-monitor-focus";
 import { SystemHealthCard } from "@/components/dashboard/system-health-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DEFAULT_DASHBOARD_PREFERENCES, type DashboardPreferences, type DashboardWidgetId } from "@/lib/dashboard/preferences";
 import type { DashboardData } from "@/lib/dashboard/service";
 import { formatDateTime, resolveTimeDisplaySettings, type TimeDisplaySettings } from "@/lib/time";
@@ -31,6 +30,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [customizationError, setCustomizationError] = useState<string | null>(null);
   const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
+  const [outageBannerDismissed, setOutageBannerDismissed] = useState(false);
 
   useEffect(() => {
     const stream = new EventSource("/api/dashboard/stream");
@@ -45,7 +45,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     };
 
     stream.onerror = () => {
-      setStreamError("Live dashboard stream disconnected. Cards will reconnect automatically.");
+      setStreamError("Live dashboard disconnected. Reconnecting automatically.");
     };
 
     return () => stream.close();
@@ -121,20 +121,20 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       {
         label: "Online",
         value: String(data.summary.online),
-        sub: "Healthy endpoints",
-        tone: "text-emerald-600 dark:text-emerald-400",
+        sub: data.summary.online > 0 ? "Healthy endpoints" : "No monitors online",
+        tone: data.summary.online > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
       },
       {
         label: "Offline",
         value: String(data.summary.offline),
         sub: "Need attention",
-        tone: "text-destructive",
+        tone: data.summary.offline > 0 ? "text-destructive" : "text-muted-foreground",
       },
       {
         label: "Average latency",
-        value: data.summary.avgLatency === null ? "No data" : `${data.summary.avgLatency}ms`,
-        sub: `${data.summary.coverage.toFixed(1)}% coverage`,
-        tone: "text-amber-600 dark:text-amber-400",
+        value: data.summary.avgLatency === null ? "--" : `${data.summary.avgLatency}ms`,
+        sub: data.summary.avgLatency === null ? "No completed checks" : `${data.summary.coverage.toFixed(1)}% coverage`,
+        tone: data.summary.avgLatency === null ? "text-muted-foreground" : "text-foreground",
       },
     ],
     [data]
@@ -148,7 +148,6 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const eventItems = paginate(data.events, currentEventPage, 5);
   const showChartsSection = data.settings?.appearance.showChartsSection ?? true;
   const showOutageBanner = data.settings?.appearance.showOutageBanner ?? true;
-  const use24HourClock = data.settings?.appearance.use24HourClock ?? true;
   const timeDisplaySettings = resolveTimeDisplaySettings(data.settings?.appearance);
   const isAdmin = data.settings?.profile.role === "admin";
   const preferences = data.preferences ?? DEFAULT_DASHBOARD_PREFERENCES;
@@ -163,12 +162,12 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   function renderWidget(widget: DashboardWidgetId): ReactNode {
     if (widget === "summary") {
       return (
-        <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
+        <dl className="flex flex-wrap gap-x-8 gap-y-3 border-y py-3">
           {cards.map((card) => (
-            <div key={card.label} className="border-b px-4 py-4 last:border-b-0 xl:border-b-0">
+            <div key={card.label} className="flex flex-wrap items-baseline gap-x-2">
               <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
-              <dd className={`mt-2 text-2xl font-semibold tracking-tight ${card.tone}`}>{card.value}</dd>
-              <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>
+              <dd className={`text-base font-semibold tabular-nums ${card.tone}`}>{card.value}</dd>
+              <p className="w-full text-xs text-muted-foreground">{card.sub}</p>
             </div>
           ))}
         </dl>
@@ -176,7 +175,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     }
 
     if (widget === "system") {
-      return <div className="space-y-4"><SystemHealthCard /><SystemStatus use24HourClock={use24HourClock} /></div>;
+      return <SystemHealthCard />;
     }
 
     if (widget === "monitor-focus") {
@@ -192,18 +191,18 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     }
 
     return (
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">Notification delivery</CardTitle></CardHeader>
-        <CardContent>
-          <dl className="grid border-y sm:grid-cols-2 lg:grid-cols-5 lg:divide-x">
+      <section className="border-t py-4">
+        <header className="pb-3"><h2 className="text-base">Notification delivery</h2></header>
+        <div>
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
           <MetricCard label="Retry Queue" value={String(data.delivery.pendingRetries)} sub="Delivery items waiting for retry" tone="amber" />
           <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Review failed attempts" tone="rose" />
           <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
           <MetricCard label="Dead-lettered" value={String(data.delivery.deadLettered)} sub="Exhausted or permanent failures" tone="rose" />
           </dl>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     );
   }
 
@@ -258,9 +257,25 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
-      {showOutageBanner && data.summary.offline > 0 ? (
-        <div className="border-l-2 border-destructive bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {data.summary.offline} monitor currently offline. Verification and delivery history are available below.
+      {showOutageBanner && data.summary.offline > 0 && !outageBannerDismissed ? (
+        <div
+          role="alert"
+          className="flex items-center gap-3 border-l-2 border-destructive bg-destructive/5 py-2 pl-4 pr-2 text-sm text-destructive"
+        >
+          <p className="min-w-0 flex-1">
+            {data.summary.offline} monitor{data.summary.offline === 1 ? "" : "s"} currently offline. Verification and delivery history are available below.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            aria-label="Dismiss offline monitor alert"
+            title="Dismiss"
+            onClick={() => setOutageBannerDismissed(true)}
+          >
+            <X className="size-4" />
+          </Button>
         </div>
       ) : null}
 
@@ -306,14 +321,14 @@ function PanelCompanyHealth({
   onPageChange: (page: number) => void;
 }) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
+    <section className="border-t py-4">
+      <header className="pb-2">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-sm">Company health</CardTitle>
+          <h2 className="text-sm">Company health</h2>
           <PanelPager page={page} totalPages={totalPages} onPageChange={onPageChange} />
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+      </header>
+      <div className="space-y-3">
         {companies.length === 0 ? (
             <p className="text-sm text-muted-foreground">No company groups in this scope.</p>
         ) : (
@@ -350,8 +365,8 @@ function PanelCompanyHealth({
             </div>
           ))
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -369,14 +384,14 @@ function PanelRecentEvents({
   timeDisplaySettings: TimeDisplaySettings;
 }) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
+    <section className="border-t py-4">
+      <header className="pb-2">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-sm">Recent events</CardTitle>
+          <h2 className="text-sm">Recent events</h2>
           <PanelPager page={page} totalPages={totalPages} onPageChange={onPageChange} />
         </div>
-      </CardHeader>
-      <CardContent className="space-y-2.5">
+      </header>
+      <div className="space-y-2.5">
         {events.length === 0 ? (
             <p className="text-sm text-muted-foreground">No events in this scope.</p>
         ) : (
@@ -405,8 +420,8 @@ function PanelRecentEvents({
             </div>
           ))
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -450,7 +465,7 @@ function MetricCard({
   tone: "green" | "amber" | "neutral" | "rose";
 }) {
   const valueTone =
-    tone === "green"
+    value === "0" ? "text-foreground" : tone === "green"
       ? "text-emerald-600 dark:text-emerald-400"
       : tone === "amber"
         ? "text-amber-600 dark:text-amber-400"
@@ -459,10 +474,10 @@ function MetricCard({
           : "";
 
   return (
-    <div className="border-b px-3 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 lg:border-b-0">
+    <div className="flex items-baseline gap-2 py-2">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={`mt-2 text-xl font-semibold tracking-tight ${valueTone}`}>{value}</dd>
-      <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+      <dd className={`text-sm font-semibold tabular-nums ${valueTone}`}>{value}</dd>
+      <span className="sr-only">{sub}</span>
     </div>
   );
 }

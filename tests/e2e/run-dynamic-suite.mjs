@@ -3,6 +3,12 @@ import { spawn } from "node:child_process";
 
 const rootDirectory = new URL("../..", import.meta.url);
 const runId = `run${Date.now().toString(36)}${crypto.randomBytes(5).toString("hex")}`;
+const uiOnly = process.env.SENTROVIA_E2E_UI_ONLY === "true";
+const runtimeOnly = process.env.SENTROVIA_E2E_RUNTIME_ONLY === "true";
+
+if (uiOnly && runtimeOnly) {
+  throw new Error("SENTROVIA_E2E_UI_ONLY and SENTROVIA_E2E_RUNTIME_ONLY cannot both be enabled.");
+}
 const accountCommand = [
   "compose",
   "exec",
@@ -32,8 +38,12 @@ try {
     SENTROVIA_E2E_PASSWORD: account.password,
   };
 
-  await runCommand(process.execPath, ["tests/e2e/docker-runtime.mjs"], environment);
-  await runCommand(process.execPath, ["tests/e2e/ui-interactions.mjs"], environment);
+  if (!uiOnly) {
+    await runCommand(process.execPath, ["tests/e2e/docker-runtime.mjs"], environment);
+  }
+  if (!runtimeOnly) {
+    await runCommand(process.execPath, ["tests/e2e/ui-interactions.mjs"], environment);
+  }
 } catch (error) {
   suiteError = error;
 } finally {

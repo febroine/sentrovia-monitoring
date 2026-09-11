@@ -6,6 +6,7 @@ const action = process.argv[2];
 const runId = normalizeRunId(process.env.SENTROVIA_E2E_RUN_ID ?? "");
 const username = `e2e_${runId}`;
 const email = `${username}@example.test`;
+const workspaceName = `E2E ${runId}`;
 const sql = postgres({
   host: process.env.POSTGRES_HOST,
   port: Number(process.env.POSTGRES_PORT ?? 5432),
@@ -33,6 +34,7 @@ async function createDynamicTestAccount() {
   const password = `Sentrovia-${crypto.randomBytes(18).toString("base64url")}a1!`;
   const passwordHash = await bcrypt.hash(password, 12);
   const userId = crypto.randomUUID();
+  const workspaceId = crypto.randomUUID();
 
   await sql.begin(async (transaction) => {
     await deleteDynamicTestAccount(transaction);
@@ -44,12 +46,24 @@ async function createDynamicTestAccount() {
       insert into user_settings (id, user_id)
       values (${crypto.randomUUID()}, ${userId})
     `;
+    await transaction`
+      insert into workspaces (id, name)
+      values (${workspaceId}, ${workspaceName})
+    `;
+    await transaction`
+      insert into workspace_members (workspace_id, user_id, role)
+      values (${workspaceId}, ${userId}, 'admin')
+    `;
   });
 
   return { email, password, username };
 }
 
 async function deleteDynamicTestAccount(executor = sql) {
+  await executor`
+    delete from workspaces
+    where name = ${workspaceName}
+  `;
   await executor`
     delete from users
     where lower(email) = ${email} and lower(username) = ${username}

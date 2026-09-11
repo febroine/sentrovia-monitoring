@@ -7,6 +7,8 @@ describe("report exports", () => {
     const report = buildSampleReport();
     const html = buildPrintableReportHtml(report);
 
+    expect(html).toContain('font-family: "IBM Plex Sans"');
+    expect(html).not.toMatch(/Arial|Helvetica|Inter/);
     expect(html).toContain("Service snapshot");
     expect(html).toContain("What needs attention");
     expect(html).toContain("Failure details");
@@ -23,6 +25,17 @@ describe("report exports", () => {
     expect(html).not.toContain("PDF");
     expect(buildReportFileSlug(report)).toBe("weekly-workspace-report-2026-05-05");
   });
+
+  it("renders report timestamps in the selected report time zone", () => {
+    const report = buildSampleReport();
+    report.timeZone = "America/New_York";
+    report.monitorBreakdown[0].pausedUntil = "2026-05-06T08:00:00.000Z";
+
+    const html = buildPrintableReportHtml(report);
+
+    expect(html).toContain("paused until 06/05/2026, 04:00:00");
+    expect(html).toContain("05/05/2026, 03:30:00");
+  });
 });
 
 function buildSampleReport(): GeneratedReport {
@@ -33,6 +46,8 @@ function buildSampleReport(): GeneratedReport {
     template: "operations",
     companyId: null,
     companyName: null,
+    monitorId: null,
+    monitorName: null,
     workspaceName: "Sentrovia",
     brandName: "Sentrovia",
     templateLabel: "Operations Report",
@@ -46,6 +61,7 @@ function buildSampleReport(): GeneratedReport {
       currentlyUp: 1,
       currentlyDown: 1,
       currentlyPending: 0,
+      currentlyPaused: 0,
       totalChecks: 20,
       upChecks: 18,
       downChecks: 2,
@@ -66,6 +82,7 @@ function buildSampleReport(): GeneratedReport {
       { statusCode: 200, count: 18 },
       { statusCode: 500, count: 2 },
     ],
+    dailyMetrics: [],
     slowMonitors: [{ monitorId: "m1", name: "API", url: "https://api.example.com", averageLatencyMs: 640, checks: 10 }],
     failingMonitors: [
       { monitorId: "m1", name: "API", url: "https://api.example.com", failures: 2, lastFailureAt: "2026-05-05T07:30:00.000Z" },
@@ -89,6 +106,7 @@ function buildSampleReport(): GeneratedReport {
         url: "https://api.example.com",
         companyName: "Acme",
         status: "down",
+        pausedUntil: null,
         currentStatusCode: 500,
         lastCheckedAt: "2026-05-05T07:30:00.000Z",
         lastFailureAt: "2026-05-05T07:30:00.000Z",

@@ -13,6 +13,7 @@ import {
   type DeliveryResult,
   type DraftReport,
   type DraftSchedule,
+  type ReportsTab,
 } from "@/components/reports/reports-page-model";
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
@@ -95,7 +96,7 @@ export async function sendReportPreview(
 export async function createReportSchedule(
   draft: DraftSchedule,
   runtime: ActionRuntime & {
-    setActiveTab: Setter<"preview" | "schedules">;
+    setActiveTab: Setter<ReportsTab>;
     setScheduleDraft: Setter<DraftSchedule>;
     setSchedules: Setter<ReportScheduleRecord[]>;
   }
@@ -231,7 +232,7 @@ export async function deleteReportSchedule(
 export function loadReportSchedule(
   schedule: ReportScheduleRecord,
   setScheduleDraft: Setter<DraftSchedule>,
-  setActiveTab: Setter<"preview" | "schedules">
+  setActiveTab: Setter<ReportsTab>
 ) {
   setScheduleDraft({
     name: schedule.name,

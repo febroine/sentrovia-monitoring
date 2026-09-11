@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportPreviewSchema, reportSchedulePatchSchema } from "@/lib/reports/schemas";
+import { reportAnalyticsQuerySchema, reportPreviewSchema, reportSchedulePatchSchema } from "@/lib/reports/schemas";
 
 describe("report schemas", () => {
   it("accepts the outage summary field", () => {
@@ -10,6 +10,28 @@ describe("report schemas", () => {
     });
 
     expect(parsed.includeOutageSummary).toBe(false);
+  });
+
+  it("accepts a monitor filter for an on-demand report", () => {
+    const parsed = reportPreviewSchema.parse({
+      scope: "global",
+      cadence: "weekly",
+      monitorId: "monitor-42",
+    });
+
+    expect(parsed.monitorId).toBe("monitor-42");
+  });
+
+  it("accepts bounded analytics exclusions", () => {
+    const parsed = reportAnalyticsQuerySchema.parse({
+      excludeMonitorIds: ["monitor-1"],
+      excludeTags: ["staging"],
+      excludeCompanyIds: ["company-1"],
+    });
+
+    expect(parsed.excludeMonitorIds).toEqual(["monitor-1"]);
+    expect(parsed.excludeTags).toEqual(["staging"]);
+    expect(parsed.excludeCompanyIds).toEqual(["company-1"]);
   });
 
   it("accepts partial schedule updates", () => {

@@ -48,6 +48,7 @@ export function buildReportMessage(report: GeneratedReport, options: ReportDeliv
     `Currently up: ${report.summary.currentlyUp}`,
     `Currently down: ${report.summary.currentlyDown}`,
     `Currently pending: ${report.summary.currentlyPending}`,
+    `Currently paused: ${report.summary.currentlyPaused}`,
     `Uptime: ${formatReportUptime(report.summary)}`,
     `Average latency: ${formatReportAverageLatency(report.summary)}`,
     `P95 latency: ${formatReportP95Latency(report.summary)}`,
@@ -115,9 +116,9 @@ function renderEmailDocumentStart(preheader: string) {
           [data-ogsc] .sentrovia-email-muted { color: #475569 !important; }
         </style>
       </head>
-      <body class="sentrovia-email-body" style="margin:0;padding:0;background-color:#eef2f7;color:#0f172a;font-family:Arial,Helvetica,sans-serif;">
+      <body class="sentrovia-email-body" style="margin:0;padding:0;background-color:#eef2f7;color:#0f172a;font-family:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
         <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>
-        <div class="sentrovia-email-body" style="margin:0;padding:0;background-color:#eef2f7;color:#0f172a;font-family:Arial,Helvetica,sans-serif;-webkit-locale:'en';">
+        <div class="sentrovia-email-body" style="margin:0;padding:0;background-color:#eef2f7;color:#0f172a;font-family:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-locale:'en';">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#eef2f7" style="border-collapse:collapse;background-color:#eef2f7;">
             <tr>
               <td align="center" style="padding:32px 12px;">
@@ -175,7 +176,7 @@ function renderEmailMetricsTable(report: GeneratedReport, healthTheme: ReturnTyp
             ${renderEmailMetric("P95 latency", formatReportP95Latency(report.summary), report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} average` : "No latency samples in this period")}
           </tr>
           <tr>
-            ${renderEmailMetric("Down now", String(report.summary.currentlyDown), `${report.summary.currentlyUp} up, ${report.summary.currentlyPending} pending`)}
+            ${renderEmailMetric("Down now", String(report.summary.currentlyDown), `${report.summary.currentlyUp} up, ${report.summary.currentlyPending} pending, ${report.summary.currentlyPaused} paused`)}
             ${renderEmailMetric("Failure events", String(report.summary.failureEvents), `${report.summary.impactedMonitors} impacted URLs`)}
             ${renderEmailMetric("Failure rate", formatReportFailureRate(report.summary), report.summary.hasCompletedChecks ? "Share of completed checks that were down" : "No completed checks in this period")}
           </tr>
@@ -291,9 +292,12 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
     sections.push(
       renderEmailTableSection(
         "URL breakdown",
-        ["URL", "Uptime", "P95"],
+        ["URL", "State", "Uptime", "P95"],
         report.monitorBreakdown.slice(0, detailLimit).map((monitor) => [
           monitor.url,
+          monitor.pausedUntil
+            ? `Paused until ${formatReportTimestamp(monitor.pausedUntil, report.timeZone)}`
+            : monitor.status,
           formatMonitorUptime(monitor),
           formatMonitorP95Latency(monitor),
         ])

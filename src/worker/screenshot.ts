@@ -391,7 +391,7 @@ function isUnresolvedHostnameError(error: unknown) {
 
 function renderUnavailableTargetPage(monitor: Monitor) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
-    body{margin:0;background:#f8fafc;color:#0f172a;font-family:Arial,Helvetica,sans-serif}
+    body{margin:0;background:#f8fafc;color:#0f172a;font-family:"IBM Plex Sans",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     main{margin:72px auto;max-width:760px;border-top:4px solid #b91c1c;background:#fff;padding:40px}
     h1{margin:0 0 12px;font-size:26px}.target{color:#475569;overflow-wrap:anywhere}
     .status{margin:28px 0 16px;color:#991b1b;font-size:13px;font-weight:700;letter-spacing:.06em}

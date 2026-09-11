@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, desc, eq, exists, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
@@ -73,6 +73,15 @@ type ReportCheckAggregate = {
   lastFailureAt: Date | null;
 };
 type ReportCheckSummary = Omit<ReportCheckAggregate, "monitorId" | "lastFailureAt">;
+type ReportDailyMetric = {
+  date: string;
+  totalChecks: number;
+  upChecks: number;
+  downChecks: number;
+  latencySamples: number;
+  averageLatencyMs: number | null;
+  p95LatencyMs: number | null;
+};
 
 const DEFAULT_REPORT_DELIVERY_OPTIONS: ReportDeliveryOptions = {
   deliveryDetailLevel: "standard",
@@ -310,6 +319,7 @@ export async function generateReportPreview(
   const period = resolveReportPeriod(now, input.cadence, input);
   const template = input.template ?? DEFAULT_REPORT_TEMPLATE;
   const checksByMonitor = new Map(scoped.checkAggregates.map((item) => [item.monitorId, item]));
+  const currentStates = summarizeCurrentMonitorStates(scoped.monitorRows);
   const slowMonitors = buildSlowMonitorSummary(scoped.monitorRows, checksByMonitor);
   const failingMonitors = buildFailingMonitorSummary(scoped.monitorRows, checksByMonitor);
   const monitorBreakdown = buildMonitorBreakdown(scoped.monitorRows, checksByMonitor);
@@ -321,10 +331,10 @@ export async function generateReportPreview(
     latencySamples,
     averageLatencyMs,
     p95LatencyMs,
-    currentlyDown: scoped.monitorRows.filter((monitor) => monitor.status === "down").length,
+    currentlyDown: currentStates.currentlyDown,
   });
   const impactedMonitors = failingMonitors.length;
-  const currentlyDown = scoped.monitorRows.filter((monitor) => monitor.status === "down").length;
+  const currentlyDown = currentStates.currentlyDown;
   const recentFailures = buildRecentFailures(scoped.recentFailureEvents, scoped.monitorRows);
   const recommendations = buildRecommendations({
     summary: {
@@ -345,6 +355,8 @@ export async function generateReportPreview(
     template,
     companyId: scoped.companyId,
     companyName: scoped.companyName,
+    monitorId: scoped.selectedMonitor?.id ?? null,
+    monitorName: scoped.selectedMonitor?.name ?? null,
     workspaceName,
     brandName: workspaceName,
     templateLabel: resolveTemplateLabel(template),
@@ -355,9 +367,7 @@ export async function generateReportPreview(
     timeZone: period.timeZone,
     summary: {
       monitorCount: scoped.monitorRows.length,
-      currentlyUp: scoped.monitorRows.filter((monitor) => monitor.status === "up").length,
-      currentlyDown: scoped.monitorRows.filter((monitor) => monitor.status === "down").length,
-      currentlyPending: scoped.monitorRows.filter((monitor) => monitor.status === "pending").length,
+      ...currentStates,
       totalChecks,
       upChecks,
       downChecks,
@@ -375,6 +385,10 @@ export async function generateReportPreview(
     },
     recommendations,
     statusCodes: scoped.statusCodes,
+    dailyMetrics: completeDailyMetrics(scoped.dailyMetrics, period).map((metric) => ({
+      ...metric,
+      uptimePct: metric.totalChecks > 0 ? (metric.upChecks / metric.totalChecks) * 100 : 0,
+    })),
     slowMonitors: slowMonitors.slice(0, REPORT_PREVIEW_LIMIT),
     failingMonitors: failingMonitors.slice(0, REPORT_PREVIEW_LIMIT),
     recentFailures,
@@ -562,8 +576,10 @@ async function loadScopedReportData(
       companyId: monitors.companyId,
       company: monitors.company,
       companyName: companies.name,
+      tags: monitors.tags,
       lastCheckedAt: monitors.lastCheckedAt,
       lastErrorMessage: monitors.lastErrorMessage,
+      pausedUntil: monitors.pausedUntil,
     })
     .from(monitors)
     .leftJoin(companies, eq(monitors.companyId, companies.id))
@@ -586,8 +602,25 @@ async function loadScopedReportData(
   const normalizedMonitorRows = monitorRows.map((monitor) => ({
     ...monitor,
     status: normalizeReportStatus(monitor.status),
+    temporarilyPaused: Boolean(monitor.pausedUntil && monitor.pausedUntil > now),
   }));
-  const monitorIds = normalizedMonitorRows.map((monitor) => monitor.id);
+  const reportMonitorRows = normalizedMonitorRows.filter((monitor) => !isReportMonitorExcluded(monitor, input));
+  const selectedMonitor = input.monitorId
+    ? reportMonitorRows.find((monitor) => monitor.id === input.monitorId)
+    : undefined;
+
+  if (input.monitorId && !normalizedMonitorRows.some((monitor) => monitor.id === input.monitorId)) {
+    throw new AuthError("The selected monitor could not be found in this report scope.", 404);
+  }
+
+  if (input.monitorId && !selectedMonitor) {
+    throw new AuthError("The selected monitor is excluded by the current analytics filters.", 400);
+  }
+
+  const scopedMonitorRows = input.monitorId
+    ? selectedMonitor ? [selectedMonitor] : []
+    : reportMonitorRows;
+  const monitorIds = scopedMonitorRows.map((monitor) => monitor.id);
 
   const reportMetrics = monitorIds.length === 0
     ? emptyReportMetrics()
@@ -596,33 +629,47 @@ async function loadScopedReportData(
   return {
     companyId: company?.id ?? null,
     companyName: company?.name ?? null,
-    monitorRows: normalizedMonitorRows,
+    selectedMonitor: selectedMonitor ?? null,
+    monitorRows: scopedMonitorRows,
     ...reportMetrics,
   };
+}
+
+export function isReportMonitorExcluded(
+  monitor: { id: string; companyId: string | null; tags: string[] },
+  input: Pick<ReportPreviewInput, "excludeMonitorIds" | "excludeTags" | "excludeCompanyIds">
+) {
+  if (input.excludeMonitorIds?.includes(monitor.id)) return true;
+  if (monitor.companyId && input.excludeCompanyIds?.includes(monitor.companyId)) return true;
+  if (!input.excludeTags?.length) return false;
+
+  const excludedTags = new Set(input.excludeTags.map((tag) => tag.toLowerCase()));
+  return monitor.tags.some((tag) => excludedTags.has(tag.toLowerCase()));
 }
 
 async function loadReportMetrics(
   userId: string,
   monitorIds: string[],
-  period: { startedAt: Date; endedAt: Date },
+  period: { startedAt: Date; endedAt: Date; timeZone: string },
   workspaceId?: string
 ) {
   const checkWhere = and(
     checkOwnershipCondition(userId, workspaceId),
     inArray(monitorChecks.monitorId, monitorIds),
     gte(monitorChecks.createdAt, period.startedAt),
-    lte(monitorChecks.createdAt, period.endedAt)
+    lt(monitorChecks.createdAt, period.endedAt)
   );
   const failureWhere = and(
     eventOwnershipCondition(userId, workspaceId),
     inArray(monitorEvents.monitorId, monitorIds),
     eq(monitorEvents.eventType, "failure"),
     gte(monitorEvents.createdAt, period.startedAt),
-    lte(monitorEvents.createdAt, period.endedAt)
+    lt(monitorEvents.createdAt, period.endedAt)
   );
   const statusCodeCount = sql<number>`count(*)::integer`;
+  const dailyBucket = sql<string>`to_char(${monitorChecks.createdAt} at time zone ${period.timeZone}, 'YYYY-MM-DD')`;
 
-  const [checkAggregateRows, checkSummaryRows, recentFailureEvents, statusCodeRows] =
+  const [checkAggregateRows, checkSummaryRows, recentFailureEvents, statusCodeRows, dailyMetricRows] =
     await Promise.all([
       db
         .select({
@@ -670,6 +717,20 @@ async function loadReportMetrics(
         .groupBy(monitorChecks.statusCode)
         .orderBy(desc(statusCodeCount))
         .limit(6),
+      db
+        .select({
+          date: dailyBucket,
+          totalChecks: sql<number>`count(*) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
+          upChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'up')::integer`,
+          downChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'down')::integer`,
+          latencySamples: sql<number>`count(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
+          averageLatencyMs: sql<number | null>`round(avg(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down')))::integer`,
+          p95LatencyMs: sql<number | null>`round(percentile_cont(0.95) within group (order by ${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down')))::integer`,
+        })
+        .from(monitorChecks)
+        .where(checkWhere)
+        .groupBy(sql`1`)
+        .orderBy(sql`1`),
     ]);
 
   const checkAggregates = checkAggregateRows.map(toCheckAggregate);
@@ -682,7 +743,60 @@ async function loadReportMetrics(
     statusCodes: statusCodeRows.flatMap((row) =>
       typeof row.statusCode === "number" ? [{ statusCode: row.statusCode, count: Number(row.count) }] : []
     ),
+    dailyMetrics: dailyMetricRows.map(toDailyMetric),
   };
+}
+
+function toDailyMetric(row: Record<keyof ReportDailyMetric, unknown>): ReportDailyMetric {
+  const latencySamples = Number(row.latencySamples);
+  return {
+    date: String(row.date),
+    totalChecks: Number(row.totalChecks),
+    upChecks: Number(row.upChecks),
+    downChecks: Number(row.downChecks),
+    latencySamples,
+    averageLatencyMs: latencySamples > 0 ? Number(row.averageLatencyMs) : null,
+    p95LatencyMs: latencySamples > 0 ? Number(row.p95LatencyMs) : null,
+  };
+}
+
+export function completeDailyMetrics(
+  metrics: ReportDailyMetric[],
+  period: { startedAt: Date; endedAt: Date; timeZone: string }
+) {
+  const byDate = new Map(metrics.map((metric) => [metric.date, metric]));
+  const startKey = formatDateKey(period.startedAt, period.timeZone);
+  const endKey = formatDateKey(new Date(period.endedAt.getTime() - 1), period.timeZone);
+  const cursor = new Date(`${startKey}T00:00:00.000Z`);
+  const end = new Date(`${endKey}T00:00:00.000Z`);
+  const complete: ReportDailyMetric[] = [];
+
+  while (cursor <= end && complete.length < 366) {
+    const date = cursor.toISOString().slice(0, 10);
+    complete.push(byDate.get(date) ?? {
+      date,
+      totalChecks: 0,
+      upChecks: 0,
+      downChecks: 0,
+      latencySamples: 0,
+      averageLatencyMs: null,
+      p95LatencyMs: null,
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return complete;
+}
+
+function formatDateKey(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function toCheckAggregate(row: Record<keyof ReportCheckAggregate, unknown>): ReportCheckAggregate {
@@ -721,6 +835,7 @@ function emptyReportMetrics() {
     checkSummary: emptyCheckSummary(),
     recentFailureEvents: [],
     statusCodes: [],
+    dailyMetrics: [],
   };
 }
 
@@ -733,10 +848,11 @@ export function resolveReportPeriod(
   if (input.periodRange === "custom" && input.periodStartedAt && input.periodEndedAt) {
     const startedAt = new Date(input.periodStartedAt);
     const endedAt = new Date(input.periodEndedAt);
+    const inclusiveEnd = new Date(endedAt.getTime() - 1);
     return {
       startedAt,
       endedAt,
-      label: `${formatReportBoundary(startedAt, timeZone)} – ${formatReportBoundary(endedAt, timeZone)}`,
+      label: `${formatReportBoundary(startedAt, timeZone)} – ${formatReportBoundary(inclusiveEnd, timeZone)}`,
       timeZone,
     };
   }
@@ -815,6 +931,18 @@ function buildFailingMonitorSummary(
     .sort((left, right) => right.failures - left.failures);
 }
 
+export function summarizeCurrentMonitorStates(
+  monitorRows: Array<{ status: string; temporarilyPaused: boolean }>
+) {
+  const current = monitorRows.filter((monitor) => !monitor.temporarilyPaused);
+  return {
+    currentlyUp: current.filter((monitor) => monitor.status === "up").length,
+    currentlyDown: current.filter((monitor) => monitor.status === "down").length,
+    currentlyPending: current.filter((monitor) => monitor.status === "pending").length,
+    currentlyPaused: monitorRows.length - current.length,
+  };
+}
+
 function buildMonitorBreakdown(
   monitorRows: Array<{
     id: string;
@@ -826,6 +954,8 @@ function buildMonitorBreakdown(
     statusCode: number | null;
     lastCheckedAt: Date | null;
     lastErrorMessage: string | null;
+    pausedUntil: Date | null;
+    temporarilyPaused: boolean;
   }>,
   checksByMonitor: Map<string, ReportCheckAggregate>
 ) {
@@ -844,6 +974,7 @@ function buildMonitorBreakdown(
         url: sanitizeMonitorUrlForDisplay(monitor.url),
         companyName: monitor.companyName ?? monitor.company,
         status: monitor.status,
+        pausedUntil: monitor.temporarilyPaused ? monitor.pausedUntil?.toISOString() ?? null : null,
         currentStatusCode: monitor.statusCode,
         lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
         lastFailureAt: failure.lastFailureAt,

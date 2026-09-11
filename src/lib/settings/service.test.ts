@@ -58,12 +58,14 @@ describe("workspace settings scope", () => {
       },
       {
         smtp_host: "smtp.workspace.test",
+        default_monitor_notification_pref: "telegram",
         compact_density: false,
         time_zone: "UTC",
       }
     );
 
     expect(merged.smtpHost).toBe("smtp.workspace.test");
+    expect(merged.defaultMonitorNotificationPref).toBe("telegram");
     expect(merged.compactDensity).toBe(true);
     expect(merged.timeZone).toBe("Europe/Istanbul");
   });

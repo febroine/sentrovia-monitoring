@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Pencil, Plus, RadioTower, Trash2 } from "lucide-react";
+import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -166,8 +166,6 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
       <SectionCard
         title="Public status pages"
         description="Publish company-specific or workspace-wide status pages."
-        icon={RadioTower}
-        iconClassName="text-sky-600 dark:text-sky-400"
         action={
           <Button
             type="button"
@@ -265,7 +263,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
                 id="public-status-summary"
                 value={draft.summary}
                 onChange={(event) => setDraft((current) => ({ ...current, summary: event.target.value }))}
-                placeholder="Live service availability and active incidents."
+                placeholder="Live service availability and active outages."
                 maxLength={500}
                 rows={3}
               />

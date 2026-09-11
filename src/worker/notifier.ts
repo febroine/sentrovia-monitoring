@@ -6,12 +6,11 @@ import {
   sendTelegramDelivery,
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
-import { countMonitorEvents, hasRecentMonitorEvent } from "@/lib/monitors/service";
+import { countMonitorEvents, hasRecentMonitorEvent, isMonitorActive } from "@/lib/monitors/service";
 import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
 import { getSettings } from "@/lib/settings/service";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
-import { getActiveNotificationSuppression } from "@/lib/maintenance/service";
 
 type NotificationDeliveryResult = { status: string } | null | undefined;
 const SSL_EXPIRY_DEDUP_MINUTES = 24 * 60;
@@ -20,12 +19,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
   if (context.kind === "check") {
     return false;
   }
-
-  const suppression = await getActiveNotificationSuppression(
-    context.monitor.workspaceId,
-    context.monitor.id
-  );
-  if (shouldSuppressNotificationForMaintenance(context.kind, suppression)) {
+  if (!(await isMonitorActive(context.monitor.id))) {
     return false;
   }
 
@@ -159,23 +153,8 @@ export async function evaluateNotificationDecision(context: NotificationContext)
     return suppress("Routine checks do not generate notifications.");
   }
 
-  const suppression = await getActiveNotificationSuppression(
-    context.monitor.workspaceId,
-    context.monitor.id
-  );
-  if (shouldSuppressNotificationForMaintenance(context.kind, suppression)) {
-    return suppress(`Notifications are silenced by ${suppression?.title ?? "an active maintenance window"}.`);
-  }
-
   const settings = await getSettings(context.monitor.userId, true, context.monitor.workspaceId);
   return evaluateNotificationDecisionWithSettings(context, settings);
-}
-
-export function shouldSuppressNotificationForMaintenance(
-  kind: NotificationContext["kind"],
-  suppression: { id: string } | null | undefined
-) {
-  return kind !== "check" && Boolean(suppression);
 }
 
 async function evaluateNotificationDecisionWithSettings(

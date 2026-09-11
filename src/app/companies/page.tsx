@@ -211,11 +211,9 @@ export default function CompaniesPage() {
         </div>
       ) : null}
 
-      <dl className="grid border-y md:grid-cols-3 md:divide-x">
-        <StatItem label="Total companies" value={String(totals.companies)} />
-        <StatItem label="Active companies" value={String(totals.active)} tone="positive" />
-        <StatItem label="Assigned monitors" value={String(totals.monitors)} />
-      </dl>
+      <p className="border-y py-3 text-sm text-muted-foreground">
+        {totals.companies} compan{totals.companies === 1 ? "y" : "ies"} · {totals.active} active · {totals.monitors} assigned monitor{totals.monitors === 1 ? "" : "s"}
+      </p>
 
       {selectedIds.size > 0 ? (
         <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
@@ -455,14 +453,6 @@ function CompanyDialog({
   );
 }
 
-function StatItem({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "positive" }) {
-  return (
-    <div className="border-b px-4 py-4 last:border-b-0 md:border-b-0">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-2 text-2xl font-semibold tracking-tight", tone === "positive" && "text-emerald-600 dark:text-emerald-400")}>{value}</dd>
-    </div>
-  );
-}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;

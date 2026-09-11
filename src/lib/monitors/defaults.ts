@@ -25,6 +25,7 @@ export function buildDefaultMonitorForm(settings: SettingsPayload | null) {
     cacheBuster: settings.monitoring.cacheBuster,
     saveErrorPages: settings.monitoring.saveErrorPages,
     saveSuccessPages: settings.monitoring.saveSuccessPages,
+    notificationPref: settings.notifications.defaultMonitorNotificationPref,
   };
 }
 

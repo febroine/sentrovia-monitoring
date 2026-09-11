@@ -9,7 +9,7 @@ export function buildReportSnapshotRows(report: GeneratedReport) {
 
   return [
     ["Reporting window", report.periodLabel],
-    ["Generated", new Date(report.generatedAt).toLocaleString()],
+    ["Generated", new Date(report.generatedAt).toLocaleString("en-GB", { timeZone: report.timeZone })],
     ["Scope", scopeLabel],
     ["Current state", formatCurrentState(report)],
     ["Most affected URL", topFailingUrl],
@@ -18,5 +18,5 @@ export function buildReportSnapshotRows(report: GeneratedReport) {
 }
 
 function formatCurrentState(report: GeneratedReport) {
-  return `${report.summary.currentlyUp} up, ${report.summary.currentlyDown} down, ${report.summary.currentlyPending} pending`;
+  return `${report.summary.currentlyUp} up, ${report.summary.currentlyDown} down, ${report.summary.currentlyPending} pending, ${report.summary.currentlyPaused} paused`;
 }

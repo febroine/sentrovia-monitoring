@@ -1,16 +1,7 @@
 "use client";
 
-import { useEffect, useState, type ElementType, type ReactNode } from "react";
-import {
-  BellElectric,
-  DatabaseBackup,
-  PackageCheck,
-  PanelsTopLeft,
-  RadioTower,
-  ScanEye,
-  ScanSearch,
-  ShieldCheck,
-} from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ScanEye, ShieldCheck } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -27,13 +18,13 @@ import { cn } from "@/lib/utils";
 
 type TabId = "notifications" | "monitoring" | "publicStatus" | "appearance" | "data" | "updates";
 
-const tabs: Array<{ id: TabId; label: string; icon: ElementType; tone: string; adminOnly?: boolean }> = [
-  { id: "notifications", label: "Notifications", icon: BellElectric, tone: "text-amber-600 dark:text-amber-400" },
-  { id: "monitoring", label: "Monitoring", icon: ScanSearch, tone: "text-emerald-600 dark:text-emerald-400" },
-  { id: "publicStatus", label: "Public status", icon: RadioTower, tone: "text-sky-600 dark:text-sky-400" },
-  { id: "appearance", label: "Appearance", icon: PanelsTopLeft, tone: "text-violet-600 dark:text-violet-400" },
-  { id: "data", label: "Data", icon: DatabaseBackup, tone: "text-cyan-600 dark:text-cyan-400" },
-  { id: "updates", label: "Updates", icon: PackageCheck, tone: "text-cyan-600 dark:text-cyan-400", adminOnly: true },
+const tabs: Array<{ id: TabId; label: string; adminOnly?: boolean }> = [
+  { id: "notifications", label: "Notifications" },
+  { id: "monitoring", label: "Monitoring" },
+  { id: "publicStatus", label: "Public status" },
+  { id: "appearance", label: "Appearance" },
+  { id: "data", label: "Data" },
+  { id: "updates", label: "Updates", adminOnly: true },
 ];
 
 export default function SettingsPageClient() {
@@ -96,13 +87,10 @@ export default function SettingsPageClient() {
           </Select>
         </div>
 
-        <TabsList className="hidden h-fit w-full flex-col items-stretch justify-start rounded-md border bg-card p-1 md:flex">
+        <TabsList variant="line" className="hidden h-fit w-full flex-col items-stretch justify-start rounded-none border-r bg-transparent p-0 md:flex">
           {visibleTabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} className="h-auto shrink-0 justify-start rounded-md px-2.5 py-2 text-left md:w-full">
-              <span className="flex min-w-0 items-center gap-2.5">
-                <tab.icon className={cn("size-4 shrink-0", tab.tone)} />
-                <span className="block min-w-0 truncate text-sm font-medium">{tab.label}</span>
-              </span>
+            <TabsTrigger key={tab.id} value={tab.id} className="h-auto shrink-0 justify-start rounded-none px-3 py-2.5 text-left md:w-full">
+              <span className="block min-w-0 truncate text-sm font-medium">{tab.label}</span>
             </TabsTrigger>
           ))}
         </TabsList>

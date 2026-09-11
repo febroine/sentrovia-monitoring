@@ -52,6 +52,7 @@ const settingsObjectSchema = z.object({
   profile: profileSettingsSchema,
   notifications: z.object({
     notificationLanguage: z.enum(["en", "tr"]).default("en"),
+    defaultMonitorNotificationPref: z.enum(["email", "telegram", "both", "none"]).default("both"),
     notifyOnDown: z.boolean(),
     notifyOnRecovery: z.boolean(),
     notifyOnStatusChange: z.boolean(),

@@ -112,12 +112,12 @@ export function MonitorConfigDialog({
           <div className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-end">
               <div className="space-y-2">
-                <Label>Format</Label>
+                <Label htmlFor="monitor-config-format">Format</Label>
                 <Select value={format} onValueChange={(value) => {
                   setFormat(value as "json" | "yaml");
                   setPreview(null);
                 }}>
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger id="monitor-config-format">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -127,7 +127,7 @@ export function MonitorConfigDialog({
                 </Select>
               </div>
               <div className="flex flex-wrap items-end gap-2">
-                <Button variant="outline" className="h-10 min-w-[140px]" onClick={() => void handleExport()}>
+                <Button variant="outline" className="min-w-[140px]" onClick={() => void handleExport()}>
                   <Download data-icon="inline-start" />
                   Export bundle
                 </Button>
@@ -135,19 +135,20 @@ export function MonitorConfigDialog({
             </div>
 
             <div className="space-y-2">
-              <Label>Import bundle</Label>
+              <Label htmlFor="monitor-config-content">Import bundle</Label>
               <p className="text-xs text-muted-foreground">
                 Limit: {MONITOR_CONFIG_IMPORT_LIMITS.maxBytesLabel},{" "}
                 {MONITOR_CONFIG_IMPORT_LIMITS.maxMonitors} monitors per import.
               </p>
               <Textarea
+                id="monitor-config-content"
                 rows={16}
                 value={content}
                 onChange={(event) => {
                   setContent(event.target.value);
                   setPreview(null);
                 }}
-                placeholder="Paste a Sentrovia monitor bundle in JSON or YAML format."
+                placeholder="Paste a Sentrovia monitor bundle in JSON or YAML format…"
                 className="min-h-[22rem] max-h-[48vh] resize-none overflow-y-auto font-mono text-xs"
               />
             </div>
@@ -179,7 +180,7 @@ export function MonitorConfigDialog({
           </div>
         </div>
 
-        <DialogFooter className="border-t bg-background px-6 py-4">
+        <DialogFooter className="m-0 shrink-0 rounded-none border-t bg-background px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           <Button
             onClick={() => void handleImport(preview ? "apply" : "preview")}
@@ -187,7 +188,7 @@ export function MonitorConfigDialog({
           >
             <Upload data-icon="inline-start" />
             {submitting
-              ? preview ? "Importing..." : "Analyzing..."
+              ? preview ? "Importing…" : "Analyzing…"
               : preview ? `Import ${preview.summary.added}` : "Preview import"}
           </Button>
         </DialogFooter>

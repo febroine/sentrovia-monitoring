@@ -9,6 +9,19 @@ function isMissingImportValue(value: unknown) {
   return value === undefined || value === null || value === "";
 }
 
+export function normalizeImportedMonitorUrl(value: unknown, monitorType: unknown) {
+  if (typeof value !== "string" || !["http", "keyword", "json"].includes(String(monitorType))) {
+    return value;
+  }
+
+  const target = value.trim();
+  if (!target || /^[a-z][a-z\d+.-]*:\/\//i.test(target)) {
+    return target;
+  }
+
+  return target.startsWith("//") ? `https:${target}` : `https://${target}`;
+}
+
 export function applyImportDefaults(
   item: unknown,
   settings: SettingsPayload | null,
@@ -34,6 +47,16 @@ export function applyImportDefaults(
 
   if (isMissingImportValue(record.monitorType)) {
     record.monitorType = "http";
+  }
+
+  record.url = normalizeImportedMonitorUrl(record.url, record.monitorType);
+
+  if (isMissingImportValue(record.notificationPref)) {
+    record.notificationPref = settings?.notifications.defaultMonitorNotificationPref ?? "both";
+  }
+
+  if (isMissingImportValue(record.publishOnStatusPage)) {
+    record.publishOnStatusPage = true;
   }
 
   if (isMissingImportValue(record.retries)) {

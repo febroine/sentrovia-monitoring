@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
 const baseURL = process.env.SENTROVIA_E2E_BASE_URL ?? "http://localhost:3000";
+const monitorTargetURL = process.env.SENTROVIA_E2E_MONITOR_URL;
 const username = process.env.SENTROVIA_E2E_USERNAME;
 const password = process.env.SENTROVIA_E2E_PASSWORD;
 const routes = [
@@ -182,8 +183,13 @@ async function verifyCrudAndAuthorization(adminContext, cleanupState) {
   const operator = await createMember(adminContext.request, suffix, "operator");
   cleanupState.memberIds.push(viewer.id, operator.id);
   const previewStatuses = await verifyPreviews(adminContext.request, monitor.id, monitor.payload);
+  const temporaryPause = await verifyTemporaryMonitorPause(
+    adminContext.request,
+    monitor.id,
+    publicStatusPages.companySlug
+  );
   const viewerMutationStatus = await verifyViewerCannotMutate(viewer.username, viewer.password);
-  const operatorIsolationStatus = await verifyOperatorIsolation(operator, monitor.id, monitor.payload);
+  const operatorWorkspaceAccessStatus = await verifyOperatorWorkspaceAccess(operator, monitor.id);
   return {
     companyCreated: true,
     companyName: company.name,
@@ -192,8 +198,9 @@ async function verifyCrudAndAuthorization(adminContext, cleanupState) {
     publicStatusPages,
     reportSchedules,
     previewStatuses,
+    temporaryPause,
     viewerMutationStatus,
-    operatorIsolationStatus,
+    operatorWorkspaceAccessStatus,
   };
 }
 
@@ -262,8 +269,9 @@ async function verifyPreviews(request, monitorId, monitorPayload) {
       reportBrandName: "Docker E2E",
     },
   });
-  assert.equal(report.status(), 200);
-  assert.ok((await report.json()).report);
+  const reportBody = await report.json();
+  assert.equal(report.status(), 200, `Report preview failed: ${JSON.stringify(reportBody)}`);
+  assert.ok(reportBody.report);
   const notification = await request.post("/api/notifications/preview", {
     data: { monitorId, scenario: "http-500", payload: monitorPayload },
   });
@@ -276,12 +284,100 @@ async function verifyPreviews(request, monitorId, monitorPayload) {
   });
   assert.equal(slowNotification.status(), 200);
   const slowNotificationBody = await slowNotification.json();
-  assert.equal(slowNotificationBody.preview.subject, "Slow web: 4500/5000");
+  assert.equal(
+    slowNotificationBody.preview.subject,
+    `Slow ${new URL(monitorPayload.url).hostname}: 4500/5000`
+  );
   assert.match(slowNotificationBody.preview.textBody, /ONLINE · SLOW/);
   assert.match(slowNotificationBody.preview.htmlBody, /Hard timeout/);
   assert.match(slowNotificationBody.preview.telegramBody, /SLOW 4500ms/);
   assert.equal(slowNotificationBody.decision.wouldNotify, true);
   return { report: 200, notification: 200, slowNotification: 200 };
+}
+
+async function verifyTemporaryMonitorPause(request, monitorId, publicStatusSlug) {
+  const pauseStartedAt = Date.now();
+  const pauseResponse = await request.patch("/api/monitors/pause", {
+    data: {
+      ids: [monitorId],
+      action: "pause",
+      durationValue: 2,
+      durationUnit: "hours",
+    },
+  });
+  const pauseBody = await pauseResponse.json();
+  assert.equal(pauseResponse.status(), 200, `Monitor pause failed: ${JSON.stringify(pauseBody)}`);
+  assert.equal(pauseBody.monitors.length, 1);
+  assert.equal(pauseBody.monitors[0].id, monitorId);
+  assert.equal(pauseBody.monitors[0].status, "pending");
+  assert.equal(pauseBody.monitors[0].statusCode, null);
+  assert.equal(pauseBody.monitors[0].nextCheckAt, pauseBody.pausedUntil);
+  const pausedUntil = Date.parse(pauseBody.pausedUntil);
+  assert.ok(pausedUntil >= pauseStartedAt + 2 * 60 * 60_000);
+  assert.ok(pausedUntil <= Date.now() + 2 * 60 * 60_000 + 5_000);
+
+  const pausedListResponse = await request.get(
+    "/api/monitors?page=1&pageSize=100&sort=createdAt&direction=desc"
+  );
+  assert.equal(pausedListResponse.status(), 200);
+  const pausedList = await pausedListResponse.json();
+  assert.equal(pausedList.summary.total, 1);
+  assert.equal(pausedList.summary.active, 0);
+  assert.equal(pausedList.summary.paused, 1);
+  assert.equal(pausedList.summary.online, 0);
+  assert.equal(pausedList.summary.offline, 0);
+  assert.equal(pausedList.summary.pending, 0);
+  assert.equal(pausedList.monitors[0].pausedUntil, pauseBody.pausedUntil);
+
+  const analyticsResponse = await request.get(
+    `/api/reports/analytics?monitorId=${encodeURIComponent(monitorId)}&periodRange=7d`
+  );
+  const analyticsBody = await analyticsResponse.json();
+  assert.equal(analyticsResponse.status(), 200, `Paused analytics failed: ${JSON.stringify(analyticsBody)}`);
+  assert.equal(analyticsBody.report.summary.currentlyPaused, 1);
+  assert.equal(analyticsBody.report.summary.currentlyUp, 0);
+  assert.equal(analyticsBody.report.summary.currentlyDown, 0);
+  assert.equal(analyticsBody.report.summary.currentlyPending, 0);
+  assert.equal(analyticsBody.report.monitorBreakdown[0].pausedUntil, pauseBody.pausedUntil);
+
+  const publicStatusResponse = await request.get(`/status/${publicStatusSlug}`);
+  assert.equal(publicStatusResponse.status(), 200);
+  assert.match(await publicStatusResponse.text(), /No monitors are published to this status page/);
+
+  const excessivePauseResponse = await request.patch("/api/monitors/pause", {
+    data: {
+      ids: [monitorId],
+      action: "pause",
+      durationValue: 366,
+      durationUnit: "days",
+    },
+  });
+  assert.equal(excessivePauseResponse.status(), 400);
+
+  const resumeResponse = await request.patch("/api/monitors/pause", {
+    data: { ids: [monitorId], action: "resume" },
+  });
+  const resumeBody = await resumeResponse.json();
+  assert.equal(resumeResponse.status(), 200, `Monitor resume failed: ${JSON.stringify(resumeBody)}`);
+  assert.equal(resumeBody.monitors.length, 1);
+  assert.equal(resumeBody.monitors[0].pausedUntil, null);
+
+  const resumedListResponse = await request.get(
+    "/api/monitors?page=1&pageSize=100&sort=createdAt&direction=desc"
+  );
+  assert.equal(resumedListResponse.status(), 200);
+  const resumedList = await resumedListResponse.json();
+  assert.equal(resumedList.summary.active, 1);
+  assert.equal(resumedList.summary.paused, 0);
+
+  return {
+    paused: true,
+    excludedFromCurrentState: true,
+    excludedFromPublicStatus: true,
+    representedInReports: true,
+    maximumDurationValidated: true,
+    resumed: true,
+  };
 }
 
 async function createCompany(request, suffix) {
@@ -354,7 +450,7 @@ function buildMonitorPayload(companyId, suffix) {
   return {
     name: `Docker health ${suffix}`,
     monitorType: "http",
-    url: `http://web:3000/api/health?e2e=${suffix}`,
+    url: buildMonitorTargetURL(suffix),
     companyId,
     notificationPref: "both",
     notificationLanguage: "default",
@@ -392,6 +488,12 @@ function buildMonitorPayload(companyId, suffix) {
     status: "up",
     consecutiveFailures: -10,
   };
+}
+
+function buildMonitorTargetURL(suffix) {
+  const target = new URL(monitorTargetURL ?? "http://web:3000/api/health");
+  target.searchParams.set("e2e", suffix);
+  return target.toString();
 }
 
 async function verifyPublicStatusPages(request, companyId, suffix, cleanupState) {
@@ -434,7 +536,14 @@ async function verifyPublicStatusPages(request, companyId, suffix, cleanupState)
   });
   assert.equal(updateResponse.status(), 200);
   assert.equal((await updateResponse.json()).page.summary, "Updated company status summary");
-  return { created: 2, companyScoped: true, workspaceScoped: true, publicRoute: 200, updated: true };
+  return {
+    created: 2,
+    companyScoped: true,
+    workspaceScoped: true,
+    companySlug: createdPages[0].slug,
+    publicRoute: 200,
+    updated: true,
+  };
 }
 
 async function createMember(request, suffix, role) {
@@ -472,7 +581,7 @@ async function verifyViewerCannotMutate(identifier, viewerPassword) {
   }
 }
 
-async function verifyOperatorIsolation(operator, monitorId, monitorPayload) {
+async function verifyOperatorWorkspaceAccess(operator, monitorId) {
   const context = await browser.newContext({ baseURL });
   try {
     const login = await context.request.post("/api/auth/login", {
@@ -481,11 +590,13 @@ async function verifyOperatorIsolation(operator, monitorId, monitorPayload) {
     await assertHttpStatus(login, 200);
     const list = await context.request.get("/api/monitors");
     assert.equal(list.status(), 200);
-    assert.equal((await list.json()).monitors.length, 0);
-    const mutation = await context.request.patch(`/api/monitors/${monitorId}`, {
-      data: { ...monitorPayload, name: "Unauthorized cross-user update" },
+    const visibleMonitors = (await list.json()).monitors;
+    assert.equal(visibleMonitors.some((monitor) => monitor.id === monitorId), true);
+    const mutation = await context.request.patch(`/api/monitors/${monitorId}/flags`, {
+      data: { isFavorite: true },
     });
-    await assertHttpStatus(mutation, 404);
+    const mutationBody = await mutation.json();
+    assert.equal(mutation.status(), 200, `Operator workspace update failed: ${JSON.stringify(mutationBody)}`);
     return mutation.status();
   } finally {
     await context.close();
@@ -523,6 +634,11 @@ async function verifyReadApis(request) {
     assert.equal(response.status(), 200, `${endpoint} did not return HTTP 200`);
     await response.body();
     results[endpoint] = response.status();
+  }
+  for (const retiredEndpoint of ["/api/incidents", "/api/maintenance"]) {
+    const response = await request.get(retiredEndpoint);
+    assert.equal(response.status(), 404, `${retiredEndpoint} should remain removed`);
+    results[retiredEndpoint] = response.status();
   }
   return results;
 }

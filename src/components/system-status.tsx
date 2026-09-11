@@ -200,10 +200,11 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
 
             <Button
               type="button"
+              variant={shouldOfferStop ? "outline" : "default"}
               className={cn(
                 "mt-4 w-full",
                 shouldOfferStop
-                  ? "bg-destructive text-white hover:bg-destructive/90"
+                  ? "border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   : "bg-emerald-600 text-white hover:bg-emerald-700"
               )}
               onClick={() => void toggleWorker()}

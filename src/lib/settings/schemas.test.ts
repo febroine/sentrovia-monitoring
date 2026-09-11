@@ -140,6 +140,18 @@ describe("settings schema", () => {
     expect(parsed.notifications.notificationLanguage).toBe("tr");
   });
 
+  it("defaults legacy monitor notifications to email and Telegram", () => {
+    const parsed = settingsSchema.parse({
+      ...buildSettingsPayload(),
+      notifications: {
+        ...buildSettingsPayload().notifications,
+        defaultMonitorNotificationPref: undefined,
+      },
+    });
+
+    expect(parsed.notifications.defaultMonitorNotificationPref).toBe("both");
+  });
+
   it("normalizes valid monitoring intervals", () => {
     const parsed = settingsSchema.parse({
       ...buildSettingsPayload(),

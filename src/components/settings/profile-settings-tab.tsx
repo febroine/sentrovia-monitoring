@@ -14,13 +14,7 @@ export function AccountSettingsTab({
   updateSetting: UpdateSetting;
 }) {
   return (
-    <section className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12">
-      <SectionIntro
-        title="Identity details"
-        metadata={buildProfileMetadata(settings.profile)}
-      />
-
-      <div className="border-y">
+    <section className="border-y">
         <FieldGroup title="Account">
           <AccountFields profile={settings.profile} updateSetting={updateSetting} />
         </FieldGroup>
@@ -28,7 +22,6 @@ export function AccountSettingsTab({
         <FieldGroup title="Work details">
           <WorkFields profile={settings.profile} updateSetting={updateSetting} />
         </FieldGroup>
-      </div>
     </section>
   );
 }
@@ -63,28 +56,6 @@ function WorkFields({
       <ProfileInput id="department" label="Department" value={profile.department} autoComplete="organization-title" onChange={(value) => updateSetting("profile.department", value)} />
       <ProfileInput id="job-title" label="Job title" value={profile.jobTitle} autoComplete="organization-title" placeholder="SRE Lead" onChange={(value) => updateSetting("profile.jobTitle", value)} />
       <ProfileInput id="phone" label="Phone" type="tel" value={profile.phone} autoComplete="tel" placeholder="+90 555 000 00 00" onChange={(value) => updateSetting("profile.phone", value)} />
-    </div>
-  );
-}
-
-function SectionIntro({
-  title,
-  metadata,
-}: {
-  title: string;
-  metadata: Array<{ label: string; value: string }>;
-}) {
-  return (
-    <div>
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <dl className="mt-6 border-t text-xs">
-        {metadata.map((item) => (
-          <div key={item.label} className="flex justify-between gap-4 border-b py-3">
-            <dt className="text-muted-foreground">{item.label}</dt>
-            <dd className="max-w-[130px] truncate text-right text-foreground">{item.value}</dd>
-          </div>
-        ))}
-      </dl>
     </div>
   );
 }
@@ -141,12 +112,4 @@ function ProfileInput({
       />
     </div>
   );
-}
-
-function buildProfileMetadata(profile: SettingsPayload["profile"]) {
-  return [
-    { label: "Department", value: profile.department || "Not set" },
-    { label: "Job title", value: profile.jobTitle || "Not set" },
-    { label: "Organization", value: profile.organization || "Not set" },
-  ];
 }

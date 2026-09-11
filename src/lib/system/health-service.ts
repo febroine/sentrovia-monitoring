@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, isNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { deliveryEvents, monitors } from "@/lib/db/schema";
+import { monitors } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { isMonitorCheckStale } from "@/lib/monitors/health";
 import { getWorkerState } from "@/lib/monitors/service";
@@ -10,10 +10,7 @@ import { isPidAlive } from "@/lib/worker/process";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 import { getHeartbeatAgeMs, isHeartbeatCurrent } from "@/lib/worker/heartbeat";
 
-const DAY_MS = 24 * 60 * 60_000;
-const RECENT_FAILURE_LIMIT = 12;
 const DELAYED_MONITOR_LIMIT = 12;
-const NON_NOTIFICATION_KINDS = ["report", "test"];
 
 export interface SystemHealthAlarm {
   id: string;
@@ -24,59 +21,18 @@ export interface SystemHealthAlarm {
 
 export async function getSystemHealth() {
   const now = new Date();
-  const lookbackStart = new Date(now.getTime() - DAY_MS);
   const worker = await getWorkerState();
 
-  const [monitorRows, deliveryCountRows, recentFailureRows] = await Promise.all([
-    db
-      .select()
-      .from(monitors)
-      .where(and(eq(monitors.isActive, true), isNull(monitors.deletedAt))),
-    db
-      .select({
-        failed: sql<number>`count(*) filter (where ${deliveryEvents.status} = 'failed')::int`,
-        queued: sql<number>`count(*) filter (where ${deliveryEvents.status} in ('pending', 'retrying', 'processing'))::int`,
-      })
-      .from(deliveryEvents)
-      .where(
-        and(
-          gte(deliveryEvents.createdAt, lookbackStart),
-          notInArray(deliveryEvents.kind, NON_NOTIFICATION_KINDS)
-        )
-      ),
-    db
-      .select({
-        id: deliveryEvents.id,
-        channel: deliveryEvents.channel,
-        kind: deliveryEvents.kind,
-        destination: deliveryEvents.destination,
-        status: deliveryEvents.status,
-        attempts: deliveryEvents.attempts,
-        errorMessage: deliveryEvents.errorMessage,
-        lastAttemptAt: deliveryEvents.lastAttemptAt,
-        nextRetryAt: deliveryEvents.nextRetryAt,
-        createdAt: deliveryEvents.createdAt,
-      })
-      .from(deliveryEvents)
-      .where(
-        and(
-          gte(deliveryEvents.createdAt, lookbackStart),
-          notInArray(deliveryEvents.kind, NON_NOTIFICATION_KINDS),
-          eq(deliveryEvents.status, "failed")
-        )
-      )
-      .orderBy(desc(deliveryEvents.createdAt))
-      .limit(RECENT_FAILURE_LIMIT),
-  ]);
+  const monitorRows = await db
+    .select()
+    .from(monitors)
+    .where(and(eq(monitors.isActive, true), isNull(monitors.deletedAt)));
 
   const allDelayedMonitors = monitorRows
     .map((monitor) => toDelayedMonitor(monitor, now))
     .filter((monitor): monitor is NonNullable<typeof monitor> => monitor !== null)
     .sort((left, right) => right.delayMs - left.delayMs);
   const delayedMonitors = allDelayedMonitors.slice(0, DELAYED_MONITOR_LIMIT);
-  const deliveryCounts = deliveryCountRows[0];
-  const failedDeliveryCount = deliveryCounts?.failed ?? 0;
-  const queuedDeliveryCount = deliveryCounts?.queued ?? 0;
   const staleThresholdMs = Math.max(env.workerPollIntervalMs * 6, 180_000);
   const heartbeatAgeMs = getHeartbeatAgeMs(worker.heartbeatAt, now);
   const heartbeatCurrent = isHeartbeatCurrent(worker.heartbeatAt, now, staleThresholdMs);
@@ -95,8 +51,6 @@ export async function getSystemHealth() {
     connectivityStatus: worker.connectivityStatus,
     connectivityMessage: worker.connectivityMessage,
     delayedMonitorCount: allDelayedMonitors.length,
-    failedDeliveryCount,
-    queuedDeliveryCount,
   });
 
   return {
@@ -126,16 +80,6 @@ export async function getSystemHealth() {
       dueBacklog: monitorRows.filter((monitor) => isMonitorDue(monitor, now)).length,
       delayedMonitorCount: connectivityOffline ? 0 : allDelayedMonitors.length,
       delayedMonitors: connectivityOffline ? [] : delayedMonitors,
-    },
-    delivery: {
-      failedLast24Hours: failedDeliveryCount,
-      queuedLast24Hours: queuedDeliveryCount,
-      recentFailures: recentFailureRows.map((event) => ({
-        ...event,
-        lastAttemptAt: event.lastAttemptAt?.toISOString() ?? null,
-        nextRetryAt: event.nextRetryAt?.toISOString() ?? null,
-        createdAt: event.createdAt.toISOString(),
-      })),
     },
   };
 }
@@ -195,8 +139,6 @@ export function buildSystemHealthAlarms(input: {
   connectivityStatus: string;
   connectivityMessage: string | null;
   delayedMonitorCount: number;
-  failedDeliveryCount: number;
-  queuedDeliveryCount: number;
 }): SystemHealthAlarm[] {
   const alarms: SystemHealthAlarm[] = [];
 
@@ -230,24 +172,6 @@ export function buildSystemHealthAlarms(input: {
       severity: input.delayedMonitorCount >= 10 ? "critical" : "warning",
       title: "Monitor checks are delayed",
       detail: `${input.delayedMonitorCount} active monitor${input.delayedMonitorCount === 1 ? " is" : "s are"} more than one interval behind schedule.`,
-    });
-  }
-
-  if (input.failedDeliveryCount > 0) {
-    alarms.push({
-      id: "delivery-failures",
-      severity: "warning",
-      title: "Notification deliveries failed",
-      detail: `${input.failedDeliveryCount} notification${input.failedDeliveryCount === 1 ? "" : "s"} failed during the last 24 hours.`,
-    });
-  }
-
-  if (input.queuedDeliveryCount > 0) {
-    alarms.push({
-      id: "delivery-queued",
-      severity: "info",
-      title: "Notification deliveries are queued",
-      detail: `${input.queuedDeliveryCount} notification${input.queuedDeliveryCount === 1 ? " is" : "s are"} pending or retrying.`,
     });
   }
 

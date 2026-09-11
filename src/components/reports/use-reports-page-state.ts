@@ -24,6 +24,7 @@ import {
   type DeliveryResult,
   type DraftReport,
   type DraftSchedule,
+  type ReportsTab,
   type ScheduleFilter,
 } from "@/components/reports/reports-page-model";
 
@@ -72,11 +73,11 @@ function useReportsCatalog(setMessage: Setter<Notice>) {
 }
 
 function useReportsActiveTab() {
-  const [activeTab, setActiveTab] = useState<"preview" | "schedules">("preview");
+  const [activeTab, setActiveTab] = useState<ReportsTab>("analytics");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get("mode");
-    if (mode !== "schedules" && mode !== "preview") return;
+    if (mode !== "analytics" && mode !== "schedules" && mode !== "preview") return;
     const frameId = window.requestAnimationFrame(() => setActiveTab(mode));
     return () => window.cancelAnimationFrame(frameId);
   }, []);

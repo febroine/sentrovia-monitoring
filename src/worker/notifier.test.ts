@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   countMonitorEvents: vi.fn(),
   getSettings: vi.fn(),
   getMonitorNotificationRouting: vi.fn(),
-  getActiveNotificationSuppression: vi.fn(),
   hasRecentMonitorEvent: vi.fn(),
+  isMonitorActive: vi.fn(),
   sendChannelWebhookDelivery: vi.fn(),
   sendEmailDelivery: vi.fn(),
   sendTelegramDelivery: vi.fn(),
@@ -33,6 +33,7 @@ vi.mock("@/lib/delivery/service", () => ({
 vi.mock("@/lib/monitors/service", () => ({
   countMonitorEvents: mocks.countMonitorEvents,
   hasRecentMonitorEvent: mocks.hasRecentMonitorEvent,
+  isMonitorActive: mocks.isMonitorActive,
 }));
 
 vi.mock("@/lib/settings/service", () => ({
@@ -41,10 +42,6 @@ vi.mock("@/lib/settings/service", () => ({
 
 vi.mock("@/lib/notifications/routing", () => ({
   getMonitorNotificationRouting: mocks.getMonitorNotificationRouting,
-}));
-
-vi.mock("@/lib/maintenance/service", () => ({
-  getActiveNotificationSuppression: mocks.getActiveNotificationSuppression,
 }));
 
 vi.mock("@/worker/templates", () => ({
@@ -69,8 +66,8 @@ describe("worker notifier", () => {
         notifyOnRecovery: true,
       },
     });
-    mocks.getActiveNotificationSuppression.mockResolvedValue(null);
     mocks.hasRecentMonitorEvent.mockResolvedValue(true);
+    mocks.isMonitorActive.mockResolvedValue(true);
     mocks.getMonitorNotificationRouting.mockResolvedValue({
       emailRecipients: "ops@example.com",
       telegramBotToken: "123456:telegram-token",
@@ -91,6 +88,16 @@ describe("worker notifier", () => {
     expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
   });
 
+  it("suppresses notifications when the monitor was paused after its check completed", async () => {
+    mocks.isMonitorActive.mockResolvedValueOnce(false);
+
+    const sent = await sendMonitorNotifications(buildNotificationContext("failure"));
+
+    expect(sent).toBe(false);
+    expect(mocks.getSettings).not.toHaveBeenCalled();
+    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
+  });
+
   it("does not suppress recovery notifications with the generic dedup window", async () => {
     const sent = await sendMonitorNotifications(buildNotificationContext("recovery"));
 
@@ -103,19 +110,6 @@ describe("worker notifier", () => {
         subject: "Recovered",
       })
     );
-  });
-
-  it("suppresses outage notifications during an active maintenance window", async () => {
-    mocks.getActiveNotificationSuppression.mockResolvedValue({
-      id: "maintenance-1",
-      title: "Database upgrade",
-    });
-
-    const sent = await sendMonitorNotifications(buildNotificationContext("failure"));
-
-    expect(sent).toBe(false);
-    expect(mocks.getSettings).not.toHaveBeenCalled();
-    expect(mocks.sendEmailDelivery).not.toHaveBeenCalled();
   });
 
   it("uses the resolved company or workspace destinations for monitor channels", async () => {
@@ -536,6 +530,7 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     statusCode: 500,
     uptime: "0%",
     isActive: true,
+    pausedUntil: null,
     publishOnStatusPage: false,
     isFavorite: false,
     isCritical: false,

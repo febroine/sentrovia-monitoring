@@ -12,7 +12,6 @@ export type HelpCategory = {
   value: string;
   label: string;
   icon: ElementType;
-  accent: string;
   summary: string;
   faqs: Array<{
     question: string;
@@ -32,7 +31,6 @@ export const helpCategories: HelpCategory[] = [
     value: "monitoring",
     label: "Monitoring",
     icon: ServerCog,
-    accent: "text-orange-600 dark:text-orange-300",
     summary: "How checks run, enter verification, and appear in history.",
     faqs: [
       {
@@ -126,13 +124,12 @@ export const helpCategories: HelpCategory[] = [
     value: "worker",
     label: "Worker health",
     icon: Radar,
-    accent: "text-sky-600 dark:text-sky-300",
     summary: "How to confirm that checks are running and distinguish process, queue, and connectivity problems.",
     faqs: [
       {
         question: "Where can I check worker health?",
         answer:
-          "Dashboard > System Health summarizes worker, connectivity, due queue, and delivery alarms. Administrators also see Worker Pulse on Monitoring, including heartbeat age, last cycle, process ID, due backlog, cycle duration, current state, and the latest status message.",
+          "Dashboard > System Health summarizes worker, connectivity, and due-queue health. Delivery failures remain in the dedicated Delivery area. Administrators also see Worker Pulse on Monitoring, including heartbeat age, last cycle, process ID, due backlog, cycle duration, current state, and the latest status message.",
       },
       {
         question: "What is due backlog?",
@@ -170,7 +167,6 @@ export const helpCategories: HelpCategory[] = [
     value: "delivery",
     label: "Delivery",
     icon: Mail,
-    accent: "text-violet-600 dark:text-violet-300",
     summary: "How channel testing, retry behavior, payload rendering, and history tracking work.",
     faqs: [
       {
@@ -229,7 +225,6 @@ export const helpCategories: HelpCategory[] = [
     value: "reports",
     label: "Reports",
     icon: BellRing,
-    accent: "text-emerald-600 dark:text-emerald-300",
     summary: "How previews, schedules, report scope, and delivery work.",
     faqs: [
       {
@@ -293,7 +288,6 @@ export const helpCategories: HelpCategory[] = [
     value: "deployment",
     label: "Deployment",
     icon: Box,
-    accent: "text-rose-600 dark:text-rose-300",
     summary: "How local mode, Docker mode, and the runtime model work.",
     faqs: [
       {
@@ -344,7 +338,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Can I tell if the worker is truly alive?",
         answer:
-          "Yes. Dashboard > System Health shows process, connectivity, queue, and delivery health. Administrators can use Monitoring > Worker Pulse for heartbeat age, last cycle time, process ID, backlog, cycle duration, and the current worker message. A current heartbeat proves that the worker process, rather than the browser, is alive.",
+          "Yes. Dashboard > System Health shows process, connectivity, and queue health. Delivery health is available in Delivery. Administrators can use Monitoring > Worker Pulse for heartbeat age, last cycle time, process ID, backlog, cycle duration, and the current worker message. A current heartbeat proves that the worker process, rather than the browser, is alive.",
       },
       {
         question: "How does Sentrovia avoid mass false alerts when the server loses internet access?",
@@ -377,7 +371,6 @@ export const helpCategories: HelpCategory[] = [
     value: "data",
     label: "Data",
     icon: Database,
-    accent: "text-amber-600 dark:text-amber-300",
     summary: "What is stored permanently, what is summarized, and how the UI reads durable state.",
     faqs: [
       {

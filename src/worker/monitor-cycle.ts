@@ -93,7 +93,9 @@ export async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<Mo
     return null;
   }
 
-  await recordCycleCheck(monitor, probe, transition.checkStatus);
+  if (!(await recordCycleCheck(monitor, probe, transition.checkStatus))) {
+    return null;
+  }
   await handleSuccessfulCheck(monitor, probe, rca, {
     hadConfirmedOutage,
     verificationAttempt,
@@ -259,7 +261,10 @@ async function recordVerificationTransition(
     latencyMs: result.latencyMs,
   });
   if (!recorded) return null;
-  if (!confirmedOutage) await recordPendingVerification(monitor, probe.diagnosticMonitor, result, rca, verificationCount, threshold);
+  if (!confirmedOutage) {
+    if (!(await isMonitorActive(monitor.id))) return null;
+    await recordPendingVerification(monitor, probe.diagnosticMonitor, result, rca, verificationCount, threshold);
+  }
   return {
     checkStatus,
     failureEventMessage: confirmedOutage ? buildFailureEventMessage(result) : null,
@@ -291,6 +296,7 @@ async function recordInitialFailureTransition(
     latencyMs: result.latencyMs,
   });
   if (!recorded) return null;
+  if (!(await isMonitorActive(monitor.id))) return null;
   await appendDetailedEvent(monitor, result, "verification", `Verification mode started. Attempt 1 of ${threshold} failed.`, rca, "pending");
   await appendTimelineEvent({
     monitorId: monitor.id,
@@ -332,6 +338,9 @@ function defaultTransition(checkStatus: TransitionOutcome["checkStatus"]): Trans
 }
 
 async function recordCycleCheck(monitor: ClaimedMonitor, probe: ProbeSequence, checkStatus: TransitionOutcome["checkStatus"]) {
+  if (!(await isMonitorActive(monitor.id))) {
+    return false;
+  }
   await updateWorkerState({ heartbeatAt: new Date() });
   await incrementWorkerCheckedCount(probe.executedProbeCount);
   await appendMonitorCheck({
@@ -345,6 +354,7 @@ async function recordCycleCheck(monitor: ClaimedMonitor, probe: ProbeSequence, c
   if (checkStatus !== "pending") {
     await refreshMonitorUptimeSafely(monitor, probe.result.checkedAt);
   }
+  return true;
 }
 
 async function handleSuccessfulCheck(
@@ -410,6 +420,9 @@ async function handleFailedCheck(
   const message = transition.failureEventMessage;
   await appendDetailedEvent(monitor, result, "failure", message, rca, transition.checkStatus);
   const diagnostic = await recordFailureDiagnostics(diagnosticMonitor);
+  if (!(await isMonitorActive(monitor.id))) {
+    return false;
+  }
   const outage = await openOrUpdateOutage({
     monitorId: monitor.id,
     userId: monitor.userId,
@@ -564,6 +577,9 @@ async function recordConfigurationFailure(
     latencyMs: result.latencyMs,
   });
   if (!recorded) {
+    return null;
+  }
+  if (!(await isMonitorActive(monitor.id))) {
     return null;
   }
 

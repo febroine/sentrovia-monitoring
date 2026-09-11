@@ -8,6 +8,10 @@ export interface ReportPreviewInput {
   scope: ReportScope;
   cadence: ReportCadence;
   companyId?: string | null;
+  monitorId?: string | null;
+  excludeMonitorIds?: string[];
+  excludeTags?: string[];
+  excludeCompanyIds?: string[];
   template?: ReportTemplateVariant;
   deliveryDetailLevel?: "summary" | "standard" | "full";
   includeOutageSummary?: boolean;
@@ -60,6 +64,8 @@ export interface GeneratedReport {
   template: ReportTemplateVariant;
   companyId: string | null;
   companyName: string | null;
+  monitorId: string | null;
+  monitorName: string | null;
   workspaceName: string;
   brandName: string;
   templateLabel: string;
@@ -73,6 +79,7 @@ export interface GeneratedReport {
     currentlyUp: number;
     currentlyDown: number;
     currentlyPending: number;
+    currentlyPaused: number;
     totalChecks: number;
     upChecks: number;
     downChecks: number;
@@ -92,6 +99,16 @@ export interface GeneratedReport {
   statusCodes: Array<{
     statusCode: number;
     count: number;
+  }>;
+  dailyMetrics: Array<{
+    date: string;
+    totalChecks: number;
+    upChecks: number;
+    downChecks: number;
+    uptimePct: number;
+    latencySamples: number;
+    averageLatencyMs: number | null;
+    p95LatencyMs: number | null;
   }>;
   slowMonitors: Array<{
     monitorId: string;
@@ -123,6 +140,7 @@ export interface GeneratedReport {
     url: string;
     companyName: string | null;
     status: string;
+    pausedUntil: string | null;
     currentStatusCode: number | null;
     lastCheckedAt: string | null;
     lastFailureAt: string | null;

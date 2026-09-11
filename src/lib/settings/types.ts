@@ -15,6 +15,7 @@ export interface SettingsPayload {
   };
   notifications: {
     notificationLanguage: NotificationLanguage;
+    defaultMonitorNotificationPref: DefaultMonitorNotificationPref;
     notifyOnDown: boolean;
     notifyOnRecovery: boolean;
     notifyOnStatusChange: boolean;
@@ -105,6 +106,7 @@ export interface SettingsPayload {
 }
 
 export type NotificationLanguage = "en" | "tr";
+export type DefaultMonitorNotificationPref = "email" | "telegram" | "both" | "none";
 
 export const DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE = {
   en: {
@@ -172,6 +174,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     phone: "",
   },
   notifications: {
+    defaultMonitorNotificationPref: "both",
     notificationLanguage: "en",
     notifyOnDown: true,
     notifyOnRecovery: true,

@@ -4,6 +4,8 @@ import { chromium } from "playwright";
 const baseURL = process.env.SENTROVIA_E2E_BASE_URL ?? "http://localhost:3000";
 const username = process.env.SENTROVIA_E2E_USERNAME;
 const password = process.env.SENTROVIA_E2E_PASSWORD;
+const monitoringOnly = process.env.SENTROVIA_E2E_MONITORING_ONLY === "true";
+const skipFontAssertions = process.env.SENTROVIA_E2E_SKIP_FONT_ASSERTIONS === "true";
 
 if (!username || !password) {
   throw new Error("Set SENTROVIA_E2E_USERNAME and SENTROVIA_E2E_PASSWORD for an existing admin account.");
@@ -19,7 +21,12 @@ try {
   const runtimeErrors = collectRuntimeErrors(page);
 
   await login(page);
-  const results = {
+  if (!skipFontAssertions && !monitoringOnly) {
+    await verifyApplicationPageFonts(page);
+  }
+  const results = monitoringOnly ? {
+    monitoring: await verifyMonitoringInteractions(page),
+  } : {
     dashboard: await verifyDashboardInteractions(page),
     monitoring: await verifyMonitoringInteractions(page),
     companies: await verifyCompanyInteractions(page),
@@ -46,6 +53,9 @@ async function verifyRejectedLogin(browserInstance) {
   try {
     const page = await context.newPage();
     await page.goto("/login", { waitUntil: "domcontentloaded" });
+    if (!skipFontAssertions) {
+      await assertFontFamily(page.locator("body"), "IBM Plex Sans", "Login UI font");
+    }
     await page.locator('input[name="identifier"]').fill(username);
     await page.locator('input[name="password"]').fill(`${password}-invalid`);
     const responsePromise = page.waitForResponse((response) => response.url().endsWith("/api/auth/login"));
@@ -54,6 +64,27 @@ async function verifyRejectedLogin(browserInstance) {
     await assertVisible(page.locator("#login-error"), "Rejected-login alert");
   } finally {
     await context.close();
+  }
+}
+
+async function verifyApplicationPageFonts(page) {
+  const routes = [
+    "/dashboard",
+    "/monitoring",
+    "/companies",
+    "/logs",
+    "/delivery",
+    "/reports",
+    "/members",
+    "/settings",
+    "/profile",
+    "/help",
+    "/about",
+  ];
+
+  for (const route of routes) {
+    await page.goto(route, { waitUntil: "domcontentloaded" });
+    await assertFontFamily(page.locator("body"), "IBM Plex Sans", `${route} UI font`);
   }
 }
 
@@ -69,6 +100,9 @@ async function login(page) {
 
 async function verifyDashboardInteractions(page) {
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+  if (!skipFontAssertions) {
+    await assertFontFamily(page.locator("body"), "IBM Plex Sans", "Dashboard UI font");
+  }
   await clickUnique(page.getByRole("button", { name: "Customize" }), "Customize dashboard");
   await assertVisible(page.getByText("Widgets and order", { exact: true }), "Widget ordering panel");
 
@@ -86,33 +120,133 @@ async function verifyDashboardInteractions(page) {
 }
 
 async function verifyMonitoringInteractions(page) {
-  const monitorName = `UI fixture ${Date.now().toString(36)}`;
-  const createResponse = await page.request.post("/api/monitors", {
-    data: buildUiMonitorPayload(monitorName),
-  });
-  assert.equal(createResponse.status(), 201, "Unable to create the UI monitor fixture");
-  const monitorId = (await createResponse.json()).monitor.id;
+  const fixtureSuffix = Date.now().toString(36);
+  const monitorName = `UI pause fixture ${fixtureSuffix} A`;
+  const secondMonitorName = `UI pause fixture ${fixtureSuffix} B`;
+  const monitorIds = [];
+  for (const [index, name] of [monitorName, secondMonitorName].entries()) {
+    const createResponse = await page.request.post("/api/monitors", {
+      data: {
+        ...buildUiMonitorPayload(name),
+        url: `https://example.com/sentrovia-ui-fixture?run=${fixtureSuffix}-${index}`,
+        isActive: true,
+      },
+    });
+    assert.equal(createResponse.status(), 201, "Unable to create the UI monitor fixture");
+    monitorIds.push((await createResponse.json()).monitor.id);
+  }
 
   try {
     await page.goto("/monitoring", { waitUntil: "domcontentloaded" });
     const search = page.getByPlaceholder("Search by name, URL, or tag");
     await search.fill(monitorName);
-    await assertVisible(page.locator("tbody").getByText(monitorName, { exact: true }), "Filtered monitor row");
+    const filteredMonitorName = page.locator("tbody").getByText(monitorName, { exact: true });
+    await assertVisible(filteredMonitorName, "Filtered monitor row");
+    if (!skipFontAssertions) {
+      await assertFontFamily(
+        filteredMonitorName.locator("xpath=ancestor::tr").locator(".font-mono").first(),
+        "IBM Plex Mono",
+        "Monitor target font"
+      );
+    }
     await search.fill("no-monitor-matches-this-query");
     await assertVisible(page.locator("tbody").getByText("No monitors in this view", { exact: true }), "Monitor empty state");
     await search.fill("");
 
+    await search.fill(monitorName);
+    const singlePause = page.getByRole("button", { name: `Temporarily pause ${monitorName}`, exact: true });
+    await clickUnique(singlePause, "Single monitor pause");
+    let pauseDialog = page.getByRole("dialog");
+    await assertVisible(pauseDialog.getByRole("heading", { name: "Pause monitoring", exact: true }), "Pause dialog");
+    await pauseDialog.getByLabel("Duration", { exact: true }).fill("2");
+    let pauseResponse = page.waitForResponse(
+      (response) => response.url().endsWith("/api/monitors/pause") && response.request().method() === "PATCH"
+    );
+    await clickUnique(pauseDialog.getByRole("button", { name: "Pause monitoring", exact: true }), "Confirm single pause");
+    assert.equal((await pauseResponse).status(), 200);
+    const singleResume = page.getByRole("button", { name: `Resume ${monitorName} now`, exact: true });
+    await assertVisible(singleResume, "Single monitor resume");
+    let resumeResponse = page.waitForResponse(
+      (response) => response.url().endsWith("/api/monitors/pause") && response.request().method() === "PATCH"
+    );
+    await clickUnique(singleResume, "Resume single monitor");
+    assert.equal((await resumeResponse).status(), 200);
+    await assertVisible(singlePause, "Single monitor pause after resume");
+
+    await search.fill(`UI pause fixture ${fixtureSuffix}`);
+    await assertVisible(page.locator("tbody").getByText(monitorName, { exact: true }), "First bulk pause fixture");
+    await assertVisible(page.locator("tbody").getByText(secondMonitorName, { exact: true }), "Second bulk pause fixture");
+    await clickUnique(page.getByRole("button", { name: "Select all", exact: true }), "Select pause fixtures");
+    await assertVisible(page.getByText("2 monitors selected", { exact: true }), "Bulk selection count");
+    await clickUnique(page.getByRole("button", { name: "Pause", exact: true }), "Bulk pause");
+    pauseDialog = page.getByRole("dialog");
+    await assertVisible(pauseDialog.getByText("2 monitors will be excluded from checks and current-state reporting until the selected time ends.", { exact: true }), "Bulk pause scope");
+    pauseResponse = page.waitForResponse(
+      (response) => response.url().endsWith("/api/monitors/pause") && response.request().method() === "PATCH"
+    );
+    await clickUnique(pauseDialog.getByRole("button", { name: "Pause monitoring", exact: true }), "Confirm bulk pause");
+    assert.equal((await pauseResponse).status(), 200);
+    const bulkResume = page.getByRole("button", { name: "Resume paused", exact: true });
+    await assertVisible(bulkResume, "Bulk resume");
+    resumeResponse = page.waitForResponse(
+      (response) => response.url().endsWith("/api/monitors/pause") && response.request().method() === "PATCH"
+    );
+    await clickUnique(bulkResume, "Resume paused monitors");
+    assert.equal((await resumeResponse).status(), 200);
+    await clickUnique(page.getByRole("button", { name: "Clear", exact: true }), "Clear pause fixture selection");
+
+    for (const retiredOperationLabel of [
+      "Operations",
+      "Active incidents",
+      "Maintenance & silences",
+      "Schedule maintenance",
+    ]) {
+      assert.equal(
+        await page.getByText(retiredOperationLabel, { exact: true }).count(),
+        0,
+        `${retiredOperationLabel} should not remain on Monitoring`
+      );
+    }
+
     await clickUnique(page.getByRole("button", { name: "Tools", exact: true }), "Monitor tools");
     await assertVisible(page.getByRole("heading", { name: "Monitor tools" }), "Monitor tools dialog");
-    await page.keyboard.press("Escape");
+    await clickUnique(page.getByRole("button", { name: "Monitoring as code", exact: true }), "Monitoring as Code");
+    const configDialog = page.getByRole("dialog");
+    await assertVisible(configDialog.getByRole("heading", { name: "Monitoring as Code" }), "Monitoring as Code dialog");
+    await assertEqualControlHeights(
+      configDialog.getByLabel("Format"),
+      configDialog.getByRole("button", { name: "Export bundle", exact: true }),
+      "Monitoring as Code export controls"
+    );
+    await assertDialogFooterInset(
+      configDialog,
+      configDialog.getByRole("button", { name: "Preview import", exact: true }),
+      "Monitoring as Code footer"
+    );
+    await clickUnique(
+      configDialog.locator('[data-slot="dialog-footer"]').getByRole("button", { name: "Close", exact: true }),
+      "Close Monitoring as Code"
+    );
     await clickUnique(page.getByRole("button", { name: "Add monitor", exact: true }), "Add monitor");
     const dialog = page.getByRole("dialog");
     await assertVisible(dialog.getByRole("heading", { name: "Create monitor" }), "Create monitor dialog");
     await clickUnique(dialog.getByRole("button", { name: "Cancel", exact: true }), "Cancel monitor creation");
-    return { search: true, emptyState: true, toolsDialog: true, createDialog: true };
+    return {
+      search: true,
+      emptyState: true,
+      singlePause: true,
+      bulkPause: true,
+      resume: true,
+      operationsRemoved: true,
+      toolsDialog: true,
+      configDialogLayout: true,
+      createDialog: true,
+    };
   } finally {
-    const deleteResponse = await page.request.delete(`/api/monitors/${monitorId}`);
-    assert.equal(deleteResponse.status(), 200, "Unable to clean up the UI monitor fixture");
+    for (const monitorId of monitorIds) {
+      const deleteResponse = await page.request.delete(`/api/monitors/${monitorId}`);
+      assert.equal(deleteResponse.status(), 200, "Unable to clean up the UI monitor fixture");
+    }
   }
 }
 
@@ -191,14 +325,35 @@ async function verifyDeliveryInteractions(page) {
 }
 
 async function verifyReportInteractions(page) {
-  await page.goto("/reports", { waitUntil: "domcontentloaded" });
-  const previewResponse = page.waitForResponse((response) => response.url().endsWith("/api/reports/preview"));
-  await clickUnique(page.getByRole("button", { name: "Generate preview", exact: true }), "Generate report preview");
-  assert.equal((await previewResponse).status(), 200);
-  await assertVisible(page.getByText("Report findings", { exact: true }), "Generated report preview");
-  await clickUnique(page.getByRole("button", { name: "Schedules", exact: true }), "Reports schedules tab");
-  await assertVisible(page.getByText("Scheduled report", { exact: true }), "Scheduled report builder");
-  return { preview: true, schedulesTab: true, reportSent: false };
+  const fixtureSuffix = Date.now().toString(36);
+  const fixtureResponse = await page.request.post("/api/monitors", {
+    data: {
+      ...buildUiMonitorPayload(`Report fixture ${fixtureSuffix}`),
+      url: `https://example.com/sentrovia-report-fixture?run=${fixtureSuffix}`,
+    },
+  });
+  assert.equal(fixtureResponse.status(), 201, "Unable to create the report UI fixture");
+  const monitorId = (await fixtureResponse.json()).monitor.id;
+
+  try {
+    await page.goto("/reports", { waitUntil: "domcontentloaded" });
+    if (!skipFontAssertions) {
+      await assertFontFamily(page.locator("body"), "IBM Plex Sans", "Reports UI font");
+    }
+    await clickUnique(page.getByRole("button", { name: "Preview", exact: true }), "Reports preview tab");
+    const generatePreview = page.getByRole("button", { name: "Generate preview", exact: true });
+    await assertVisible(generatePreview, "Generate report preview");
+    const previewResponse = page.waitForResponse((response) => response.url().endsWith("/api/reports/preview"));
+    await clickUnique(generatePreview, "Generate report preview");
+    assert.equal((await previewResponse).status(), 200);
+    await assertVisible(page.getByText("Report findings", { exact: true }), "Generated report preview");
+    await clickUnique(page.getByRole("button", { name: "Schedules", exact: true }), "Reports schedules tab");
+    await assertVisible(page.getByText("Scheduled report", { exact: true }), "Scheduled report builder");
+    return { preview: true, schedulesTab: true, reportSent: false };
+  } finally {
+    const deleteResponse = await page.request.delete(`/api/monitors/${monitorId}`);
+    assert.equal(deleteResponse.status(), 200, "Unable to clean up the report UI fixture");
+  }
 }
 
 async function verifyMemberInteractions(page) {
@@ -305,6 +460,33 @@ async function assertVisible(locator, label) {
   await locator.waitFor({ state: "visible", timeout: 10_000 });
   assert.equal(await locator.count(), 1, `${label} should resolve to one element`);
   assert.equal(await locator.isVisible(), true, `${label} should be visible`);
+}
+
+async function assertEqualControlHeights(first, second, label) {
+  const [firstBox, secondBox] = await Promise.all([first.boundingBox(), second.boundingBox()]);
+  assert(firstBox && secondBox, `${label} controls should have measurable bounds`);
+  assert(
+    Math.abs(firstBox.height - secondBox.height) < 0.5,
+    `${label} controls should have equal heights`
+  );
+}
+
+async function assertDialogFooterInset(dialog, footerButton, label) {
+  const [dialogBox, buttonBox] = await Promise.all([dialog.boundingBox(), footerButton.boundingBox()]);
+  assert(dialogBox && buttonBox, `${label} should have measurable bounds`);
+  assert(
+    dialogBox.y + dialogBox.height - (buttonBox.y + buttonBox.height) >= 12,
+    `${label} actions should not touch the dialog edge`
+  );
+}
+
+async function assertFontFamily(locator, expectedFamily, label) {
+  await locator.waitFor({ state: "visible", timeout: 10_000 });
+  await locator.page().evaluate(async () => {
+    await document.fonts.ready;
+  });
+  const fontFamily = await locator.evaluate((element) => getComputedStyle(element).fontFamily);
+  assert.match(fontFamily, new RegExp(expectedFamily, "i"), `${label} should use ${expectedFamily}; received ${fontFamily}`);
 }
 
 async function waitForApplication() {

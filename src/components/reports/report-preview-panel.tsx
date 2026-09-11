@@ -1,12 +1,10 @@
 import {
   Activity,
   Download,
-  Gauge,
   ScanLine,
   TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   formatMonitorAverageLatency,
   formatMonitorP95Latency,
@@ -40,14 +38,14 @@ export function ReportPreviewPanel({
 
 function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; onExportHtml: () => void }) {
   return (
-    <Card>
-      <CardHeader className="border-b bg-muted/20">
+    <section className="border-y">
+      <div className="border-b py-3">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <CardTitle>{report.title}</CardTitle>
-            <CardDescription>
+            <h2 className="text-base font-medium">{report.title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               {report.periodLabel} ({report.timeZone}) / {new Date(report.periodStartedAt).toLocaleString("en-GB", { timeZone: report.timeZone })} – {new Date(report.periodEndedAt).toLocaleString("en-GB", { timeZone: report.timeZone })}
-            </CardDescription>
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs text-muted-foreground">{report.templateLabel} / {report.workspaceName}</span>
@@ -56,24 +54,25 @@ function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; 
             </Button>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-5">
+      </div>
+      <div className="space-y-4 py-4">
         <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
-          <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} tone={healthScoreTone(report.summary.healthScore)} />
-          <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} tone="text-sky-600 dark:text-sky-400" />
+          <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} tone={report.summary.hasCompletedChecks ? healthScoreTone(report.summary.healthScore) : "text-muted-foreground"} />
+          <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} tone="text-muted-foreground" />
           <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={uptimeTone(report.summary.uptimePct, report.summary.hasCompletedChecks)} />
           <PreviewMetric label="P95 latency" value={formatReportP95Latency(report.summary)} detail={report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} avg` : "no latency samples"} tone={report.summary.hasLatencySamples ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"} />
           <PreviewMetric label="Failure events" value={String(report.summary.failureEvents)} detail="confirmed down checks" tone={riskCountTone(report.summary.failureEvents)} />
           <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failure events" tone={riskCountTone(report.summary.impactedMonitors)} />
           <PreviewMetric label="Failure rate" value={formatReportFailureRate(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={failureRateTone(report.summary.failureRatePct, report.summary.hasCompletedChecks)} />
         </dl>
-        <dl className="grid border-y md:grid-cols-3 md:divide-x">
+        <dl className="grid border-y md:grid-cols-4 md:divide-x">
           <StateChip tone="emerald" label="Up now" value={String(report.summary.currentlyUp)} />
           <StateChip tone="rose" label="Down now" value={String(report.summary.currentlyDown)} />
           <StateChip tone="amber" label="Pending now" value={String(report.summary.currentlyPending)} />
+          <StateChip tone="slate" label="Paused now" value={String(report.summary.currentlyPaused)} />
         </dl>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -106,13 +105,9 @@ function ReportWatchlists({ report }: { report: GeneratedReport }) {
 
 function FailingMonitorsCard({ report, maxFailureCount }: { report: GeneratedReport; maxFailureCount: number }) {
   return (
-    <Card className="overflow-hidden border-border/70">
-      <CardHeader className="border-b bg-muted/10">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <TriangleAlert className="size-4 text-rose-600 dark:text-rose-400" /> Top failing monitors
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="divide-y pt-4">
+    <section className="border-y py-4" aria-labelledby="failing-monitors-title">
+      <h3 id="failing-monitors-title" className="text-base font-medium">Top failing monitors</h3>
+      <div className="mt-3 divide-y">
         {report.failingMonitors.length === 0 ? (
           <p className="text-sm text-muted-foreground">No failures during the selected period.</p>
         ) : report.failingMonitors.map((monitor) => (
@@ -121,30 +116,31 @@ function FailingMonitorsCard({ report, maxFailureCount }: { report: GeneratedRep
               <div>
                 <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {monitor.lastFailureAt ? `Last failure ${new Date(monitor.lastFailureAt).toLocaleString()}` : "No timestamp recorded"}
+                  {monitor.lastFailureAt ? `Last failure ${formatReportDateTime(monitor.lastFailureAt, report.timeZone)}` : "No timestamp recorded"}
                 </p>
               </div>
               <span className="text-xs font-medium text-muted-foreground">{monitor.failures} failures</span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-rose-500" style={{ width: `${Math.max(10, (monitor.failures / maxFailureCount) * 100)}%` }} />
+              <div className="h-full rounded-full bg-rose-500" style={{ width: getFailureBarWidth(monitor.failures, maxFailureCount) }} />
             </div>
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
+}
+
+export function getFailureBarWidth(failures: number, maxFailureCount: number) {
+  if (failures <= 0 || maxFailureCount <= 0) return "0%";
+  return `${Math.min(100, (failures / maxFailureCount) * 100)}%`;
 }
 
 function LatencyWatchlistCard({ report }: { report: GeneratedReport }) {
   return (
-    <Card className="overflow-hidden border-border/70">
-      <CardHeader className="border-b bg-muted/10">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Gauge className="size-4 text-amber-600 dark:text-amber-400" /> Latency watchlist
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="divide-y pt-4">
+    <section className="border-y py-4" aria-labelledby="latency-watchlist-title">
+      <h3 id="latency-watchlist-title" className="text-base font-medium">Latency watchlist</h3>
+      <div className="mt-3 divide-y">
         {report.slowMonitors.length === 0 ? (
           <p className="text-sm text-muted-foreground">No latency samples for this period.</p>
         ) : report.slowMonitors.map((monitor) => (
@@ -155,8 +151,8 @@ function LatencyWatchlistCard({ report }: { report: GeneratedReport }) {
             </div>
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -178,7 +174,7 @@ function RecentFailures({ report }: { report: GeneratedReport }) {
               <div>
                 <p className="text-sm font-medium [overflow-wrap:anywhere]">{event.url}</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {new Date(event.createdAt).toLocaleString()} / HTTP {event.statusCode ?? "N/A"}
+                  {formatReportDateTime(event.createdAt, report.timeZone)} / HTTP {event.statusCode ?? "N/A"}
                 </p>
               </div>
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{event.detail}</p>
@@ -207,11 +203,13 @@ function MonitorBreakdown({ report }: { report: GeneratedReport }) {
                 <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{monitor.companyName ?? "No company"}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Status {monitor.status} / HTTP {monitor.currentStatusCode ?? "N/A"} / {monitor.failures} failures
+                  {monitor.pausedUntil
+                    ? `Paused until ${formatReportDateTime(monitor.pausedUntil, report.timeZone)}`
+                    : `Status ${monitor.status} / HTTP ${monitor.currentStatusCode ?? "N/A"}`} / {monitor.failures} failures
                 </p>
                 {monitor.lastErrorMessage ? <p className="mt-2 text-xs leading-5 text-destructive">{monitor.lastErrorMessage}</p> : null}
               </div>
-              <MonitorBreakdownMetrics monitor={monitor} />
+              <MonitorBreakdownMetrics monitor={monitor} timeZone={report.timeZone} />
             </div>
           </div>
         ))}
@@ -220,15 +218,25 @@ function MonitorBreakdown({ report }: { report: GeneratedReport }) {
   );
 }
 
-function MonitorBreakdownMetrics({ monitor }: { monitor: GeneratedReport["monitorBreakdown"][number] }) {
+function MonitorBreakdownMetrics({
+  monitor,
+  timeZone,
+}: {
+  monitor: GeneratedReport["monitorBreakdown"][number];
+  timeZone: string;
+}) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
       <span>Uptime {formatMonitorUptime(monitor)}</span>
       <span>Avg latency {formatMonitorAverageLatency(monitor)}</span>
       <span>P95 {formatMonitorP95Latency(monitor)}</span>
-      <span>Last checked {monitor.lastCheckedAt ? new Date(monitor.lastCheckedAt).toLocaleString() : "N/A"}</span>
+      <span>Last checked {monitor.lastCheckedAt ? formatReportDateTime(monitor.lastCheckedAt, timeZone) : "N/A"}</span>
     </div>
   );
+}
+
+function formatReportDateTime(value: string, timeZone: string) {
+  return new Date(value).toLocaleString("en-GB", { timeZone });
 }
 
 function PreviewMetric({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
@@ -257,7 +265,7 @@ function uptimeTone(uptimePct: number, hasCompletedChecks: boolean) {
 function riskCountTone(count: number) {
   return count > 0
     ? "text-rose-600 dark:text-rose-400"
-    : "text-emerald-600 dark:text-emerald-400";
+    : "text-muted-foreground";
 }
 
 function failureRateTone(rate: number, hasCompletedChecks: boolean) {
@@ -272,14 +280,14 @@ function StateChip({
   label,
   value,
 }: {
-  tone: "emerald" | "rose" | "amber";
+  tone: "emerald" | "rose" | "amber" | "slate";
   label: string;
   value: string;
 }) {
   return (
     <div className="border-b px-4 py-3 last:border-b-0 md:border-b-0">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-2 text-lg font-semibold", tone === "emerald" && "text-emerald-500", tone === "rose" && "text-rose-500", tone === "amber" && "text-amber-500")}>{value}</dd>
+      <dd className={cn("mt-2 text-lg font-semibold", value !== "0" && tone === "emerald" && "text-emerald-500", value !== "0" && tone === "rose" && "text-rose-500", value !== "0" && tone === "amber" && "text-amber-500", (value === "0" || tone === "slate") && "text-muted-foreground")}>{value}</dd>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { getWorkerState } from "@/lib/monitors/service";
 import { intervalToMs } from "@/lib/monitors/utils";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
+import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 
 const DASHBOARD_CACHE_TTL_MS = 20_000;
@@ -37,7 +38,8 @@ export async function getDashboardData(userId: string, workspaceId?: string) {
     : monitorRows;
 
   const total = scopedMonitorRows.length;
-  const activeRows = scopedMonitorRows.filter((monitor) => monitor.isActive);
+  const now = new Date();
+  const activeRows = scopedMonitorRows.filter((monitor) => monitor.isActive && !isMonitorTemporarilyPaused(monitor.pausedUntil, now));
   const [eventsSection, workerSection, deliverySection] = await Promise.all([
     loadDashboardSection(
       "recent events",
@@ -67,7 +69,7 @@ export async function getDashboardData(userId: string, workspaceId?: string) {
   const configuredNotifications = activeRows.filter((monitor) => monitor.notificationPref !== "none").length;
   const silentMonitors = active - configuredNotifications;
 
-  const companyHealth = buildCompanyHealth(scopedMonitorRows);
+  const companyHealth = buildCompanyHealth(scopedMonitorRows, now);
 
   return {
     summary: {
@@ -185,6 +187,7 @@ const DEFAULT_DASHBOARD_WORKER = {
 };
 
 type DashboardMonitorDatabaseRow = DashboardMonitorRow & {
+  pausedUntil: Date | null;
   notificationPref: string;
   intervalValue: number;
   intervalUnit: string;
@@ -206,6 +209,7 @@ async function getDashboardMonitors(
         companyId: monitors.companyId,
         company: monitors.company,
         isActive: monitors.isActive,
+        pausedUntil: monitors.pausedUntil,
         isFavorite: monitors.isFavorite,
         isCritical: monitors.isCritical,
         status: monitors.status,
@@ -251,7 +255,7 @@ async function getDashboardMonitors(
         .from(monitors)
         .where(and(eq(monitors.userId, userId), isNull(monitors.deletedAt)));
 
-      return legacyRows.map((monitor) => ({ ...monitor, isFavorite: false, isCritical: false }));
+      return legacyRows.map((monitor) => ({ ...monitor, pausedUntil: null, isFavorite: false, isCritical: false }));
     } catch (legacyError) {
       if (!isSchemaDriftError(legacyError)) {
         throw legacyError;
@@ -279,7 +283,7 @@ async function getDashboardMonitors(
         .from(monitors)
         .where(eq(monitors.userId, userId));
 
-      return rowsWithoutSoftDelete.map((monitor) => ({ ...monitor, isFavorite: false, isCritical: false }));
+      return rowsWithoutSoftDelete.map((monitor) => ({ ...monitor, pausedUntil: null, isFavorite: false, isCritical: false }));
     }
   }
 }
@@ -484,10 +488,11 @@ type CompanyHealthMonitor = {
   companyId: string | null;
   company: string | null;
   isActive: boolean;
+  pausedUntil: Date | string | null;
   status: string;
 };
 
-export function buildCompanyHealth(rows: CompanyHealthMonitor[]) {
+export function buildCompanyHealth(rows: CompanyHealthMonitor[], now = new Date()) {
   return Object.values(
     rows.reduce<Record<string, { id: string; name: string; total: number; active: number; paused: number; up: number; down: number; pending: number }>>(
       (groups, monitor) => {
@@ -505,7 +510,7 @@ export function buildCompanyHealth(rows: CompanyHealthMonitor[]) {
         const group = groups[key];
         group.total += 1;
 
-        if (!monitor.isActive) {
+        if (!monitor.isActive || isMonitorTemporarilyPaused(monitor.pausedUntil, now)) {
           group.paused += 1;
         } else {
           group.active += 1;

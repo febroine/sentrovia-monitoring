@@ -6,6 +6,9 @@ const reportScheduleCadenceSchema = z.enum(["weekly", "monthly"]);
 const reportTemplateSchema = z.enum(["executive", "operations", "client"]);
 const deliveryDetailLevelSchema = z.enum(["summary", "standard", "full"]);
 const companyIdSchema = z.string().trim().max(120).nullable().optional();
+const monitorIdSchema = z.string().trim().max(120).nullable().optional();
+const exclusionIdsSchema = z.array(z.string().trim().min(1).max(120)).max(100).default([]);
+const exclusionTagsSchema = z.array(z.string().trim().min(1).max(40)).max(100).default([]);
 const recipientEmailsSchema = z.array(z.string().trim().email()).min(1).max(25);
 const optionalTemplateStringSchema = z.string().trim().max(1000).nullable().optional();
 const optionalBrandNameSchema = z.string().trim().max(120).nullable().optional();
@@ -17,6 +20,7 @@ const reportPreviewShape = {
   cadence: reportCadenceSchema,
   template: reportTemplateSchema.default("operations"),
   companyId: companyIdSchema,
+  monitorId: monitorIdSchema,
   deliveryDetailLevel: deliveryDetailLevelSchema.default("standard"),
   includeOutageSummary: z.boolean().default(true),
   includeMonitorBreakdown: z.boolean().default(true),
@@ -31,6 +35,17 @@ const reportPreviewShape = {
 
 export const reportPreviewSchema = z.object(reportPreviewShape).superRefine(validateReportPeriod);
 
+export const reportAnalyticsQuerySchema = z.object({
+  monitorId: monitorIdSchema,
+  excludeMonitorIds: exclusionIdsSchema,
+  excludeTags: exclusionTagsSchema,
+  excludeCompanyIds: exclusionIdsSchema,
+  periodRange: reportPeriodRangeSchema.default("7d"),
+  periodStartedAt: optionalPeriodBoundarySchema,
+  periodEndedAt: optionalPeriodBoundarySchema,
+  timeZone: z.string().trim().min(1).max(80).optional(),
+}).superRefine(validateReportPeriod);
+
 export const reportScheduleSchema = z.object({
   ...reportPreviewShape,
   cadence: reportScheduleCadenceSchema,
@@ -38,7 +53,7 @@ export const reportScheduleSchema = z.object({
   recipientEmails: recipientEmailsSchema,
   isActive: z.boolean().default(true),
   nextRunAt: z.string().datetime().nullable().optional(),
-}).omit({ periodRange: true, periodStartedAt: true, periodEndedAt: true, timeZone: true });
+}).omit({ monitorId: true, periodRange: true, periodStartedAt: true, periodEndedAt: true, timeZone: true });
 
 export const reportSchedulePatchSchema = z.object({
   id: z.string().trim().min(1).optional(),

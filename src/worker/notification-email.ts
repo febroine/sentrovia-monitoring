@@ -34,7 +34,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
   <meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only">
   <style>@media only screen and (max-width:480px){.summary-cell{display:block!important;width:auto!important;border-left:0!important;border-top:1px solid #e2e8f0}.summary-cell:first-child{border-top:0!important}}</style>
 </head>
-<body style="margin:0;background:#f1f5f9;color:#0f172a;font-family:Arial,Helvetica,sans-serif;">
+<body style="margin:0;background:#f1f5f9;color:#0f172a;font-family:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(input.monitorTarget)} · ${escapeHtml(input.eventState)} · ${escapeHtml(input.status)}</div>
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f1f5f9" style="background:#f1f5f9;">
     <tr><td align="center" style="padding:32px 12px;">

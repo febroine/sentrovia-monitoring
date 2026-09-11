@@ -333,11 +333,9 @@ export default function MembersPageClient() {
 
       {error ? <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">{error}</div> : null}
 
-      <dl className="grid border-y md:grid-cols-3 md:divide-x">
-        <StatItem label="Visible members" value={String(totals.members)} />
-        <StatItem label="Admins" value={String(totals.admins)} />
-        <StatItem label="Departments" value={String(totals.departments)} />
-      </dl>
+      <p className="border-y py-3 text-sm text-muted-foreground">
+        {totals.members} member{totals.members === 1 ? "" : "s"} · {totals.admins} admin{totals.admins === 1 ? "" : "s"} · {totals.departments} department{totals.departments === 1 ? "" : "s"}
+      </p>
 
       {selectedIds.size > 0 ? (
         <div className="flex flex-col gap-3 border-l-2 border-sky-500 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
@@ -629,14 +627,6 @@ function CreateMemberDialog({
   );
 }
 
-function StatItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border-b px-4 py-4 last:border-b-0 md:border-b-0">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-2 text-2xl font-semibold tracking-tight">{value}</dd>
-    </div>
-  );
-}
 
 function RoleBadge({ role }: { role: MemberRole }) {
   const roleStyles: Record<MemberRole, string> = {

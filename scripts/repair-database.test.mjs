@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseOptions, resolveDatabaseUrl } from "./repair-database.mjs";
+import { findMissingRequiredTables, parseOptions, resolveDatabaseUrl } from "./repair-database.mjs";
 
 describe("database repair options", () => {
   it("supports a rollback-only dry run", () => {
@@ -26,5 +26,16 @@ describe("database repair connection settings", () => {
 
   it("rejects incomplete connection settings", () => {
     expect(resolveDatabaseUrl({ POSTGRES_USER: "postgres" })).toBeNull();
+  });
+});
+
+describe("database repair schema requirements", () => {
+  it("does not require retired operational tables", () => {
+    const missing = findMissingRequiredTables([]);
+
+    expect(missing).not.toContain("incident_updates");
+    expect(missing).not.toContain("maintenance_windows");
+    expect(missing).not.toContain("monitor_incidents");
+    expect(missing).toContain("monitors");
   });
 });

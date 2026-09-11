@@ -58,9 +58,9 @@ const accentClasses: Record<
     hoverBar: 'group-hover:bg-rose-500/25',
   },
   violet: {
-    activeIcon: 'text-violet-600 dark:text-violet-300',
-    activeBar: 'bg-violet-500/95',
-    hoverBar: 'group-hover:bg-violet-500/25',
+    activeIcon: 'text-emerald-600 dark:text-emerald-300',
+    activeBar: 'bg-emerald-500/95',
+    hoverBar: 'group-hover:bg-emerald-500/25',
   },
   slate: {
     activeIcon: 'text-slate-500 dark:text-slate-300',

@@ -3,6 +3,8 @@ import {
   assertReportScheduleCompanyAvailable,
   buildReportMessage,
   calculateReportSummaryMetrics,
+  completeDailyMetrics,
+  isReportMonitorExcluded,
   normalizeReportStatus,
   normalizeReportScheduleStatus,
   normalizeReportScheduleCadence,
@@ -10,6 +12,7 @@ import {
   resolveReportPeriod,
   resolveReportTitle,
   scheduleNextRunAfter,
+  summarizeCurrentMonitorStates,
 } from "@/lib/reports/service";
 import type { GeneratedReport } from "@/lib/reports/types";
 
@@ -22,6 +25,29 @@ describe("normalizeReportStatus", () => {
 
   it("treats unknown legacy status values as pending", () => {
     expect(normalizeReportStatus("unknown")).toBe("pending");
+  });
+});
+
+describe("summarizeCurrentMonitorStates", () => {
+  it("excludes paused monitors from live health totals", () => {
+    expect(summarizeCurrentMonitorStates([
+      { status: "up", temporarilyPaused: false },
+      { status: "down", temporarilyPaused: true },
+      { status: "pending", temporarilyPaused: false },
+    ])).toEqual({ currentlyUp: 1, currentlyDown: 0, currentlyPending: 1, currentlyPaused: 1 });
+  });
+});
+
+describe("report monitor exclusions", () => {
+  const monitor = { id: "monitor-1", companyId: "company-1", tags: ["Production", "API"] };
+
+  it.each([
+    [{ excludeMonitorIds: ["monitor-1"] }, true],
+    [{ excludeCompanyIds: ["company-1"] }, true],
+    [{ excludeTags: ["production"] }, true],
+    [{ excludeMonitorIds: ["monitor-2"], excludeTags: ["staging"] }, false],
+  ])("applies monitor, company, and case-insensitive tag exclusions", (input, expected) => {
+    expect(isReportMonitorExcluded(monitor, input)).toBe(expected);
   });
 });
 
@@ -104,6 +130,8 @@ describe("resolveReportPeriod", () => {
     expect(period.endedAt.toISOString()).toBe("2026-08-05T21:00:00.000Z");
     expect(period.timeZone).toBe("Europe/Istanbul");
     expect(period.label).toContain("2 Aug 2026");
+    expect(period.label).toContain("5 Aug 2026");
+    expect(period.label).not.toContain("6 Aug 2026");
   });
 });
 
@@ -174,6 +202,23 @@ describe("report failure statistics", () => {
   });
 });
 
+describe("daily report metrics", () => {
+  it("keeps missing days explicit without inventing latency samples", () => {
+    const metrics = completeDailyMetrics([
+      { date: "2026-09-05", totalChecks: 10, upChecks: 9, downChecks: 1, latencySamples: 10, averageLatencyMs: 120, p95LatencyMs: 220 },
+      { date: "2026-09-07", totalChecks: 10, upChecks: 10, downChecks: 0, latencySamples: 0, averageLatencyMs: null, p95LatencyMs: null },
+    ], {
+      startedAt: new Date("2026-09-05T00:00:00.000Z"),
+      endedAt: new Date("2026-09-08T00:00:00.000Z"),
+      timeZone: "UTC",
+    });
+
+    expect(metrics).toHaveLength(3);
+    expect(metrics[1]).toMatchObject({ date: "2026-09-06", totalChecks: 0, latencySamples: 0, p95LatencyMs: null });
+    expect(metrics[2]).toMatchObject({ date: "2026-09-07", totalChecks: 10, p95LatencyMs: null });
+  });
+});
+
 describe("report schedule company availability", () => {
   it("rejects company schedules whose company was deleted", () => {
     expect(() => assertReportScheduleCompanyAvailable("company", null)).toThrow(
@@ -207,6 +252,8 @@ describe("report email branding", () => {
     expect(message.htmlBody).toContain('name="color-scheme" content="light"');
     expect(message.htmlBody).toContain("[data-ogsc]");
     expect(message.htmlBody).toContain('bgcolor="#ffffff"');
+    expect(message.htmlBody).toContain("font-family:'IBM Plex Sans'");
+    expect(message.htmlBody).not.toMatch(/Arial|Helvetica/);
   });
 
   it("replaces the complete email subject with the user's template", () => {
@@ -231,6 +278,8 @@ function buildReport(): GeneratedReport {
     template: "operations",
     companyId: null,
     companyName: null,
+    monitorId: null,
+    monitorName: null,
     workspaceName: "Acme Reliability",
     brandName: "Acme Reliability",
     templateLabel: "Operations Report",
@@ -244,6 +293,7 @@ function buildReport(): GeneratedReport {
       currentlyUp: 4,
       currentlyDown: 0,
       currentlyPending: 0,
+      currentlyPaused: 0,
       totalChecks: 1000,
       upChecks: 999,
       downChecks: 1,
@@ -261,6 +311,7 @@ function buildReport(): GeneratedReport {
     },
     recommendations: ["No immediate operational action is required."],
     statusCodes: [{ statusCode: 200, count: 999 }],
+    dailyMetrics: [],
     slowMonitors: [],
     failingMonitors: [],
     recentFailures: [],
