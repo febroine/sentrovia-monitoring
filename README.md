@@ -1,4 +1,6 @@
-# Sentrovia
+<p align="center">
+  <img src="public/sentrovia-wordmark.png" alt="Sentrovia" width="360">
+</p>
 
 <p align="center">
   <strong>Verify outages before they become alerts.</strong><br>
@@ -28,10 +30,6 @@
 </p>
 
 <p align="center"><sub>Current product walkthrough recorded from the Docker stack with synthetic example data.</sub></p>
-
-## Current Release
-
-**v0.1.0** is the current public baseline. It includes the redesigned application shell and digital-observatory sign-in experience, verified HTTP/TCP/Ping/PostgreSQL/heartbeat monitoring, workspace roles, public status pages, English and Turkish notification content, customizable email templates, delivery auditing, reliability reports, encrypted backups, and Docker or native Windows deployment.
 
 ## Why Sentrovia?
 
