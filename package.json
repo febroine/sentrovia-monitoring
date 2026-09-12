@@ -1,6 +1,6 @@
 {
   "name": "sentrovia",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Self-hosted uptime monitoring for websites, APIs, TCP ports, PostgreSQL, and cron jobs with verified alerts, evidence, and public status pages.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
