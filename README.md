@@ -29,6 +29,10 @@
 
 <p align="center"><sub>Current product walkthrough recorded from the Docker stack with synthetic example data.</sub></p>
 
+## Current Release
+
+**v0.1.0** is the current public baseline. It includes the redesigned application shell and digital-observatory sign-in experience, verified HTTP/TCP/Ping/PostgreSQL/heartbeat monitoring, workspace roles, public status pages, English and Turkish notification content, customizable email templates, delivery auditing, reliability reports, encrypted backups, and Docker or native Windows deployment.
+
 ## Why Sentrovia?
 
 Most uptime monitoring tools treat a single failed request as an outage. Sentrovia verifies failures first, checks whether the monitoring server itself has lost internet access, and records evidence before notifying your team.
@@ -36,7 +40,7 @@ Most uptime monitoring tools treat a single failed request as an outage. Sentrov
 - **Fewer false alarms:** retries, verification mode, and a final confirmation probe protect against transient failures.
 - **Evidence you can inspect:** HTTP-style outages can include screenshots, diagnostics, timelines, and response details.
 - **Delivery you can audit:** email, Telegram, Discord, and generic webhooks have bounded retries and visible outcomes.
-- **Operations at a glance:** the live dashboard combines fleet health, focused monitors, incidents, delivery outcomes, and worker status.
+- **Operations at a glance:** the live dashboard combines fleet health, focused monitors, verified events, delivery outcomes, and worker status.
 - **Data ownership:** run the complete stack on your infrastructure with Docker Compose or native Windows services.
 - **Workspace isolation:** role-based access protects monitors, status pages, reports, delivery history, and settings.
 
@@ -109,7 +113,7 @@ For production Docker settings, native Windows installation with NSSM, safe upda
 
 ## Demo Workspace
 
-You can create an isolated workspace with synthetic companies, monitors, thirty days of check history, incidents, delivery attempts, a report schedule, and a public status page. The monitor targets use reserved `.example` addresses and their next checks are deliberately parked in the future, so the worker does not contact them.
+You can create an isolated workspace with synthetic companies, monitors, thirty days of check history, outage events, delivery attempts, a report schedule, and a public status page. The monitor targets use reserved `.example` addresses and their next checks are deliberately parked in the future, so the worker does not contact them.
 
 Choose a unique identifier containing at least eight letters or numbers. The create command prints temporary sign-in credentials and the public status page URL:
 
@@ -226,7 +230,7 @@ The screenshot integration tests require the Playwright Chromium revision used b
 npx playwright install chromium
 ```
 
-Run the suite from a Git clone. The Windows update-safety tests compare the cleanup manifest with Git's tracked and deleted paths, so source archives without `.git` cannot execute those assertions.
+Run the complete suite from a Git clone when possible. Source archives without `.git` skip only the history-dependent Windows cleanup assertion; filesystem safety checks and the rest of the suite still run.
 
 The isolated dynamic test suite covers authenticated routes, API boundaries, core UI interactions, responsive overflow, reports, status pages, and notification previews. See [dynamic E2E test cases](docs/dynamic-e2e-test-cases.md).
 
