@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1280, initial-scale=1">
+    <title>Sentrovia social preview</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1280px; height: 640px; margin: 0; overflow: hidden; }
+      body {
+        position: relative;
+        background: #070b12;
+        color: #f8fafc;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      }
+      body::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 1px solid #17202d;
+        pointer-events: none;
+      }
+      .copy {
+        position: absolute;
+        top: 58px;
+        left: 64px;
+        width: 362px;
+      }
+      .wordmark { display: block; width: 286px; height: auto; }
+      h1 {
+        margin: 62px 0 0;
+        max-width: 350px;
+        font-size: 42px;
+        font-weight: 560;
+        line-height: 1.08;
+        letter-spacing: -.028em;
+      }
+      .summary {
+        margin: 26px 0 0;
+        max-width: 350px;
+        color: #aab5c4;
+        font-size: 18px;
+        line-height: 1.5;
+      }
+      .checks {
+        position: absolute;
+        left: 64px;
+        bottom: 54px;
+        margin: 0;
+        color: #94a3b8;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: .01em;
+      }
+      .checks strong { color: #43d7c4; font-weight: 600; }
+      .preview {
+        position: absolute;
+        top: 72px;
+        right: 56px;
+        width: 744px;
+        height: 474px;
+        margin: 0;
+        padding: 11px;
+        overflow: hidden;
+        border: 1px solid #293548;
+        border-radius: 7px;
+        background: #0b111b;
+      }
+      .preview img {
+        display: block;
+        width: 720px;
+        height: 450px;
+        object-fit: contain;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="copy" aria-label="Sentrovia overview">
+        <img class="wordmark" src="../public/sentrovia-wordmark.png" alt="Sentrovia">
+        <h1>Verify failures before they become alerts.</h1>
+        <p class="summary">Monitor services, keep outage evidence, and audit every notification from infrastructure you control.</p>
+      </section>
+      <p class="checks"><strong>HTTP</strong> · API · TCP · Ping · PostgreSQL · Heartbeats</p>
+      <figure class="preview">
+        <img src="../docs/screenshots/demo-frames/01-dashboard.png" alt="Sentrovia dashboard">
+      </figure>
+    </main>
+  </body>
+</html>

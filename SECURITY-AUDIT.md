@@ -1,4 +1,6 @@
-# Sentrovia Pre-Production Security Audit
+# Historical Sentrovia Security Audit — 25 August 2026
+
+> This is a point-in-time assessment of the local working tree reviewed on 25 August 2026. It is retained as historical engineering context, not as the current vulnerability or remediation status. Use [SECURITY.md](SECURITY.md) for supported versions and private reporting, and consult the current release and source before relying on any finding below.
 
 **Assessment date:** 25 August 2026  
 **Assessment target:** current local working tree  

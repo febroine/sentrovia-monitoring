@@ -11,24 +11,39 @@ Requirements:
 - PostgreSQL 16 for database-backed development;
 - Playwright Chromium when testing screenshot capture.
 
-Install dependencies and run the application:
+Clone the repository and install the locked dependencies:
 
 ```bash
 npm ci
+```
+
+Create a private `.env.local` from `.env.example`, replace the placeholder secrets, and configure either `DATABASE_URL` or the `POSTGRES_*` values for a PostgreSQL 16 database. Never reuse example credentials outside local development.
+
+Apply the schema and start the web console:
+
+```bash
 npm run db:sync
 npm run dev
 ```
 
-Use a private local environment file based on `.env.example`. Never commit real credentials, monitored internal URLs, database dumps, screenshots containing customer data, or exported workspace bundles.
+Start the monitoring worker in another terminal:
+
+```bash
+npm run worker:dev
+```
+
+Never commit real credentials, monitored internal URLs, database dumps, screenshots containing customer data, or exported workspace bundles.
 
 ## Before opening a pull request
 
 Run the same checks used by CI:
 
 ```bash
+npx playwright install chromium
 npm test
 npm run lint
 npm run typecheck
+npm run benchmark:scale
 npm run build
 ```
 

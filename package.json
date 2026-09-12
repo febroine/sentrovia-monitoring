@@ -1,7 +1,7 @@
 {
   "name": "sentrovia",
   "version": "0.1.0",
-  "description": "Self-hosted uptime monitoring that verifies outages before alerting, with HTTP, TCP, Ping, PostgreSQL, evidence, and Windows deployment.",
+  "description": "Self-hosted uptime monitoring for websites, APIs, TCP ports, PostgreSQL, and cron jobs with verified alerts, evidence, and public status pages.",
   "private": true,
   "homepage": "https://github.com/febroine/sentrovia-monitoring",
   "bugs": {

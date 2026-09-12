@@ -1,13 +1,13 @@
-name: Bug report
-description: Report a reproducible Sentrovia problem.
-title: "[Bug]: "
+name: Setup or usage question
+description: Ask for help installing, configuring, or operating Sentrovia.
+title: "[Question]: "
 labels:
-  - bug
+  - question
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Sentrovia. Remove credentials, tokens, cookies, private URLs, customer data, and database contents before submitting.
+        Share only sanitized configuration and logs. Never include secrets, cookies, tokens, private monitor URLs, SMTP credentials, webhook URLs, or customer data.
   - type: input
     id: version
     attributes:
@@ -29,36 +29,26 @@ body:
     validations:
       required: true
   - type: textarea
-    id: problem
+    id: question
     attributes:
-      label: Problem
-      description: Describe what happened and what you expected instead.
-    validations:
-      required: true
-  - type: textarea
-    id: reproduction
-    attributes:
-      label: Reproduction steps
-      placeholder: |
-        1. Create a monitor with...
-        2. Run the worker...
-        3. Observe...
+      label: What do you need help with?
+      description: Explain the goal, what you tried, and where the documented path stopped working.
     validations:
       required: true
   - type: textarea
     id: diagnostics
     attributes:
       label: Sanitized diagnostics
-      description: Add relevant logs, screenshots, browser details, or container status. Redact all sensitive values.
+      description: Add relevant logs or configuration with every sensitive value removed.
       render: shell
   - type: checkboxes
     id: checks
     attributes:
       label: Submission checks
       options:
-        - label: I searched existing issues for the same problem.
+        - label: I checked the README and deployment guide first.
           required: true
-        - label: I removed secrets, private addresses, and customer data.
+        - label: I removed all secrets, private addresses, and customer data.
           required: true
         - label: This is not a security vulnerability.
           required: true
