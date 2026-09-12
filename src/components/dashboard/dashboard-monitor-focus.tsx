@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, Flag, Star } from "lucide-react";
+import Link from "next/link";
+import { Activity, ArrowUpRight, ChevronLeft, ChevronRight, ExternalLink, Flag, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DashboardData } from "@/lib/dashboard/service";
 
@@ -57,11 +58,12 @@ export function DashboardMonitorFocus({
   }
 
   return (
-    <section className="border-t py-4">
-      <header className="pb-3">
+    <section className="h-full rounded-lg bg-card p-4 shadow-sm sm:p-5">
+      <header>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base">{title}</h2>
+            <h2 className="text-base font-medium">{title}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Your focused view of active services.</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs tabular-nums text-muted-foreground">{monitors.length} monitors</span>
@@ -92,21 +94,33 @@ export function DashboardMonitorFocus({
           </div>
         </div>
       </header>
-      <div>
+      <div className="mt-5">
         {monitors.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+          <div className="flex min-h-28 items-center gap-3 rounded-md bg-background/35 p-4">
+            <Activity className="size-5 shrink-0 text-primary" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Your monitor view is ready.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{emptyMessage}</p>
+              {focus === "all" ? (
+                <Link className="mt-3 inline-flex text-xs font-medium text-primary underline-offset-4 hover:underline" href="/monitoring">
+                  Open monitors
+                  <ArrowUpRight className="ml-1 size-3.5" aria-hidden="true" />
+                </Link>
+              ) : null}
+            </div>
+          </div>
         ) : (
           <div
             ref={railRef}
             tabIndex={0}
             role="region"
             aria-label={`${title} list`}
-            className="flex snap-x snap-mandatory overflow-x-auto border-y outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="flex snap-x snap-mandatory overflow-x-auto rounded-md bg-background/20 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {monitors.map((monitor) => (
               <div
                 key={monitor.id}
-                className="min-w-[min(19rem,calc(100vw-4.5rem))] snap-start border-r last:border-r-0 md:min-w-80 xl:min-w-88"
+                className="min-w-[min(19rem,calc(100vw-4.5rem))] snap-start bg-background/35 md:min-w-80 xl:min-w-88"
               >
                 <MonitorFocusRow monitor={monitor} pending={pendingId === monitor.id} onFlag={onFlag} />
               </div>

@@ -27,6 +27,7 @@ import {
   ROLE_LABELS,
   USER_ROLES,
 } from "@/lib/auth/permissions";
+import { formatPanelDateTime } from "@/lib/time";
 
 type MemberRole = MemberRecord["role"];
 type MemberRoleFilter = "all" | MemberRole;
@@ -293,9 +294,11 @@ export default function MembersPageClient() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-5">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-baseline gap-2.5">
             <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
-            <span className="text-xs tabular-nums text-muted-foreground">{members.length} total</span>
+            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-muted-foreground">
+              {members.length} total
+            </span>
           </div>
           <p className="text-sm text-muted-foreground">
             {canManageMembers
@@ -309,7 +312,7 @@ export default function MembersPageClient() {
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search members" className="pl-9" />
             </div>
-            <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-md border border-border/70 bg-muted/20 p-1" aria-label="Filter members by role">
+            <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-md bg-muted/20 p-1" aria-label="Filter members by role">
               <RoleFilterButton active={roleFilter === "all"} onClick={() => setRoleFilter("all")}>All</RoleFilterButton>
               <RoleFilterButton active={roleFilter === "admin"} onClick={() => setRoleFilter("admin")}>Admins</RoleFilterButton>
               <RoleFilterButton active={roleFilter === "manager"} onClick={() => setRoleFilter("manager")}>Managers</RoleFilterButton>
@@ -331,14 +334,14 @@ export default function MembersPageClient() {
         </div>
       </header>
 
-      {error ? <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">{error}</div> : null}
+      {error ? <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
 
-      <p className="border-y py-3 text-sm text-muted-foreground">
+      <p className="rounded-md bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
         {totals.members} member{totals.members === 1 ? "" : "s"} · {totals.admins} admin{totals.admins === 1 ? "" : "s"} · {totals.departments} department{totals.departments === 1 ? "" : "s"}
       </p>
 
       {selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 border-l-2 border-sky-500 bg-sky-500/5 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-md bg-sky-500/10 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} member selected</p>
             {!canManageMembers ? <p className="text-xs text-muted-foreground">Only your account can be changed.</p> : null}
@@ -359,7 +362,7 @@ export default function MembersPageClient() {
         </div>
       ) : null}
 
-      <Card className="gap-0 overflow-hidden border-border/80 py-0">
+      <Card className="gap-0 overflow-hidden py-0">
         <CardContent className="p-0">
           <Table className="min-w-[820px]">
             <TableHeader>
@@ -399,7 +402,7 @@ export default function MembersPageClient() {
               ) : null}
               {!loading ? filtered.map((member) => (
                 <TableRow key={member.id} className={selectedIds.has(member.id) ? "bg-sky-500/5" : "hover:bg-muted/10"}>
-                  <TableCell className="pl-4 align-top pt-4">
+                  <TableCell className="pl-4 align-middle py-3.5">
                     <button
                       type="button"
                       onClick={() => toggleSelect(member)}
@@ -412,13 +415,13 @@ export default function MembersPageClient() {
                   </TableCell>
                   <TableCell className="align-top py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/10 text-xs font-semibold text-sky-700 dark:text-sky-300">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-xs font-semibold text-sky-700 dark:text-sky-300">
                         {getMemberInitials(member)}
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">{member.firstName} {member.lastName}</p>
-                          {member.id === currentUserId ? <Badge variant="outline" className="h-5 border-sky-500/30 px-1.5 text-[10px] text-sky-600 dark:text-sky-400">You</Badge> : null}
+                          {member.id === currentUserId ? <Badge variant="outline" className="h-5 bg-sky-500/10 px-1.5 text-[10px] text-sky-600 dark:text-sky-400">You</Badge> : null}
                         </div>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           <span className="truncate">{member.email}</span>
@@ -427,19 +430,19 @@ export default function MembersPageClient() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="align-top py-3.5"><RoleBadge role={member.role} /></TableCell>
-                  <TableCell className="align-top py-3.5">
+                  <TableCell className="align-middle py-3.5"><RoleBadge role={member.role} /></TableCell>
+                  <TableCell className="align-middle py-3.5">
                     <span className="font-mono text-xs text-muted-foreground">{member.username ? `@${member.username}` : "--"}</span>
                   </TableCell>
-                  <TableCell className="align-top py-3.5">
+                  <TableCell className="align-middle py-3.5">
                     <span className="text-sm text-muted-foreground">{member.department ?? "Unassigned"}</span>
                   </TableCell>
-                  <TableCell className="align-top py-3.5">
+                  <TableCell className="align-middle py-3.5">
                     <time dateTime={member.createdAt} className="text-xs text-muted-foreground">
                       {formatMemberDate(member.createdAt)}
                     </time>
                   </TableCell>
-                  <TableCell className="align-top pr-4 pt-3.5 text-right md:pr-6">
+                  <TableCell className="align-middle py-3.5 pr-4 text-right md:pr-6">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon-sm" aria-label={`Edit ${member.firstName} ${member.lastName}`} title="Edit member" onClick={() => openEdit(member)} disabled={!canSelectMember(member)}>
                         <Pencil className="size-4" />
@@ -520,15 +523,15 @@ export default function MembersPageClient() {
           <DialogHeader>
             <DialogTitle>Delete member{deleteTargets.length === 1 ? "" : "s"}?</DialogTitle>
             <DialogDescription>
-              This action permanently removes the selected account{deleteTargets.length === 1 ? "" : "s"} and related workspace data.
+              This action removes the selected account{deleteTargets.length === 1 ? "" : "s"} from this workspace. Shared workspace data is preserved.
               {deleteIncludesCurrentUser ? " Your current session will be closed immediately after deletion." : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3 border-l-2 border-destructive bg-destructive/5 p-4">
+          <div className="flex flex-col gap-3 rounded-md bg-destructive/10 p-4">
             <p className="text-sm font-medium text-destructive">Please confirm before continuing.</p>
             <div className="flex flex-col gap-2 text-sm text-muted-foreground">
               {deleteTargets.map((member) => (
-                <div key={member.id} className="flex min-w-0 flex-col gap-1 border-b py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <div key={member.id} className="flex min-w-0 flex-col gap-1 rounded-md bg-background/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <span className="font-medium text-foreground">
                     {member.firstName} {member.lastName}
                     {member.id === currentUserId ? " (you)" : ""}
@@ -630,10 +633,10 @@ function CreateMemberDialog({
 
 function RoleBadge({ role }: { role: MemberRole }) {
   const roleStyles: Record<MemberRole, string> = {
-    admin: "border-violet-500/30 text-violet-700 dark:text-violet-300",
-    manager: "border-sky-500/30 text-sky-700 dark:text-sky-300",
-    operator: "border-emerald-500/30 text-emerald-700 dark:text-emerald-300",
-    viewer: "border-border/70 text-muted-foreground",
+    admin: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+    manager: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    operator: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    viewer: "bg-muted/30 text-muted-foreground",
   };
   return (
     <Badge
@@ -659,7 +662,7 @@ function RoleFilterButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      className={`shrink-0 rounded-md px-2.5 py-1 text-xs leading-none font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         active ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
       }`}
     >
@@ -674,15 +677,12 @@ function getMemberInitials(member: MemberRecord) {
 }
 
 function formatMemberDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "--"
-    : date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return formatPanelDateTime(value, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <Label>{label}</Label>
       {children}
     </div>

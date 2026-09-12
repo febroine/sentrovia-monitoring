@@ -57,7 +57,7 @@ export function StatusPageRefresh() {
       title="Refresh status now"
       variant="ghost"
     >
-      <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
+      <RefreshCw data-icon="inline-start" className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
       <span>{isPending ? "Refreshing" : `Refresh in ${secondsRemaining}s`}</span>
     </Button>
   );

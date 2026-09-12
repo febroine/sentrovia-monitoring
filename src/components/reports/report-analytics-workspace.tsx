@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { formatPanelDateTime } from "@/lib/time";
 import {
   formatMonitorAverageLatency,
   formatMonitorP95Latency,
@@ -149,17 +150,17 @@ export function ReportAnalyticsWorkspace() {
       ) : null}
 
       {notice ? (
-        <p role="status" className="border-y border-sky-700/40 py-3 text-sm text-sky-800 dark:text-sky-300">{notice}</p>
+        <p role="status" className="rounded-md bg-sky-500/10 px-4 py-3 text-sm text-sky-800 dark:text-sky-300">{notice}</p>
       ) : null}
 
       {error ? (
-        <div role="alert" className="flex flex-col gap-3 border-y border-destructive/50 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div role="alert" className="flex flex-col gap-3 rounded-md bg-destructive/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-destructive">{error}</p>
           <Button variant="outline" size="sm" onClick={() => void loadAnalytics(filters)}>Retry</Button>
         </div>
       ) : null}
 
-      {!report && loading ? <p role="status" className="border-y py-8 text-sm text-muted-foreground">Loading reliability analytics…</p> : null}
+      {!report && loading ? <p role="status" className="rounded-md bg-muted/20 px-4 py-8 text-sm text-muted-foreground">Loading reliability analytics…</p> : null}
       {!loading && !error && !hasMonitors ? <NoMonitorsAnalytics /> : null}
       {report && hasMonitors ? <AnalyticsReport report={report} filters={appliedFilters} refreshing={loading} /> : null}
     </div>
@@ -207,9 +208,9 @@ function AnalyticsFilters({
   }
 
   return (
-    <section className="border-y bg-surface-low px-3 py-4 sm:px-4" aria-label="Reliability analytics filters">
+    <section className="rounded-lg bg-surface-low px-3 py-4 shadow-sm sm:px-4" aria-label="Reliability analytics filters">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[180px_minmax(240px,1fr)_160px_160px_auto]">
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <Label htmlFor="analytics-period">Period</Label>
           <Select value={filters.periodRange} onValueChange={(value) => onChange({ ...filters, periodRange: value as ReportPeriodRange })}>
             <SelectTrigger id="analytics-period"><SelectValue /></SelectTrigger>
@@ -220,7 +221,7 @@ function AnalyticsFilters({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <Label htmlFor="analytics-monitor">Monitor</Label>
           <Select value={filters.monitorId} onValueChange={(value) => onChange({ ...filters, monitorId: String(value) })}>
             <SelectTrigger id="analytics-monitor"><SelectValue placeholder="All monitors" /></SelectTrigger>
@@ -234,11 +235,11 @@ function AnalyticsFilters({
         </div>
         {filters.periodRange === "custom" ? (
           <>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="analytics-from">From</Label>
               <Input id="analytics-from" type="date" value={filters.startedAt} aria-invalid={invalidRange} aria-describedby={invalidRange ? "analytics-range-error" : undefined} onChange={(event) => onChange({ ...filters, startedAt: event.target.value })} />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="analytics-through">Through</Label>
               <Input id="analytics-through" type="date" min={filters.startedAt || undefined} value={filters.endedAt} aria-invalid={invalidRange} aria-describedby={invalidRange ? "analytics-range-error" : undefined} onChange={(event) => onChange({ ...filters, endedAt: event.target.value })} />
             </div>
@@ -248,14 +249,14 @@ function AnalyticsFilters({
         )}
         <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1">
           <Button onClick={onApply} disabled={loading || invalidRange}>
-            <RefreshCw className={cn("mr-2 size-4", loading && "animate-spin motion-reduce:animate-none")} />
+            <RefreshCw data-icon="inline-start" className={cn("size-4", loading && "animate-spin motion-reduce:animate-none")} />
             {loading ? "Refreshing" : "Refresh"}
           </Button>
           <Button variant="ghost" onClick={onReset} disabled={loading}>Reset</Button>
         </div>
       </div>
       {invalidRange ? <p id="analytics-range-error" className="mt-2 text-xs text-destructive">Choose both dates, with the start on or before the end date.</p> : null}
-      <div className="mt-4 border-t pt-3">
+      <div className="mt-4 rounded-md bg-muted/20 p-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-md">
             <p className="text-sm font-medium">Exclude from analytics</p>
@@ -284,7 +285,7 @@ function AnalyticsFilters({
           </div>
         </div>
         {exclusionCount > 0 ? (
-          <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3 text-xs">
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-background/30 px-3 py-2 text-xs">
             <p className="text-muted-foreground">{formatExclusionSummary(filters)}. Changes apply when you refresh.</p>
             <button
               type="button"
@@ -302,7 +303,7 @@ function AnalyticsFilters({
 
 function NoMonitorsAnalytics() {
   return (
-    <section className="border-y py-6" aria-labelledby="analytics-no-monitors-title">
+    <section className="rounded-lg bg-card/45 p-6" aria-labelledby="analytics-no-monitors-title">
       <h2 id="analytics-no-monitors-title" className="text-base font-medium">Add a monitor to view reliability analytics</h2>
       <p className="mt-1 text-sm text-muted-foreground">Analytics becomes available after a monitor has recorded checks.</p>
       <Link className="mt-3 inline-flex text-sm font-medium text-primary underline underline-offset-4" href="/monitoring">Go to monitoring</Link>
@@ -326,14 +327,14 @@ function ExclusionPicker({
   const limitReached = selected.length >= MAX_EXCLUSIONS_PER_GROUP;
   return (
     <details className="group relative">
-      <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 rounded-md bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <span>Exclude {label.toLocaleLowerCase()}</span>
         <span className="text-xs tabular-nums text-muted-foreground">{selected.length || "None"}</span>
       </summary>
-      <div className="mt-1 border bg-background p-2 sm:absolute sm:right-0 sm:z-20 sm:w-80">
+      <div className="mt-1 rounded-md bg-background p-2 shadow-lg sm:absolute sm:right-0 sm:z-20 sm:w-80">
         <fieldset>
           <legend className="sr-only">{`Exclude ${label.toLocaleLowerCase()} from analytics`}</legend>
-          <div className="max-h-56 divide-y overflow-y-auto">
+          <div className="max-h-56 grid gap-1 overflow-y-auto">
             {options.length === 0 ? (
               <p className="px-2 py-3 text-xs text-muted-foreground">No {label.toLocaleLowerCase()} available.</p>
             ) : options.map((option) => {
@@ -361,7 +362,7 @@ function ExclusionPicker({
               );
             })}
           </div>
-          {limitReached ? <p className="border-t px-2 pt-2 text-xs text-muted-foreground">Maximum {MAX_EXCLUSIONS_PER_GROUP} selections reached.</p> : null}
+          {limitReached ? <p className="rounded-md bg-muted/25 px-2 py-2 text-xs text-muted-foreground">Maximum {MAX_EXCLUSIONS_PER_GROUP} selections reached.</p> : null}
         </fieldset>
       </div>
     </details>
@@ -373,7 +374,7 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
   const exclusionCount = countExclusions(filters);
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-2 border-b pb-4 lg:flex-row lg:items-end lg:justify-between">
+      <header className="flex flex-col gap-2 rounded-md bg-muted/20 p-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Reliability over time</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -382,14 +383,14 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
           </p>
         </div>
         <p className="text-xs text-muted-foreground" aria-live="polite">
-          {refreshing ? "Refreshing data…" : `Updated ${new Date(report.generatedAt).toLocaleString()}`}
+          {refreshing ? "Refreshing data…" : `Updated ${formatPanelDateTime(report.generatedAt)}`}
         </p>
       </header>
 
       <SummaryStrip report={report} />
 
       {!hasChecks ? (
-        <section className="border-y py-8">
+        <section className="rounded-lg bg-card/45 p-8">
           <h3 className="text-base font-medium">No completed checks in this period</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {exclusionCount > 0 ? "The current exclusions removed every completed check. Clear an exclusion or widen the period." : "Try a longer period or select another monitor."}
@@ -417,22 +418,22 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
 
 function SummaryStrip({ report }: { report: GeneratedReport }) {
   const metrics = [
-    { label: "Uptime", value: formatReportUptime(report.summary), detail: `${report.summary.upChecks.toLocaleString()} successful checks`, tone: "text-emerald-500" },
-    { label: "Failed checks", value: report.summary.failureEvents.toLocaleString(), detail: `${formatReportFailureRate(report.summary)} of completed checks`, tone: report.summary.failureEvents > 0 ? "text-rose-500" : "text-emerald-500" },
+    { label: "Uptime", value: formatReportUptime(report.summary), detail: `${report.summary.upChecks.toLocaleString("en-GB")} successful checks`, tone: "text-emerald-500" },
+    { label: "Failed checks", value: report.summary.failureEvents.toLocaleString("en-GB"), detail: `${formatReportFailureRate(report.summary)} of completed checks`, tone: report.summary.failureEvents > 0 ? "text-rose-500" : "text-emerald-500" },
     {
       label: "P95 latency",
       value: formatReportP95Latency(report.summary),
       detail: report.summary.hasLatencySamples
-        ? `${report.summary.averageLatencyMs.toLocaleString()}ms average`
+        ? `${report.summary.averageLatencyMs.toLocaleString("en-GB")}ms average`
         : "No latency samples",
       tone: report.summary.hasLatencySamples ? "text-amber-500" : "text-foreground",
     },
-    { label: "Impacted monitors", value: report.summary.impactedMonitors.toLocaleString(), detail: `${report.summary.monitorCount.toLocaleString()} in scope · ${report.summary.currentlyPaused.toLocaleString()} paused now`, tone: report.summary.impactedMonitors > 0 ? "text-rose-500" : "text-foreground" },
+    { label: "Impacted monitors", value: report.summary.impactedMonitors.toLocaleString("en-GB"), detail: `${report.summary.monitorCount.toLocaleString("en-GB")} in scope · ${report.summary.currentlyPaused.toLocaleString("en-GB")} paused now`, tone: report.summary.impactedMonitors > 0 ? "text-rose-500" : "text-foreground" },
   ];
   return (
-    <dl className="grid border-y sm:grid-cols-2 xl:grid-cols-4 xl:divide-x">
+    <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map((metric) => (
-        <div key={metric.label} className="border-b px-3 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+        <div key={metric.label} className="rounded-md bg-card/55 px-3 py-3">
           <dt className="text-xs font-medium text-muted-foreground">{metric.label}</dt>
           <dd className={cn("mt-1 text-xl font-semibold tabular-nums", metric.tone)}>{metric.value}</dd>
           <p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p>
@@ -510,7 +511,7 @@ function LatencyChart({ data }: { data: GeneratedReport["dailyMetrics"] }) {
 
 function ChartSection({ title, description, legend, legendTone, children }: { title: string; description: string; legend: string; legendTone: string; children: ReactNode }) {
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-base font-medium">{title}</h3>
@@ -540,7 +541,7 @@ function FailureConcentration({ report }: { report: GeneratedReport }) {
   const total = segments.reduce((sum, segment) => sum + segment.failures, 0);
 
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <h3 className="text-base font-medium">Failure concentration</h3>
       <p className="mt-1 text-sm text-muted-foreground">Shows which monitors account for the selected period&apos;s failed checks.</p>
       {total === 0 ? (
@@ -576,15 +577,15 @@ function FailureConcentration({ report }: { report: GeneratedReport }) {
             <text x="80" y="76" textAnchor="middle" className="fill-foreground text-[24px] font-semibold tabular-nums">{total}</text>
             <text x="80" y="96" textAnchor="middle" className="fill-muted-foreground text-[10px]">failed checks</text>
           </svg>
-          <ol className="divide-y">
+          <ol className="grid gap-1">
             {segments.map((segment, index) => (
-              <li key={segment.id} className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2 py-2 text-sm">
+              <li key={segment.id} className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2 rounded-md bg-muted/20 px-2 py-2 text-sm">
                 <span className={cn("size-2", FAILURE_SEGMENT_TONES[index].swatch)} aria-hidden="true" />
                 <span className="min-w-0">
                   <span className="block truncate" title={segment.label}>{segment.label}</span>
                   {segment.detail ? <span className="block truncate text-xs text-muted-foreground" title={segment.detail}>{segment.detail}</span> : null}
                 </span>
-                <span className="tabular-nums text-muted-foreground">{segment.failures.toLocaleString()} · {((segment.failures / total) * 100).toFixed(1)}%</span>
+                <span className="tabular-nums text-muted-foreground">{segment.failures.toLocaleString("en-GB")} · {((segment.failures / total) * 100).toFixed(1)}%</span>
               </li>
             ))}
           </ol>
@@ -604,7 +605,7 @@ function FleetHealthDistribution({ monitors }: { monitors: GeneratedReport["moni
   const total = monitors.length;
 
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <h3 className="text-base font-medium">Fleet reliability bands</h3>
       <p className="mt-1 text-sm text-muted-foreground">Separates stable monitors from those that need investigation.</p>
       {total === 0 ? (
@@ -634,15 +635,15 @@ function FleetHealthDistribution({ monitors }: { monitors: GeneratedReport["moni
 function StatusCodeDistribution({ codes }: { codes: GeneratedReport["statusCodes"] }) {
   const max = Math.max(1, ...codes.map((item) => item.count));
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <h3 className="text-base font-medium">HTTP response mix</h3>
       <p className="mt-1 text-sm text-muted-foreground">Most common recorded response codes.</p>
-      <div className="mt-4 divide-y">
+      <div className="mt-4 grid gap-1">
         {codes.length === 0 ? <p className="py-3 text-sm text-muted-foreground">No HTTP status codes in this period.</p> : codes.map((item) => (
           <div key={item.statusCode} className="grid grid-cols-[64px_1fr_auto] items-center gap-3 py-3">
             <span className="text-sm font-medium tabular-nums">HTTP {item.statusCode}</span>
             <div className="h-2 bg-muted" aria-hidden="true"><div className="h-full min-w-px bg-sky-500" style={{ width: `${(item.count / max) * 100}%` }} /></div>
-            <span className="text-xs tabular-nums text-muted-foreground">{item.count.toLocaleString()}</span>
+            <span className="text-xs tabular-nums text-muted-foreground">{item.count.toLocaleString("en-GB")}</span>
           </div>
         ))}
       </div>
@@ -654,7 +655,7 @@ function MonitorRiskTable({ report }: { report: GeneratedReport }) {
   const rows = report.monitorBreakdown.slice(0, 12);
   const isTruncated = report.monitorBreakdown.length > rows.length;
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <h3 className="text-base font-medium">Monitor failure ranking</h3>
       <p className="mt-1 text-sm text-muted-foreground">Highest failed-check count first, then average latency.</p>
       {isTruncated ? (
@@ -665,14 +666,14 @@ function MonitorRiskTable({ report }: { report: GeneratedReport }) {
       ) : null}
       <div className="mt-3 hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[680px] text-sm">
-          <thead className="border-b text-left text-xs text-muted-foreground">
+          <thead className="text-left text-xs text-muted-foreground">
             <tr><th className="py-2 pr-4 font-medium">Monitor</th><th className="px-3 py-2 text-right font-medium">Failures</th><th className="px-3 py-2 text-right font-medium">Uptime</th><th className="px-3 py-2 text-right font-medium">Average</th><th className="py-2 pl-3 text-right font-medium">P95</th></tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {rows.map((monitor) => (
               <tr key={monitor.monitorId}>
                 <td className="max-w-[330px] py-3 pr-4"><p className="truncate font-medium" title={monitor.name}>{monitor.name}</p><p className="mt-0.5 truncate text-xs text-muted-foreground" title={monitor.url}>{monitor.url}</p></td>
-                <td className={cn("px-3 py-3 text-right tabular-nums", monitor.failures > 0 && "text-rose-500")}>{monitor.failures.toLocaleString()}</td>
+                <td className={cn("px-3 py-3 text-right tabular-nums", monitor.failures > 0 && "text-rose-500")}>{monitor.failures.toLocaleString("en-GB")}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{formatMonitorUptime(monitor)}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{formatMonitorAverageLatency(monitor)}</td>
                 <td className="py-3 pl-3 text-right tabular-nums">{formatMonitorP95Latency(monitor)}</td>
@@ -681,13 +682,13 @@ function MonitorRiskTable({ report }: { report: GeneratedReport }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-3 divide-y sm:hidden">
+      <div className="mt-3 grid gap-2 sm:hidden">
         {rows.map((monitor) => (
-          <div key={monitor.monitorId} className="py-3">
+          <div key={monitor.monitorId} className="rounded-md bg-muted/20 p-3">
             <p className="truncate text-sm font-medium" title={monitor.name}>{monitor.name}</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground" title={monitor.url}>{monitor.url}</p>
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              <MobileMetric label="Failures" value={monitor.failures.toLocaleString()} tone={monitor.failures > 0 ? "text-rose-500" : undefined} />
+              <MobileMetric label="Failures" value={monitor.failures.toLocaleString("en-GB")} tone={monitor.failures > 0 ? "text-rose-500" : undefined} />
               <MobileMetric label="Uptime" value={formatMonitorUptime(monitor)} />
               <MobileMetric label="Average" value={formatMonitorAverageLatency(monitor)} />
               <MobileMetric label="P95" value={formatMonitorP95Latency(monitor)} />

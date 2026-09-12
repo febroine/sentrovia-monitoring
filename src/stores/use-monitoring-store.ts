@@ -64,6 +64,9 @@ async function readJsonOrNull<T>(response: Response): Promise<T | null> {
   return (await response.json().catch(() => null)) as T | null;
 }
 
+let monitorLoadRequestVersion = 0;
+let activeMonitorLoadRequestVersion: number | null = null;
+
 export const useMonitoringStore = create<MonitoringState>((set) => ({
   monitors: [],
   pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 1 },
@@ -72,6 +75,8 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
   saving: false,
   error: null,
   loadMonitors: async (query) => {
+    const requestVersion = ++monitorLoadRequestVersion;
+    activeMonitorLoadRequestVersion = requestVersion;
     set({ loading: true });
 
     try {
@@ -87,7 +92,12 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       if (!response.ok || !data) {
         throw new Error(data?.message ?? "Unable to load monitors.");
       }
+      if (requestVersion !== monitorLoadRequestVersion) {
+        finishStaleMonitorLoad(requestVersion, set);
+        return;
+      }
 
+      activeMonitorLoadRequestVersion = null;
       set((state) => ({
         monitors: data.monitors ?? [],
         pagination: data.pagination ?? {
@@ -101,6 +111,11 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         error: null,
       }));
     } catch (error) {
+      if (requestVersion !== monitorLoadRequestVersion) {
+        finishStaleMonitorLoad(requestVersion, set);
+        return;
+      }
+      activeMonitorLoadRequestVersion = null;
       set({
         loading: false,
         error: error instanceof Error ? error.message : "Unable to load monitors.",
@@ -108,6 +123,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
     }
   },
   createMonitor: async (payload) => {
+    invalidateMonitorLoads();
     set({ saving: true });
 
     try {
@@ -123,6 +139,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
 
       const monitor = data.monitor;
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: [monitor, ...state.monitors],
         saving: false,
@@ -133,12 +150,14 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return monitor;
     } catch (error) {
       const message = getErrorMessage(error, "Unable to create monitor.");
+      invalidateMonitorLoads();
       set({ saving: false, error: message });
       showToast(message, "error");
       return null;
     }
   },
   updateMonitor: async (id, payload) => {
+    invalidateMonitorLoads();
     set({ saving: true });
 
     try {
@@ -154,6 +173,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
 
       const monitor = data.monitor;
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: state.monitors.map((item) => (item.id === id ? monitor : item)),
         saving: false,
@@ -164,12 +184,14 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return monitor;
     } catch (error) {
       const message = getErrorMessage(error, "Unable to update monitor.");
+      invalidateMonitorLoads();
       set({ saving: false, error: message });
       showToast(message, "error");
       return null;
     }
   },
   updateMonitorActiveState: async (id, isActive) => {
+    invalidateMonitorLoads();
     set({ saving: true });
 
     try {
@@ -185,6 +207,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
 
       const monitor = data.monitor;
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: state.monitors.map((item) => (item.id === id ? monitor : item)),
         saving: false,
@@ -195,6 +218,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return monitor;
     } catch (error) {
       const message = getErrorMessage(error, "Unable to update monitor active state.");
+      invalidateMonitorLoads();
       set({
         saving: false,
         error: message,
@@ -204,6 +228,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
     }
   },
   updateMonitorPause: async (ids, input) => {
+    invalidateMonitorLoads();
     set({ saving: true });
 
     try {
@@ -218,6 +243,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
 
       const updatedMap = new Map(data.monitors.map((monitor) => [monitor.id, monitor]));
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: state.monitors.map((monitor) => updatedMap.get(monitor.id) ?? monitor),
         saving: false,
@@ -232,12 +258,14 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return data.monitors;
     } catch (error) {
       const message = getErrorMessage(error, "Unable to update monitor pause state.");
+      invalidateMonitorLoads();
       set({ saving: false, error: message });
       showToast(message, "error");
       return null;
     }
   },
   updateMonitorFlags: async (id, flags) => {
+    invalidateMonitorLoads();
     set({ saving: true });
 
     try {
@@ -253,6 +281,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
 
       const monitor = data.monitor;
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: state.monitors.map((item) => (item.id === id ? monitor : item)),
         saving: false,
@@ -263,12 +292,14 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return monitor;
     } catch (error) {
       const message = getErrorMessage(error, "Unable to update monitor flags.");
+      invalidateMonitorLoads();
       set({ saving: false, error: message });
       showToast(message, "error");
       return null;
     }
   },
   bulkUpdateMonitors: async (ids, payload) => {
+    invalidateMonitorLoads();
     set({ saving: true });
 
     try {
@@ -284,6 +315,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
 
       const updatedMap = new Map(data.monitors.map((monitor) => [monitor.id, monitor]));
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: state.monitors.map((item) => updatedMap.get(item.id) ?? item),
         saving: false,
@@ -294,6 +326,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return data.monitors;
     } catch (error) {
       const message = getErrorMessage(error, "Unable to update selected monitors.");
+      invalidateMonitorLoads();
       set({
         saving: false,
         error: message,
@@ -303,6 +336,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
     }
   },
   deleteMonitors: async (ids) => {
+    invalidateMonitorLoads();
     set({ saving: true });
 
     try {
@@ -318,6 +352,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
 
       const deletedIds = new Set(data.ids);
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: state.monitors.filter((monitor) => !deletedIds.has(monitor.id)),
         saving: false,
@@ -328,12 +363,14 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return { ids: data.ids, undoUntil: data.undoUntil ?? null };
     } catch (error) {
       const message = getErrorMessage(error, "Unable to delete monitors.");
+      invalidateMonitorLoads();
       set({ saving: false, error: message });
       showToast(message, "error");
       return null;
     }
   },
   restoreMonitors: async (ids) => {
+    invalidateMonitorLoads();
     set({ saving: true });
     try {
       const response = await fetch("/api/monitors/restore", {
@@ -347,6 +384,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       }
       const restoredMonitors = data.monitors;
 
+      invalidateMonitorLoads();
       set((state) => ({
         monitors: [...restoredMonitors, ...state.monitors.filter((item) => !ids.includes(item.id))],
         saving: false,
@@ -356,21 +394,40 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return restoredMonitors;
     } catch (error) {
       const message = getErrorMessage(error, "Unable to restore monitors.");
+      invalidateMonitorLoads();
       set({ saving: false, error: message });
       showToast(message, "error");
       return [];
     }
   },
-  importMonitors: (items) =>
+  importMonitors: (items) => {
+    invalidateMonitorLoads();
     set((state) => ({
       monitors: [...items, ...state.monitors],
+      loading: activeMonitorLoadRequestVersion !== null,
       error: null,
-    })),
+    }));
+  },
   clearError: () => set({ error: null }),
 }));
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function invalidateMonitorLoads() {
+  monitorLoadRequestVersion += 1;
+}
+
+function finishStaleMonitorLoad(
+  requestVersion: number,
+  set: (partial: Partial<MonitoringState>) => void
+) {
+  if (activeMonitorLoadRequestVersion !== requestVersion) {
+    return;
+  }
+  activeMonitorLoadRequestVersion = null;
+  set({ loading: false });
 }
 
 function buildMonitorQueryString(query: MonitorQuery) {

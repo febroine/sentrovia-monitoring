@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSectionSavePayload, mergeSavedSection } from "@/lib/settings/section-save";
+import { buildSectionSavePayload, hasSectionChanges, mergeSavedSection } from "@/lib/settings/section-save";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 describe("settings section save", () => {
@@ -26,6 +26,22 @@ describe("settings section save", () => {
 
     expect(merged.notifications.notifyOnLatency).toBe(false);
     expect(merged.notifications.smtpHost).toBe("smtp.unsaved.example");
+  });
+
+  it("persists email headline templates with the notification template section", () => {
+    const persisted = structuredClone(DEFAULT_SETTINGS);
+    const draft = structuredClone(DEFAULT_SETTINGS);
+    draft.notifications.defaultEmailHeadlineTemplate = "{name} needs attention";
+    draft.notifications.recoveryEmailHeadlineTemplate = "{name} recovered";
+    draft.notifications.sslExpiryEmailHeadlineTemplate = "Renew {name}'s certificate";
+    draft.notifications.sslExpiryEmailBodyTemplate = "Certificate: {message}";
+
+    const payload = buildSectionSavePayload(persisted, draft, "notification-templates");
+
+    expect(payload.notifications.defaultEmailHeadlineTemplate).toBe("{name} needs attention");
+    expect(payload.notifications.recoveryEmailHeadlineTemplate).toBe("{name} recovered");
+    expect(payload.notifications.sslExpiryEmailHeadlineTemplate).toBe("Renew {name}'s certificate");
+    expect(payload.notifications.sslExpiryEmailBodyTemplate).toBe("Certificate: {message}");
   });
 
   it("refreshes untouched default templates after a language change", () => {
@@ -62,5 +78,14 @@ describe("settings section save", () => {
 
     expect(payload.monitoring.timeout).toBe(90_000);
     expect(payload.appearance.reduceMotion).toBe(false);
+  });
+
+  it("reports changes only for the edited section", () => {
+    const persisted = structuredClone(DEFAULT_SETTINGS);
+    const draft = structuredClone(DEFAULT_SETTINGS);
+    draft.notifications.smtpHost = "smtp.changed.example";
+
+    expect(hasSectionChanges(persisted, draft, "smtp-delivery")).toBe(true);
+    expect(hasSectionChanges(persisted, draft, "alert-conditions")).toBe(false);
   });
 });

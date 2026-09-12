@@ -18,7 +18,7 @@ export function NotificationChannelsEditor({
 }) {
   return (
     <div className="space-y-4">
-      <div className="border-y py-4">
+      <div className="rounded-md bg-muted/20 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-medium">Default Telegram destination</p>
@@ -42,7 +42,7 @@ export function NotificationChannelsEditor({
           ) : null}
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="default-telegram-token">Bot token</Label>
             <Input
               id="default-telegram-token"
@@ -54,10 +54,10 @@ export function NotificationChannelsEditor({
                   updateSetting("notifications.defaultTelegramBotTokenConfigured", true);
                 }
               }}
-              placeholder={settings.notifications.defaultTelegramBotTokenConfigured ? "Stored securely" : "123456:ABC..."}
+              placeholder={settings.notifications.defaultTelegramBotTokenConfigured ? "Stored securely" : "123456:ABC…"}
             />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="default-telegram-chat-id">Chat ID</Label>
             <Input
               id="default-telegram-chat-id"
@@ -74,7 +74,7 @@ export function NotificationChannelsEditor({
         url={settings.notifications.discordWebhookUrl}
         onToggle={(checked) => updateSetting("notifications.discordEnabled", checked)}
         onUrlChange={(value) => updateSetting("notifications.discordWebhookUrl", value)}
-        placeholder="https://discord.com/api/webhooks/..."
+        placeholder="https://discord.com/api/webhooks/…"
       />
     </div>
   );
@@ -96,7 +96,7 @@ function ChannelCard({
   placeholder: string;
 }) {
   return (
-    <div className="border-y py-4">
+    <div className="rounded-md bg-muted/20 p-4">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">{title}</p>

@@ -12,10 +12,10 @@ export default function ApplicationLoading() {
     <section
       aria-busy="true"
       aria-live="polite"
-      className="mx-auto min-h-[52vh] w-full max-w-[1120px] py-2 sm:py-4"
+      className="min-h-[52vh] w-full py-2 sm:py-4"
       role="status"
     >
-      <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-5 pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div aria-hidden="true" className="space-y-3">
           <div className="h-6 w-40 max-w-[70vw] rounded-sm bg-surface-highest" />
           <div className="h-3 w-72 max-w-[82vw] rounded-sm bg-muted" />
@@ -27,10 +27,10 @@ export default function ApplicationLoading() {
       </header>
 
       <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <div aria-hidden="true" className="border-y border-border">
+        <div aria-hidden="true" className="grid gap-3">
           {loadingRows.map((row, index) => (
             <div
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6 border-b border-border px-1 py-5 last:border-b-0 sm:px-3"
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6 rounded-md bg-card px-3 py-5"
               key={index}
             >
               <div className="min-w-0 space-y-2.5">
@@ -42,14 +42,14 @@ export default function ApplicationLoading() {
           ))}
         </div>
 
-        <aside aria-hidden="true" className="hidden border-l border-border pl-7 lg:block">
+        <aside aria-hidden="true" className="hidden rounded-md bg-card/60 p-5 lg:block">
           <div className="h-3 w-24 rounded-sm bg-surface-highest" />
           <div className="mt-5 space-y-4">
             <div className="h-2.5 w-full rounded-sm bg-muted" />
             <div className="h-2.5 w-4/5 rounded-sm bg-muted" />
             <div className="h-2.5 w-3/5 rounded-sm bg-muted" />
           </div>
-          <div className="mt-8 border-t border-border pt-5">
+          <div className="mt-8 rounded-md bg-muted/20 p-4">
             <div className="h-2.5 w-20 rounded-sm bg-surface-highest" />
             <div className="mt-3 h-2.5 w-2/3 rounded-sm bg-muted" />
           </div>

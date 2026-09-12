@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 export default function LogoutButton({ className }: { className?: string }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isNavigating, startTransition] = useTransition();
   const busy = submitting || isNavigating;
 
@@ -18,32 +19,43 @@ export default function LogoutButton({ className }: { className?: string }) {
     }
 
     setSubmitting(true);
+    setError(null);
 
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } finally {
-      setSubmitting(false);
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      const data = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to sign out right now.");
+      }
+
       startTransition(() => {
         router.replace("/login");
         router.refresh();
       });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to sign out right now.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={handleLogout}
-      disabled={busy}
-      className={cn(
-        "gap-2 border-border/80 bg-muted/20 text-foreground/80 hover:bg-muted/40 hover:text-foreground",
-        className
-      )}
-    >
-      {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
-      {busy ? "Signing out" : "Sign out"}
-    </Button>
+    <div className="space-y-2">
+      {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleLogout}
+        disabled={busy}
+        className={cn(
+          "gap-2 border-border/80 bg-muted/20 text-foreground/80 hover:bg-muted/40 hover:text-foreground",
+          className
+        )}
+      >
+        {busy ? <LoaderCircle data-icon="inline-start" className="size-3.5 animate-spin" /> : <LogOut data-icon="inline-start" className="size-3.5" />}
+        {busy ? "Signing out" : "Sign out"}
+      </Button>
+    </div>
   );
 }

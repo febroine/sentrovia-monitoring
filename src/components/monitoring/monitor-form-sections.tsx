@@ -5,10 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import type { CompanyRecord } from "@/lib/companies/types";
 import { getMonitorTypeLabel } from "@/lib/monitors/targets";
+import {
+  buildOutageConfirmationSummary,
+  formatDurationInputMs,
+  formatDurationMs,
+  parseDurationInputSeconds,
+} from "@/lib/monitors/duration";
 import type {
   HttpMethod,
   IntervalUnit,
@@ -84,7 +89,7 @@ export function GeneralMonitorSettings({
   return (
     <div className="space-y-4">
       {isBulkEditMode ? (
-        <div className="border-l-2 border-amber-500 px-4 py-2">
+        <div className="rounded-md bg-amber-500/10 px-4 py-3">
           <p className="text-sm font-medium text-foreground">Bulk edit keeps each monitor target intact.</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             Monitor type, name, company, URL or host, and monitor-specific keyword, JSON, heartbeat, or database fields
@@ -163,7 +168,7 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isKeywordMonitor ? (
-            <div className="space-y-4 border-y py-4">
+            <div className="space-y-4 rounded-md bg-muted/20 p-4">
               <Field label="Keyword or phrase">
                 <Input
                   value={values.keywordQuery}
@@ -182,7 +187,7 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isJsonMonitor ? (
-            <div className="space-y-4 border-y py-4">
+            <div className="space-y-4 rounded-md bg-muted/20 p-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="JSON path">
                   <Input
@@ -251,8 +256,8 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isHeartbeatMonitor ? (
-            <div className="space-y-4 border-y py-4">
-              <div className="border-l-2 border-border px-4 py-2 text-xs leading-6 text-muted-foreground">
+            <div className="space-y-4 rounded-md bg-muted/20 p-4">
+              <div className="rounded-md bg-background/35 px-4 py-3 text-xs leading-6 text-muted-foreground">
                 Save the monitor once to generate its dedicated heartbeat endpoint. Your cron job can then call that
                 endpoint with `GET` or `POST` on every successful run.
               </div>
@@ -266,7 +271,7 @@ export function GeneralMonitorSettings({
           ) : null}
 
           {isPostgresMonitor ? (
-            <div className="space-y-4 border-y py-4">
+            <div className="space-y-4 rounded-md bg-muted/20 p-4">
               <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
                 <Field label="Database host">
                   <Input
@@ -355,7 +360,7 @@ export function GeneralMonitorSettings({
       </Field>
 
       {!isBulkEditMode ? (
-        <div className="divide-y border-y">
+        <div className="grid gap-2 rounded-md bg-muted/20 p-2">
           <div className="flex items-center justify-between gap-4 py-3">
             <div>
               <p className="text-sm font-medium">Active monitor</p>
@@ -400,13 +405,14 @@ export function CheckMonitorSettings({
         <Field label="Check interval">
           <div className="flex gap-2">
             <Input
+              aria-label="Check interval"
               type="number"
               min={1}
               value={values.intervalValue}
               onChange={(event) => onFieldChange("intervalValue", Number(event.target.value) || 1)}
             />
             <Select value={values.intervalUnit} onValueChange={(value) => onFieldChange("intervalUnit", value as IntervalUnit)}>
-              <SelectTrigger className="w-28">
+              <SelectTrigger aria-label="Check interval unit" className="w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -417,40 +423,38 @@ export function CheckMonitorSettings({
             </Select>
           </div>
         </Field>
-        <Field label="Hard failure timeout (ms)">
-          <Input
-            type="number"
-            min={1000}
-            value={values.timeout}
-            onChange={(event) => onFieldChange("timeout", Number(event.target.value) || 1000)}
+        <Field label="Hard failure timeout">
+          <DurationInput
+            ariaLabel="Hard failure timeout"
+            valueMs={values.timeout}
+            minSeconds={1}
+            maxSeconds={120}
+            onChange={(value) => onFieldChange("timeout", value ?? 1_000)}
           />
           <p className="text-[11px] text-muted-foreground">
             {isHeartbeatMonitor
               ? "Extra arrival grace after the expected heartbeat interval before verification starts."
-              : "The monitor is considered failed only when the request cannot complete inside this window."}
+              : "The monitor is considered failed only when the request cannot complete inside this window."} Current value: {formatDurationMs(values.timeout)}.
           </p>
         </Field>
       </div>
 
       {isHttpMonitor || isAssertionMonitor ? (
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
-          <Field label="Slow response threshold (ms)">
-            <Input
-              type="number"
-              min={1}
-              max={Math.max(1, values.timeout - 1)}
+          <Field label="Slow response threshold">
+            <DurationInput
+              ariaLabel="Slow response threshold"
+              valueMs={values.slowResponseThresholdMs}
+              minSeconds={0.001}
+              maxSeconds={Math.max(0.001, (values.timeout - 1) / 1_000)}
               placeholder="Optional"
-              value={values.slowResponseThresholdMs ?? ""}
-              onChange={(event) => {
-                const rawValue = event.target.value.trim();
-                onFieldChange("slowResponseThresholdMs", rawValue.length > 0 ? Number(rawValue) || null : null);
-              }}
+              onChange={(value) => onFieldChange("slowResponseThresholdMs", value)}
             />
             <p className="text-[11px] text-muted-foreground">
-              A response that completes between this threshold and the hard failure timeout remains ONLINE and is never counted as DOWN. It can send a separate slow-response warning.
+              A response that completes between this threshold and the hard failure timeout remains ONLINE and is never counted as DOWN. It can send a separate slow-response warning. {values.slowResponseThresholdMs === null ? "No threshold configured." : `Current value: ${formatDurationMs(values.slowResponseThresholdMs)}.`}
             </p>
           </Field>
-          <div className="flex items-start justify-between gap-3 border-y py-3">
+          <div className="flex items-start justify-between gap-3 rounded-md bg-muted/25 p-3">
             <div>
               <p className="text-sm font-medium">Slow response notifications</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -469,6 +473,7 @@ export function CheckMonitorSettings({
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Consecutive failures required">
           <Input
+            aria-label="Consecutive failures required"
             type="number"
             min={2}
             max={10}
@@ -481,7 +486,7 @@ export function CheckMonitorSettings({
             value={values.renotifyCount ? String(values.renotifyCount) : "disabled"}
             onValueChange={(value) => onFieldChange("renotifyCount", value === "disabled" ? null : Number(value))}
           >
-            <SelectTrigger>
+            <SelectTrigger aria-label="Re-notify limit">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -499,113 +504,138 @@ export function CheckMonitorSettings({
         </Field>
       </div>
 
-      {isHttpMonitor || isAssertionMonitor ? (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="HTTP method">
-              <Select value={values.method} onValueChange={(value) => onFieldChange("method", value as HttpMethod)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((method) => (
-                    <SelectItem key={method} value={method}>
-                      {method}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="IP family">
-              <Select value={values.ipFamily} onValueChange={(value) => onFieldChange("ipFamily", value as IpFamily)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Auto</SelectItem>
-                  <SelectItem value="ipv4">IPv4</SelectItem>
-                  <SelectItem value="ipv6">IPv6</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
+      {isHttpMonitor || isAssertionMonitor || isPortMonitor || isPingMonitor ? (
+        <details className="group rounded-md border border-border/60 bg-muted/10">
+          <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-4 py-3 text-sm font-medium outline-none transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block">Advanced check settings</span>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                HTTP method, IP family, redirects, response limits, cache, and SSL behavior.
+              </span>
+            </span>
+            <span aria-hidden="true" className="text-lg leading-4 text-muted-foreground transition-transform group-open:rotate-90">
+              ›
+            </span>
+          </summary>
+          <div className="space-y-4 border-t border-border/60 px-4 py-4">
+            {isHttpMonitor || isAssertionMonitor ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="HTTP method">
+                    <Select value={values.method} onValueChange={(value) => onFieldChange("method", value as HttpMethod)}>
+                      <SelectTrigger aria-label="HTTP method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((method) => (
+                          <SelectItem key={method} value={method}>
+                            {method}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="IP family">
+                    <Select value={values.ipFamily} onValueChange={(value) => onFieldChange("ipFamily", value as IpFamily)}>
+                      <SelectTrigger aria-label="IP family">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="ipv4">IPv4</SelectItem>
+                        <SelectItem value="ipv6">IPv6</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Max redirects">
-              <Input
-                type="number"
-                min={0}
-                max={10}
-                value={values.maxRedirects}
-                onChange={(event) => onFieldChange("maxRedirects", Number(event.target.value) || 0)}
-              />
-            </Field>
-            <Field label="Response max length">
-              <Input
-                type="number"
-                min={0}
-                value={values.responseMaxLength}
-                onChange={(event) => onFieldChange("responseMaxLength", Number(event.target.value) || 0)}
-              />
-            </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Max redirects">
+                    <Input
+                      aria-label="Max redirects"
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={values.maxRedirects}
+                      onChange={(event) => onFieldChange("maxRedirects", Number(event.target.value) || 0)}
+                    />
+                  </Field>
+                  <Field label="Response max length">
+                    <Input
+                      aria-label="Response max length"
+                      type="number"
+                      min={0}
+                      value={values.responseMaxLength}
+                      onChange={(event) => onFieldChange("responseMaxLength", Number(event.target.value) || 0)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Set to 0 to avoid retaining response content.</p>
+                  </Field>
+                </div>
+
+                <div className="grid gap-2 rounded-md bg-muted/20 p-2">
+                  <CheckRow
+                    label="Check SSL expiry"
+                    description="Send a daily warning during the final 30 days before certificate expiry."
+                    checked={values.checkSslExpiry}
+                    onChange={(checked) => onFieldChange("checkSslExpiry", checked)}
+                  />
+                  <CheckRow
+                    label="Ignore SSL errors"
+                    description="Continue checks even when TLS validation fails."
+                    checked={values.ignoreSslErrors}
+                    onChange={(checked) => onFieldChange("ignoreSslErrors", checked)}
+                  />
+                  <CheckRow
+                    label="Enable cache buster"
+                    description="Append a random query string to bypass caches."
+                    checked={values.cacheBuster}
+                    onChange={(checked) => onFieldChange("cacheBuster", checked)}
+                  />
+                </div>
+              </>
+            ) : null}
+
+            {isPortMonitor || isPingMonitor ? (
+              <Field label="IP family">
+                <Select value={values.ipFamily} onValueChange={(value) => onFieldChange("ipFamily", value as IpFamily)}>
+                  <SelectTrigger aria-label="IP family">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="ipv4">IPv4</SelectItem>
+                    <SelectItem value="ipv6">IPv6</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            ) : null}
           </div>
-        </>
+        </details>
       ) : null}
 
-      {isPortMonitor || isPingMonitor ? (
-        <Field label="IP family">
-          <Select value={values.ipFamily} onValueChange={(value) => onFieldChange("ipFamily", value as IpFamily)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">Auto</SelectItem>
-              <SelectItem value="ipv4">IPv4</SelectItem>
-              <SelectItem value="ipv6">IPv6</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      ) : null}
+      <div className="rounded-md border border-primary/20 bg-primary/5 px-4 py-3">
+        <p className="text-sm font-medium">Outage confirmation</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {buildOutageConfirmationSummary(values.intervalValue, values.intervalUnit, values.timeout, values.retries)}
+        </p>
+      </div>
 
-      <Separator />
-      <p className="text-xs text-muted-foreground">
-        The threshold includes the initial failed probe. Sentrovia then runs 1-minute verification probes and, when
-        the threshold is reached, requires one final immediate confirmation failure before announcing an outage.
-      </p>
-
-      {isHttpMonitor || isAssertionMonitor ? (
-        <div className="divide-y border-y">
-          <CheckRow
-            label="Check SSL expiry"
-            description="Send a daily warning during the final 30 days before certificate expiry."
-            checked={values.checkSslExpiry}
-            onChange={(checked) => onFieldChange("checkSslExpiry", checked)}
-          />
-          <CheckRow
-            label="Ignore SSL errors"
-            description="Continue checks even when TLS validation fails."
-            checked={values.ignoreSslErrors}
-            onChange={(checked) => onFieldChange("ignoreSslErrors", checked)}
-          />
-          <CheckRow
-            label="Enable cache buster"
-            description="Append a random query string to bypass caches."
-            checked={values.cacheBuster}
-            onChange={(checked) => onFieldChange("cacheBuster", checked)}
-          />
-        </div>
-      ) : isHeartbeatMonitor ? (
-        <div className="border-l-2 border-border px-4 py-2 text-xs leading-5 text-muted-foreground">
+      {isHeartbeatMonitor ? (
+        <div className="rounded-md bg-muted/20 px-4 py-3 text-xs leading-5 text-muted-foreground">
           Heartbeat monitors stay healthy only while your cron or background job keeps calling the generated heartbeat endpoint
           within the configured interval.
         </div>
       ) : (
-        <div className="border-l-2 border-border px-4 py-2 text-xs leading-5 text-muted-foreground">
+        <div className="rounded-md bg-muted/20 px-4 py-3 text-xs leading-5 text-muted-foreground">
           {isPostgresMonitor
             ? "PostgreSQL monitors open a database session and run a lightweight SELECT 1 check. HTTP-specific options stay disabled for this monitor type."
             : isPingMonitor
               ? "Ping monitors use ICMP reachability checks. HTTP redirects, response bodies, SSL expiry, and cache busters do not apply here."
-              : "Port monitors validate raw TCP reachability. HTTP redirects, response body limits, SSL expiry, and cache busters do not apply here."}
+              : isPortMonitor
+                ? "Port monitors validate raw TCP reachability. HTTP redirects, response body limits, SSL expiry, and cache busters do not apply here."
+                : isAssertionMonitor
+                  ? "Keyword and JSON monitors verify both endpoint reachability and the configured response assertion."
+                  : "HTTP monitors treat the configured success status codes as healthy responses."}
         </div>
       )}
     </div>
@@ -614,9 +644,44 @@ export function CheckMonitorSettings({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function DurationInput({
+  ariaLabel,
+  valueMs,
+  minSeconds,
+  maxSeconds,
+  placeholder,
+  onChange,
+}: {
+  ariaLabel: string;
+  valueMs: number | null;
+  minSeconds: number;
+  maxSeconds: number;
+  placeholder?: string;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        aria-label={ariaLabel}
+        type="number"
+        min={minSeconds}
+        max={maxSeconds}
+        step="0.001"
+        value={formatDurationInputMs(valueMs)}
+        placeholder={placeholder}
+        onChange={(event) => {
+          const rawValue = event.target.value.trim();
+          onChange(rawValue.length > 0 ? parseDurationInputSeconds(rawValue, valueMs ?? minSeconds * 1_000) : null);
+        }}
+      />
+      <span className="shrink-0 text-xs text-muted-foreground">seconds</span>
     </div>
   );
 }
@@ -676,17 +741,17 @@ function HeartbeatEndpointTools({
       <div className="flex gap-2">
         <Input value={endpointPath} readOnly />
         <Button type="button" variant="outline" className="shrink-0" onClick={() => void copyValue(endpointUrl)} disabled={!token}>
-          <Copy className="mr-2 h-4 w-4" />
+          <Copy data-icon="inline-start" className="h-4 w-4" />
           Copy endpoint
         </Button>
       </div>
-      <div className="space-y-2 border-y py-3">
+      <div className="space-y-2 rounded-md bg-muted/20 p-3">
         <p className="text-xs font-medium text-foreground">Example curl</p>
         <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-muted-foreground">
           {curlSnippet}
         </pre>
       </div>
-      <div className="space-y-2 border-y py-3">
+      <div className="space-y-2 rounded-md bg-muted/20 p-3">
         <p className="text-xs font-medium text-foreground">Example cron</p>
         <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-muted-foreground">
           {cronSnippet}

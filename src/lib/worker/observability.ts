@@ -476,10 +476,10 @@ function resolveBucketIndex(
 
 function formatTrendLabel(range: WorkerObservabilityRange, bucketStart: Date) {
   if (range === "7d") {
-    return bucketStart.toLocaleDateString([], { month: "short", day: "numeric" });
+    return bucketStart.toLocaleDateString("en-GB", { month: "short", day: "numeric" });
   }
 
-  return bucketStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return bucketStart.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 function incrementMapCount(map: Map<string, number>, key: string) {

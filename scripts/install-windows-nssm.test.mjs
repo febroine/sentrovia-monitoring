@@ -11,6 +11,7 @@ const serviceModulePath = resolve(projectRoot, "scripts", "nssm-service.ps1");
 const updateStateModulePath = resolve(projectRoot, "scripts", "nssm-update-state.ps1");
 const installerSource = readFileSync(installerPath, "utf8");
 const serviceModuleSource = readFileSync(serviceModulePath, "utf8");
+const repositoryHistoryIt = existsSync(resolve(projectRoot, ".git")) ? it : it.skip;
 
 function normalizePath(value) {
   return value.trim().replaceAll("\\", "/");
@@ -30,11 +31,6 @@ function readGitLines(args) {
     .filter(Boolean);
 }
 
-function readCurrentReleasePaths() {
-  const deletedPaths = new Set(readGitLines(["ls-files", "--deleted"]));
-  return readGitLines(["ls-files"]).filter((path) => !deletedPaths.has(path));
-}
-
 describe("Windows NSSM update cleanup", () => {
   it("loads the installer responsibilities from focused helper scripts", () => {
     for (const modulePath of [environmentModulePath, serviceModulePath, updateStateModulePath]) {
@@ -49,9 +45,12 @@ describe("Windows NSSM update cleanup", () => {
     expect(serviceModuleSource).not.toContain('Invoke-NssmCommand -Arguments @($Action, $Name)');
   });
 
-  it("covers every file removed from the repository", () => {
+  repositoryHistoryIt("covers every file removed from the repository", () => {
     const retiredPaths = readRetiredProjectPaths();
-    const trackedPaths = new Set(readCurrentReleasePaths());
+    const deletedPathsInWorkingTree = new Set(readGitLines(["ls-files", "--deleted"]));
+    const trackedPaths = new Set(
+      readGitLines(["ls-files"]).filter((path) => !deletedPathsInWorkingTree.has(path)),
+    );
     const deletedPaths = new Set(
       readGitLines(["log", "--all", "--diff-filter=D", "--name-only", "--pretty=format:"]),
     );
@@ -69,13 +68,7 @@ describe("Windows NSSM update cleanup", () => {
 
   it("never removes a file tracked by the current release", () => {
     const retiredPaths = readRetiredProjectPaths();
-    const trackedPaths = readCurrentReleasePaths();
-    const unsafePaths = trackedPaths.filter((trackedPath) =>
-      retiredPaths.some(
-        (retiredPath) =>
-          trackedPath === retiredPath || trackedPath.startsWith(`${retiredPath}/`),
-      ),
-    );
+    const unsafePaths = retiredPaths.filter((retiredPath) => existsSync(resolve(projectRoot, retiredPath)));
 
     expect(unsafePaths).toEqual([]);
   });

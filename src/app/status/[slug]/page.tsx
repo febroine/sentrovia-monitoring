@@ -3,7 +3,7 @@ import {
   AlertTriangle,
   Globe2,
 } from "lucide-react";
-import { SentroviaMark } from "@/components/brand/sentrovia-mark";
+import { SentroviaLogo } from "@/components/brand/sentrovia-logo";
 import { getPublicStatusPage } from "@/lib/public-status/service";
 import { formatDateTime, type TimeDisplaySettings } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -62,7 +62,7 @@ function PublicOutageBanner({ services }: { services: PublicStatusService[] }) {
     <section
       aria-live="assertive"
       aria-label="Current service outage"
-      className="overflow-hidden border-l-4 border-rose-500 bg-rose-50 dark:bg-rose-950/35"
+      className="overflow-hidden rounded-lg bg-rose-50 dark:bg-rose-950/35"
       role="alert"
     >
       <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
@@ -80,9 +80,9 @@ function PublicOutageBanner({ services }: { services: PublicStatusService[] }) {
         </span>
       </div>
 
-      <ul className="divide-y divide-rose-500/20 border-t border-rose-500/25 bg-rose-100/55 dark:bg-rose-950/20">
+      <ul className="grid gap-2 bg-rose-100/55 p-2 dark:bg-rose-950/20">
         {services.map((service) => (
-          <li className="flex min-w-0 items-start gap-3 px-5 py-3 sm:px-6" key={service.id}>
+          <li className="flex min-w-0 items-start gap-3 rounded-md bg-background/25 px-5 py-3 sm:px-6" key={service.id}>
             <span className="mt-1.5 size-2.5 shrink-0 rounded-full bg-rose-600 dark:bg-rose-400" />
             <div className="min-w-0">
               <p className="break-all text-sm font-semibold text-rose-950 dark:text-rose-100">{service.url}</p>
@@ -114,9 +114,9 @@ function StatusHeader({
   });
 
   return (
-    <header className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex min-w-0 items-center gap-4">
-        <SentroviaMark className="size-10 shrink-0 text-emerald-600 dark:text-emerald-300" />
+    <header className="flex flex-col gap-4 rounded-lg bg-card/45 p-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 flex-col items-start gap-4">
+        <SentroviaLogo className="text-xl" />
         <div className="min-w-0">
           <h1 className="break-words text-2xl font-semibold sm:text-3xl">{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -152,8 +152,8 @@ function StatusOverview({
   ];
 
   return (
-    <section className={cn("overflow-hidden rounded-md border", overall.border, overall.surface)}>
-      <div className="flex flex-col gap-3 border-b border-current/10 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+    <section className={cn("overflow-hidden rounded-lg", overall.surface)}>
+      <div className="flex flex-col gap-3 bg-background/20 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className={cn("text-lg font-semibold", overall.text)}>{overall.badge}</p>
           <p className="mt-1 max-w-5xl text-sm leading-6 text-muted-foreground sm:text-base">
@@ -161,13 +161,13 @@ function StatusOverview({
           </p>
         </div>
         {statusPage.scope.companyName ? (
-          <div className="inline-flex w-fit items-center gap-2 rounded-md border border-current/15 bg-background/65 px-3 py-2 text-sm font-medium">
+          <div className="inline-flex w-fit items-center gap-2 rounded-md bg-background/65 px-3 py-2 text-sm font-medium">
             <Globe2 className="h-4 w-4" />
             {statusPage.scope.companyName}
           </div>
         ) : null}
       </div>
-      <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 bg-background/20 p-2 sm:grid-cols-4">
         {metrics.map((metric) => (
           <StatusMetric key={metric.label} {...metric} />
         ))}
@@ -198,7 +198,6 @@ function getOverallStatus(totals: { total: number; operational: number; degraded
     return {
       label: "Service outage",
       badge: "One or more services are unavailable",
-      border: "border-rose-500/45",
       dot: "bg-rose-500",
       text: "text-rose-700 dark:text-rose-300",
       surface: "bg-rose-50/70 dark:bg-rose-950/20",
@@ -209,7 +208,6 @@ function getOverallStatus(totals: { total: number; operational: number; degraded
     return {
       label: "Partial degradation",
       badge: "Some services are responding slowly or being verified",
-      border: "border-amber-500/45",
       dot: "bg-amber-500",
       text: "text-amber-700 dark:text-amber-300",
       surface: "bg-amber-50/70 dark:bg-amber-950/20",
@@ -220,7 +218,6 @@ function getOverallStatus(totals: { total: number; operational: number; degraded
     return {
       label: "No services published",
       badge: "No monitors are published to this status page",
-      border: "border-slate-500/35",
       dot: "bg-slate-500",
       text: "text-slate-700 dark:text-slate-300",
       surface: "bg-slate-50/70 dark:bg-slate-950/20",
@@ -230,7 +227,6 @@ function getOverallStatus(totals: { total: number; operational: number; degraded
   return {
     label: "All systems operational",
     badge: "All published services are operational",
-    border: "border-emerald-500/45",
     dot: "bg-emerald-500",
     text: "text-emerald-700 dark:text-emerald-300",
     surface: "bg-emerald-50/70 dark:bg-emerald-950/20",

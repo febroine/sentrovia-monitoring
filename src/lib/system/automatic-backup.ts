@@ -5,6 +5,7 @@ import { and, asc, eq, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { automaticBackupRuns, users, userSettings, workspaceMembers, workspaceSettings } from "@/lib/db/schema";
 import { env, getAppEncryptionSecret, getDatabaseUrl } from "@/lib/env";
+import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import {
   calculateFileSha256,
   decryptDatabaseBackup,
@@ -109,7 +110,7 @@ export function isAutomaticBackupDue(schedule: BackupSchedule, now: Date) {
 async function readBackupSchedule(): Promise<BackupSchedule | null> {
   try {
     const sharedSchedule = await readWorkspaceBackupSchedule();
-    if (sharedSchedule) return sharedSchedule;
+    if (sharedSchedule !== undefined) return sharedSchedule;
   } catch (error) {
     if (!isMissingWorkspaceSettingsTable(error)) throw error;
   }
@@ -117,7 +118,7 @@ async function readBackupSchedule(): Promise<BackupSchedule | null> {
   return readLegacyBackupSchedule();
 }
 
-async function readWorkspaceBackupSchedule(): Promise<BackupSchedule | null> {
+async function readWorkspaceBackupSchedule(): Promise<BackupSchedule | null | undefined> {
   const rows = await db
     .select({
       workspaceId: workspaceSettings.workspaceId,
@@ -126,14 +127,27 @@ async function readWorkspaceBackupSchedule(): Promise<BackupSchedule | null> {
       timeZone: userSettings.timeZone,
     })
     .from(workspaceSettings)
-    .innerJoin(workspaceMembers, and(
+    .leftJoin(workspaceMembers, and(
       eq(workspaceMembers.workspaceId, workspaceSettings.workspaceId),
       eq(workspaceMembers.role, "admin")
     ))
-    .innerJoin(users, eq(users.id, workspaceMembers.userId))
-    .innerJoin(userSettings, eq(userSettings.userId, users.id))
+    .leftJoin(users, eq(users.id, workspaceMembers.userId))
+    .leftJoin(userSettings, eq(userSettings.userId, users.id))
     .orderBy(asc(users.createdAt));
-  const row = rows.find((item) => readWorkspaceBoolean(item.values, "autoBackupEnabled", "auto_backup_enabled"));
+  return resolveWorkspaceBackupSchedule(rows);
+}
+
+export function resolveWorkspaceBackupSchedule(rows: Array<{
+  workspaceId: string;
+  userId: string | null;
+  values: Record<string, unknown>;
+  timeZone: string | null;
+}>): BackupSchedule | null | undefined {
+  if (rows.length === 0) return undefined;
+  const row = rows.find((item): item is typeof item & { userId: string } => (
+    Boolean(item.userId)
+    && readWorkspaceBoolean(item.values, "autoBackupEnabled", "auto_backup_enabled")
+  ));
   if (!row) return null;
   return {
     workspaceId: row.workspaceId,
@@ -141,7 +155,12 @@ async function readWorkspaceBackupSchedule(): Promise<BackupSchedule | null> {
     enabled: true,
     window: readWorkspaceString(row.values, "backupWindow", "backup_window", "03:00"),
     retentionCount: Math.min(90, Math.max(2, readWorkspaceNumber(row.values, "backupRetentionCount", "backup_retention_count", 7))),
-    timeZone: row.timeZone,
+    timeZone: readWorkspaceString(
+      row.values,
+      "backupTimeZone",
+      "backup_time_zone",
+      row.timeZone ?? DEFAULT_SETTINGS.appearance.timeZone
+    ),
     lastBackupAt: readWorkspaceDate(row.values, "lastAutomaticBackupAt", "last_automatic_backup_at"),
   };
 }

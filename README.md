@@ -17,6 +17,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#supported-uptime-checks">Checks</a> ·
   <a href="#how-verified-outage-alerts-work">Verification</a> ·
+  <a href="#demo-workspace">Demo workspace</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="docs/deployment.md">Deployment guide</a> ·
   <a href="SECURITY.md">Security</a>
@@ -26,7 +27,7 @@
   <img src="docs/screenshots/demo.gif" alt="Sentrovia self-hosted uptime monitoring dashboard, status pages, reports, and alert delivery" width="100%">
 </p>
 
-<p align="center"><sub>Product walkthrough with synthetic example data.</sub></p>
+<p align="center"><sub>Current product walkthrough recorded from the Docker stack with synthetic example data.</sub></p>
 
 ## Why Sentrovia?
 
@@ -35,6 +36,7 @@ Most uptime monitoring tools treat a single failed request as an outage. Sentrov
 - **Fewer false alarms:** retries, verification mode, and a final confirmation probe protect against transient failures.
 - **Evidence you can inspect:** HTTP-style outages can include screenshots, diagnostics, timelines, and response details.
 - **Delivery you can audit:** email, Telegram, Discord, and generic webhooks have bounded retries and visible outcomes.
+- **Operations at a glance:** the live dashboard combines fleet health, focused monitors, incidents, delivery outcomes, and worker status.
 - **Data ownership:** run the complete stack on your infrastructure with Docker Compose or native Windows services.
 - **Workspace isolation:** role-based access protects monitors, status pages, reports, delivery history, and settings.
 
@@ -52,7 +54,7 @@ Sentrovia is designed for teams that want a practical uptime monitor and status 
 | PostgreSQL | Database connectivity with configurable TLS verification |
 | Heartbeat / cron | Scheduled jobs and services that report their own liveness |
 
-Each monitor can define its interval, timeout, retry threshold, expected status codes, HTTP method, redirects, SSL behavior, response-size limit, tags, notification routing, and slow-response threshold.
+Each monitor can define its interval, timeout, retry threshold, expected status codes, HTTP method, redirects, SSL behavior, response-size limit, tags, notification routing, slow-response threshold, and event-specific notification templates.
 
 Use ICMP ping and TCP checks to monitor server uptime without installing an agent. Sentrovia measures service reachability and response health; it does not claim to replace CPU, memory, disk, or network-traffic observability.
 
@@ -105,20 +107,44 @@ docker compose up -d --build
 
 For production Docker settings, native Windows installation with NSSM, safe updates, restore procedures, and environment rules, read the [deployment guide](docs/deployment.md).
 
+## Demo Workspace
+
+You can create an isolated workspace with synthetic companies, monitors, thirty days of check history, incidents, delivery attempts, a report schedule, and a public status page. The monitor targets use reserved `.example` addresses and their next checks are deliberately parked in the future, so the worker does not contact them.
+
+Choose a unique identifier containing at least eight letters or numbers. The create command prints temporary sign-in credentials and the public status page URL:
+
+```bash
+docker compose exec -e SENTROVIA_DEMO_RUN_ID=readme20260912 web node scripts/manage-demo-workspace.mjs create
+```
+
+Remove every record created for that identifier when you are finished:
+
+```bash
+docker compose exec -e SENTROVIA_DEMO_RUN_ID=readme20260912 web node scripts/manage-demo-workspace.mjs cleanup
+```
+
+The seed is opt-in and never runs during installation, startup, migration, or production updates.
+
+## Dashboard and Operations
+
+The dashboard starts with a guided first-monitor state, then replaces it with live operational data as checks arrive. It includes an outage banner, fleet summary, worker and connectivity health, focused monitors, company health, verified events, and notification-delivery totals. Widgets, company scope, monitor focus, density, contrast, accent color, time zone, and landing page can be adjusted without changing the underlying monitor data.
+
 ## Public Status Pages
 
 Publish a self-hosted status page for the whole workspace or separate public status pages for individual companies. Each page has its own slug, title, summary, publish state, and service availability history.
 
 ## Alerts, Evidence, and Reports
 
-Sentrovia routes notifications from monitor-specific settings to company settings and then workspace defaults. Supported channels are SMTP email, Telegram, Discord webhook, and generic webhook.
+Sentrovia routes notifications from monitor-specific settings to company settings and then workspace defaults. Supported channels are SMTP email, Telegram, Discord webhook, and generic webhook. The application interface remains English; notification content can be rendered in English or Turkish.
 
 - Screenshot evidence after confirmed HTTP, keyword, and JSON failures with stable responses
 - Delivery history with attempts, response codes, payload summaries, and errors
 - Bounded retry queues, dead-letter visibility, and manual resend
-- Down, recovery, status-change, latency, and prolonged-downtime templates
+- Editable workspace and per-monitor templates for down, recovery, slow-response, prolonged-downtime, and SSL-expiry messages
+- Live light/dark email preview with event samples, editable brand/footer text, and an explicit test-email action
+- Recipient-facing **Check site** links that open the monitored target instead of an internal monitoring panel
 - Weekly, monthly, and custom-range HTML reports
-- Workspace-wide or company-scoped reporting and scheduled delivery
+- Workspace-wide or company-scoped reporting, reliability analytics, exclusions, HTML export, and scheduled delivery
 
 Screenshots are best effort, so an unavailable Chromium process never blocks an alert.
 
@@ -128,20 +154,28 @@ Delivery tests use real channel transports: Telegram uses the bot token and chat
 
 <table>
   <tr>
-    <td width="50%"><img src="./docs/screenshots/dashboard.png" alt="Sentrovia website monitoring dashboard with uptime, worker health, outages, and recent activity" /></td>
-    <td width="50%"><img src="./docs/screenshots/monitoring.png" alt="Sentrovia uptime monitor inventory with HTTP, API, TCP, ping, PostgreSQL, and heartbeat checks" /></td>
+    <td width="50%"><img src="./docs/screenshots/demo-frames/01-dashboard.png" alt="Sentrovia live monitoring dashboard with fleet health, worker status, incidents, and delivery totals" /></td>
+    <td width="50%"><img src="./docs/screenshots/demo-frames/02-monitoring.png" alt="Sentrovia monitor inventory with online, offline, paused, critical, and favorite endpoints" /></td>
   </tr>
   <tr>
-    <td><sub>Workspace health, worker state, activation progress, and operational visibility.</sub></td>
-    <td><sub>Server-paginated monitors, bulk actions, and outage timelines.</sub></td>
+    <td><sub>Live workspace health, worker state, incidents, and delivery outcomes.</sub></td>
+    <td><sub>Searchable monitors, status, ownership, flags, pause controls, and timelines.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="./docs/screenshots/delivery.png" alt="Sentrovia alert delivery history for email, Telegram, Discord, and webhooks" /></td>
-    <td width="50%"><img src="./docs/screenshots/help.png" alt="Sentrovia self-hosted monitoring documentation and troubleshooting help" /></td>
+    <td width="50%"><img src="./docs/screenshots/demo-frames/03-delivery.png" alt="Sentrovia notification delivery health for email, Telegram, Discord, and webhooks" /></td>
+    <td width="50%"><img src="./docs/screenshots/demo-frames/04-reports.png" alt="Sentrovia reliability analytics with uptime, failures, latency, and fleet risk" /></td>
   </tr>
   <tr>
-    <td><sub>Channel testing, retries, delivery health, and controlled history cleanup.</sub></td>
-    <td><sub>Built-in guidance for checks, alerts, reports, workers, and troubleshooting.</sub></td>
+    <td><sub>Channel health, test tools, bounded retries, dead letters, and searchable history.</sub></td>
+    <td><sub>Reliability trends, cohort exclusions, report previews, and scheduled delivery.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="./docs/screenshots/demo-frames/05-settings-preview.png" alt="Sentrovia live dark email notification preview with Check site action" /></td>
+    <td width="50%"><img src="./docs/screenshots/demo-frames/06-status.png" alt="Sentrovia public service status page showing operational and unavailable services" /></td>
+  </tr>
+  <tr>
+    <td><sub>Workspace branding, event templates, English/Turkish notifications, and light/dark preview.</sub></td>
+    <td><sub>Public service availability with incident state, search, and automatic refresh.</sub></td>
   </tr>
 </table>
 
@@ -185,6 +219,14 @@ npm run lint
 npm test
 npm run build
 ```
+
+The screenshot integration tests require the Playwright Chromium revision used by the installed package:
+
+```bash
+npx playwright install chromium
+```
+
+Run the suite from a Git clone. The Windows update-safety tests compare the cleanup manifest with Git's tracked and deleted paths, so source archives without `.git` cannot execute those assertions.
 
 The isolated dynamic test suite covers authenticated routes, API boundaries, core UI interactions, responsive overflow, reports, status pages, and notification previews. See [dynamic E2E test cases](docs/dynamic-e2e-test-cases.md).
 

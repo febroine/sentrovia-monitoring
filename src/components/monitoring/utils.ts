@@ -28,11 +28,29 @@ export function payloadFromMonitor(monitor: MonitorRecord): MonitorPayload {
     ...toMonitorPayload(monitor),
     telegramTemplate: monitor.telegramTemplate ?? DEFAULT_MONITOR_FORM.telegramTemplate,
     emailSubject: monitor.emailSubject ?? DEFAULT_MONITOR_FORM.emailSubject,
+    emailHeadline: monitor.emailHeadline ?? DEFAULT_MONITOR_FORM.emailHeadline,
     emailBody: monitor.emailBody ?? DEFAULT_MONITOR_FORM.emailBody,
     slowResponseEmailSubject: monitor.slowResponseEmailSubject ?? DEFAULT_MONITOR_FORM.slowResponseEmailSubject,
+    slowResponseEmailHeadline: monitor.slowResponseEmailHeadline ?? DEFAULT_MONITOR_FORM.slowResponseEmailHeadline,
     slowResponseEmailBody: monitor.slowResponseEmailBody ?? DEFAULT_MONITOR_FORM.slowResponseEmailBody,
     slowResponseTelegramTemplate:
       monitor.slowResponseTelegramTemplate ?? DEFAULT_MONITOR_FORM.slowResponseTelegramTemplate,
+    recoveryEmailSubject: monitor.recoveryEmailSubject ?? DEFAULT_MONITOR_FORM.recoveryEmailSubject,
+    recoveryEmailHeadline: monitor.recoveryEmailHeadline ?? DEFAULT_MONITOR_FORM.recoveryEmailHeadline,
+    recoveryEmailBody: monitor.recoveryEmailBody ?? DEFAULT_MONITOR_FORM.recoveryEmailBody,
+    recoveryTelegramTemplate: monitor.recoveryTelegramTemplate ?? DEFAULT_MONITOR_FORM.recoveryTelegramTemplate,
+    prolongedDowntimeEmailSubject:
+      monitor.prolongedDowntimeEmailSubject ?? DEFAULT_MONITOR_FORM.prolongedDowntimeEmailSubject,
+    prolongedDowntimeEmailHeadline:
+      monitor.prolongedDowntimeEmailHeadline ?? DEFAULT_MONITOR_FORM.prolongedDowntimeEmailHeadline,
+    prolongedDowntimeEmailBody:
+      monitor.prolongedDowntimeEmailBody ?? DEFAULT_MONITOR_FORM.prolongedDowntimeEmailBody,
+    prolongedDowntimeTelegramTemplate:
+      monitor.prolongedDowntimeTelegramTemplate ?? DEFAULT_MONITOR_FORM.prolongedDowntimeTelegramTemplate,
+    sslExpiryEmailSubject: monitor.sslExpiryEmailSubject ?? DEFAULT_MONITOR_FORM.sslExpiryEmailSubject,
+    sslExpiryEmailHeadline: monitor.sslExpiryEmailHeadline ?? DEFAULT_MONITOR_FORM.sslExpiryEmailHeadline,
+    sslExpiryEmailBody: monitor.sslExpiryEmailBody ?? DEFAULT_MONITOR_FORM.sslExpiryEmailBody,
+    sslExpiryTelegramTemplate: monitor.sslExpiryTelegramTemplate ?? DEFAULT_MONITOR_FORM.sslExpiryTelegramTemplate,
     sendOutageScreenshot: monitor.sendOutageScreenshot,
     slowResponseThresholdMs: monitor.slowResponseThresholdMs,
   };

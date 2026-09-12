@@ -23,6 +23,14 @@ describe("monitor exports", () => {
     expect(rows[0]).not.toHaveProperty("emailBody");
   });
 
+  it("does not export credentials from legacy HTTP monitor URLs", () => {
+    const [row] = buildMonitorExportRows([
+      buildMonitor({ url: "https://canary-user:canary-pass@example.com/health?region=eu" }),
+    ]);
+
+    expect(row.target).toBe("https://example.com/health?region=eu");
+  });
+
   it("writes UTF-8 CSV and neutralizes spreadsheet formulas", async () => {
     const rows = buildMonitorExportRows([
       buildMonitor({

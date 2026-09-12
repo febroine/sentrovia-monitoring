@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { buildCsv, EXPORT_PRESETS } from "@/lib/logs/presets";
 import type { LogFilters, LogPresetRecord, LogRecord } from "@/lib/logs/types";
 import { showToast } from "@/lib/client-toast";
+import { createLogPreset, deleteLogPreset, loadLogPresets } from "@/lib/logs/client-presets";
 
 const DEFAULT_FILTERS: LogFilters = {
   search: "",
@@ -32,6 +33,7 @@ export default function LogsPage() {
   const [presets, setPresets] = useState<LogPresetRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [presetError, setPresetError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const [presetName, setPresetName] = useState("");
@@ -47,9 +49,12 @@ export default function LogsPage() {
   const latestLogsRequestRef = useRef(0);
 
   const loadPresets = useCallback(async () => {
-    const response = await fetch("/api/logs/presets", { cache: "no-store" });
-    const data = (await response.json()) as { presets?: LogPresetRecord[] };
-    setPresets(data.presets ?? []);
+    try {
+      setPresets(await loadLogPresets());
+      setPresetError(null);
+    } catch (caughtError) {
+      setPresetError(caughtError instanceof Error ? caughtError.message : "Unable to load log presets.");
+    }
   }, []);
 
   const loadLogs = useCallback(async (silent = false) => {
@@ -155,32 +160,24 @@ export default function LogsPage() {
       return;
     }
 
-    const response = await fetch("/api/logs/presets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: presetName, filters }),
-    });
-    const data = (await response.json()) as { presets?: LogPresetRecord[]; message?: string };
-    if (!response.ok) {
-      setError(data.message ?? "Unable to save the preset.");
-      return;
+    try {
+      setPresets(await createLogPreset(presetName, filters));
+      setPresetName("");
+      setPresetError(null);
+    } catch (caughtError) {
+      setPresetError(caughtError instanceof Error ? caughtError.message : "Unable to save the preset.");
     }
-
-    setPresets(data.presets ?? []);
-    setPresetName("");
   }
 
   async function removePreset(presetId: string) {
-    const response = await fetch(`/api/logs/presets?id=${presetId}`, { method: "DELETE" });
-    const data = (await response.json()) as { presets?: LogPresetRecord[]; message?: string };
-    if (!response.ok) {
-      setError(data.message ?? "Unable to delete the preset.");
-      return;
-    }
-
-    setPresets(data.presets ?? []);
-    if (selectedPresetId === presetId) {
-      setSelectedPresetId("placeholder");
+    try {
+      setPresets(await deleteLogPreset(presetId));
+      if (selectedPresetId === presetId) {
+        setSelectedPresetId("placeholder");
+      }
+      setPresetError(null);
+    } catch (caughtError) {
+      setPresetError(caughtError instanceof Error ? caughtError.message : "Unable to delete the preset.");
     }
   }
 
@@ -278,20 +275,21 @@ export default function LogsPage() {
             onClick={() => exportLogs(exportPreset)}
             disabled={exportPreset.endsWith("selected") ? selectedIds.size === 0 : logs.length === 0}
           >
-            <Download className="mr-2 h-4 w-4" />
+            <Download data-icon="inline-start" className="h-4 w-4" />
             Export
           </Button>
           <Button variant="outline" size="icon" aria-label="Refresh event logs" title="Refresh" onClick={() => void loadLogs()} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           </Button>
           <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={total === 0}>
-            <Trash2 className="mr-2 h-4 w-4" />
+            <Trash2 data-icon="inline-start" className="h-4 w-4" />
             Clear logs
           </Button>
         </div>
       </header>
 
       {error ? <AlertBanner message={error} /> : null}
+      {presetError ? <AlertBanner message={presetError} /> : null}
 
       <div className="relative">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -320,7 +318,7 @@ export default function LogsPage() {
       />
 
       {selectedIds.size > 0 ? (
-        <div className="flex items-center justify-between border-l-2 border-primary px-4 py-2">
+        <div className="flex items-center justify-between rounded-md bg-primary/10 px-4 py-3">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} log selected</p>
           </div>
@@ -345,6 +343,11 @@ export default function LogsPage() {
           setPageSize(value);
           setPage(1);
         }}
+        emptyAction={
+          <Button variant="outline" size="sm" onClick={resetFilters}>
+            Reset log filters
+          </Button>
+        }
       />
 
       <Dialog open={clearConfirmationOpen} onOpenChange={setClearConfirmationOpen}>
@@ -352,13 +355,13 @@ export default function LogsPage() {
           <DialogHeader>
             <DialogTitle>Clear event logs?</DialogTitle>
             <DialogDescription>
-              This permanently removes {total.toLocaleString()} event log records from this workspace.
+              This permanently removes {total.toLocaleString("en-GB")} event log records from this workspace.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setClearConfirmationOpen(false)} disabled={clearing}>Cancel</Button>
             <Button variant="destructive" onClick={() => void clearAllLogs()} disabled={clearing}>
-              {clearing ? "Clearing..." : "Clear logs"}
+              {clearing ? "Clearing…" : "Clear logs"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -374,7 +377,7 @@ function getLocalCalendarBoundaryOffset(value: string, dayOffset = 0) {
 
 function AlertBanner({ message }: { message: string }) {
   return (
-    <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
+    <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
       {message}
     </div>
   );

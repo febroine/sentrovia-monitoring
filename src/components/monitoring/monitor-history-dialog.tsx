@@ -11,6 +11,7 @@ import { buildMonitorHistoryWindow } from "@/lib/monitors/history-window";
 import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 import { toEnglishUppercase } from "@/lib/text/casing";
 import { formatLatency } from "@/components/monitoring/utils";
+import { formatPanelDateTime } from "@/lib/time";
 
 export function MonitorHistoryDialog({
   open,
@@ -45,12 +46,12 @@ export function MonitorHistoryDialog({
         </DialogHeader>
 
         {!monitor || !selection ? (
-          <div className="border-l-2 border-border px-4 py-4 text-sm text-muted-foreground">
+          <div className="rounded-md bg-muted/25 px-4 py-4 text-sm text-muted-foreground">
             Select a timeline point to inspect its state window.
           </div>
         ) : (
           <div className="space-y-4">
-            <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
+            <dl className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
               <HistoryStat
                 label="State"
                 value={getStateLabel(selection.point.status)}
@@ -74,7 +75,7 @@ export function MonitorHistoryDialog({
             </dl>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-              <div className="border-y py-4">
+              <div className="rounded-md bg-muted/20 p-4">
                 <p className="text-sm font-medium">Selected check and state window</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Consecutive completed checks with the same state are grouped here. This is not a running request.
@@ -93,7 +94,7 @@ export function MonitorHistoryDialog({
                 </div>
               </div>
 
-              <div className="border-y py-4">
+              <div className="rounded-md bg-muted/20 p-4">
                 <p className="text-sm font-medium">State summary</p>
                 <p className="mt-1 text-xs text-muted-foreground">{buildStateSummary(selection, monitor)}</p>
                 <div className="mt-4 flex flex-wrap gap-1.5">
@@ -102,12 +103,12 @@ export function MonitorHistoryDialog({
                       type="button"
                       key={point.id}
                       className={[
-                        "h-3 w-6 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        "h-3 w-6 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         point.status === "up"
-                          ? "border-emerald-500/30 bg-emerald-500/80"
+                          ? "bg-emerald-500/80"
                           : point.status === "pending"
-                            ? "border-amber-500/30 bg-amber-500/80"
-                            : "border-destructive/30 bg-destructive/80",
+                            ? "bg-amber-500/80"
+                            : "bg-destructive/80",
                         point.id === selection.point.id ? "scale-110 ring-2 ring-ring/50" : "opacity-70",
                       ].join(" ")}
                       title={`${toEnglishUppercase(point.status)} · ${formatDateTime(point.createdAt)}`}
@@ -131,7 +132,7 @@ export function MonitorHistoryDialog({
             </div>
 
             {latestDiagnostic ? (
-              <div className="border-y py-4">
+              <div className="rounded-md bg-muted/20 p-4">
                 <p className="text-sm font-medium">Latest diagnostics</p>
                 <p className="mt-1 text-xs text-muted-foreground">{latestDiagnostic.summary}</p>
                 <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
@@ -154,9 +155,9 @@ export function MonitorHistoryDialog({
             ) : null}
 
             {outageEvents.length > 0 ? (
-              <div className="border-y py-4">
+              <div className="rounded-md bg-muted/20 p-4">
                 <p className="text-sm font-medium">Outage timeline</p>
-                <div className="mt-3 divide-y">
+                <div className="mt-3 grid gap-2">
                   {outageEvents.map((event) => (
                     <div key={event.id} className="py-3">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -170,16 +171,16 @@ export function MonitorHistoryDialog({
               </div>
             ) : null}
 
-            <div className="border-y py-4">
+            <div className="rounded-md bg-muted/20 p-4">
               <p className="text-sm font-medium">Recent state flow</p>
-              <div className="mt-3 divide-y">
+              <div className="mt-3 grid gap-2">
                 {points.map((point) => (
                   <button
                     type="button"
                     key={point.id}
                     className={[
-                      "flex w-full items-center justify-between py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      point.id === selection.point.id ? "bg-primary/5" : "",
+                      "flex w-full items-center justify-between rounded-md px-3 py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      point.id === selection.point.id ? "bg-primary/10" : "bg-background/25",
                     ].join(" ")}
                     aria-pressed={point.id === selection.point.id}
                     onClick={() => onSelectPoint(point.id)}
@@ -224,7 +225,7 @@ function HistoryStat({
   helper: string;
 }) {
   return (
-    <div className="border-b px-4 py-3 last:border-b-0 xl:border-b-0">
+    <div className="rounded-md bg-background/30 px-4 py-3">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="pt-2 text-sm font-semibold text-foreground">{value}</dd>
       <p className="pt-1 text-xs text-muted-foreground">{helper}</p>
@@ -234,7 +235,7 @@ function HistoryStat({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-2 last:border-b-0 last:pb-0">
+    <div className="flex items-start justify-between gap-3 rounded-md bg-background/25 px-3 py-2">
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right font-medium">{value}</span>
     </div>
@@ -243,7 +244,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 function DiagnosticPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-l-2 border-border py-1 pl-3">
+    <div className="rounded-md bg-background/30 px-3 py-2">
       <p className="font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
@@ -332,7 +333,7 @@ function formatStepStatus(status: string | null) {
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString();
+  return formatPanelDateTime(value);
 }
 
 function formatWindowState(

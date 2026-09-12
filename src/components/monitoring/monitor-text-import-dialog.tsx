@@ -175,7 +175,7 @@ export function MonitorTextImportDialog({
               <Label htmlFor="monitor-txt-file">TXT file</Label>
               <label
                 htmlFor="monitor-txt-file"
-                className="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-border px-4 py-4 hover:border-primary/50 hover:bg-muted/40"
+                className="flex cursor-pointer items-center gap-3 rounded-md bg-muted/25 px-4 py-4 hover:bg-primary/10"
               >
                 <Upload className="size-5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
@@ -198,7 +198,7 @@ export function MonitorTextImportDialog({
             </div>
 
             {text ? (
-              <fieldset className="space-y-4 border-t pt-4">
+              <fieldset className="space-y-4 rounded-md bg-muted/20 p-4">
                 <legend className="mb-3 text-sm font-semibold">Settings for imported monitors</legend>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Default protocol" htmlFor="txt-default-protocol">
@@ -330,7 +330,7 @@ export function MonitorTextImportDialog({
                   </Field>
                 </div>
 
-                <div className="divide-y border-y">
+                <div className="grid gap-2 rounded-md bg-muted/20 p-2">
                   <SettingSwitch
                     label="Active monitors"
                     description="Start checking imported domains immediately."
@@ -360,7 +360,7 @@ export function MonitorTextImportDialog({
             ) : null}
 
             {error || preview.error ? (
-              <div role="alert" aria-live="polite" className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive">
+              <div role="alert" aria-live="polite" className="rounded-md bg-destructive/10 px-3 py-3 text-sm text-destructive">
                 {error ?? preview.error}
               </div>
             ) : null}
@@ -384,7 +384,7 @@ export function MonitorTextImportDialog({
 
 function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPostgresCommandEnvironment,
   isAutomaticBackupDue,
+  resolveWorkspaceBackupSchedule,
 } from "@/lib/system/automatic-backup";
 
 const baseSchedule = {
@@ -34,6 +35,54 @@ describe("automatic database backup scheduling", () => {
   it("does not run disabled or malformed schedules", () => {
     expect(isAutomaticBackupDue({ ...baseSchedule, enabled: false }, new Date("2026-08-24T10:00:00Z"))).toBe(false);
     expect(isAutomaticBackupDue({ ...baseSchedule, window: "3am" }, new Date("2026-08-24T10:00:00Z"))).toBe(false);
+  });
+
+  it("treats an explicit workspace disable as authoritative", () => {
+    expect(resolveWorkspaceBackupSchedule([{
+      workspaceId: "workspace-1",
+      userId: "admin-1",
+      values: { autoBackupEnabled: false },
+      timeZone: "Europe/Istanbul",
+    }])).toBeNull();
+  });
+
+  it("uses legacy backup settings only when no workspace settings row exists", () => {
+    expect(resolveWorkspaceBackupSchedule([])).toBeUndefined();
+  });
+
+  it("resolves an enabled workspace backup schedule with legacy JSON keys", () => {
+    expect(resolveWorkspaceBackupSchedule([{
+      workspaceId: "workspace-1",
+      userId: "admin-1",
+      values: {
+        auto_backup_enabled: true,
+        backup_window: "04:30",
+        backup_retention_count: 12,
+        backup_time_zone: "America/New_York",
+        last_automatic_backup_at: "2026-08-24T01:30:00.000Z",
+      },
+      timeZone: "UTC",
+    }])).toEqual({
+      workspaceId: "workspace-1",
+      userId: "admin-1",
+      enabled: true,
+      window: "04:30",
+      retentionCount: 12,
+      timeZone: "America/New_York",
+      lastBackupAt: new Date("2026-08-24T01:30:00.000Z"),
+    });
+  });
+
+  it("keeps the existing admin timezone as a pre-backfill compatibility fallback", () => {
+    expect(resolveWorkspaceBackupSchedule([{
+      workspaceId: "workspace-1",
+      userId: "admin-1",
+      values: { autoBackupEnabled: true, backupWindow: "05:00" },
+      timeZone: "Europe/Istanbul",
+    }])).toMatchObject({
+      timeZone: "Europe/Istanbul",
+      window: "05:00",
+    });
   });
 });
 

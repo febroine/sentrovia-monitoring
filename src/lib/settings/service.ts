@@ -103,19 +103,27 @@ const USER_SETTINGS_COLUMN_MAP = {
   notificationEmailBrandName: "notification_email_brand_name",
   notificationEmailFooterText: "notification_email_footer_text",
   defaultEmailSubjectTemplate: "default_email_subject_template",
+  defaultEmailHeadlineTemplate: "default_email_headline_template",
   defaultEmailBodyTemplate: "default_email_body_template",
   defaultTelegramTemplate: "default_telegram_template",
   slowResponseEmailSubjectTemplate: "slow_response_email_subject_template",
+  slowResponseEmailHeadlineTemplate: "slow_response_email_headline_template",
   slowResponseEmailBodyTemplate: "slow_response_email_body_template",
   slowResponseTelegramTemplate: "slow_response_telegram_template",
   defaultTelegramBotTokenEncrypted: "default_telegram_bot_token_encrypted",
   defaultTelegramChatId: "default_telegram_chat_id",
   recoveryEmailSubjectTemplate: "recovery_email_subject_template",
+  recoveryEmailHeadlineTemplate: "recovery_email_headline_template",
   recoveryEmailBodyTemplate: "recovery_email_body_template",
   recoveryTelegramTemplate: "recovery_telegram_template",
   prolongedDowntimeEmailSubjectTemplate: "prolonged_downtime_email_subject_template",
+  prolongedDowntimeEmailHeadlineTemplate: "prolonged_downtime_email_headline_template",
   prolongedDowntimeEmailBodyTemplate: "prolonged_downtime_email_body_template",
   prolongedDowntimeTelegramTemplate: "prolonged_downtime_telegram_template",
+  sslExpiryEmailSubjectTemplate: "ssl_expiry_email_subject_template",
+  sslExpiryEmailHeadlineTemplate: "ssl_expiry_email_headline_template",
+  sslExpiryEmailBodyTemplate: "ssl_expiry_email_body_template",
+  sslExpiryTelegramTemplate: "ssl_expiry_telegram_template",
   statusCodeAlertCodes: "status_code_alert_codes",
   savedEmailRecipients: "saved_email_recipients",
   monitoringInterval: "monitoring_interval",
@@ -334,6 +342,11 @@ export async function getSettings(
         notificationTemplates.defaultEmailSubjectTemplate,
         legacyNotificationTemplates.defaultEmailSubjectTemplate
       ),
+      defaultEmailHeadlineTemplate: resolveWorkspaceTemplate(
+        settings?.defaultEmailHeadlineTemplate,
+        notificationTemplates.defaultEmailHeadlineTemplate,
+        legacyNotificationTemplates.defaultEmailHeadlineTemplate
+      ),
       defaultEmailBodyTemplate: resolveWorkspaceTemplate(
         settings?.defaultEmailBodyTemplate,
         notificationTemplates.defaultEmailBodyTemplate,
@@ -348,6 +361,11 @@ export async function getSettings(
         settings?.slowResponseEmailSubjectTemplate,
         notificationTemplates.slowResponseEmailSubjectTemplate,
         legacyNotificationTemplates.slowResponseEmailSubjectTemplate
+      ),
+      slowResponseEmailHeadlineTemplate: resolveWorkspaceTemplate(
+        settings?.slowResponseEmailHeadlineTemplate,
+        notificationTemplates.slowResponseEmailHeadlineTemplate,
+        legacyNotificationTemplates.slowResponseEmailHeadlineTemplate
       ),
       slowResponseEmailBodyTemplate: resolveWorkspaceTemplate(
         settings?.slowResponseEmailBodyTemplate,
@@ -369,6 +387,11 @@ export async function getSettings(
         notificationTemplates.recoveryEmailSubjectTemplate,
         legacyNotificationTemplates.recoveryEmailSubjectTemplate
       ),
+      recoveryEmailHeadlineTemplate: resolveWorkspaceTemplate(
+        settings?.recoveryEmailHeadlineTemplate,
+        notificationTemplates.recoveryEmailHeadlineTemplate,
+        legacyNotificationTemplates.recoveryEmailHeadlineTemplate
+      ),
       recoveryEmailBodyTemplate: resolveWorkspaceTemplate(
         settings?.recoveryEmailBodyTemplate,
         notificationTemplates.recoveryEmailBodyTemplate,
@@ -384,6 +407,11 @@ export async function getSettings(
         notificationTemplates.prolongedDowntimeEmailSubjectTemplate,
         legacyNotificationTemplates.prolongedDowntimeEmailSubjectTemplate
       ),
+      prolongedDowntimeEmailHeadlineTemplate: resolveWorkspaceTemplate(
+        settings?.prolongedDowntimeEmailHeadlineTemplate,
+        notificationTemplates.prolongedDowntimeEmailHeadlineTemplate,
+        legacyNotificationTemplates.prolongedDowntimeEmailHeadlineTemplate
+      ),
       prolongedDowntimeEmailBodyTemplate: resolveWorkspaceTemplate(
         settings?.prolongedDowntimeEmailBodyTemplate,
         notificationTemplates.prolongedDowntimeEmailBodyTemplate,
@@ -393,6 +421,26 @@ export async function getSettings(
         settings?.prolongedDowntimeTelegramTemplate,
         notificationTemplates.prolongedDowntimeTelegramTemplate,
         legacyNotificationTemplates.prolongedDowntimeTelegramTemplate
+      ),
+      sslExpiryEmailSubjectTemplate: resolveWorkspaceTemplate(
+        settings?.sslExpiryEmailSubjectTemplate,
+        notificationTemplates.sslExpiryEmailSubjectTemplate,
+        legacyNotificationTemplates.sslExpiryEmailSubjectTemplate
+      ),
+      sslExpiryEmailHeadlineTemplate: resolveWorkspaceTemplate(
+        settings?.sslExpiryEmailHeadlineTemplate,
+        notificationTemplates.sslExpiryEmailHeadlineTemplate,
+        legacyNotificationTemplates.sslExpiryEmailHeadlineTemplate
+      ),
+      sslExpiryEmailBodyTemplate: resolveWorkspaceTemplate(
+        settings?.sslExpiryEmailBodyTemplate,
+        notificationTemplates.sslExpiryEmailBodyTemplate,
+        legacyNotificationTemplates.sslExpiryEmailBodyTemplate
+      ),
+      sslExpiryTelegramTemplate: resolveWorkspaceTemplate(
+        settings?.sslExpiryTelegramTemplate,
+        notificationTemplates.sslExpiryTelegramTemplate,
+        legacyNotificationTemplates.sslExpiryTelegramTemplate
       ),
       statusCodeAlertCodes: stringOrDefault(
         settings?.statusCodeAlertCodes,
@@ -793,9 +841,11 @@ async function persistSettings(
     notificationEmailBrandName: emptyToNull(input.notifications.notificationEmailBrandName),
     notificationEmailFooterText: emptyToNull(input.notifications.notificationEmailFooterText),
     defaultEmailSubjectTemplate: emptyToNull(input.notifications.defaultEmailSubjectTemplate),
+    defaultEmailHeadlineTemplate: emptyToNull(input.notifications.defaultEmailHeadlineTemplate),
     defaultEmailBodyTemplate: emptyToNull(input.notifications.defaultEmailBodyTemplate),
     defaultTelegramTemplate: emptyToNull(input.notifications.defaultTelegramTemplate),
     slowResponseEmailSubjectTemplate: emptyToNull(input.notifications.slowResponseEmailSubjectTemplate),
+    slowResponseEmailHeadlineTemplate: emptyToNull(input.notifications.slowResponseEmailHeadlineTemplate),
     slowResponseEmailBodyTemplate: emptyToNull(input.notifications.slowResponseEmailBodyTemplate),
     slowResponseTelegramTemplate: emptyToNull(input.notifications.slowResponseTelegramTemplate),
     defaultTelegramBotTokenEncrypted: encryptedTelegramBotToken,
@@ -803,11 +853,17 @@ async function persistSettings(
       ? emptyToNull(input.notifications.defaultTelegramChatId)
       : null,
     recoveryEmailSubjectTemplate: emptyToNull(input.notifications.recoveryEmailSubjectTemplate),
+    recoveryEmailHeadlineTemplate: emptyToNull(input.notifications.recoveryEmailHeadlineTemplate),
     recoveryEmailBodyTemplate: emptyToNull(input.notifications.recoveryEmailBodyTemplate),
     recoveryTelegramTemplate: emptyToNull(input.notifications.recoveryTelegramTemplate),
     prolongedDowntimeEmailSubjectTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailSubjectTemplate),
+    prolongedDowntimeEmailHeadlineTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailHeadlineTemplate),
     prolongedDowntimeEmailBodyTemplate: emptyToNull(input.notifications.prolongedDowntimeEmailBodyTemplate),
     prolongedDowntimeTelegramTemplate: emptyToNull(input.notifications.prolongedDowntimeTelegramTemplate),
+    sslExpiryEmailSubjectTemplate: emptyToNull(input.notifications.sslExpiryEmailSubjectTemplate),
+    sslExpiryEmailHeadlineTemplate: emptyToNull(input.notifications.sslExpiryEmailHeadlineTemplate),
+    sslExpiryEmailBodyTemplate: emptyToNull(input.notifications.sslExpiryEmailBodyTemplate),
+    sslExpiryTelegramTemplate: emptyToNull(input.notifications.sslExpiryTelegramTemplate),
     statusCodeAlertCodes: input.notifications.statusCodeAlertCodes.trim(),
     savedEmailRecipients: input.notifications.savedEmailRecipients,
     monitoringInterval: input.monitoring.interval,
@@ -846,6 +902,7 @@ async function persistSettings(
       autoBackupEnabled: input.data.autoBackupEnabled,
       backupWindow: input.data.backupWindow,
       backupRetentionCount: input.data.backupRetentionCount,
+      backupTimeZone: input.appearance.timeZone,
     } : {}),
     lastBackupStatus: toBackupStatus(existing?.lastBackupStatus),
     lastBackupError: stringOrNull(existing?.lastBackupError),

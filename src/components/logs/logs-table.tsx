@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   CheckSquare,
   ChevronDown,
@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { LogRecord } from "@/lib/logs/types";
+import { formatPanelDateTime } from "@/lib/time";
 
 const PAGE_SIZE_OPTIONS = ["10", "25", "50", "100"] as const;
 
@@ -31,6 +32,7 @@ export function LogsTable({
   onToggleAll,
   onPageChange,
   onPageSizeChange,
+  emptyAction,
 }: {
   logs: LogRecord[];
   total: number;
@@ -43,6 +45,7 @@ export function LogsTable({
   onToggleAll: (visibleIds: string[]) => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
+  emptyAction?: ReactNode;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -51,8 +54,8 @@ export function LogsTable({
   const pageButtons = useMemo(() => buildPageButtons(safePage, totalPages), [safePage, totalPages]);
 
   return (
-    <Card className="overflow-hidden border-border/80">
-      <CardHeader className="border-b bg-muted/10 pb-3">
+    <Card className="overflow-hidden">
+      <CardHeader className="bg-muted/20 pb-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <p className="text-sm text-muted-foreground">{total} event{total === 1 ? "" : "s"}</p>
           <div className="flex items-center gap-2 self-start lg:self-auto">
@@ -81,7 +84,8 @@ export function LogsTable({
                 <button
                   type="button"
                   onClick={() => onToggleAll(logs.map((log) => log.id))}
-                  className="flex items-center justify-center text-muted-foreground"
+                  className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  aria-label={allVisibleSelected ? "Clear visible log selection" : "Select all visible logs"}
                 >
                   {allVisibleSelected ? (
                     <CheckSquare className="h-4 w-4 text-primary" />
@@ -103,7 +107,7 @@ export function LogsTable({
             {loading ? (
               <TableRow>
                 <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
-                  Loading logs...
+                  Loading logs…
                 </TableCell>
               </TableRow>
             ) : null}
@@ -112,6 +116,8 @@ export function LogsTable({
                 <TableCell colSpan={8}>
                   <EmptyState
                     title="No events match the current filters"
+                    description="Try a broader date range or clear the active filters."
+                    action={emptyAction}
                   />
                 </TableCell>
               </TableRow>
@@ -134,7 +140,7 @@ export function LogsTable({
           </TableBody>
         </Table>
 
-        <div className="flex flex-col gap-3 border-t bg-muted/10 px-4 py-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 rounded-b-md bg-muted/20 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-muted-foreground">
             Page {safePage} of {totalPages}
           </p>
@@ -152,7 +158,7 @@ export function LogsTable({
               {pageButtons.map((item, index) =>
                 item === "ellipsis" ? (
                   <span key={`ellipsis-${index}`} className="px-2 text-xs text-muted-foreground">
-                    ...
+                    …
                   </span>
                 ) : (
                   <Button
@@ -205,7 +211,8 @@ function ExpandedRow({
           <button
             type="button"
             onClick={onToggleSelect}
-            className="flex items-center justify-center text-muted-foreground"
+            className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            aria-label={selected ? `Deselect log from ${formatPanelDateTime(log.createdAt)}` : `Select log from ${formatPanelDateTime(log.createdAt)}`}
           >
             {selected ? (
               <CheckSquare className="h-4 w-4 text-primary" />
@@ -215,7 +222,7 @@ function ExpandedRow({
           </button>
         </TableCell>
         <TableCell className="text-xs text-muted-foreground">
-          {new Date(log.createdAt).toLocaleString()}
+          {formatPanelDateTime(log.createdAt)}
         </TableCell>
         <TableCell>
           <LevelBadge level={log.level} />
@@ -224,7 +231,7 @@ function ExpandedRow({
           <StatusBadge status={log.status} />
         </TableCell>
         <TableCell>
-          <Badge variant="outline" className="border-border/70 font-mono text-xs">
+          <Badge variant="outline" className="bg-muted/30 font-mono text-xs">
             {log.statusCode ?? "--"}
           </Badge>
         </TableCell>
@@ -234,7 +241,9 @@ function ExpandedRow({
           <button
             type="button"
             onClick={onToggleExpand}
-            className="flex w-full items-start justify-between gap-3 text-left"
+            className="flex w-full items-start justify-between gap-3 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Hide" : "Show"} details for ${log.message ?? log.eventType}`}
           >
             <div className="space-y-1">
               <p className="text-sm">{log.message ?? log.eventType}</p>
@@ -262,11 +271,11 @@ function ExpandedRow({
                   {log.detailSummary ?? "No additional context available."}
                 </p>
               </div>
-              <dl className="grid border-y md:grid-cols-2 xl:grid-cols-3 xl:divide-x">
+              <dl className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {log.detailItems.map((item) => (
                   <div
                     key={`${log.id}-${item.label}`}
-                    className="border-b px-3 py-3 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0"
+                    className="rounded-md bg-muted/25 px-3 py-3"
                   >
                     <dt className="text-xs font-medium text-muted-foreground">
                       {item.label}
@@ -288,7 +297,7 @@ function StatusBadge({ status }: { status: string | null }) {
     return (
       <Badge
         variant="outline"
-        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+        className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
       >
         UP
       </Badge>
@@ -297,14 +306,14 @@ function StatusBadge({ status }: { status: string | null }) {
 
   if (status === "down") {
     return (
-      <Badge variant="outline" className="border-destructive/30 text-destructive">
+      <Badge variant="outline" className="bg-destructive/10 text-destructive">
         DOWN
       </Badge>
     );
   }
 
   return (
-    <Badge variant="outline" className="border-border/70 text-muted-foreground">
+    <Badge variant="outline" className="bg-muted/30 text-muted-foreground">
       --
     </Badge>
   );

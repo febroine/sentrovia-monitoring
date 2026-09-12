@@ -9,21 +9,26 @@ function readSource(relativePath) {
 }
 
 describe("wide table containment", () => {
-  it("allows the application content column to shrink beside the sidebar", () => {
+  it("allows the application content column to shrink beside the sidebar without globally capping page width", () => {
     const appShell = readSource("src/components/app-shell.tsx");
 
     expect(appShell).toContain("min-h-screen min-w-0 flex-1 flex-col");
-    expect(appShell).toContain("w-full min-w-0 max-w-[1760px]");
+    expect(appShell).toContain("w-full min-w-0 flex-1 overflow-x-hidden");
+    expect(appShell).toContain("pathname === '/profile' && 'mx-auto max-w-[1760px]'");
   });
 
-  it("keeps wide monitor columns readable within a horizontally scrolling container", () => {
+  it("keeps monitor data in one desktop table without horizontal scrolling", () => {
     const table = readSource("src/components/ui/table.tsx");
     const monitorTable = readSource("src/components/monitoring/monitor-table.tsx");
 
     expect(table).toContain("w-full min-w-0 max-w-full overflow-x-auto");
-    expect(monitorTable).toContain("min-w-0 max-w-full overflow-x-auto");
-    expect(monitorTable).toContain('Table className="min-w-[1180px] table-fixed');
+    expect(monitorTable).toContain("[&>[data-slot=table-container]]:overflow-x-hidden");
+    expect(monitorTable).toContain('Table className="min-w-0 table-fixed');
+    expect(monitorTable).not.toContain('Table className="min-w-[1180px]');
     expect(monitorTable).toContain("<colgroup>");
+    expect(monitorTable).toContain("HTTP {monitor.statusCode ?? \"--\"} · {formatLatency(monitor.latencyMs)}");
+    expect(monitorTable).toContain("{monitor.uptime} uptime");
+    expect(monitorTable).toContain("monitor.tags.join(\" · \")");
     expect(monitorTable).toContain("onOpenTimeline");
   });
 

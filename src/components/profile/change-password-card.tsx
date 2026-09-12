@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { CircleAlert, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SectionRail } from "@/components/settings/settings-section-primitives";
 import { cn } from "@/lib/utils";
 
 type PasswordFieldName = "currentPassword" | "newPassword" | "confirmPassword";
@@ -47,10 +48,12 @@ export function ChangePasswordCard() {
   }
 
   return (
-    <section className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12">
-      <SecurityIntro />
-      <form ref={formRef} className="border-y py-6" onSubmit={handleSubmit}>
-        <div className="grid gap-5">
+    <SectionRail
+      title="Password"
+      description="Confirm your current password before choosing a new one. Your signed-in session remains active."
+    >
+      <form ref={formRef} onSubmit={handleSubmit}>
+        <div className="grid gap-6">
           <PasswordField
             name="currentPassword"
             label="Current password"
@@ -83,8 +86,8 @@ export function ChangePasswordCard() {
         {error ? <Banner tone="error">{error}</Banner> : null}
         {message ? <Banner tone="success">{message}</Banner> : null}
 
-        <div className="mt-6 flex justify-end border-t pt-5">
-          <Button type="submit" disabled={submitting} className="min-w-36">
+        <div className="mt-8 flex justify-end border-t border-border/80 pt-4">
+          <Button type="submit" disabled={submitting} className="min-h-11 min-w-36 px-4">
             {submitting ? (
               <>
                 <LoaderCircle data-icon="inline-start" className="animate-spin" />
@@ -96,25 +99,15 @@ export function ChangePasswordCard() {
           </Button>
         </div>
       </form>
-    </section>
-  );
-}
-
-function SecurityIntro() {
-  return (
-    <div>
-      <h2 className="text-sm font-semibold">Password</h2>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Confirm your current password before choosing a new one. Your signed-in session remains active.
-      </p>
-    </div>
+    </SectionRail>
   );
 }
 
 function PasswordRequirements() {
   return (
-    <div className="mt-6 border-l-2 border-amber-500/60 pl-4 text-xs leading-5 text-muted-foreground">
-      Use at least 12 characters with uppercase, lowercase, a number, and a special character.
+    <div className="mt-6 flex items-start gap-2 rounded-md bg-amber-500/5 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+      <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-500" />
+      <span>Use at least 12 characters with uppercase, lowercase, a number, and a special character.</span>
     </div>
   );
 }
@@ -152,15 +145,16 @@ function PasswordField({
           maxLength={128}
           required
           placeholder={placeholder}
-          className="h-10 rounded-md pr-11"
+          className="h-11 rounded-md pr-12"
         />
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
           onClick={onToggle}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md text-muted-foreground"
+          className="absolute right-0 top-1/2 size-11 -translate-y-1/2 rounded-md text-muted-foreground"
           aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+          aria-pressed={visible}
         >
           {visible ? <Eye /> : <EyeOff />}
         </Button>
@@ -174,10 +168,10 @@ function Banner({ children, tone }: { children: React.ReactNode; tone: "error" |
     <div
       role="status"
       className={cn(
-        "mt-5 border-l-2 px-4 py-3 text-sm",
+        "mt-5 rounded-md px-4 py-3 text-sm",
         tone === "error"
-          ? "border-destructive bg-destructive/5 text-destructive"
-          : "border-emerald-500 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
+          ? "bg-destructive/10 text-destructive"
+          : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
       )}
     >
       {children}

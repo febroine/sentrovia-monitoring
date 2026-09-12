@@ -3,8 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
+  ArrowRight,
+  AtSign,
   Eye,
   EyeOff,
+  LockKeyhole,
   LoaderCircle,
 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -15,7 +18,7 @@ import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 
 const inputClassName =
-  "h-11 rounded-md border-white/10 bg-[#090a0c] px-3.5 text-foreground transition-[border-color,background-color] duration-150 placeholder:text-zinc-600 hover:border-white/15 focus-visible:border-primary/70 focus-visible:bg-[#0b0c0e] focus-visible:ring-2 focus-visible:ring-primary/20";
+  "h-[3.375rem] rounded-[9px] border-blue-200/25 bg-[#091426]/78 px-4 text-base text-white shadow-[inset_0_1px_rgba(255,255,255,0.025),0_14px_36px_rgba(0,0,0,0.12)] backdrop-blur-[2px] transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-blue-100/38 hover:border-blue-100/40 focus-visible:border-primary/85 focus-visible:bg-[#0a172b]/90 focus-visible:ring-2 focus-visible:ring-primary/25";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -96,28 +99,32 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      formTitle="Sign in"
-      formDescription="Use your workspace email or username to continue."
+      formTitle="Welcome back"
+      formDescription="Sign in to your Sentrovia workspace."
     >
       <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit} aria-describedby={error ? "login-error" : undefined}>
         <FieldBlock label="Email or username" htmlFor="identifier">
-          <Input
-            id="identifier"
-            name="identifier"
-            type="text"
-            autoComplete="username"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            required
-            placeholder="name@company.com"
-            className={inputClassName}
-            aria-invalid={Boolean(error)}
-          />
+          <div className="relative">
+            <AtSign aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 z-10 size-[1.05rem] -translate-y-1/2 text-blue-100/45" />
+            <Input
+              id="identifier"
+              name="identifier"
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              required
+              placeholder="name@company.com"
+              className={cn(inputClassName, "pl-11")}
+              aria-invalid={Boolean(error)}
+            />
+          </div>
         </FieldBlock>
 
         <FieldBlock label="Password" htmlFor="password">
           <div className="relative">
+            <LockKeyhole aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 z-10 size-[1.05rem] -translate-y-1/2 text-blue-100/45" />
             <Input
               id="password"
               name="password"
@@ -130,7 +137,7 @@ export default function LoginPage() {
               maxLength={128}
               required
               placeholder="Enter your password"
-              className={cn(inputClassName, "pr-12")}
+              className={cn(inputClassName, "pl-11 pr-12")}
               aria-invalid={Boolean(error)}
             />
             <Button
@@ -138,7 +145,7 @@ export default function LoginPage() {
               variant="ghost"
               size="icon-sm"
               onClick={() => setShowPassword((value) => !value)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm text-zinc-500 transition-colors hover:bg-white/[0.05] hover:text-zinc-200"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md text-blue-100/55 transition-colors hover:bg-blue-100/8 hover:text-white focus-visible:ring-primary/35"
               aria-label={showPassword ? "Hide password" : "Show password"}
               aria-pressed={showPassword}
             >
@@ -152,7 +159,7 @@ export default function LoginPage() {
             id="login-error"
             role="alert"
             aria-live="assertive"
-            className="rounded-sm border border-red-500/25 bg-red-500/[0.06] px-3.5 py-3 text-sm leading-5 text-red-200"
+            className="rounded-[9px] border border-red-400/25 bg-red-950/65 px-4 py-3.5 text-sm leading-5 text-red-100 backdrop-blur-sm"
           >
             {error}
           </div>
@@ -162,7 +169,7 @@ export default function LoginPage() {
           type="submit"
           size="lg"
           disabled={busy}
-          className="h-11 rounded-md bg-primary font-semibold transition-colors hover:bg-primary/90"
+          className="mt-1 h-[3.375rem] rounded-[9px] bg-primary text-[0.95rem] font-semibold text-[#031312] shadow-[0_12px_34px_rgba(45,212,191,0.18)] transition-[background-color,box-shadow] duration-150 hover:bg-[#5eead4] hover:shadow-[0_16px_40px_rgba(45,212,191,0.24)] focus-visible:ring-primary/50"
         >
           {busy ? (
             <>
@@ -172,12 +179,13 @@ export default function LoginPage() {
           ) : (
             <>
               Sign in
+              <ArrowRight aria-hidden="true" data-icon="inline-end" />
             </>
           )}
         </Button>
 
-        <p className="pt-1 text-center text-xs leading-5 text-zinc-500">
-          Trouble signing in? <span className="text-zinc-300">Contact your workspace administrator.</span>
+        <p className="pt-0.5 text-center text-[0.82rem] leading-5 text-blue-100/50">
+          Trouble signing in? <span className="text-blue-50/72">Contact your workspace administrator.</span>
         </p>
       </form>
     </AuthShell>
@@ -206,7 +214,7 @@ function FieldBlock({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={htmlFor} className="text-[0.78rem] font-medium text-zinc-300">{label}</Label>
+      <Label htmlFor={htmlFor} className="text-[0.82rem] font-medium text-blue-50/82">{label}</Label>
       {children}
     </div>
   );

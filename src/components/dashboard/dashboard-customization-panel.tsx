@@ -78,7 +78,7 @@ export function DashboardCustomizationPanel({
       <CardContent className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-2">
           <Label>Widgets and order</Label>
-          <div className="divide-y border-y">
+          <div className="grid gap-2">
             {widgetOptions.map((widget) => {
               const index = widgets.indexOf(widget);
               const enabled = index >= 0;
@@ -125,10 +125,10 @@ export function DashboardCustomizationPanel({
           </div>
         </div>
       </CardContent>
-      <CardFooter className="justify-end gap-2 border-t border-border/60 pt-4">
+      <CardFooter className="justify-end gap-2 rounded-b-md bg-muted/20 pt-4">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button onClick={onSave} disabled={saving}>
-          <Save className="h-4 w-4" />
+          <Save data-icon="inline-start" className="h-4 w-4" />
           {saving ? "Saving..." : "Save dashboard"}
         </Button>
       </CardFooter>

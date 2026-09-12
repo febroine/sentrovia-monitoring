@@ -84,12 +84,12 @@ export function MonitorTagsDialog({
               placeholder="critical, api, customer-facing"
             />
           </div>
-          <div className="border-l-2 border-border px-3 py-2 text-xs text-muted-foreground">
+          <div className="rounded-md bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
             Impact: {formatAction(action)} on {selectedCount} selected monitor{selectedCount === 1 ? "" : "s"}. The operation can be undone during a 10-second delay.
           </div>
         </div>
 
-        {message ? <div className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive">{message}</div> : null}
+        {message ? <div className="rounded-md bg-destructive/10 px-3 py-3 text-sm text-destructive">{message}</div> : null}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -40,6 +40,19 @@ export default function SettingsPageClient() {
     void loadSettings();
   }, [loadSettings]);
 
+  useEffect(() => {
+    if (loading || typeof window === "undefined" || !window.location.hash) return;
+
+    const target = document.getElementById(window.location.hash.slice(1));
+    if (!target) return;
+
+    const disclosure = target instanceof HTMLDetailsElement
+      ? target
+      : target.closest("details");
+    if (disclosure instanceof HTMLDetailsElement) disclosure.open = true;
+    window.requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
+  }, [loading]);
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -72,7 +85,7 @@ export default function SettingsPageClient() {
         orientation="vertical"
         className="!flex-col gap-4 md:!grid md:grid-cols-[200px_minmax(0,1fr)] md:gap-6"
       >
-        <div className="md:hidden">
+        <div className="sticky top-0 z-20 -mx-1 bg-background px-1 py-2 md:hidden">
           <Select value={effectiveActiveTab} onValueChange={(value) => setActiveTab(value as TabId)}>
             <SelectTrigger aria-label="Settings section" className="w-full">
               <SelectValue />
@@ -87,9 +100,9 @@ export default function SettingsPageClient() {
           </Select>
         </div>
 
-        <TabsList variant="line" className="hidden h-fit w-full flex-col items-stretch justify-start rounded-none border-r bg-transparent p-0 md:flex">
+        <TabsList variant="line" className="hidden h-fit w-full flex-col items-stretch justify-start rounded-md bg-muted/20 p-1 md:sticky md:top-6 md:flex">
           {visibleTabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} className="h-auto shrink-0 justify-start rounded-none px-3 py-2.5 text-left md:w-full">
+            <TabsTrigger key={tab.id} value={tab.id} className="h-auto shrink-0 justify-start rounded-sm px-3 py-2.5 text-left md:w-full">
               <span className="block min-w-0 truncate text-sm font-medium">{tab.label}</span>
             </TabsTrigger>
           ))}
@@ -97,7 +110,7 @@ export default function SettingsPageClient() {
 
         <fieldset disabled={!canManageSettings} className="min-w-0 space-y-6 disabled:opacity-75">
           {loading ? (
-            <div className="border-y py-8 text-sm text-muted-foreground">Loading settings...</div>
+            <div className="py-6 text-sm text-muted-foreground">Loading settings…</div>
           ) : (
             <>
               <TabsContent value="notifications">
@@ -138,12 +151,12 @@ function Banner({
 }) {
   return (
     <div
-      className={`border-l-2 px-4 py-2 text-sm ${
+      className={`rounded-md px-4 py-2 text-sm ${
         tone === "error"
-          ? "border-destructive text-destructive"
+          ? "bg-destructive/10 text-destructive"
           : tone === "success"
-            ? "border-emerald-500 text-emerald-700 dark:text-emerald-400"
-            : "border-border text-muted-foreground"
+            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+            : "bg-muted/25 text-muted-foreground"
       }`}
     >
       {children}

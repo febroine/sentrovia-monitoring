@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { profileSettingsSchema, settingsSchema } from "@/lib/settings/schemas";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
+import { ACCENT_OPTIONS } from "@/lib/settings/accent-theme";
 
 describe("settings schema", () => {
   it("normalizes profile login identifiers", () => {
@@ -12,6 +13,20 @@ describe("settings schema", () => {
 
     expect(result.profile.email).toBe("admin@example.com");
     expect(result.profile.username).toBe("workspace.admin");
+  });
+
+  it("accepts every selectable appearance accent", () => {
+    for (const option of ACCENT_OPTIONS) {
+      const parsed = settingsSchema.parse({
+        ...buildSettingsPayload(),
+        appearance: {
+          ...buildSettingsPayload().appearance,
+          sidebarAccent: option.value,
+        },
+      });
+
+      expect(parsed.appearance.sidebarAccent).toBe(option.value);
+    }
   });
 
   it("rejects profile usernames that cannot be used to log in", () => {

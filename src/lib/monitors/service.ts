@@ -46,6 +46,7 @@ export {
   recordMonitorResult,
   refreshMonitorUptime,
   releaseMonitorLease,
+  resolveMonitorBatchSize,
   renewMonitorLease,
 } from "@/lib/monitors/runtime-service";
 export type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
@@ -862,7 +863,7 @@ async function assertMonitorQuota(
 
   if (current + requested > MAX_MONITORS_PER_USER) {
     throw new AuthError(
-      `A workspace can contain at most ${MAX_MONITORS_PER_USER.toLocaleString("en-US")} monitors.`,
+      `A workspace can contain at most ${MAX_MONITORS_PER_USER.toLocaleString("en-GB")} monitors.`,
       409
     );
   }
@@ -1074,10 +1075,24 @@ function buildCommonMonitorValues(
     renotifyCount: input.renotifyCount,
     telegramTemplate: input.telegramTemplate,
     emailSubject: input.emailSubject,
+    emailHeadline: input.emailHeadline,
     emailBody: input.emailBody,
     slowResponseEmailSubject: input.slowResponseEmailSubject,
+    slowResponseEmailHeadline: input.slowResponseEmailHeadline,
     slowResponseEmailBody: input.slowResponseEmailBody,
     slowResponseTelegramTemplate: input.slowResponseTelegramTemplate,
+    recoveryEmailSubject: input.recoveryEmailSubject,
+    recoveryEmailHeadline: input.recoveryEmailHeadline,
+    recoveryEmailBody: input.recoveryEmailBody,
+    recoveryTelegramTemplate: input.recoveryTelegramTemplate,
+    prolongedDowntimeEmailSubject: input.prolongedDowntimeEmailSubject,
+    prolongedDowntimeEmailHeadline: input.prolongedDowntimeEmailHeadline,
+    prolongedDowntimeEmailBody: input.prolongedDowntimeEmailBody,
+    prolongedDowntimeTelegramTemplate: input.prolongedDowntimeTelegramTemplate,
+    sslExpiryEmailSubject: input.sslExpiryEmailSubject,
+    sslExpiryEmailHeadline: input.sslExpiryEmailHeadline,
+    sslExpiryEmailBody: input.sslExpiryEmailBody,
+    sslExpiryTelegramTemplate: input.sslExpiryTelegramTemplate,
     sendOutageScreenshot: shouldPersistOutageScreenshot(
       identity.monitorType,
       input.notificationPref,
@@ -1166,7 +1181,7 @@ function monitorOwnershipCondition(userId: string, workspaceId?: string) {
 }
 
 export function selectDueMonitorsForCycle<T extends {
-  userId: string;
+  workspaceId: string;
   verificationMode: boolean;
   nextCheckAt: Date | null;
   createdAt: Date;
@@ -1176,14 +1191,14 @@ export function selectDueMonitorsForCycle<T extends {
   return [...dueRows]
     .sort(compareDueMonitorPriority)
     .filter((monitor) => {
-      const batchSize = Math.max(1, batchSizeMap.get(monitor.userId) ?? DEFAULT_SETTINGS.monitoring.batchSize);
-      const current = counters.get(monitor.userId) ?? 0;
+      const batchSize = Math.max(1, batchSizeMap.get(monitor.workspaceId) ?? DEFAULT_SETTINGS.monitoring.batchSize);
+      const current = counters.get(monitor.workspaceId) ?? 0;
 
       if (current >= batchSize) {
         return false;
       }
 
-      counters.set(monitor.userId, current + 1);
+      counters.set(monitor.workspaceId, current + 1);
       return true;
     });
 }

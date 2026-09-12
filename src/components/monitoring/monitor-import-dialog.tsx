@@ -180,7 +180,7 @@ export function MonitorImportDialog({
             <p className="text-xs text-muted-foreground">
               Limit: {MONITOR_CSV_IMPORT_LIMITS.maxRows} monitor rows per import.
             </p>
-            <label className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed border-border p-6 text-center hover:border-primary/40 hover:bg-primary/5">
+            <label className="flex cursor-pointer flex-col items-center gap-3 rounded-lg bg-muted/25 p-6 text-center hover:bg-primary/10">
               <Upload className="h-8 w-8 text-muted-foreground" />
               <div>
                 <p className="text-sm font-medium">{fileName ?? "Choose a CSV file"}</p>
@@ -196,7 +196,7 @@ export function MonitorImportDialog({
           </div>
 
           {error ? (
-            <div role="alert" aria-live="polite" className="border-l-2 border-destructive px-3 py-2 text-sm text-destructive">
+            <div role="alert" aria-live="polite" className="rounded-md bg-destructive/10 px-3 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}

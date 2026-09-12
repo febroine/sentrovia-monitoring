@@ -3,6 +3,7 @@ import {
   buildMonitorIdentityKey,
   getMonitorTargetDisplay,
   sanitizeMonitorUrlForDisplay,
+  stripHttpUrlCredentials,
 } from "@/lib/monitors/targets";
 
 describe("sanitizeMonitorUrlForDisplay", () => {
@@ -23,6 +24,19 @@ describe("getMonitorTargetDisplay", () => {
         url: withUserInfo("https", "example.com", `/health?${apiKeyParam()}=abc#debug`),
       })
     ).toBe("https://example.com/health");
+  });
+});
+
+describe("stripHttpUrlCredentials", () => {
+  it("removes URL userinfo without discarding the monitor path, query, or fragment", () => {
+    expect(
+      stripHttpUrlCredentials("https://canary-user:canary-pass@example.com/health?region=eu#keyword=ready")
+    ).toBe("https://example.com/health?region=eu#keyword=ready");
+  });
+
+  it("leaves URLs without userinfo unchanged", () => {
+    const url = "https://example.com/health?region=eu#keyword=ready";
+    expect(stripHttpUrlCredentials(url)).toBe(url);
   });
 });
 

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CompanyMonthlyReport, CompanySlaReport, MonitorRecord } from "@/lib/monitors/types";
+import { formatPanelDateTime } from "@/lib/time";
 
 const PAGE_SIZE = 10;
 
@@ -82,7 +83,7 @@ export function CompanyMonitorsPanel({
   return (
     <div className="space-y-5">
       {report ? (
-        <dl className="grid border-y md:grid-cols-3 md:divide-x">
+        <dl className="grid gap-2 md:grid-cols-3">
           <MetricItem
             label="24h SLA"
             value={formatSlaValue(dailyPeriod)}
@@ -105,7 +106,7 @@ export function CompanyMonitorsPanel({
       ) : null}
 
       {monthlyReport?.months.length ? (
-        <dl className="grid border-y md:grid-cols-3 xl:grid-cols-6 xl:divide-x">
+        <dl className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
           {monthlyReport.months.map((month) => (
             <MetricItem
               key={month.label}
@@ -139,7 +140,7 @@ export function CompanyMonitorsPanel({
         </div>
       </div>
 
-      <div className="divide-y border-y">
+      <div className="grid gap-2">
         {pageItems.length === 0 ? (
           <div className="py-8 text-sm text-muted-foreground">
             No sites matched the current search.
@@ -161,9 +162,9 @@ export function CompanyMonitorsPanel({
                     !monitor.isActive
                       ? "text-muted-foreground"
                       : monitor.status === "up"
-                      ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                       : monitor.status === "down"
-                        ? "border-destructive/30 text-destructive"
+                        ? "bg-destructive/10 text-destructive"
                         : ""
                   }
                 >
@@ -171,7 +172,7 @@ export function CompanyMonitorsPanel({
                 </Badge>
                 <span className="text-xs text-muted-foreground">
                   {monitor.lastCheckedAt
-                    ? new Date(monitor.lastCheckedAt).toLocaleString()
+                    ? formatPanelDateTime(monitor.lastCheckedAt)
                     : "Never checked"}
                 </span>
               </div>
@@ -213,7 +214,7 @@ function MetricItem({
   tone: "green" | "amber" | "neutral";
 }) {
   return (
-    <div className={`border-b px-4 py-3 last:border-b-0 md:border-b-0 ${
+    <div className={`rounded-md bg-muted/25 px-4 py-3 ${
       tone === "green" ? "text-emerald-600 dark:text-emerald-400" : tone === "amber" ? "text-amber-600 dark:text-amber-400" : ""
     }`}>
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>

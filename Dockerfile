@@ -14,7 +14,8 @@ RUN npx playwright install --with-deps chromium && chmod -R 755 /ms-playwright
 COPY . .
 
 RUN npm run build
-RUN mkdir -p /app/backups && chown -R node:node /app/backups
+RUN mkdir -p /app/backups /app/.next/cache \
+  && chown -R node:node /app/backups /app/.next/cache
 
 EXPOSE 3000
 

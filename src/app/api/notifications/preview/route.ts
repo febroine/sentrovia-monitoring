@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
+import { assertPermission } from "@/lib/auth/permissions";
 import { env } from "@/lib/env";
-import { getWebhookEndpoint } from "@/lib/delivery/service";
+import { getWebhookEndpoint, sendEmailDelivery } from "@/lib/delivery/service";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { analyzeRootCause } from "@/lib/monitoring/rca";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
@@ -17,15 +18,43 @@ import type { CheckResult, NotificationContext } from "@/worker/types";
 
 export const runtime = "nodejs";
 
-const eventKindSchema = z.enum(["failure", "recovery", "latency", "ssl-expiry"]);
-const scenarioSchema = z.enum(["timeout", "http-500", "slow-response", "recovery", "ssl-expiry"]);
+const eventKindSchema = z.enum(["failure", "recovery", "latency", "ssl-expiry", "downtime-reminder"]);
+const scenarioSchema = z.enum(["timeout", "http-500", "slow-response", "recovery", "ssl-expiry", "downtime-reminder"]);
 const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
+const templateValueSchema = z.string().max(20_000);
+const workspaceTemplateOverridesSchema = z.object({
+  notificationLanguage: z.enum(["en", "tr"]),
+  notificationEmailBrandName: z.string().max(120),
+  notificationEmailFooterText: z.string().max(500),
+  defaultEmailSubjectTemplate: templateValueSchema,
+  defaultEmailHeadlineTemplate: templateValueSchema,
+  defaultEmailBodyTemplate: templateValueSchema,
+  defaultTelegramTemplate: templateValueSchema,
+  recoveryEmailSubjectTemplate: templateValueSchema,
+  recoveryEmailHeadlineTemplate: templateValueSchema,
+  recoveryEmailBodyTemplate: templateValueSchema,
+  recoveryTelegramTemplate: templateValueSchema,
+  slowResponseEmailSubjectTemplate: templateValueSchema,
+  slowResponseEmailHeadlineTemplate: templateValueSchema,
+  slowResponseEmailBodyTemplate: templateValueSchema,
+  slowResponseTelegramTemplate: templateValueSchema,
+  prolongedDowntimeEmailSubjectTemplate: templateValueSchema,
+  prolongedDowntimeEmailHeadlineTemplate: templateValueSchema,
+  prolongedDowntimeEmailBodyTemplate: templateValueSchema,
+  prolongedDowntimeTelegramTemplate: templateValueSchema,
+  sslExpiryEmailSubjectTemplate: templateValueSchema,
+  sslExpiryEmailHeadlineTemplate: templateValueSchema,
+  sslExpiryEmailBodyTemplate: templateValueSchema,
+  sslExpiryTelegramTemplate: templateValueSchema,
+}).strict();
 
 const requestSchema = z.object({
   monitorId: z.string().uuid().nullable().optional(),
   kind: eventKindSchema.optional(),
   scenario: scenarioSchema.optional(),
   payload: z.unknown(),
+  workspaceTemplateOverrides: workspaceTemplateOverridesSchema.optional(),
+  testEmailDestination: z.string().trim().email().max(320).optional(),
 }).refine((value) => value.kind || value.scenario, { message: "Select a notification scenario." });
 
 export async function POST(request: NextRequest) {
@@ -49,7 +78,16 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
-    const defaultsApplied = applyMonitorDefaults(requestData.data.payload, settings);
+    const previewSettings = requestData.data.workspaceTemplateOverrides
+      ? {
+          ...settings,
+          notifications: {
+            ...settings.notifications,
+            ...requestData.data.workspaceTemplateOverrides,
+          },
+        }
+      : settings;
+    const defaultsApplied = applyMonitorDefaults(requestData.data.payload, previewSettings);
     const requestedNotificationPref = notificationPrefSchema.catch("none").parse(defaultsApplied.notificationPref);
     const parsed = monitorInputSchema.safeParse({
       ...defaultsApplied,
@@ -68,7 +106,8 @@ export async function POST(request: NextRequest) {
     const builtMonitor = await buildMonitorForTest(
       session.id,
       parsed.data,
-      requestData.data.monitorId
+      requestData.data.monitorId,
+      session.activeWorkspaceId!
     );
     const monitor = { ...builtMonitor, notificationPref: requestedNotificationPref };
     const scenario = requestData.data.scenario ?? kindToScenario(requestData.data.kind ?? "failure");
@@ -92,14 +131,27 @@ export async function POST(request: NextRequest) {
       simulationSuppression
         ? Promise.resolve({ wouldNotify: false, reason: simulationSuppression })
         : evaluateNotificationDecision(context),
-      getWebhookEndpoint(session.id),
+      getWebhookEndpoint(session.id, session.activeWorkspaceId!),
     ]);
+    const preview = renderNotificationTemplates(context, previewSettings, env.appUrl);
+    const testEmailDestination = requestData.data.testEmailDestination;
+    const testDelivery = testEmailDestination
+      ? await sendPreviewEmail({
+          destination: testEmailDestination,
+          htmlBody: preview.htmlBody,
+          session,
+          subject: preview.subject,
+          textBody: preview.textBody,
+        })
+      : null;
+
     return NextResponse.json({
-      preview: renderNotificationTemplates(context, settings, env.appUrl),
+      preview,
       decision: {
         ...decision,
         channels: resolveNotificationChannels(monitor.notificationPref, settings, Boolean(webhook?.isActive)),
       },
+      testDelivery,
     });
   } catch (error) {
     const authError = toAuthError(error, "Unable to render the notification preview right now.");
@@ -139,6 +191,10 @@ function buildScenarioMonitor(
   kind: z.infer<typeof eventKindSchema>,
   checkedAt: Date
 ) {
+  if (kind === "downtime-reminder") {
+    return { ...monitor, lastFailureAt: new Date(checkedAt.getTime() - 6 * 60 * 60_000) };
+  }
+
   if (kind === "recovery") {
     return { ...monitor, lastFailureAt: new Date(checkedAt.getTime() - 12 * 60_000) };
   }
@@ -157,7 +213,7 @@ function buildSampleResult(
 ): CheckResult {
   const checkedAt = new Date();
 
-  if (scenario === "timeout") {
+  if (scenario === "timeout" || scenario === "downtime-reminder") {
     return {
       ok: false,
       status: "down",
@@ -214,6 +270,38 @@ function kindToScenario(kind: z.infer<typeof eventKindSchema>): z.infer<typeof s
   return kind;
 }
 
+async function sendPreviewEmail({
+  destination,
+  htmlBody,
+  session,
+  subject,
+  textBody,
+}: {
+  destination: string;
+  htmlBody: string;
+  session: NonNullable<Awaited<ReturnType<typeof getSession>>>;
+  subject: string;
+  textBody: string;
+}) {
+  assertPermission(session.role, "delivery.manage");
+  const delivery = await sendEmailDelivery({
+    userId: session.id,
+    workspaceId: session.activeWorkspaceId!,
+    kind: "test",
+    monitorId: null,
+    destinationOverride: destination,
+    subject,
+    textBody,
+    htmlBody,
+  });
+
+  if (delivery?.status !== "delivered") {
+    throw new Error(delivery?.errorMessage ?? "Unable to send the template test email.");
+  }
+
+  return { status: delivery.status, destination };
+}
+
 function resolveNotificationChannels(
   preference: "email" | "telegram" | "both" | "none",
   settings: Awaited<ReturnType<typeof getSettings>>,
@@ -245,6 +333,9 @@ function buildSampleMessage(kind: NotificationContext["kind"], result: CheckResu
   }
   if (kind === "latency") {
     return "The service is online but responding more slowly than the configured threshold.";
+  }
+  if (kind === "downtime-reminder") {
+    return "The service remains unavailable after six hours of confirmed downtime.";
   }
   return "The TLS certificate is approaching its expiration date.";
 }

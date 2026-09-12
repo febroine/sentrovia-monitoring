@@ -7,14 +7,14 @@ import { DEFAULT_MONITOR_FORM } from "@/lib/monitors/types";
 import { getSettings } from "@/lib/settings/service";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { renderNotificationTemplates } from "@/worker/templates";
-import { getWebhookEndpoint } from "@/lib/delivery/service";
+import { getWebhookEndpoint, sendEmailDelivery } from "@/lib/delivery/service";
 import { evaluateNotificationDecision } from "@/worker/notifier";
 
 vi.mock("@/lib/auth/session", () => ({ getSession: vi.fn() }));
 vi.mock("@/lib/settings/service", () => ({ getSettings: vi.fn() }));
 vi.mock("@/lib/monitors/service", () => ({ buildMonitorForTest: vi.fn() }));
 vi.mock("@/worker/templates", () => ({ renderNotificationTemplates: vi.fn() }));
-vi.mock("@/lib/delivery/service", () => ({ getWebhookEndpoint: vi.fn() }));
+vi.mock("@/lib/delivery/service", () => ({ getWebhookEndpoint: vi.fn(), sendEmailDelivery: vi.fn() }));
 vi.mock("@/worker/notifier", () => ({ evaluateNotificationDecision: vi.fn() }));
 
 describe("notification template preview route", () => {
@@ -40,6 +40,7 @@ describe("notification template preview route", () => {
       department: null,
       role: "admin",
       sessionVersion: 1,
+      activeWorkspaceId: "workspace-2",
     });
     vi.mocked(getSettings).mockResolvedValueOnce(DEFAULT_SETTINGS);
     vi.mocked(buildMonitorForTest).mockResolvedValueOnce({
@@ -80,6 +81,13 @@ describe("notification template preview route", () => {
       })
     );
     expect(renderNotificationTemplates).toHaveBeenCalledOnce();
+    expect(buildMonitorForTest).toHaveBeenCalledWith(
+      "admin-1",
+      expect.any(Object),
+      undefined,
+      "workspace-2"
+    );
+    expect(getWebhookEndpoint).toHaveBeenCalledWith("admin-1", "workspace-2");
   });
 
   it("suppresses HTTP failures that are explicitly configured as expected", async () => {
@@ -148,10 +156,84 @@ describe("notification template preview route", () => {
     expect(body.decision.reason).toContain("measurable time");
     expect(evaluateNotificationDecision).not.toHaveBeenCalled();
   });
+
+  it("renders unsaved workspace template overrides without persisting them", async () => {
+    preparePreviewMocks({ timeout: 60_000, slowResponseThresholdMs: 10_000 });
+    vi.mocked(evaluateNotificationDecision).mockResolvedValueOnce({
+      wouldNotify: true,
+      reason: "The confirmed failure is eligible for notification.",
+    });
+    const workspaceTemplateOverrides = buildWorkspaceTemplateOverrides();
+    workspaceTemplateOverrides.notificationLanguage = "tr";
+    workspaceTemplateOverrides.notificationEmailBrandName = "Acme Operations";
+    workspaceTemplateOverrides.defaultEmailHeadlineTemplate = "Draft headline for {name}";
+
+    const response = await POST(createRequest({ workspaceTemplateOverrides }));
+
+    expect(response.status).toBe(200);
+    expect(renderNotificationTemplates).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        notifications: expect.objectContaining({
+          notificationLanguage: "tr",
+          notificationEmailBrandName: "Acme Operations",
+          defaultEmailHeadlineTemplate: "Draft headline for {name}",
+        }),
+      }),
+      expect.any(String)
+    );
+  });
+
+  it("sends the currently rendered email only when a test recipient is provided", async () => {
+    preparePreviewMocks({ timeout: 60_000, slowResponseThresholdMs: 10_000 });
+    vi.mocked(evaluateNotificationDecision).mockResolvedValueOnce({
+      wouldNotify: true,
+      reason: "The confirmed failure is eligible for notification.",
+    });
+    vi.mocked(sendEmailDelivery).mockResolvedValueOnce({ status: "delivered" } as never);
+
+    const response = await POST(createRequest({
+      workspaceTemplateOverrides: buildWorkspaceTemplateOverrides(),
+      testEmailDestination: "alerts@example.com",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(sendEmailDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      destinationOverride: "alerts@example.com",
+      kind: "test",
+      subject: "Example subject",
+      textBody: "Example body",
+      htmlBody: "<p>Example body</p>",
+    }));
+  });
+
+  it("previews prolonged downtime with an elapsed outage start", async () => {
+    preparePreviewMocks({ timeout: 60_000, slowResponseThresholdMs: 10_000 });
+    vi.mocked(evaluateNotificationDecision).mockResolvedValueOnce({
+      wouldNotify: true,
+      reason: "The prolonged-downtime reminder is due.",
+    });
+
+    const response = await POST(createRequest({ scenario: "downtime-reminder", kind: undefined }));
+
+    expect(response.status).toBe(200);
+    expect(renderNotificationTemplates).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "downtime-reminder",
+        monitor: expect.objectContaining({ lastFailureAt: expect.any(Date) }),
+      }),
+      DEFAULT_SETTINGS,
+      expect.any(String)
+    );
+  });
 });
 
 function preparePreviewMocks(overrides: { timeout: number; slowResponseThresholdMs: number }) {
-  vi.mocked(getSession).mockResolvedValueOnce({ id: "admin-1" } as never);
+  vi.mocked(getSession).mockResolvedValueOnce({
+    id: "admin-1",
+    role: "admin",
+    activeWorkspaceId: "workspace-1",
+  } as never);
   vi.mocked(getSettings).mockResolvedValueOnce(DEFAULT_SETTINGS);
   vi.mocked(buildMonitorForTest).mockResolvedValueOnce({
     id: "preview-monitor",
@@ -187,4 +269,33 @@ function createRequest(overrides: Record<string, unknown> = {}) {
       ...overrides,
     }),
   });
+}
+
+function buildWorkspaceTemplateOverrides() {
+  const { notifications } = DEFAULT_SETTINGS;
+  return {
+    notificationLanguage: notifications.notificationLanguage,
+    notificationEmailBrandName: notifications.notificationEmailBrandName,
+    notificationEmailFooterText: notifications.notificationEmailFooterText,
+    defaultEmailSubjectTemplate: notifications.defaultEmailSubjectTemplate,
+    defaultEmailHeadlineTemplate: notifications.defaultEmailHeadlineTemplate,
+    defaultEmailBodyTemplate: notifications.defaultEmailBodyTemplate,
+    defaultTelegramTemplate: notifications.defaultTelegramTemplate,
+    recoveryEmailSubjectTemplate: notifications.recoveryEmailSubjectTemplate,
+    recoveryEmailHeadlineTemplate: notifications.recoveryEmailHeadlineTemplate,
+    recoveryEmailBodyTemplate: notifications.recoveryEmailBodyTemplate,
+    recoveryTelegramTemplate: notifications.recoveryTelegramTemplate,
+    slowResponseEmailSubjectTemplate: notifications.slowResponseEmailSubjectTemplate,
+    slowResponseEmailHeadlineTemplate: notifications.slowResponseEmailHeadlineTemplate,
+    slowResponseEmailBodyTemplate: notifications.slowResponseEmailBodyTemplate,
+    slowResponseTelegramTemplate: notifications.slowResponseTelegramTemplate,
+    prolongedDowntimeEmailSubjectTemplate: notifications.prolongedDowntimeEmailSubjectTemplate,
+    prolongedDowntimeEmailHeadlineTemplate: notifications.prolongedDowntimeEmailHeadlineTemplate,
+    prolongedDowntimeEmailBodyTemplate: notifications.prolongedDowntimeEmailBodyTemplate,
+    prolongedDowntimeTelegramTemplate: notifications.prolongedDowntimeTelegramTemplate,
+    sslExpiryEmailSubjectTemplate: notifications.sslExpiryEmailSubjectTemplate,
+    sslExpiryEmailHeadlineTemplate: notifications.sslExpiryEmailHeadlineTemplate,
+    sslExpiryEmailBodyTemplate: notifications.sslExpiryEmailBodyTemplate,
+    sslExpiryTelegramTemplate: notifications.sslExpiryTelegramTemplate,
+  };
 }

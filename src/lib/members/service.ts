@@ -120,7 +120,6 @@ export async function deleteMembers(
       .where(and(eq(workspaceMembers.workspaceId, workspaceId), inArray(workspaceMembers.userId, memberIds)))
       .returning({ id: workspaceMembers.userId });
 
-    await deleteOrphanedUsers(tx, removed.map((member) => member.id));
     return removed;
   });
 }
@@ -194,18 +193,6 @@ async function assertAtLeastOneAdminRemainsAfterDemotion(
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, "admin")));
   assertAdminDemotionLeavesAdministrator(row?.total ?? 0);
-}
-
-async function deleteOrphanedUsers(executor: Pick<typeof db, "delete">, memberIds: string[]) {
-  if (memberIds.length === 0) {
-    return;
-  }
-  await executor
-    .delete(users)
-    .where(and(
-      inArray(users.id, memberIds),
-      sql`not exists (select 1 from ${workspaceMembers} where ${workspaceMembers.userId} = ${users.id})`
-    ));
 }
 
 function normalizeUsername(value: string) {

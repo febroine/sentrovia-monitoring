@@ -1,5 +1,7 @@
 const DEFAULT_TIME_ZONE = "Europe/Istanbul";
 
+const PANEL_DATE_LOCALE = "en-GB";
+
 const DEFAULT_HOUR_CYCLE = "h23";
 
 const COMMON_TIME_ZONES = [
@@ -31,6 +33,37 @@ export const DEFAULT_TIME_DISPLAY_SETTINGS: TimeDisplaySettings = {
 const supportedTimeZones = resolveSupportedTimeZones();
 
 export const TIME_ZONE_OPTIONS = buildTimeZoneOptions();
+
+/**
+ * Format a timestamp for the English-language application panel.
+ *
+ * Omitting `timeZone` intentionally keeps the browser's existing local-time
+ * behavior. Callers that already have a workspace/report timezone can pass it
+ * through without changing the represented instant.
+ */
+export function formatPanelDateTime(
+  value: Date | string | number | null | undefined,
+  options: Intl.DateTimeFormatOptions = {}
+) {
+  const date = coerceDate(value);
+  if (!date) {
+    return "--";
+  }
+
+  const formatterOptions = options.dateStyle || options.timeStyle
+    ? options
+    : {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        ...options,
+      } satisfies Intl.DateTimeFormatOptions;
+
+  return new Intl.DateTimeFormat(PANEL_DATE_LOCALE, formatterOptions).format(date);
+}
 
 function normalizeTimeZone(value: string | null | undefined) {
   const candidate = value?.trim();
@@ -90,7 +123,7 @@ function buildTimeZoneOptions() {
 }
 
 function getFormatter(settings: TimeDisplaySettings, includeSeconds: boolean) {
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(PANEL_DATE_LOCALE, {
     timeZone: settings.timeZone,
     year: "numeric",
     month: "2-digit",

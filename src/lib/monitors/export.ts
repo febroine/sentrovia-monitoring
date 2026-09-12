@@ -1,4 +1,5 @@
 import writeExcelFile from "write-excel-file/node";
+import { stripHttpUrlCredentials } from "@/lib/monitors/targets";
 
 export type MonitorExportFormat = "xlsx" | "csv" | "json";
 
@@ -73,7 +74,7 @@ export function buildMonitorExportRows(
       id: monitor.id,
       name: monitor.name,
       type: monitor.monitorType,
-      target: monitor.url,
+      target: stripHttpUrlCredentials(monitor.url),
       company: monitor.company,
       status: monitor.status,
       statusCode: monitor.statusCode,

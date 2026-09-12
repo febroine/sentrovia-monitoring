@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
+import { formatPanelDateTime } from "@/lib/time";
 
 export function BackupRestorePanel({
   lastBackupAt,
@@ -119,7 +120,7 @@ export function BackupRestorePanel({
             </Button>
           </div>
           <div className="text-xs text-muted-foreground md:text-right">
-            Last backup: {lastBackupAt ? new Date(lastBackupAt).toLocaleString() : "Not recorded yet"}
+            Last backup: {lastBackupAt ? formatPanelDateTime(lastBackupAt) : "Not recorded yet"}
           </div>
         </div>
 
@@ -143,13 +144,13 @@ export function BackupRestorePanel({
           />
         </div>
 
-        {message ? <div className="border-l-2 border-border px-3 py-2 text-sm">{message}</div> : null}
+        {message ? <div className="rounded-md bg-muted/20 px-3 py-2 text-sm">{message}</div> : null}
 
         {preview ? <RestoreImpactPreview preview={preview} /> : null}
 
         <Button onClick={() => void handleRestore(preview ? "restore" : "preview")} disabled={restoring || !content.trim() || Boolean(preview && !restoreToken)}>
           {preview ? <Upload data-icon="inline-start" /> : <ScanSearch data-icon="inline-start" />}
-          {restoring ? (preview ? "Restoring..." : "Analyzing...") : (preview ? "Confirm and restore" : "Analyze backup")}
+          {restoring ? (preview ? "Restoring…" : "Analyzing…") : (preview ? "Confirm and restore" : "Analyze backup")}
         </Button>
     </div>
   );
@@ -167,7 +168,7 @@ type RestorePreview = {
 
 function RestoreImpactPreview({ preview }: { preview: RestorePreview }) {
   return (
-    <div className="space-y-3 border-l-2 border-amber-500 px-4 py-2">
+    <div className="space-y-3 rounded-md bg-amber-500/5 px-4 py-3">
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
         <div>
@@ -175,7 +176,7 @@ function RestoreImpactPreview({ preview }: { preview: RestorePreview }) {
           <p className="text-xs text-muted-foreground">This operation replaces workspace settings and removes existing check, event, and outage history.</p>
         </div>
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-y py-3 text-sm sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-background/40 px-3 py-3 text-sm sm:grid-cols-4">
         <ImpactCount label="Current companies" value={preview.current.companies} />
         <ImpactCount label="Incoming companies" value={preview.incoming.companies} />
         <ImpactCount label="Current monitors" value={preview.current.monitors} />
