@@ -1,87 +1,71 @@
-<p align="center">
+<h1 align="center">
   <img src="public/sentrovia-wordmark.png" alt="Sentrovia" width="360">
+</h1>
+
+<p align="center">
+  <strong>Self-hosted uptime monitoring that verifies failures before alerting.</strong><br>
+  Monitor websites, APIs, TCP ports, PostgreSQL databases, ping targets, and cron or heartbeat jobs from one evidence-first operations workspace.
 </p>
 
 <p align="center">
-  <strong>Verify outages before they become alerts.</strong><br>
-  Sentrovia is an open-source, self-hosted website uptime monitoring platform for websites, APIs, servers, PostgreSQL databases, ports, cron jobs, and heartbeat endpoints. It combines verified outage alerts, screenshot evidence, public status pages, and auditable notification delivery in one operations workspace.
+  <a href="https://github.com/febroine/sentrovia-monitoring/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/febroine/sentrovia-monitoring/ci.yml?branch=main&style=flat-square&label=build" /></a>
+  <a href="https://github.com/febroine/sentrovia-monitoring/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/febroine/sentrovia-monitoring?style=flat-square&label=release" /></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/febroine/sentrovia-monitoring?style=flat-square" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/febroine/sentrovia-monitoring/actions/workflows/ci.yml"><img alt="Sentrovia continuous integration status" src="https://img.shields.io/github/actions/workflow/status/febroine/sentrovia-monitoring/ci.yml?branch=main&style=flat-square&label=CI" /></a>
-  <a href="https://github.com/febroine/sentrovia-monitoring/releases"><img alt="Latest Sentrovia release" src="https://img.shields.io/github/v/release/febroine/sentrovia-monitoring?style=flat-square&label=release" /></a>
-  <a href="https://github.com/febroine/sentrovia-monitoring/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/febroine/sentrovia-monitoring?style=flat-square" /></a>
-  <img alt="Docker Compose deployment" src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" />
-  <img alt="PostgreSQL 16 database" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white" />
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#how-outage-verification-works">Verification</a> ·
+  <a href="#product-tour">Product Tour</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#supported-uptime-checks">Checks</a> ·
-  <a href="#how-verified-outage-alerts-work">Verification</a> ·
-  <a href="#demo-workspace">Demo workspace</a> ·
-  <a href="#screenshots">Screenshots</a> ·
-  <a href="docs/deployment.md">Deployment guide</a> ·
-  <a href="SECURITY.md">Security</a>
+  <a href="docs/screenshots/demo-frames/01-dashboard.png">
+    <img src="docs/screenshots/demo-frames/01-dashboard.png" alt="Sentrovia self-hosted uptime monitoring dashboard showing monitor health, a verified outage, worker status, and alert delivery" width="100%">
+  </a>
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/demo.gif" alt="Sentrovia self-hosted uptime monitoring dashboard, status pages, reports, and alert delivery" width="100%">
-</p>
+<p align="center"><sub>Real Sentrovia UI populated with isolated synthetic demo data.</sub></p>
 
-<p align="center"><sub>Current product walkthrough recorded from the Docker stack with synthetic example data.</sub></p>
+## Overview
 
-## Why Sentrovia?
+Sentrovia is an open-source, self-hosted uptime monitoring platform for small teams and operators who want trustworthy outage alerts without sending operational data to a hosted monitoring vendor. It combines service checks, failure verification, screenshot evidence, notification delivery history, reliability reports, and public status pages in one workspace.
 
-Most uptime monitoring tools treat a single failed request as an outage. Sentrovia verifies failures first, checks whether the monitoring server itself has lost internet access, and records evidence before notifying your team.
+The core premise is simple: **a failed request is evidence to verify, not immediately an outage to announce.** Sentrovia checks again, confirms that the monitoring host still has internet access, and performs a final probe before recording an outage and notifying the team.
 
-- **Fewer false alarms:** retries, verification mode, and a final confirmation probe protect against transient failures.
-- **Evidence you can inspect:** HTTP-style outages can include screenshots, diagnostics, timelines, and response details.
-- **Delivery you can audit:** email, Telegram, Discord, and generic webhooks have bounded retries and visible outcomes.
-- **Operations at a glance:** the live dashboard combines fleet health, focused monitors, verified events, delivery outcomes, and worker status.
-- **Data ownership:** run the complete stack on your infrastructure with Docker Compose or native Windows services.
-- **Workspace isolation:** role-based access protects monitors, status pages, reports, delivery history, and settings.
+## Why Sentrovia Exists
 
-Sentrovia is designed for teams that want a practical uptime monitor and status page without giving monitoring data or operational credentials to a hosted vendor.
+Transient DNS failures, short network interruptions, and connectivity loss on the monitoring server can all look like a service outage. Sentrovia is built to reduce those false alarms while leaving an inspectable trail when a failure is real.
 
-## Supported Uptime Checks
+- **Verify before escalating:** retry thresholds, verification scheduling, connectivity canaries, and a final confirmation probe protect against one-off failures.
+- **Keep evidence with the event:** supported HTTP-style checks can capture screenshots, diagnostics, timelines, response details, and the root-cause summary.
+- **Audit notification delivery:** email, Telegram, Discord, and generic webhook attempts have bounded retries and visible outcomes.
+- **Own the deployment and data:** run the complete stack with Docker Compose or as native services on Windows Server.
 
-| Monitor | What Sentrovia verifies |
-| --- | --- |
-| HTTP / HTTPS | Availability, response status, latency, redirects, and TLS behavior |
-| API and JSON | HTTP synthetic monitoring with JSON path and expected-value assertions |
-| Keyword | Required or forbidden response content |
-| TCP port | Reachability for services such as SSH, SMTP, and custom applications |
-| ICMP ping | Host and server uptime reachability |
-| PostgreSQL | Database connectivity with configurable TLS verification |
-| Heartbeat / cron | Scheduled jobs and services that report their own liveness |
+## Features
 
-Each monitor can define its interval, timeout, retry threshold, expected status codes, HTTP method, redirects, SSL behavior, response-size limit, tags, notification routing, slow-response threshold, and event-specific notification templates.
+- **Monitoring:** HTTP/HTTPS, API and JSON assertions, keyword checks, TCP ports, ICMP ping, PostgreSQL, and cron/heartbeat monitors.
+- **Outage verification:** failure thresholds, scheduled verification probes, a final confirmation probe, and monitoring-host connectivity checks.
+- **Evidence:** check history, timelines, latency and response details, diagnostics, and best-effort screenshots for confirmed HTTP-style failures.
+- **Alerts:** SMTP email, Telegram, Discord webhooks, generic webhooks, slow-response warnings, recovery notices, downtime reminders, and TLS-expiry notices.
+- **Notification content:** workspace and per-monitor templates, English or Turkish notification content, editable branding, and light/dark email previews.
+- **Operations:** live dashboard, monitor and company views, delivery history, dead-letter visibility, manual resend, logs, and temporary monitor pauses.
+- **Status and reporting:** public status pages, uptime and latency analytics, scheduled reports, HTML export, and company-scoped reporting.
+- **Administration:** administrator/member roles, workspace isolation, monitor import/export, Prometheus metrics, and encrypted PostgreSQL backups.
 
-Use ICMP ping and TCP checks to monitor server uptime without installing an agent. Sentrovia measures service reachability and response health; it does not claim to replace CPU, memory, disk, or network-traffic observability.
-
-## How Verified Outage Alerts Work
-
-```mermaid
-flowchart LR
-    A["Check target"] --> B{"Failed?"}
-    B -- "No" --> C["Store healthy result"]
-    B -- "Yes" --> D["Enter verification mode"]
-    D --> E["Retry on verification schedule"]
-    E --> F{"Failure threshold reached?"}
-    F -- "No" --> E
-    F -- "Yes" --> G["Run final confirmation probe"]
-    G --> H{"Still failing?"}
-    H -- "No" --> C
-    H -- "Yes" --> I["Confirm outage"]
-    I --> J["Record evidence and notify"]
-```
-
-Before claiming monitor work, the worker also checks multiple independent public canaries. If every canary is unreachable, Sentrovia pauses checks and outbound delivery without marking healthy services down. Processing resumes automatically when connectivity returns.
+Sentrovia measures service reachability and response health. It is not a replacement for host-level CPU, memory, disk, log, or network-traffic observability.
 
 ## Quick Start
 
-The installer creates a private environment file, generates strong secrets, starts PostgreSQL, applies the database schema, and launches the web console and monitoring worker.
+### Requirements
+
+- Git
+- Docker Engine with Docker Compose
+
+The installer generates private application and database secrets, starts PostgreSQL, applies the schema, and launches the web console and monitoring worker.
 
 Linux or macOS:
 
@@ -101,108 +85,108 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-docker.ps1
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and create the first administrator account. Existing installations can restart normally with:
+Open [http://localhost:3000](http://localhost:3000), create the first administrator account, and add your first monitor.
 
-```bash
-docker compose up -d --build
+For HTTPS, reverse-proxy settings, production Compose, native Windows services, updates, backups, and recovery, use the [deployment guide](docs/deployment.md).
+
+## How Outage Verification Works
+
+```mermaid
+flowchart LR
+    A["Check target"] --> B{"Failed?"}
+    B -- "No" --> C["Store healthy result"]
+    B -- "Yes" --> D["Enter verification mode"]
+    D --> E["Retry on verification schedule"]
+    E --> F{"Threshold reached?"}
+    F -- "No" --> E
+    F -- "Yes" --> G["Run final confirmation probe"]
+    G --> H{"Still failing?"}
+    H -- "No" --> C
+    H -- "Yes" --> I["Record outage evidence"]
+    I --> J["Notify configured channels"]
 ```
 
-For production Docker settings, native Windows installation with NSSM, safe updates, restore procedures, and environment rules, read the [deployment guide](docs/deployment.md).
+Before claiming monitor work, the worker also checks multiple independent public canaries. If every canary is unreachable, Sentrovia pauses checks and outbound delivery instead of marking healthy targets down. Processing resumes when connectivity returns.
 
-## Demo Workspace
+## Product Tour
 
-You can create an isolated workspace with synthetic companies, monitors, thirty days of check history, outage events, delivery attempts, a report schedule, and a public status page. The monitor targets use reserved `.example` addresses and their next checks are deliberately parked in the future, so the worker does not contact them.
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="Sentrovia product tour covering the dashboard, monitor inventory, delivery history, reports, notification templates, and public status pages" width="100%">
+</p>
 
-Choose a unique identifier containing at least eight letters or numbers. The create command prints temporary sign-in credentials and the public status page URL:
+<p align="center"><sub>Dashboard → monitors → delivery → reports → notification templates → public status page.</sub></p>
+
+## Alerts and Evidence
+
+Notification destinations resolve from monitor settings to company settings and then workspace defaults. Recipient-facing email actions open the monitored target through **Check site**; notification messages do not link recipients into the private Sentrovia panel.
+
+For confirmed HTTP, keyword, and JSON failures, screenshot capture is best effort. An unavailable Chromium process never blocks the alert itself. Delivery tests use the real configured transport and appear in delivery history, but are excluded from channel health and delivery summary counters.
+
+## Synthetic Demo Workspace
+
+Sentrovia includes an opt-in seed for documentation, evaluation, and screenshots. It creates an isolated workspace with synthetic companies, monitors, thirty days of check history, outage events, delivery attempts, a report schedule, and a public status page. Reserved `.example` targets are used and scheduled checks are parked in the future.
+
+Create a demo workspace with a unique identifier containing at least eight letters or numbers:
 
 ```bash
 docker compose exec -e SENTROVIA_DEMO_RUN_ID=readme20260912 web node scripts/manage-demo-workspace.mjs create
 ```
 
-Remove every record created for that identifier when you are finished:
+The command prints temporary credentials and the public status page URL. Remove every record created for the identifier when finished:
 
 ```bash
 docker compose exec -e SENTROVIA_DEMO_RUN_ID=readme20260912 web node scripts/manage-demo-workspace.mjs cleanup
 ```
 
-The seed is opt-in and never runs during installation, startup, migration, or production updates.
+The seed never runs during installation, startup, migration, or production updates.
 
-## Dashboard and Operations
+## Deployment and Configuration
 
-The dashboard starts with a guided first-monitor state, then replaces it with live operational data as checks arrive. It includes an outage banner, fleet summary, worker and connectivity health, focused monitors, company health, verified events, and notification-delivery totals. Widgets, company scope, monitor focus, density, contrast, accent color, time zone, and landing page can be adjusted without changing the underlying monitor data.
+- **Docker Compose:** recommended for most installations. Follow the [Docker installation guide](docs/deployment.md#docker-compose).
+- **Windows with NSSM:** runs Sentrovia as native Windows Server services without Docker. Follow the [Windows installation guide](docs/deployment.md#windows-services-with-nssm).
 
-## Public Status Pages
-
-Publish a self-hosted status page for the whole workspace or separate public status pages for individual companies. Each page has its own slug, title, summary, publish state, and service availability history.
-
-## Alerts, Evidence, and Reports
-
-Sentrovia routes notifications from monitor-specific settings to company settings and then workspace defaults. Supported channels are SMTP email, Telegram, Discord webhook, and generic webhook. The application interface remains English; notification content can be rendered in English or Turkish.
-
-- Screenshot evidence after confirmed HTTP, keyword, and JSON failures with stable responses
-- Delivery history with attempts, response codes, payload summaries, and errors
-- Bounded retry queues, dead-letter visibility, and manual resend
-- Editable workspace and per-monitor templates for down, recovery, slow-response, prolonged-downtime, and SSL-expiry messages
-- Live light/dark email preview with event samples, editable brand/footer text, and an explicit test-email action
-- Recipient-facing **Check site** links that open the monitored target instead of an internal monitoring panel
-- Weekly, monthly, and custom-range HTML reports
-- Workspace-wide or company-scoped reporting, reliability analytics, exclusions, HTML export, and scheduled delivery
-
-Screenshots are best effort, so an unavailable Chromium process never blocks an alert.
-
-Delivery tests use real channel transports: Telegram uses the bot token and chat ID entered in Delivery, while Discord uses the enabled webhook configured in Settings. Test attempts remain in Delivery history but are excluded from delivery summary counters and channel health metrics. A failed test is recorded in history with its delivery status.
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%"><img src="./docs/screenshots/demo-frames/01-dashboard.png" alt="Sentrovia live monitoring dashboard with fleet health, worker status, incidents, and delivery totals" /></td>
-    <td width="50%"><img src="./docs/screenshots/demo-frames/02-monitoring.png" alt="Sentrovia monitor inventory with online, offline, paused, critical, and favorite endpoints" /></td>
-  </tr>
-  <tr>
-    <td><sub>Live workspace health, worker state, incidents, and delivery outcomes.</sub></td>
-    <td><sub>Searchable monitors, status, ownership, flags, pause controls, and timelines.</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="./docs/screenshots/demo-frames/03-delivery.png" alt="Sentrovia notification delivery health for email, Telegram, Discord, and webhooks" /></td>
-    <td width="50%"><img src="./docs/screenshots/demo-frames/04-reports.png" alt="Sentrovia reliability analytics with uptime, failures, latency, and fleet risk" /></td>
-  </tr>
-  <tr>
-    <td><sub>Channel health, test tools, bounded retries, dead letters, and searchable history.</sub></td>
-    <td><sub>Reliability trends, cohort exclusions, report previews, and scheduled delivery.</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="./docs/screenshots/demo-frames/05-settings-preview.png" alt="Sentrovia live dark email notification preview with Check site action" /></td>
-    <td width="50%"><img src="./docs/screenshots/demo-frames/06-status.png" alt="Sentrovia public service status page showing operational and unavailable services" /></td>
-  </tr>
-  <tr>
-    <td><sub>Workspace branding, event templates, English/Turkish notifications, and light/dark preview.</sub></td>
-    <td><sub>Public service availability with incident state, search, and automatic refresh.</sub></td>
-  </tr>
-</table>
-
-## Deployment Options
-
-| Deployment | Best for | Guide |
-| --- | --- | --- |
-| Docker Compose | Recommended for most self-hosted uptime monitoring installations | [Docker installation](docs/deployment.md#docker-compose) |
-| Windows + NSSM | Windows servers running without Docker | [Windows installation](docs/deployment.md#windows-services-with-nssm) |
-
-Every release also publishes a container image:
+Tagged releases publish immutable source archives, SHA-256 checksums, build-provenance attestations, and versioned container images:
 
 ```bash
 docker pull ghcr.io/febroine/sentrovia-monitoring:latest
 ```
 
-Never commit `.env` or `.env.local`. Preserve `APP_ENCRYPTION_SECRET` with database backups because stored credentials and encrypted backups depend on it.
+Browse [GitHub Releases](https://github.com/febroine/sentrovia-monitoring/releases) for archives and checksums, or the [GitHub Container Registry package](https://github.com/febroine/sentrovia-monitoring/pkgs/container/sentrovia-monitoring) for published image tags.
+
+Important configuration rules:
+
+- Never commit `.env` or `.env.local`.
+- Preserve `APP_ENCRYPTION_SECRET` with database backups; stored credentials and encrypted backups depend on it.
+- Set a public HTTPS `APP_URL` in production.
+- Enable proxy-header trust only behind a proxy that sanitizes forwarded headers.
+- Set `MONITOR_ALLOW_PRIVATE_TARGETS=false` when the installation must not reach private networks.
+
+See [deployment and configuration](docs/deployment.md) for the complete environment, update, backup, recovery, metrics, and release-verification guidance.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Operators["Operators"] --> Web["Next.js web console and API"]
+    Visitors["Public status visitors"] --> Web
+    Jobs["Cron jobs and services"] --> Heartbeat["Heartbeat endpoint"]
+    Heartbeat --> Web
+    Web --> DB[("PostgreSQL")]
+    Worker["Monitoring worker"] --> Targets["HTTP · TCP · ICMP · PostgreSQL targets"]
+    Worker --> Channels["Email · Telegram · Discord · Webhooks"]
+    Worker <--> DB
+```
+
+The web service owns the interface, authenticated API, public status pages, and heartbeat intake. The worker claims due checks, verifies failures, stores results, and processes notification and report delivery. PostgreSQL is the shared durable state.
 
 ## Local Development
 
-Requirements: Node.js 20.9+, npm, Docker, and PostgreSQL.
+Requirements: Node.js 20.9 or newer, npm, PostgreSQL 16, and Playwright Chromium for screenshot tests.
+
+Configure a private `.env.local` with strong local-only secrets and either `DATABASE_URL` or the `POSTGRES_*` values from [.env.example](.env.example). Then run:
 
 ```bash
-docker compose up -d db
-npm install
+npm ci
 npm run db:sync
 npm run dev
 ```
@@ -213,48 +197,42 @@ Start the worker in another terminal:
 npm run worker:dev
 ```
 
-Validate a change with:
-
-```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
-```
-
-The screenshot integration tests require the Playwright Chromium revision used by the installed package:
+Run the same checks as CI:
 
 ```bash
 npx playwright install chromium
+npm test
+npm run lint
+npm run typecheck
+npm run benchmark:scale
+npm run build
 ```
 
-Run the complete suite from a Git clone when possible. Source archives without `.git` skip only the history-dependent Windows cleanup assertion; filesystem safety checks and the rest of the suite still run.
-
-The isolated dynamic test suite covers authenticated routes, API boundaries, core UI interactions, responsive overflow, reports, status pages, and notification previews. See [dynamic E2E test cases](docs/dynamic-e2e-test-cases.md).
+The dynamic browser suite covers authenticated routes, API boundaries, critical UI interactions, responsive overflow, reports, status pages, and notification previews. See the [dynamic E2E test cases](docs/dynamic-e2e-test-cases.md).
 
 ## Documentation
 
+- [Documentation index](docs/README.md)
 - [Deployment, configuration, updates, and recovery](docs/deployment.md)
-- [Scale benchmark and capacity testing](docs/scale-benchmarks.md)
+- [Scale benchmark methodology](docs/scale-benchmarks.md)
 - [Dynamic end-to-end test cases](docs/dynamic-e2e-test-cases.md)
-- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
-## Tech Stack
+## Roadmap
 
-Next.js 16, React 19, TypeScript, PostgreSQL, Drizzle ORM, Zod, Zustand, Nodemailer, Playwright Chromium, Vitest, Docker Compose, and NSSM.
+Sentrovia is usable today as an internal website and API uptime monitoring console. Planned areas include multi-region workers, DNS-specific monitors, and a hosted read-only demo. These are roadmap items, not current features.
 
-## Project Status
+Feature proposals are welcome through the [issue tracker](https://github.com/febroine/sentrovia-monitoring/issues), but large changes should be discussed before implementation.
 
-Sentrovia is usable today as an internal website and API uptime monitoring console. Its strongest fit is a team that needs verified alerts, screenshot evidence, PostgreSQL monitoring, report delivery, and Windows-friendly deployment.
+## Contributing
 
-Planned areas include multi-region workers, DNS-specific monitors, and a hosted read-only demo. These are not presented as current features.
+Focused bug fixes, tests, documentation improvements, and well-scoped product changes are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, validation commands, and pull-request expectations.
 
-## Contributing and Security
+## Security
 
-Focused bug fixes, tests, and documentation improvements are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
-
-Report suspected vulnerabilities privately through [SECURITY.md](SECURITY.md). Never include credentials, private monitor targets, customer data, or database contents in a public issue.
+Report suspected vulnerabilities privately through the process in [SECURITY.md](SECURITY.md). Do not include credentials, private monitor targets, customer data, or database contents in a public issue.
 
 ## License
 
