@@ -13,6 +13,9 @@ const WORKER_PROCESS_LOCK_KEY = 51_772_904;
 const WORKER_STATE_ID = "primary";
 const SOFT_DELETE_GRACE_SECONDS = 60;
 const EXPECTED_TABLES = new Set([
+  "audit_events",
+  "auth_rate_limits",
+  "automatic_backup_runs",
   "companies",
   "delivery_events",
   "log_filter_presets",
@@ -24,11 +27,16 @@ const EXPECTED_TABLES = new Set([
   "outage_events",
   "report_schedules",
   "sentrovia_manual_migrations",
+  "sentrovia_security_migrations",
   "user_settings",
   "users",
   "webhook_endpoints",
   "worker_cycle_metrics",
   "worker_state",
+  "workspace_members",
+  "workspace_settings",
+  "workspaces",
+  "public_status_pages",
 ]);
 
 const RETIRED_OBJECTS = [
@@ -341,6 +349,10 @@ export function findMissingRequiredTables(existingTableNames) {
   return [...EXPECTED_TABLES].filter((table) => !existing.has(table));
 }
 
+export function findUnexpectedTables(existingTableNames) {
+  return existingTableNames.filter((table) => !EXPECTED_TABLES.has(table));
+}
+
 async function acquireMaintenanceLock(sql) {
   await sql`select pg_advisory_lock(${MAINTENANCE_LOCK_KEYS[0]}, ${MAINTENANCE_LOCK_KEYS[1]})`;
 }
@@ -361,9 +373,7 @@ async function printAudit(sql) {
     where table_schema = 'public'
     order by table_name
   `;
-  const unknown = unexpectedTables
-    .map((row) => row.table_name)
-    .filter((table) => !EXPECTED_TABLES.has(table));
+  const unknown = findUnexpectedTables(unexpectedTables.map((row) => row.table_name));
   const retired = RETIRED_OBJECTS.filter((table) => unknown.includes(table));
   const unvalidatedConstraints = await sql`
     select conname
