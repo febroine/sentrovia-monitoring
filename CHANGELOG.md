@@ -4,9 +4,16 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-13
+
+### Fixed
+
+- Kept database-repair schema auditing aligned with all current application tables so valid workspace, security, backup, and status-page tables are no longer reported as unexpected.
+
 ### Documentation
 
 - Restructured the repository landing page and documentation for clearer installation, evaluation, and contribution paths.
+- Added a prominent native Windows NSSM quick start, refreshed the repository social preview, and improved community issue templates.
 
 ## [0.1.0] - 2026-09-12
 
@@ -38,5 +45,6 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - Release CI completed tests, lint, type checking, scale benchmark smoke testing, and a production build before publishing the source archive and Docker image.
 
-[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/febroine/sentrovia-monitoring/releases/tag/v0.1.0

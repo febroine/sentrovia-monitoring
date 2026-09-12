@@ -13,7 +13,7 @@ body:
     attributes:
       label: Sentrovia version
       description: Use the release tag, image tag, or commit SHA.
-      placeholder: v0.1.0 or a commit SHA
+      placeholder: v0.1.1 or a commit SHA
     validations:
       required: true
   - type: dropdown
