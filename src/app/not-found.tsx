@@ -6,7 +6,7 @@ const linkClassName =
 export default function NotFound() {
   return (
     <main className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center px-5 py-12">
-      <div className="w-full border-y py-8">
+      <div className="w-full rounded-lg bg-card p-6 sm:p-8">
         <h1 className="text-xl font-semibold tracking-tight">404 — Page not found</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           The address may be outdated or the page may have moved.

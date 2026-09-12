@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
+  ArrowUpRight,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   CircleX,
+  CircleDashed,
   MailCheck,
   MessageCircle,
   RefreshCw,
@@ -29,6 +32,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatCalendarDateInput, shiftLocalCalendarDays } from "@/lib/delivery/history-range";
 import type { DeliveryChannelHealth, DeliveryHistoryRecord, DeliveryOverview } from "@/lib/delivery/types";
 import { toEnglishUppercase } from "@/lib/text/casing";
+import { formatPanelDateTime } from "@/lib/time";
+import {
+  buildDeliveryChannelReadiness,
+  type DeliveryChannelReadiness,
+  type DeliveryNotificationSettings,
+  type DeliveryReadinessStatus,
+} from "@/components/delivery/delivery-readiness";
 
 const EMPTY_OVERVIEW: DeliveryOverview = {
   webhook: null,
@@ -41,10 +51,19 @@ const EMPTY_OVERVIEW: DeliveryOverview = {
 type MessageResponse = { message?: string; delivery?: DeliveryHistoryRecord };
 type HistoryDeletionRange = "last_7_days" | "last_30_days" | "custom";
 type DeliveryPageMessage = { text: string; tone: "error" | "success" };
+type SettingsResponse = {
+  settings?: {
+    notifications?: DeliveryNotificationSettings;
+  };
+  message?: string;
+};
 
 export function DeliveryPageClient() {
   const [overview, setOverview] = useState<DeliveryOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
+  const [notificationSettings, setNotificationSettings] = useState<DeliveryNotificationSettings | null>(null);
+  const [notificationSettingsLoading, setNotificationSettingsLoading] = useState(true);
+  const [notificationSettingsError, setNotificationSettingsError] = useState<string | null>(null);
   const [message, setMessage] = useState<DeliveryPageMessage | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -100,12 +119,37 @@ export function DeliveryPageClient() {
 
   const loadOverview = useCallback(async (requestedPage = 1) => {
     setLoading(true);
+    setNotificationSettingsLoading(true);
 
     try {
-      const response = await fetch(`/api/delivery?page=${requestedPage}`, { cache: "no-store" });
+      const [deliveryResult, settingsResult] = await Promise.allSettled([
+        fetch(`/api/delivery?page=${requestedPage}`, { cache: "no-store" }),
+        fetch("/api/settings", { cache: "no-store" }),
+      ]);
+
+      if (deliveryResult.status === "rejected") {
+        throw deliveryResult.reason;
+      }
+
+      const response = deliveryResult.value;
       const data = await readJsonOrNull<{ overview?: DeliveryOverview; message?: string }>(response);
       if (!response.ok) {
         throw new Error(data?.message ?? "Unable to load delivery operations.");
+      }
+
+      if (settingsResult.status === "fulfilled") {
+        const settingsResponse = settingsResult.value;
+        const settingsData = await readJsonOrNull<SettingsResponse>(settingsResponse);
+        if (settingsResponse.ok && settingsData?.settings?.notifications) {
+          setNotificationSettings(settingsData.settings.notifications);
+          setNotificationSettingsError(null);
+        } else {
+          setNotificationSettings(null);
+          setNotificationSettingsError(settingsData?.message ?? "Unable to load notification settings.");
+        }
+      } else {
+        setNotificationSettings(null);
+        setNotificationSettingsError("Unable to load notification settings.");
       }
 
       const nextOverview = normalizeOverview(data?.overview);
@@ -118,6 +162,7 @@ export function DeliveryPageClient() {
       setMessage({ text: toMessage(error, "Unable to load delivery operations."), tone: "error" });
     } finally {
       setLoading(false);
+      setNotificationSettingsLoading(false);
     }
   }, []);
 
@@ -282,7 +327,7 @@ export function DeliveryPageClient() {
           </p>
         </div>
         <Button variant="outline" onClick={() => void loadOverview(historyPage)} disabled={loading}>
-          <RefreshCw className="mr-2 h-4 w-4" />
+          <RefreshCw data-icon="inline-start" className="h-4 w-4" />
           Refresh
         </Button>
       </header>
@@ -292,8 +337,8 @@ export function DeliveryPageClient() {
           role={message.tone === "error" ? "alert" : "status"}
           className={
             message.tone === "error"
-              ? "border-l-2 border-destructive px-4 py-2 text-sm text-destructive"
-              : "border-l-2 border-emerald-500 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-400"
+              ? "rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              : "rounded-md bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400"
           }
         >
           {message.text}
@@ -301,12 +346,17 @@ export function DeliveryPageClient() {
       ) : null}
 
       {isFirstRun ? (
-        <FirstRunDeliveryGuide />
+        <FirstRunDeliveryGuide
+          overview={overview}
+          notificationSettings={notificationSettings}
+          settingsLoading={notificationSettingsLoading}
+          settingsError={notificationSettingsError}
+        />
       ) : (
         <>
-          <dl className="grid border-y md:grid-cols-2 xl:grid-cols-5 xl:divide-x">
+          <dl className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
             {cards.map((card) => (
-              <div key={card.label} className="border-b px-4 py-3 last:border-b-0 md:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+              <div key={card.label} className="rounded-md bg-muted/25 px-4 py-3">
                 <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
                 <dd className={`mt-1 text-lg font-semibold tabular-nums ${card.tone}`}>{card.value}</dd>
                 <p className="mt-0.5 text-xs text-muted-foreground">{card.sub}</p>
@@ -314,12 +364,12 @@ export function DeliveryPageClient() {
             ))}
           </dl>
 
-          <section className="border-y" aria-labelledby="channel-health-title">
-            <div className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-baseline sm:justify-between">
+          <section className="rounded-lg bg-card/45" aria-labelledby="channel-health-title">
+            <div className="flex flex-col gap-1 rounded-t-lg bg-muted/20 px-5 py-3 sm:flex-row sm:items-baseline sm:justify-between">
               <h2 id="channel-health-title" className="text-base font-medium">Channel health</h2>
               <p className="text-xs text-muted-foreground">Attempts and failures from the last 24 hours.</p>
             </div>
-            <div className="divide-y">
+            <div className="grid gap-2 p-2">
               {overview.channelHealth.map((channel) => (
                 <ChannelHealthRow key={channel.channel} channel={channel} />
               ))}
@@ -329,7 +379,7 @@ export function DeliveryPageClient() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <section id="webhook-setup" className="border-y py-4" aria-labelledby="webhook-title">
+        <section id="webhook-setup" className="rounded-lg bg-card/45 p-4" aria-labelledby="webhook-title">
           <div className="mb-4">
             <h2 id="webhook-title" className="text-base font-medium">Webhook endpoint</h2>
             <p className="mt-1 text-sm text-muted-foreground">Failed POST requests are retried automatically.</p>
@@ -337,7 +387,7 @@ export function DeliveryPageClient() {
           <div className="space-y-4">
             <Field label="URL" id="webhook-url" value={webhookUrl} onChange={setWebhookUrl} placeholder="https://hooks.example.com/sentrovia" />
             <Field label="Secret" id="webhook-secret" value={webhookSecret} onChange={setWebhookSecret} placeholder={overview.webhook?.secretConfigured ? "Secret already configured" : "Optional HMAC shared secret"} />
-            <div className="flex items-center justify-between border-y py-3">
+            <div className="flex items-center justify-between rounded-md bg-muted/25 p-3">
               <div>
                 <p className="text-sm font-medium">Webhook active</p>
                 <p className="text-xs text-muted-foreground">Inactive endpoints stay saved but stop receiving events.</p>
@@ -346,18 +396,18 @@ export function DeliveryPageClient() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void saveWebhook()} disabled={!webhookUrl.trim() || pendingAction !== null}>
-                <Webhook className="mr-2 h-4 w-4" />
+                <Webhook data-icon="inline-start" className="h-4 w-4" />
                 Save webhook
               </Button>
               <Button variant="outline" onClick={() => void sendTest("webhook")} disabled={!webhookUrl.trim() || pendingAction !== null}>
-                <Send className="mr-2 h-4 w-4" />
+                <Send data-icon="inline-start" className="h-4 w-4" />
                 Send test webhook
               </Button>
             </div>
           </div>
         </section>
 
-        <section id="delivery-test" className="border-y py-4" aria-labelledby="delivery-test-title">
+        <section id="delivery-test" className="rounded-lg bg-card/45 p-4" aria-labelledby="delivery-test-title">
           <h2 id="delivery-test-title" className="mb-4 text-base font-medium">Test delivery</h2>
           <div className="space-y-4">
             {pendingAction ? <ActionProgress label={pendingAction} /> : null}
@@ -372,15 +422,15 @@ export function DeliveryPageClient() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void sendTest("email")} disabled={pendingAction !== null}>
-                <MailCheck className="size-4" />
+                <MailCheck data-icon="inline-start" className="size-4" />
                 Test email
               </Button>
               <Button variant="outline" onClick={() => void sendTest("telegram")} disabled={pendingAction !== null}>
-                <Send className="size-4" />
+                <Send data-icon="inline-start" className="size-4" />
                 Test Telegram
               </Button>
               <Button variant="outline" onClick={() => void sendTest("discord")} disabled={pendingAction !== null}>
-                <MessageCircle className="size-4" />
+                <MessageCircle data-icon="inline-start" className="size-4" />
                 Test Discord
               </Button>
             </div>
@@ -388,8 +438,8 @@ export function DeliveryPageClient() {
         </section>
       </div>
 
-      <section className="border-y" aria-labelledby="delivery-history-title">
-        <div className="border-b py-3">
+      <section className="rounded-lg bg-card/45" aria-labelledby="delivery-history-title">
+        <div className="rounded-t-lg bg-muted/20 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1.5">
               <h2 id="delivery-history-title" className="text-base font-medium">Delivery history</h2>
@@ -402,7 +452,7 @@ export function DeliveryPageClient() {
                 onClick={() => void retryQueue()}
                 disabled={pendingAction !== null || overview.pagination.totalItems === 0}
               >
-                <RotateCcw className="mr-2 h-4 w-4" />
+                <RotateCcw data-icon="inline-start" className="h-4 w-4" />
                 Retry queue
               </Button>
               <Button
@@ -412,7 +462,7 @@ export function DeliveryPageClient() {
                 onClick={() => setClearHistoryOpen(true)}
                 disabled={pendingAction !== null || overview.pagination.totalItems === 0}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 data-icon="inline-start" className="h-4 w-4" />
                 Clear history
               </Button>
             </div>
@@ -445,20 +495,30 @@ export function DeliveryPageClient() {
                 overview.history.map((item) => (
                   <TableRow key={item.id} className="cursor-pointer" onClick={() => setSelectedRow(item)}>
                     <TableCell className="pl-6">
-                      <span className="text-sm font-medium">{toTitleCase(item.channel)}</span>
+                      <button
+                        type="button"
+                        className="rounded-sm text-left text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                        aria-label={`Open ${toTitleCase(item.channel)} delivery details`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedRow(item);
+                        }}
+                      >
+                        {toTitleCase(item.channel)}
+                      </button>
                     </TableCell>
                     <TableCell className="font-medium">{toTitleCase(item.kind)}</TableCell>
                     <TableCell className="max-w-[260px] truncate">{item.destination}</TableCell>
                     <TableCell className={statusTone(item.status, item.deadLetteredAt)}>{statusLabel(item)}</TableCell>
                     <TableCell>{item.attempts}</TableCell>
                     <TableCell>{item.responseCode ?? "N/A"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{formatPanelDateTime(item.createdAt)}</TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
-          <div className="flex flex-col gap-3 border-t bg-muted/10 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-b-lg bg-muted/20 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
               {overview.pagination.totalItems === 0
                 ? "No records"
@@ -546,7 +606,7 @@ export function DeliveryPageClient() {
                 </div>
               </div>
             ) : null}
-            <div className="border-l-2 border-amber-500 px-3 py-2 text-xs leading-5 text-muted-foreground">
+            <div className="rounded-md bg-amber-500/10 px-3 py-3 text-xs leading-5 text-muted-foreground">
               This action cannot be undone. Active retry queue entries are never deleted by history cleanup.
             </div>
           </div>
@@ -559,7 +619,7 @@ export function DeliveryPageClient() {
               onClick={() => void deleteHistory()}
               disabled={pendingAction !== null || !isDeletionRangeReady(historyDeletionRange, customFrom, customTo)}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 data-icon="inline-start" className="h-4 w-4" />
               {pendingAction === "delete-history" ? "Deleting..." : "Delete records"}
             </Button>
           </DialogFooter>
@@ -576,7 +636,7 @@ export function DeliveryPageClient() {
           </DialogHeader>
           {selectedRow ? (
             <div className="space-y-4">
-              <dl className="grid border-y md:grid-cols-2 md:divide-x">
+              <dl className="grid gap-2 md:grid-cols-2">
                 <PayloadMetric label="Channel" value={toTitleCase(selectedRow.channel)} />
                 <PayloadMetric label="Kind" value={toTitleCase(selectedRow.kind)} />
                 <PayloadMetric label="Status" value={statusLabel(selectedRow)} />
@@ -584,7 +644,7 @@ export function DeliveryPageClient() {
                 <PayloadMetric label="Response" value={selectedRow.responseCode?.toString() ?? "N/A"} />
                 <PayloadMetric label="Attempts" value={selectedRow.attempts.toString()} />
               </dl>
-              <div className="border-y py-4">
+              <div className="rounded-md bg-muted/20 p-4">
                 <p className="text-sm font-medium">Payload</p>
                 <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-md border bg-background p-4 text-xs leading-6 text-muted-foreground">
                   {JSON.stringify(selectedRow.payload ?? {}, null, 2)}
@@ -601,7 +661,7 @@ export function DeliveryPageClient() {
                 onClick={() => void retryDelivery(selectedRow.id)}
                 disabled={pendingAction !== null}
               >
-                <RotateCcw className="mr-2 h-4 w-4" />
+                <RotateCcw data-icon="inline-start" className="h-4 w-4" />
                 {pendingAction === `retry-${selectedRow.id}` ? "Retrying..." : "Retry delivery"}
               </Button>
             ) : null}
@@ -630,24 +690,102 @@ function normalizeOverview(value: DeliveryOverview | undefined): DeliveryOvervie
 
 function isDeliveryFirstRun(overview: DeliveryOverview) {
   const summaryTotal = Object.values(overview.summary).reduce((total, count) => total + count, 0);
-  return summaryTotal === 0 && overview.pagination.totalItems === 0 && !overview.webhook?.url;
+  return summaryTotal === 0 && overview.pagination.totalItems === 0;
 }
 
-function FirstRunDeliveryGuide() {
+function FirstRunDeliveryGuide({
+  overview,
+  notificationSettings,
+  settingsLoading,
+  settingsError,
+}: {
+  overview: DeliveryOverview;
+  notificationSettings: DeliveryNotificationSettings | null;
+  settingsLoading: boolean;
+  settingsError: string | null;
+}) {
+  const readiness = buildDeliveryChannelReadiness(overview, notificationSettings);
+
   return (
-    <section className="border-y py-4" aria-labelledby="delivery-setup-title">
+    <section className="rounded-lg bg-card/45 p-4" aria-labelledby="delivery-setup-title">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 id="delivery-setup-title" className="text-base font-medium">Set up a delivery channel</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Add a webhook or send a test message. Delivery activity appears here after the first attempt.</p>
+          <h2 id="delivery-setup-title" className="text-base font-medium">Prepare notification delivery</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Check each channel before relying on alerts. Delivery activity appears here after the first attempt.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a className="inline-flex h-8 items-center rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" href="#webhook-setup">Configure webhook</a>
-          <a className="inline-flex h-8 items-center rounded-md border border-border bg-background px-2.5 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" href="#delivery-test">Send a test</a>
+          <a className="inline-flex h-8 items-center rounded-md bg-primary px-2.5 pb-px text-sm leading-none font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" href="#webhook-setup">Configure webhook</a>
+          <a className="inline-flex h-8 items-center rounded-md border border-border bg-background px-2.5 pb-px text-sm leading-none font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40" href="#delivery-test">Send a test</a>
         </div>
       </div>
+
+      {settingsError ? (
+        <p role="alert" className="mt-4 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          {settingsError} Channel setup links are still available below.
+        </p>
+      ) : null}
+
+      {settingsLoading ? (
+        <div className="mt-5 rounded-md bg-muted/20 px-4 py-3 text-sm text-muted-foreground" role="status" aria-live="polite">
+          Loading channel readiness…
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {readiness.map((channel) => (
+            <ChannelReadinessCard key={channel.channel} channel={channel} />
+          ))}
+        </div>
+      )}
     </section>
   );
+}
+
+function ChannelReadinessCard({ channel }: { channel: DeliveryChannelReadiness }) {
+  const presentation = readinessPresentation(channel.status);
+  const Icon = presentation.Icon;
+
+  return (
+    <article className="flex min-h-40 flex-col rounded-md bg-muted/20 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <ChannelIcon channel={channel.channel} />
+          <h3 className="truncate text-sm font-medium">{channel.label}</h3>
+        </div>
+        <span className={`inline-flex shrink-0 items-center gap-1.5 text-xs font-medium ${presentation.className}`}>
+          <Icon className="size-3.5" aria-hidden="true" />
+          {presentation.label}
+        </span>
+      </div>
+      <p className="mt-3 flex-1 text-xs leading-5 text-muted-foreground">{channel.detail}</p>
+      <Link
+        href={channel.href}
+        className="mt-4 inline-flex min-h-9 items-center gap-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+      >
+        Open channel settings
+        <ArrowUpRight className="size-3.5" aria-hidden="true" />
+      </Link>
+    </article>
+  );
+}
+
+function ChannelIcon({ channel }: { channel: DeliveryChannelHealth["channel"] }) {
+  if (channel === "email") return <MailCheck className="size-4 text-muted-foreground" aria-hidden="true" />;
+  if (channel === "telegram") return <Send className="size-4 text-muted-foreground" aria-hidden="true" />;
+  if (channel === "discord") return <MessageCircle className="size-4 text-muted-foreground" aria-hidden="true" />;
+  return <Webhook className="size-4 text-muted-foreground" aria-hidden="true" />;
+}
+
+function readinessPresentation(status: DeliveryReadinessStatus) {
+  if (status === "configured") {
+    return { label: "Configured", className: "text-emerald-600 dark:text-emerald-400", Icon: CheckCircle2 };
+  }
+  if (status === "error") {
+    return { label: "Error", className: "text-destructive", Icon: CircleX };
+  }
+  if (status === "no-attempts") {
+    return { label: "No attempts", className: "text-amber-600 dark:text-amber-400", Icon: CircleDashed };
+  }
+  return { label: "Missing", className: "text-muted-foreground", Icon: AlertTriangle };
 }
 
 function buildEmptyChannelHealth(): DeliveryChannelHealth[] {
@@ -717,7 +855,7 @@ function channelStatusPresentation(status: DeliveryChannelHealth["status"]) {
 
 function ActionProgress({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 border-l-2 border-primary px-3 py-2 text-sm" role="status">
+    <div className="flex items-center gap-2 rounded-md bg-primary/10 px-3 py-3 text-sm" role="status">
       <RefreshCw className="size-4 animate-spin text-primary" />
       <span className="font-medium">{progressLabel(label)}</span>
     </div>
@@ -787,7 +925,7 @@ function toMessage(error: unknown, fallback: string) {
 
 function formatTimestamp(value: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "Unknown" : formatPanelDateTime(date);
 }
 
 function isDeletionRangeReady(range: HistoryDeletionRange, from: string, to: string) {
@@ -796,7 +934,7 @@ function isDeletionRangeReady(range: HistoryDeletionRange, from: string, to: str
 
 function PayloadMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b px-4 py-3 last:border-b-0 md:border-b-0">
+            <div className="rounded-md bg-background/30 px-4 py-3">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 break-words text-sm font-medium">{value}</dd>
     </div>

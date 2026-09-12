@@ -16,6 +16,7 @@ import {
   formatReportUptime,
 } from "@/lib/reports/metrics";
 import type { GeneratedReport } from "@/lib/reports/types";
+import { formatPanelDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 export function ReportPreviewPanel({
@@ -38,25 +39,25 @@ export function ReportPreviewPanel({
 
 function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; onExportHtml: () => void }) {
   return (
-    <section className="border-y">
-      <div className="border-b py-3">
+    <section className="rounded-lg bg-card/55 p-4 shadow-sm">
+      <div className="rounded-md bg-muted/20 p-3">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-base font-medium">{report.title}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {report.periodLabel} ({report.timeZone}) / {new Date(report.periodStartedAt).toLocaleString("en-GB", { timeZone: report.timeZone })} – {new Date(report.periodEndedAt).toLocaleString("en-GB", { timeZone: report.timeZone })}
+              {report.periodLabel} ({report.timeZone}) / {formatPanelDateTime(report.periodStartedAt, { timeZone: report.timeZone })} – {formatPanelDateTime(report.periodEndedAt, { timeZone: report.timeZone })}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs text-muted-foreground">{report.templateLabel} / {report.workspaceName}</span>
             <Button variant="outline" size="sm" onClick={onExportHtml}>
-              <Download className="mr-2 h-4 w-4" /> Download HTML
+              <Download data-icon="inline-start" className="h-4 w-4" /> Download HTML
             </Button>
           </div>
         </div>
       </div>
       <div className="space-y-4 py-4">
-        <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
+        <dl className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
           <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} tone={report.summary.hasCompletedChecks ? healthScoreTone(report.summary.healthScore) : "text-muted-foreground"} />
           <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} tone="text-muted-foreground" />
           <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={uptimeTone(report.summary.uptimePct, report.summary.hasCompletedChecks)} />
@@ -65,7 +66,7 @@ function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; 
           <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failure events" tone={riskCountTone(report.summary.impactedMonitors)} />
           <PreviewMetric label="Failure rate" value={formatReportFailureRate(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={failureRateTone(report.summary.failureRatePct, report.summary.hasCompletedChecks)} />
         </dl>
-        <dl className="grid border-y md:grid-cols-4 md:divide-x">
+        <dl className="grid gap-2 md:grid-cols-4">
           <StateChip tone="emerald" label="Up now" value={String(report.summary.currentlyUp)} />
           <StateChip tone="rose" label="Down now" value={String(report.summary.currentlyDown)} />
           <StateChip tone="amber" label="Pending now" value={String(report.summary.currentlyPending)} />
@@ -78,13 +79,13 @@ function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; 
 
 function ReportFindings({ report }: { report: GeneratedReport }) {
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <h3 className="flex items-center gap-2 text-base font-medium">
         <ScanLine className="size-4 text-sky-600 dark:text-sky-400" /> Report findings
       </h3>
-      <div className="divide-y pt-3">
+      <div className="grid gap-2 pt-3">
         {report.recommendations.map((item, index) => (
-          <div key={`${item}-${index}`} className="py-3 first:pt-0 last:pb-0">
+          <div key={`${item}-${index}`} className="rounded-md bg-muted/25 p-3">
             <p className="text-sm leading-6">{item}</p>
           </div>
         ))}
@@ -105,13 +106,13 @@ function ReportWatchlists({ report }: { report: GeneratedReport }) {
 
 function FailingMonitorsCard({ report, maxFailureCount }: { report: GeneratedReport; maxFailureCount: number }) {
   return (
-    <section className="border-y py-4" aria-labelledby="failing-monitors-title">
+    <section className="rounded-lg bg-card/45 p-4" aria-labelledby="failing-monitors-title">
       <h3 id="failing-monitors-title" className="text-base font-medium">Top failing monitors</h3>
-      <div className="mt-3 divide-y">
+      <div className="mt-3 grid gap-2">
         {report.failingMonitors.length === 0 ? (
           <p className="text-sm text-muted-foreground">No failures during the selected period.</p>
         ) : report.failingMonitors.map((monitor) => (
-          <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
+          <div key={monitor.monitorId} className="rounded-md bg-muted/25 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -138,13 +139,13 @@ export function getFailureBarWidth(failures: number, maxFailureCount: number) {
 
 function LatencyWatchlistCard({ report }: { report: GeneratedReport }) {
   return (
-    <section className="border-y py-4" aria-labelledby="latency-watchlist-title">
+    <section className="rounded-lg bg-card/45 p-4" aria-labelledby="latency-watchlist-title">
       <h3 id="latency-watchlist-title" className="text-base font-medium">Latency watchlist</h3>
-      <div className="mt-3 divide-y">
+      <div className="mt-3 grid gap-2">
         {report.slowMonitors.length === 0 ? (
           <p className="text-sm text-muted-foreground">No latency samples for this period.</p>
         ) : report.slowMonitors.map((monitor) => (
-          <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
+          <div key={monitor.monitorId} className="rounded-md bg-muted/25 p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
               <span className="text-xs font-medium text-muted-foreground">{monitor.averageLatencyMs}ms avg</span>
@@ -158,18 +159,18 @@ function LatencyWatchlistCard({ report }: { report: GeneratedReport }) {
 
 function RecentFailures({ report }: { report: GeneratedReport }) {
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <div>
         <h3 className="flex items-center gap-2 text-base font-medium">
           <TriangleAlert className="size-4 text-rose-600 dark:text-rose-400" /> Recent failure events
         </h3>
         <p className="text-sm text-muted-foreground">Latest failures included in the report.</p>
       </div>
-      <div className="divide-y pt-3">
+      <div className="grid gap-2 pt-3">
         {report.recentFailures.length === 0 ? (
           <p className="text-sm text-muted-foreground">No failure events during the selected period.</p>
         ) : report.recentFailures.map((event) => (
-          <div key={`${event.monitorId}-${event.createdAt}`} className="py-4 first:pt-0 last:pb-0">
+          <div key={`${event.monitorId}-${event.createdAt}`} className="rounded-md bg-muted/25 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-medium [overflow-wrap:anywhere]">{event.url}</p>
@@ -188,16 +189,16 @@ function RecentFailures({ report }: { report: GeneratedReport }) {
 
 function MonitorBreakdown({ report }: { report: GeneratedReport }) {
   return (
-    <section className="border-y py-4">
+    <section className="rounded-lg bg-card/45 p-4">
       <div>
         <h3 className="flex items-center gap-2 text-base font-medium">
           <Activity className="size-4 text-emerald-600 dark:text-emerald-400" /> Monitor breakdown
         </h3>
         <p className="text-sm text-muted-foreground">Ranked by failures, then average latency.</p>
       </div>
-      <div className="divide-y pt-3">
+      <div className="grid gap-2 pt-3">
         {report.monitorBreakdown.map((monitor) => (
-          <div key={monitor.monitorId} className="py-4 first:pt-0 last:pb-0">
+          <div key={monitor.monitorId} className="rounded-md bg-muted/25 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-sm font-medium [overflow-wrap:anywhere]">{monitor.url}</p>
@@ -236,12 +237,12 @@ function MonitorBreakdownMetrics({
 }
 
 function formatReportDateTime(value: string, timeZone: string) {
-  return new Date(value).toLocaleString("en-GB", { timeZone });
+  return formatPanelDateTime(value, { timeZone });
 }
 
 function PreviewMetric({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
   return (
-    <div className="border-b px-4 py-3 last:border-b-0 xl:[&:nth-last-child(-n+3)]:border-b-0">
+    <div className="rounded-md bg-background/30 px-4 py-3">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className={cn("mt-2 text-xl font-semibold tracking-tight", tone)}>{value}</dd>
       {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
@@ -285,7 +286,7 @@ function StateChip({
   value: string;
 }) {
   return (
-    <div className="border-b px-4 py-3 last:border-b-0 md:border-b-0">
+    <div className="rounded-md bg-background/30 px-4 py-3">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className={cn("mt-2 text-lg font-semibold", value !== "0" && tone === "emerald" && "text-emerald-500", value !== "0" && tone === "rose" && "text-rose-500", value !== "0" && tone === "amber" && "text-amber-500", (value === "0" || tone === "slate") && "text-muted-foreground")}>{value}</dd>
     </div>

@@ -3,7 +3,7 @@ import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 import { SESSION_COOKIE_NAME, getSessionCookieOptions, verifySessionToken } from "@/lib/auth/token";
 import { hasPermission, type Permission } from "@/lib/auth/permissions";
 
-const PUBLIC_ROUTES = ["/login", "/onboarding"];
+const PUBLIC_ROUTES = ["/login", "/onboarding", "/about", "/help"];
 const PUBLIC_API_ROUTES = [
   "/api/auth/login",
   "/api/auth/onboarding",

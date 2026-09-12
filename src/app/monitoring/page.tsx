@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -49,6 +49,7 @@ import { showToast } from "@/lib/client-toast";
 import { parseSoftDeleteUndoDeadline } from "@/lib/soft-delete";
 import { useMonitoringStore } from "@/stores/use-monitoring-store";
 import { hasPermission } from "@/lib/auth/permissions";
+import { LatestRequestCommitter } from "@/lib/client/latest-request";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const;
 const PAGE_NUMBER_WINDOW = 5;
@@ -118,6 +119,9 @@ export default function MonitoringPage() {
   const [pendingBulkAction, setPendingBulkAction] = useState<PendingBulkAction | null>(null);
   const [bulkActionSeconds, setBulkActionSeconds] = useState(0);
   const [pendingRestores, setPendingRestores] = useState<PendingMonitorRestore[]>([]);
+  const latestTimelineRequestRef = useRef(0);
+  const historyRequestsRef = useRef(new LatestRequestCommitter());
+  const supportingDataRequestsRef = useRef(new LatestRequestCommitter());
   const canManageMonitors = workspaceSettings
     ? hasPermission(workspaceSettings.profile.role, "monitors.manage")
     : false;
@@ -150,53 +154,66 @@ export default function MonitoringPage() {
     : null;
 
   const loadSupportingData = useCallback(async () => {
-    try {
-      const [companiesResponse, settingsResponse] = await Promise.all([
-        fetch("/api/companies", { cache: "no-store" }),
-        fetch("/api/settings", { cache: "no-store" }),
-      ]);
-      const companiesData = await readJsonOrNull<{ companies?: CompanyRecord[] }>(companiesResponse);
-      const settingsData = await readJsonOrNull<{ settings?: SettingsPayload | null }>(settingsResponse);
+    await supportingDataRequestsRef.current.run(
+      "monitoring-supporting-data",
+      async () => {
+        try {
+          const [companiesResponse, settingsResponse] = await Promise.all([
+            fetch("/api/companies", { cache: "no-store" }),
+            fetch("/api/settings", { cache: "no-store" }),
+          ]);
+          const companiesData = await readJsonOrNull<{ companies?: CompanyRecord[] }>(companiesResponse);
+          const settingsData = await readJsonOrNull<{ settings?: SettingsPayload | null }>(settingsResponse);
+          const settings = settingsResponse.ok ? settingsData?.settings ?? null : null;
 
-      setCompanies(companiesResponse.ok ? companiesData?.companies ?? [] : []);
-      setWorkspaceSettings(settingsResponse.ok ? settingsData?.settings ?? null : null);
-      setSavedEmails(
-        settingsResponse.ok ? settingsData?.settings?.notifications.savedEmailRecipients ?? [] : []
-      );
-      setDefaultForm(buildDefaultMonitorForm(settingsResponse.ok ? settingsData?.settings ?? null : null));
-    } catch {
-      setCompanies([]);
-      setWorkspaceSettings(null);
-      setSavedEmails([]);
-      setDefaultForm(buildDefaultMonitorForm(null));
-    }
+          return {
+            companies: companiesResponse.ok ? companiesData?.companies ?? [] : [],
+            settings,
+          };
+        } catch {
+          return { companies: [], settings: null };
+        }
+      },
+      ({ companies: nextCompanies, settings }) => {
+        setCompanies(nextCompanies);
+        setWorkspaceSettings(settings);
+        setSavedEmails(settings?.notifications.savedEmailRecipients ?? []);
+        setDefaultForm(buildDefaultMonitorForm(settings));
+      }
+    );
   }, []);
 
   const loadMonitorHistory = useCallback(async (monitorId: string) => {
-    try {
-      const response = await fetch(
-        `/api/monitors/history?monitorId=${encodeURIComponent(monitorId)}`,
-        { cache: "no-store" }
-      );
-      const data = await readJsonOrNull<{
-        history?: Record<string, MonitorHistoryPoint[]>;
-        diagnostics?: Record<string, MonitorDiagnosticRecord[]>;
-        outageEvents?: Record<string, MonitorOutageEventRecord[]>;
-      }>(response);
+    const snapshot = await historyRequestsRef.current.run(
+      monitorId,
+      async () => {
+        try {
+          const response = await fetch(
+            `/api/monitors/history?monitorId=${encodeURIComponent(monitorId)}`,
+            { cache: "no-store" }
+          );
+          const data = await readJsonOrNull<{
+            history?: Record<string, MonitorHistoryPoint[]>;
+            diagnostics?: Record<string, MonitorDiagnosticRecord[]>;
+            outageEvents?: Record<string, MonitorOutageEventRecord[]>;
+          }>(response);
 
-      const points = response.ok ? data?.history?.[monitorId] ?? [] : [];
-      const diagnostics = response.ok ? data?.diagnostics?.[monitorId] ?? [] : [];
-      const outageEvents = response.ok ? data?.outageEvents?.[monitorId] ?? [] : [];
-      setHistoryByMonitor((current) => ({ ...current, [monitorId]: points }));
-      setDiagnosticsByMonitor((current) => ({ ...current, [monitorId]: diagnostics }));
-      setOutageEventsByMonitor((current) => ({ ...current, [monitorId]: outageEvents }));
-      return points;
-    } catch {
-      setHistoryByMonitor((current) => ({ ...current, [monitorId]: [] }));
-      setDiagnosticsByMonitor((current) => ({ ...current, [monitorId]: [] }));
-      setOutageEventsByMonitor((current) => ({ ...current, [monitorId]: [] }));
-      return [];
-    }
+          return {
+            points: response.ok ? data?.history?.[monitorId] ?? [] : [],
+            diagnostics: response.ok ? data?.diagnostics?.[monitorId] ?? [] : [],
+            outageEvents: response.ok ? data?.outageEvents?.[monitorId] ?? [] : [],
+          };
+        } catch {
+          return { points: [], diagnostics: [], outageEvents: [] };
+        }
+      },
+      ({ points, diagnostics, outageEvents }) => {
+        setHistoryByMonitor((current) => ({ ...current, [monitorId]: points }));
+        setDiagnosticsByMonitor((current) => ({ ...current, [monitorId]: diagnostics }));
+        setOutageEventsByMonitor((current) => ({ ...current, [monitorId]: outageEvents }));
+      }
+    );
+    return snapshot?.points ?? null;
   }, []);
 
   const loadMonitorPage = useCallback(() => loadMonitors({
@@ -503,7 +520,11 @@ export default function MonitoringPage() {
   }
 
   async function handleOpenTimeline(monitor: MonitorRecord) {
+    const requestId = ++latestTimelineRequestRef.current;
     const points = await loadMonitorHistory(monitor.id);
+    if (points === null || requestId !== latestTimelineRequestRef.current) {
+      return;
+    }
     setTimelineMonitor(monitor);
     setSelectedTimelinePointId(points.at(-1)?.id ?? null);
   }
@@ -534,7 +555,7 @@ export default function MonitoringPage() {
           </Button>
           {canManageMonitors ? (
             <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 size-4" />
+              <Plus data-icon="inline-start" className="size-4" />
               Add monitor
             </Button>
           ) : null}
@@ -542,31 +563,31 @@ export default function MonitoringPage() {
       </section>
 
       {error ? (
-        <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
+        <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
       {pendingBulkAction ? (
-        <div className="flex flex-col gap-3 border-l-2 border-amber-500 px-4 py-2 sm:flex-row sm:items-center sm:justify-between" role="status">
+        <div className="flex flex-col gap-3 rounded-md bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
           <div className="min-w-0">
             <p className="text-sm font-medium">{pendingBulkAction.title}</p>
             <p className="mt-1 text-xs text-muted-foreground">{pendingBulkAction.detail} Running in {bulkActionSeconds}s. Keep this page open during the countdown.</p>
           </div>
           <Button variant="outline" size="sm" onClick={undoPendingBulkAction}>
-            <Undo2 /> Undo
+            <Undo2 data-icon="inline-start" /> Undo
           </Button>
         </div>
       ) : null}
 
       {pendingRestores.length > 0 ? (
-        <div className="flex flex-col gap-3 border-l-2 border-emerald-500 px-4 py-2 sm:flex-row sm:items-center sm:justify-between" role="status">
+        <div className="flex flex-col gap-3 rounded-md bg-emerald-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
           <div>
             <p className="text-sm font-medium">{pendingRestores.flatMap((item) => item.ids).length} monitor{pendingRestores.flatMap((item) => item.ids).length === 1 ? "" : "s"} deleted</p>
             <p className="mt-1 text-xs text-muted-foreground">Related records remain recoverable for 60 seconds.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => void restoreRecentlyDeletedMonitors()} disabled={saving}>
-            <Undo2 /> Restore
+            <Undo2 data-icon="inline-start" /> Restore
           </Button>
         </div>
       ) : null}
@@ -625,7 +646,7 @@ export default function MonitoringPage() {
       </div>
 
       {canManageMonitors && selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-md bg-primary/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">
             {selectedIds.size} monitor{selectedIds.size === 1 ? "" : "s"} selected
           </span>
@@ -634,16 +655,16 @@ export default function MonitoringPage() {
               Bulk edit
             </Button>
             <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)} disabled={Boolean(pendingBulkAction)}>
-              <Tags className="mr-1 size-3.5" />
+              <Tags data-icon="inline-start" className="size-3.5" />
               Tags
             </Button>
             <Button variant="outline" size="sm" onClick={() => openPauseDialog(Array.from(selectedIds))} disabled={saving || selectedActiveMonitors.length === 0 || Boolean(pendingBulkAction)}>
-              <Clock className="mr-1 size-3.5" />
+              <Clock data-icon="inline-start" className="size-3.5" />
               Pause
             </Button>
             {selectedPausedMonitorIds.length > 0 ? (
               <Button variant="outline" size="sm" onClick={() => void handleResumePaused(selectedPausedMonitorIds)} disabled={saving || Boolean(pendingBulkAction)}>
-                <Play className="mr-1 size-3.5" />
+                <Play data-icon="inline-start" className="size-3.5" />
                 Resume paused
               </Button>
             ) : null}
@@ -651,7 +672,7 @@ export default function MonitoringPage() {
               Clear
             </Button>
             <Button variant="destructive" size="sm" onClick={openDeleteConfirmation} disabled={saving || Boolean(pendingBulkAction)}>
-              <Trash2 className="mr-1 size-3.5" />
+              <Trash2 data-icon="inline-start" className="size-3.5" />
               Delete selected
             </Button>
           </div>
@@ -676,10 +697,27 @@ export default function MonitoringPage() {
         onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
         onEdit={setEditingMonitor}
         onOpenTimeline={(monitor) => void handleOpenTimeline(monitor)}
+        emptyState={search.trim() || companyFilter !== "all" ? {
+          title: "No monitors match these filters",
+          description: "Clear the search and company filter to return to the full monitor list.",
+          action: (
+            <Button variant="outline" size="sm" onClick={() => { setSearch(""); setCompanyFilter("all"); setPage(1); }}>
+              Clear filters
+            </Button>
+          ),
+        } : {
+          title: "No monitors yet",
+          description: canManageMonitors
+            ? "Add an endpoint to begin the first verification cycle."
+            : "A workspace administrator needs to add the first monitor.",
+          action: canManageMonitors ? (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>Add first monitor</Button>
+          ) : undefined,
+        }}
       />
 
       {totalPages > 1 ? (
-        <div className="flex flex-col gap-3 border-y py-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 rounded-md bg-muted/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages} · {pageSize} rows</p>
           <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
             <Button
@@ -745,7 +783,7 @@ export default function MonitoringPage() {
               download
               className={buttonVariants({ variant: "outline", className: "w-full justify-start" })}
             >
-              <FileSpreadsheet className="mr-2 size-4" />
+              <FileSpreadsheet data-icon="inline-start" className="size-4" />
               Download sample CSV
             </a>
             <Button
@@ -756,7 +794,7 @@ export default function MonitoringPage() {
                 setImportOpen(true);
               }}
             >
-              <FileSpreadsheet className="mr-2 size-4" />
+              <FileSpreadsheet data-icon="inline-start" className="size-4" />
               Import CSV
             </Button>
             <Button
@@ -767,7 +805,7 @@ export default function MonitoringPage() {
                 setTextImportOpen(true);
               }}
             >
-              <FileText className="mr-2 size-4" />
+              <FileText data-icon="inline-start" className="size-4" />
               Import TXT domain list
             </Button>
             <Button
@@ -778,7 +816,7 @@ export default function MonitoringPage() {
                 setExportOpen(true);
               }}
             >
-              <Download className="mr-2 size-4" />
+              <Download data-icon="inline-start" className="size-4" />
               Export monitors
             </Button>
             <Button
@@ -789,7 +827,7 @@ export default function MonitoringPage() {
                 setConfigOpen(true);
               }}
             >
-              <FileCode2 className="mr-2 size-4" />
+              <FileCode2 data-icon="inline-start" className="size-4" />
               Monitoring as code
             </Button>
           </div>
@@ -844,7 +882,7 @@ export default function MonitoringPage() {
               fields stay unchanged.
             </DialogDescription>
           </DialogHeader>
-          <div className="border-l-2 border-border px-3 py-2 text-xs text-muted-foreground">
+          <div className="rounded-md bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
             Impact: {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}. Identity fields and targets remain unchanged. The operation waits 10 seconds before it is applied.
           </div>
           {selectedIds.size > 0 ? (
@@ -878,9 +916,9 @@ export default function MonitoringPage() {
               This permanently removes the selected monitor{deleteTargets.length === 1 ? "" : "s"} and related monitoring history after a 10-second undo window.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 border-l-2 border-destructive px-4 py-2">
+          <div className="space-y-3 rounded-md bg-destructive/10 px-4 py-3">
             <p className="text-sm font-medium text-destructive">Are you sure you want to continue?</p>
-            <div className="divide-y border-y">
+            <div className="space-y-2 rounded-md bg-background/35 p-3">
               {deleteTargets.slice(0, 5).map((monitor) => (
                 <div key={monitor.id} className="py-2">
                   <p className="text-sm font-medium text-foreground">{monitor.name}</p>
@@ -896,7 +934,7 @@ export default function MonitoringPage() {
           <DialogFooter>
             <Button variant="outline" onClick={closeDeleteConfirmation} disabled={saving}>Cancel</Button>
             <Button variant="destructive" onClick={() => void confirmDeleteSelected()} disabled={saving || deleteTargets.length === 0}>
-              {saving ? "Deleting..." : `Delete ${deleteTargets.length === 1 ? "monitor" : `${deleteTargets.length} monitors`}`}
+              {saving ? "Deleting…" : `Delete ${deleteTargets.length === 1 ? "monitor" : `${deleteTargets.length} monitors`}`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1010,4 +1048,3 @@ function formatTagAction(action: "add" | "remove" | "replace") {
   if (action === "remove") return "Tag removal";
   return "Tag replacement";
 }
-

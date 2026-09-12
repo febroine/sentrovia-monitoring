@@ -18,7 +18,8 @@ try {
   await verifyRejectedLogin(browser);
   const context = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
-  const runtimeErrors = collectRuntimeErrors(page);
+  const expectedRuntimeErrors = new Set();
+  const runtimeErrors = collectRuntimeErrors(page, expectedRuntimeErrors);
 
   await login(page);
   if (!skipFontAssertions && !monitoringOnly) {
@@ -39,8 +40,10 @@ try {
     help: await verifyHelpInteractions(page),
     about: await verifyAboutInteractions(page),
     apis: await verifyAdditionalReadApis(context.request),
+    logoutFailure: await verifyRejectedLogout(page, expectedRuntimeErrors),
   };
 
+  assert.equal(expectedRuntimeErrors.size, 0, "Expected runtime error exemptions should be fully consumed");
   assert.deepEqual(runtimeErrors, [], `Browser runtime errors detected:\n${runtimeErrors.join("\n")}`);
   console.log(JSON.stringify(results, null, 2));
   await context.close();
@@ -150,7 +153,7 @@ async function verifyMonitoringInteractions(page) {
       );
     }
     await search.fill("no-monitor-matches-this-query");
-    await assertVisible(page.locator("tbody").getByText("No monitors in this view", { exact: true }), "Monitor empty state");
+    await assertVisible(page.locator("tbody").getByText("No monitors match these filters", { exact: true }), "Monitor empty state");
     await search.fill("");
 
     await search.fill(monitorName);
@@ -176,7 +179,7 @@ async function verifyMonitoringInteractions(page) {
     await search.fill(`UI pause fixture ${fixtureSuffix}`);
     await assertVisible(page.locator("tbody").getByText(monitorName, { exact: true }), "First bulk pause fixture");
     await assertVisible(page.locator("tbody").getByText(secondMonitorName, { exact: true }), "Second bulk pause fixture");
-    await clickUnique(page.getByRole("button", { name: "Select all", exact: true }), "Select pause fixtures");
+    await clickUnique(page.getByRole("button", { name: "Select all visible monitors", exact: true }), "Select pause fixtures");
     await assertVisible(page.getByText("2 monitors selected", { exact: true }), "Bulk selection count");
     await clickUnique(page.getByRole("button", { name: "Pause", exact: true }), "Bulk pause");
     pauseDialog = page.getByRole("dialog");
@@ -194,6 +197,12 @@ async function verifyMonitoringInteractions(page) {
     await clickUnique(bulkResume, "Resume paused monitors");
     assert.equal((await resumeResponse).status(), 200);
     await clickUnique(page.getByRole("button", { name: "Clear", exact: true }), "Clear pause fixture selection");
+
+    await verifyLatestTimelineRequestWins(page, {
+      delayedMonitorId: monitorIds[0],
+      delayedMonitorName: monitorName,
+      latestMonitorName: secondMonitorName,
+    });
 
     for (const retiredOperationLabel of [
       "Operations",
@@ -237,6 +246,7 @@ async function verifyMonitoringInteractions(page) {
       singlePause: true,
       bulkPause: true,
       resume: true,
+      timelineRequestOrdering: true,
       operationsRemoved: true,
       toolsDialog: true,
       configDialogLayout: true,
@@ -248,6 +258,69 @@ async function verifyMonitoringInteractions(page) {
       assert.equal(deleteResponse.status(), 200, "Unable to clean up the UI monitor fixture");
     }
   }
+}
+
+async function verifyLatestTimelineRequestWins(page, {
+  delayedMonitorId,
+  delayedMonitorName,
+  latestMonitorName,
+}) {
+  const historyPattern = "**/api/monitors/history?**";
+  let markDelayedRequestStarted;
+  let releaseDelayedRequest;
+  const delayedRequestStarted = new Promise((resolve) => {
+    markDelayedRequestStarted = resolve;
+  });
+  const delayedRequestRelease = new Promise((resolve) => {
+    releaseDelayedRequest = resolve;
+  });
+  const routeHandler = async (route) => {
+    const monitorId = new URL(route.request().url()).searchParams.get("monitorId");
+    if (monitorId !== delayedMonitorId) {
+      await route.continue();
+      return;
+    }
+
+    markDelayedRequestStarted();
+    await delayedRequestRelease;
+    const response = await route.fetch();
+    await route.fulfill({ response });
+  };
+
+  await page.route(historyPattern, routeHandler);
+  try {
+    await clickUnique(
+      page.getByRole("button", { name: `View timeline for ${delayedMonitorName}`, exact: true }),
+      "Delayed monitor timeline"
+    );
+    await delayedRequestStarted;
+    await clickUnique(
+      page.getByRole("button", { name: `View timeline for ${latestMonitorName}`, exact: true }),
+      "Latest monitor timeline"
+    );
+
+    const dialog = page.getByRole("dialog");
+    await assertVisible(dialog.getByText(new RegExp(`^${escapeRegExp(latestMonitorName)} ·`)), "Latest monitor timeline details");
+    const delayedResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/monitors/history" && url.searchParams.get("monitorId") === delayedMonitorId;
+    });
+    releaseDelayedRequest();
+    const response = await delayedResponse;
+    await response.finished();
+    await page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    await assertVisible(dialog.getByText(new RegExp(`^${escapeRegExp(latestMonitorName)} ·`)), "Latest timeline after delayed response");
+    await page.keyboard.press("Escape");
+  } finally {
+    releaseDelayedRequest();
+    await page.unroute(historyPattern, routeHandler);
+  }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function buildUiMonitorPayload(name) {
@@ -320,8 +393,8 @@ async function verifyDeliveryInteractions(page) {
   const responsePromise = page.waitForResponse((response) => response.url().includes("/api/delivery") && response.request().method() === "GET");
   await clickUnique(page.getByRole("button", { name: "Refresh", exact: true }), "Refresh delivery overview");
   assert.equal((await responsePromise).status(), 200);
-  await assertVisible(page.getByText("Channel health", { exact: true }), "Channel health");
-  return { refresh: true, channelHealth: true, externalDeliverySent: false };
+  await assertVisible(page.getByRole("heading", { name: "Prepare notification delivery", exact: true }), "Delivery first-run guidance");
+  return { refresh: true, firstRunGuidance: true, externalDeliverySent: false };
 }
 
 async function verifyReportInteractions(page) {
@@ -340,14 +413,14 @@ async function verifyReportInteractions(page) {
     if (!skipFontAssertions) {
       await assertFontFamily(page.locator("body"), "IBM Plex Sans", "Reports UI font");
     }
-    await clickUnique(page.getByRole("button", { name: "Preview", exact: true }), "Reports preview tab");
+    await clickUnique(page.getByRole("tab", { name: "Preview", exact: true }), "Reports preview tab");
     const generatePreview = page.getByRole("button", { name: "Generate preview", exact: true });
     await assertVisible(generatePreview, "Generate report preview");
     const previewResponse = page.waitForResponse((response) => response.url().endsWith("/api/reports/preview"));
     await clickUnique(generatePreview, "Generate report preview");
     assert.equal((await previewResponse).status(), 200);
     await assertVisible(page.getByText("Report findings", { exact: true }), "Generated report preview");
-    await clickUnique(page.getByRole("button", { name: "Schedules", exact: true }), "Reports schedules tab");
+    await clickUnique(page.getByRole("tab", { name: "Schedules", exact: true }), "Reports schedules tab");
     await assertVisible(page.getByText("Scheduled report", { exact: true }), "Scheduled report builder");
     return { preview: true, schedulesTab: true, reportSent: false };
   } finally {
@@ -379,15 +452,20 @@ async function verifySettingsInteractions(page) {
 
   await clickUnique(sectionSelect, "Mobile settings section selector");
   await clickUnique(page.getByRole("option", { name: "Notifications", exact: true }), "Notification settings option");
-  const downGroup = page.getByText("Down notification", { exact: true });
-  await clickUnique(downGroup, "Down notification template group");
-  await assertVisible(page.locator("details[open]").getByText("Email subject", { exact: true }), "Notification subject editor");
-  await clickUnique(downGroup, "Close down notification template group");
-  const slowGroup = page.getByText("Slow response notification", { exact: true });
-  await clickUnique(slowGroup, "Slow-response notification template group");
-  const openSlowGroup = page.locator("details[open]").filter({ hasText: "Slow response notification" });
-  await assertVisible(openSlowGroup.getByText("Email subject", { exact: true }), "Slow-response email subject editor");
-  await assertVisible(openSlowGroup.getByText("Telegram message", { exact: true }), "Slow-response Telegram editor");
+  const templateDisclosure = page.locator("details#message-templates");
+  await clickUnique(templateDisclosure.locator(":scope > summary"), "Message templates disclosure");
+  const downGroup = templateDisclosure.locator("details").filter({
+    has: page.getByText("Down notification", { exact: true }),
+  });
+  await clickUnique(downGroup.locator(":scope > summary"), "Down notification template group");
+  await assertVisible(downGroup.getByText("Email subject", { exact: true }), "Notification subject editor");
+  await clickUnique(downGroup.locator(":scope > summary"), "Close down notification template group");
+  const slowGroup = templateDisclosure.locator("details").filter({
+    has: page.getByText("Slow response notification", { exact: true }),
+  });
+  await clickUnique(slowGroup.locator(":scope > summary"), "Slow-response notification template group");
+  await assertVisible(slowGroup.getByText("Email subject", { exact: true }), "Slow-response email subject editor");
+  await assertVisible(slowGroup.getByText("Telegram message", { exact: true }), "Slow-response Telegram editor");
 
   await clickUnique(sectionSelect, "Mobile settings section selector");
   await clickUnique(page.getByRole("option", { name: "Public status", exact: true }), "Public status settings option");
@@ -438,14 +516,52 @@ async function verifyAdditionalReadApis(request) {
   return results;
 }
 
-function collectRuntimeErrors(page) {
+async function verifyRejectedLogout(page, expectedRuntimeErrors) {
+  const logoutUrl = "**/api/auth/logout";
+  const expectedHttpError = "503 /api/auth/logout";
+  const expectedConsoleError = "Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
+  await page.route(logoutUrl, (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ message: "Sign-out service is temporarily unavailable." }),
+  }), { times: 1 });
+
+  try {
+    expectedRuntimeErrors.add(`http: ${expectedHttpError}`);
+    expectedRuntimeErrors.add(`console: ${expectedConsoleError}`);
+    await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+    await clickUnique(page.getByRole("button", { name: "Sign out", exact: true }), "Rejected sign out");
+    await assertVisible(
+      page.getByRole("alert").getByText("Sign-out service is temporarily unavailable.", { exact: true }),
+      "Rejected sign-out error"
+    );
+    assert.notEqual(new URL(page.url()).pathname, "/login", "Rejected sign out should keep the active page visible");
+    assert.equal(expectedRuntimeErrors.has(`http: ${expectedHttpError}`), false, "Mocked sign-out HTTP failure should be observed exactly once");
+    assert.equal(expectedRuntimeErrors.has(`console: ${expectedConsoleError}`), false, "Mocked sign-out console failure should be observed exactly once");
+    return { rejectedRequestPreservesSession: true };
+  } finally {
+    expectedRuntimeErrors.delete(`http: ${expectedHttpError}`);
+    expectedRuntimeErrors.delete(`console: ${expectedConsoleError}`);
+    await page.unroute(logoutUrl);
+  }
+}
+
+function collectRuntimeErrors(page, expectedRuntimeErrors) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(`page: ${error.message}`));
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    if (message.type() !== "error") return;
+    const runtimeError = `console: ${message.text()}`;
+    if (!expectedRuntimeErrors.delete(runtimeError)) {
+      errors.push(runtimeError);
+    }
   });
   page.on("response", (response) => {
-    if (response.status() >= 500) errors.push(`http: ${response.status()} ${response.url()}`);
+    if (response.status() < 500) return;
+    const expectedHttpError = `http: ${response.status()} ${new URL(response.url()).pathname}`;
+    if (!expectedRuntimeErrors.delete(expectedHttpError)) {
+      errors.push(`http: ${response.status()} ${response.url()}`);
+    }
   });
   return errors;
 }

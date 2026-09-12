@@ -14,6 +14,9 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  images: {
+    qualities: [75, 94],
+  },
   async headers() {
     return [{
       source: "/:path*",

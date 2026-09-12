@@ -1,5 +1,5 @@
 import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Play, Power, RadioTower, Send, Settings2, Square, Star, XCircle } from "lucide-react";
-import type { KeyboardEvent } from "react";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -8,6 +8,7 @@ import { getMonitorTargetDisplay, getMonitorTypeLabel } from "@/lib/monitors/tar
 import type { MonitorRecord, NotificationPref, SiteStatus } from "@/lib/monitors/types";
 import { formatLastChecked, formatLatency } from "@/components/monitoring/utils";
 import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
+import { formatPanelDateTime } from "@/lib/time";
 
 function StatusBadge({
   status,
@@ -101,6 +102,7 @@ export function MonitorTable({
   onToggleFlag,
   onEdit,
   onOpenTimeline,
+  emptyState,
 }: {
   monitors: MonitorRecord[];
   readOnly?: boolean;
@@ -119,67 +121,60 @@ export function MonitorTable({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
+  emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
   return (
     <>
-      <div className="hidden min-w-0 max-w-full overflow-x-auto rounded-lg border border-border md:block">
-      <Table className="min-w-[1180px] table-fixed text-xs">
+      <div className="hidden min-w-0 max-w-full rounded-lg bg-card xl:block [&>[data-slot=table-container]]:overflow-x-hidden">
+      <Table className="min-w-0 table-fixed text-xs">
         <colgroup>
           <col className="w-[3%]" />
-          <col className="w-[11%]" />
           <col className="w-[16%]" />
+          <col className="w-[18%]" />
+          <col className="w-[14%]" />
           <col className="w-[7%]" />
+          <col className="w-[5%]" />
           <col className="w-[10%]" />
-          <col className="w-[6%]" />
-          <col className="w-[4%]" />
-          <col className="w-[5%]" />
-          <col className="w-[5%]" />
-          <col className="w-[5%]" />
-          <col className="w-[7%]" />
-          <col className="w-[7%]" />
-          <col className="w-[4%]" />
           <col className="w-[10%]" />
+          <col className="w-[17%]" />
         </colgroup>
         <TableHeader>
           <TableRow className="bg-surface-high hover:bg-surface-high">
             <TableHead className="px-1 pl-2">
-              <button type="button" disabled={readOnly} onClick={onToggleAll} className="flex items-center justify-center text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30" aria-label="Select all">
+              <button type="button" disabled={readOnly} onClick={onToggleAll} className="flex items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={allPageSelected ? "Clear visible monitor selection" : "Select all visible monitors"}>
                 {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
               </button>
             </TableHead>
-            <TableHead className="px-1.5">Name</TableHead>
+            <TableHead className="px-1.5">Monitor</TableHead>
             <TableHead className="px-1">Target</TableHead>
-            <TableHead className="px-1">Tags</TableHead>
-            <TableHead className="px-1">Status</TableHead>
-            <TableHead className="px-1">Active</TableHead>
-            <TableHead className="px-1">HTTP</TableHead>
-            <TableHead className="px-1">Latency</TableHead>
+            <TableHead className="px-1">Health</TableHead>
+            <TableHead className="px-1">State</TableHead>
             <TableHead className="px-1">Notify</TableHead>
             <TableHead className="px-1.5">Company</TableHead>
-            <TableHead className="px-1">Timeline</TableHead>
-            <TableHead className="px-1">Last check</TableHead>
-            <TableHead className="px-1">Uptime</TableHead>
-            <TableHead />
+            <TableHead className="px-1">Observed</TableHead>
+            <TableHead className="pr-2 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={14} className="py-8 text-center text-sm text-muted-foreground">Loading monitors...</TableCell>
+              <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">Loading monitors…</TableCell>
             </TableRow>
           ) : monitors.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={14}>
+              <TableCell colSpan={9}>
                 <EmptyState
-                  title="No monitors in this view"
+                  title={emptyState?.title ?? "No monitors in this view"}
+                  description={emptyState?.description}
+                  action={emptyState?.action}
                 />
               </TableCell>
             </TableRow>
           ) : (
             monitors.map((monitor) => (
-              <TableRow key={monitor.id} className={selectedIds.has(monitor.id) ? "bg-primary/5" : ""} onClick={readOnly ? undefined : () => onEdit(monitor)}>
-                <TableCell className="px-1 pl-2" onClick={(event) => event.stopPropagation()}>
-                  <button type="button" disabled={readOnly} onClick={(event) => { event.stopPropagation(); onToggleOne(monitor.id); }} className="flex items-center justify-center text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30" aria-label="Select row">
+              <TableRow key={monitor.id} className={selectedIds.has(monitor.id) ? "bg-primary/5" : ""}>
+                <TableCell className="px-1 pl-2">
+                  <button type="button" disabled={readOnly} onClick={() => onToggleOne(monitor.id)} className="flex items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={selectedIds.has(monitor.id) ? `Deselect ${monitor.name}` : `Select ${monitor.name}`}>
                     {selectedIds.has(monitor.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableCell>
@@ -187,9 +182,16 @@ export function MonitorTable({
                   <div className="flex min-w-0 items-center gap-1.5" title={`${monitor.name} · ${getMonitorTypeLabel(monitor.monitorType)}`}>
                     <span className={`size-1.5 rounded-full ${monitor.status === "up" ? "bg-emerald-500" : monitor.status === "down" ? "bg-destructive" : "bg-muted-foreground"}`} />
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{monitor.name}</p>
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        {getMonitorTypeLabel(monitor.monitorType)}
+                      {readOnly ? (
+                        <p className="truncate font-medium">{monitor.name}</p>
+                      ) : (
+                        <button type="button" className="block max-w-full truncate rounded-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/40" onClick={() => onEdit(monitor)}>
+                          {monitor.name}
+                        </button>
+                      )}
+                      <p className="truncate text-[10px] text-muted-foreground">{getMonitorTypeLabel(monitor.monitorType)}</p>
+                      <p className="truncate text-[10px] text-muted-foreground" title={monitor.tags.join(", ") || "No tags"}>
+                        {monitor.tags.length > 0 ? monitor.tags.join(" · ") : "No tags"}
                       </p>
                     </div>
                   </div>
@@ -200,18 +202,8 @@ export function MonitorTable({
                     <span className="min-w-0 truncate font-mono">{getMonitorTargetDisplay(monitor)}</span>
                   </div>
                 </TableCell>
-                <TableCell className="overflow-hidden px-1.5">
-                  {monitor.tags.length > 0 ? (
-                    <div className="flex min-w-0 items-center gap-1" title={monitor.tags.join(", ")}>
-                      <span className="min-w-0 truncate rounded border border-border bg-muted px-1 py-0.5 text-[9px] text-muted-foreground">{monitor.tags[0]}</span>
-                      {monitor.tags.length > 1 ? <span className="shrink-0 text-[9px] text-muted-foreground">+{monitor.tags.length - 1}</span> : null}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">--</span>
-                  )}
-                </TableCell>
                 <TableCell className="overflow-hidden px-1">
-                  <div className="truncate" title={getStatusDescription(monitor)}>
+                  <div className="min-w-0" title={getStatusDescription(monitor)}>
                     <StatusBadge
                       status={monitor.status}
                       code={monitor.statusCode}
@@ -222,9 +214,12 @@ export function MonitorTable({
                       threshold={Math.max(1, monitor.retries)}
                       slow={isSlowMonitor(monitor)}
                     />
+                    <p className="mt-1 truncate text-[10px] tabular-nums text-muted-foreground" title={`HTTP ${monitor.statusCode ?? "--"} · ${formatLatency(monitor.latencyMs)}`}>
+                      HTTP {monitor.statusCode ?? "--"} · {formatLatency(monitor.latencyMs)}
+                    </p>
                   </div>
                 </TableCell>
-                <TableCell className="px-1" onClick={(event) => event.stopPropagation()}>
+                <TableCell className="px-1">
                   <div className="flex items-center">
                     <Button
                       variant="ghost"
@@ -252,21 +247,25 @@ export function MonitorTable({
                     ) : null}
                   </div>
                 </TableCell>
-                <TableCell className="px-1.5">{monitor.statusCode ?? "--"}</TableCell>
-                <TableCell className="px-1.5" title={monitor.slowResponseThresholdMs ? `Alert threshold: ${monitor.slowResponseThresholdMs}ms` : undefined}>
-                  {formatLatency(monitor.latencyMs)}
-                </TableCell>
                 <TableCell className="px-1.5"><NotificationBadge pref={monitor.notificationPref} /></TableCell>
                 <TableCell className="overflow-hidden px-1.5"><span className="block truncate" title={monitor.company ?? undefined}>{monitor.company ?? "--"}</span></TableCell>
-                <TableCell className="px-1.5" onClick={(event) => event.stopPropagation()}>
-                  <Button variant="ghost" size="sm" onClick={() => onOpenTimeline(monitor)}>
-                    View
-                  </Button>
+                <TableCell className="overflow-hidden px-1.5 tabular-nums">
+                  <span className="block truncate text-muted-foreground" title={formatLastChecked(monitor.lastCheckedAt)}>{formatLastChecked(monitor.lastCheckedAt)}</span>
+                  <span className="mt-1 block truncate text-[10px] text-muted-foreground" title={`${monitor.uptime} uptime`}>{monitor.uptime} uptime</span>
                 </TableCell>
-                <TableCell className="overflow-hidden px-1.5"><span className="block truncate text-muted-foreground" title={formatLastChecked(monitor.lastCheckedAt)}>{formatLastChecked(monitor.lastCheckedAt)}</span></TableCell>
-                <TableCell className="px-1.5">{monitor.uptime}</TableCell>
-                <TableCell className="px-0.5" onClick={(event) => event.stopPropagation()}>
+                <TableCell className="px-1 pr-2">
                   <div className="flex items-center justify-end gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-1.5"
+                      aria-label={`View timeline for ${monitor.name}`}
+                      title="View timeline"
+                      onClick={() => onOpenTimeline(monitor)}
+                    >
+                      <Clock className="size-3.5 text-muted-foreground" />
+                      <span className="text-[10px]">Timeline</span>
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -337,6 +336,7 @@ export function MonitorTable({
       onToggleFlag={onToggleFlag}
       onEdit={onEdit}
       onOpenTimeline={onOpenTimeline}
+      emptyState={emptyState}
       />
     </>
   );
@@ -360,6 +360,7 @@ function MobileMonitorList({
   onToggleFlag,
   onEdit,
   onOpenTimeline,
+  emptyState,
 }: {
   monitors: MonitorRecord[];
   readOnly: boolean;
@@ -378,29 +379,32 @@ function MobileMonitorList({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
+  emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
   if (loading) {
-    return <div className="border-y border-border px-4 py-8 text-center text-sm text-muted-foreground md:hidden">Loading monitors...</div>;
+    return <div className="rounded-md bg-muted/25 px-4 py-8 text-center text-sm text-muted-foreground xl:hidden">Loading monitors…</div>;
   }
 
   if (monitors.length === 0) {
     return (
-      <div className="md:hidden">
+      <div className="xl:hidden">
         <EmptyState
-          title="No monitors in this view"
+          title={emptyState?.title ?? "No monitors in this view"}
+          description={emptyState?.description}
+          action={emptyState?.action}
         />
       </div>
     );
   }
 
   return (
-    <div className="space-y-3 md:hidden">
-      <div className="flex items-center justify-between border-b pb-2">
-        <button type="button" disabled={readOnly} onClick={onToggleAll} className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground disabled:opacity-30">
+    <div className="space-y-3 xl:hidden">
+      <div className="flex items-center justify-between rounded-md bg-muted/20 px-3 py-2">
+        <button type="button" disabled={readOnly} onClick={onToggleAll} className="inline-flex min-h-11 items-center gap-2 rounded-sm text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-30">
           {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
           Select page
         </button>
-        <span className="text-xs text-muted-foreground">{readOnly ? "Read-only access" : "Tap a monitor to edit"}</span>
+        <span className="text-xs text-muted-foreground">{readOnly ? "Read-only access" : "Use Edit to change a monitor"}</span>
       </div>
       {monitors.map((monitor) => (
         <MobileMonitorCard
@@ -453,27 +457,16 @@ function MobileMonitorCard({
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
-  function openOnEnter(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onEdit(monitor);
-    }
-  }
-
   return (
     <div
-      role={readOnly ? undefined : "button"}
-      tabIndex={readOnly ? undefined : 0}
-      onClick={readOnly ? undefined : () => onEdit(monitor)}
-      onKeyDown={readOnly ? undefined : openOnEnter}
-      className={`rounded-lg border p-4 ${selected ? "border-primary/50 bg-primary/5" : "border-border bg-background"}`}
+      className={`rounded-lg p-4 ${selected ? "bg-primary/10" : "bg-card"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-medium">{monitor.name}</p>
           <p className="mt-1 truncate text-xs text-muted-foreground">{getMonitorTypeLabel(monitor.monitorType)}</p>
         </div>
-        <div onClick={(event) => event.stopPropagation()}>
+        <div>
           <StatusBadge
             status={monitor.status}
             code={monitor.statusCode}
@@ -487,18 +480,18 @@ function MobileMonitorCard({
         </div>
       </div>
       <p className="mt-3 break-all text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
-      <div className="mt-3 grid grid-cols-3 gap-2 border-y py-3 text-xs">
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded-md bg-muted/25 p-3 text-xs">
         <MobileMetric label="HTTP" value={monitor.statusCode ? String(monitor.statusCode) : "--"} />
         <MobileMetric label="Latency" value={formatLatency(monitor.latencyMs)} />
         <MobileMetric label="Uptime" value={monitor.uptime} />
       </div>
-      <div className="mt-3" onClick={(event) => event.stopPropagation()}>
+      <div className="mt-3">
         <Button variant="outline" size="sm" onClick={() => onOpenTimeline(monitor)}>
           View timeline
         </Button>
       </div>
-      {!readOnly ? <div className="mt-3 flex items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
-        <button type="button" onClick={() => onToggleOne(monitor.id)} className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground">
+      {!readOnly ? <div className="mt-3 flex items-center justify-between gap-2">
+        <button type="button" onClick={() => onToggleOne(monitor.id)} aria-label={selected ? `Deselect ${monitor.name}` : `Select ${monitor.name}`} className="inline-flex min-h-11 items-center gap-2 rounded-sm text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
           {selected ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
           Select
         </button>
@@ -558,5 +551,5 @@ function getStatusDescription(monitor: MonitorRecord) {
 }
 
 function formatPauseUntil(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return formatPanelDateTime(value, { dateStyle: "medium", timeStyle: "short" });
 }

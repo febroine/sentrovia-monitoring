@@ -49,17 +49,25 @@ const NOTIFICATION_SECTION_KEYS: Partial<Record<SettingsSaveSection, Notificatio
     "notificationEmailBrandName",
     "notificationEmailFooterText",
     "defaultEmailSubjectTemplate",
+    "defaultEmailHeadlineTemplate",
     "defaultEmailBodyTemplate",
     "defaultTelegramTemplate",
     "slowResponseEmailSubjectTemplate",
+    "slowResponseEmailHeadlineTemplate",
     "slowResponseEmailBodyTemplate",
     "slowResponseTelegramTemplate",
     "recoveryEmailSubjectTemplate",
+    "recoveryEmailHeadlineTemplate",
     "recoveryEmailBodyTemplate",
     "recoveryTelegramTemplate",
     "prolongedDowntimeEmailSubjectTemplate",
+    "prolongedDowntimeEmailHeadlineTemplate",
     "prolongedDowntimeEmailBodyTemplate",
     "prolongedDowntimeTelegramTemplate",
+    "sslExpiryEmailSubjectTemplate",
+    "sslExpiryEmailHeadlineTemplate",
+    "sslExpiryEmailBodyTemplate",
+    "sslExpiryTelegramTemplate",
   ],
 };
 
@@ -82,6 +90,14 @@ export function buildSectionSavePayload(
   }
 
   return mergeSection(structuredClone(persisted), draft, section);
+}
+
+export function hasSectionChanges(
+  persisted: SettingsPayload,
+  draft: SettingsPayload,
+  section: SettingsSaveSection
+) {
+  return JSON.stringify(buildSectionSavePayload(persisted, draft, section)) !== JSON.stringify(persisted);
 }
 
 export function mergeSavedSection(

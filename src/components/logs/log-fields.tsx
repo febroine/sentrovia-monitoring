@@ -52,7 +52,7 @@ export function DateField({
 export function LevelBadge({ level }: { level: LogRecord["level"] }) {
   if (level === "critical") {
     return (
-      <Badge variant="outline" className="border-destructive/30 text-destructive">
+      <Badge variant="outline" className="bg-destructive/10 text-destructive">
         Critical
       </Badge>
     );
@@ -60,7 +60,7 @@ export function LevelBadge({ level }: { level: LogRecord["level"] }) {
 
   if (level === "error") {
     return (
-      <Badge variant="outline" className="border-red-500/30 text-red-600 dark:text-red-400">
+      <Badge variant="outline" className="bg-red-500/10 text-red-600 dark:text-red-400">
         Error
       </Badge>
     );
@@ -68,7 +68,7 @@ export function LevelBadge({ level }: { level: LogRecord["level"] }) {
 
   if (level === "warning") {
     return (
-      <Badge variant="outline" className="border-amber-500/30 text-amber-600 dark:text-amber-400">
+      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400">
         Warning
       </Badge>
     );

@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Check, Clipboard, ExternalLink, RefreshCw, Terminal } from "lucide-react";
 import { SectionCard } from "@/components/settings/settings-section-primitives";
 import { Button } from "@/components/ui/button";
+import { formatPanelDateTime } from "@/lib/time";
 
 type UpdateStatus = {
   currentVersion: string;
@@ -75,23 +76,24 @@ export function UpdateAssistantTab() {
     <SectionCard
       title="Updates"
       description="Check the latest GitHub release and copy host-side update commands."
+      icon={RefreshCw}
     >
-      {message ? <div className="border-l-2 border-border px-4 py-2 text-sm">{message}</div> : null}
-      <dl className="grid border-y md:grid-cols-3 md:divide-x">
+      {message ? <div className="rounded-md bg-muted/20 px-4 py-2 text-sm">{message}</div> : null}
+      <dl className="grid gap-4 rounded-md bg-muted/20 p-4 md:grid-cols-3">
         <UpdateMetric label="Installed" value={update?.currentVersion ?? "-"} />
         <UpdateMetric label="Latest" value={update?.latestVersion ?? "-"} />
         <UpdateMetric label="Status" value={resolveUpdateStatusLabel(update, loading)} />
       </dl>
       <UpdateStatusBanner update={update} loading={loading} />
       {update?.backupReminder ? (
-        <div className="border-l-2 border-amber-500 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
+        <div className="rounded-md bg-amber-500/5 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
           {update.backupReminder}
         </div>
       ) : null}
       <ReleaseNotes update={update} />
       {update?.status === "unconfigured" ? <RepositoryHint /> : null}
       {showGuidance ? (
-        <div className="space-y-3 border-y py-4">
+        <div className="space-y-3 rounded-md bg-muted/20 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-medium">Host-side update commands</p>
@@ -111,10 +113,10 @@ export function UpdateAssistantTab() {
       ) : null}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => void loadUpdateStatus()} disabled={loading}>
-          <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+          <RefreshCw data-icon="inline-start" className="h-4 w-4" /> Refresh
         </Button>
         {update?.releaseUrl ? (
-          <a href={update.releaseUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted">
+          <a href={update.releaseUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 pb-px text-sm leading-none font-medium transition-colors hover:bg-muted">
             <ExternalLink className="h-4 w-4" /> Open Release
           </a>
         ) : null}
@@ -124,15 +126,15 @@ export function UpdateAssistantTab() {
 }
 
 function UpdateStatusBanner({ update, loading }: { update: UpdateStatus | null; loading: boolean }) {
-  const detail = loading ? "Checking GitHub Releases..." : update?.message ?? "Release information is unavailable.";
+  const detail = loading ? "Checking GitHub Releases…" : update?.message ?? "Release information is unavailable.";
   const className = update?.updateAvailable
-    ? "border-primary/30 bg-primary/10 text-primary-foreground"
+    ? "bg-primary/10 text-primary-foreground"
     : update?.status === "error" || update?.status === "unconfigured"
-      ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-      : "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
 
   return (
-    <div className={`border-l-2 px-4 py-2 text-sm ${className}`}>
+    <div className={`rounded-md px-4 py-2 text-sm ${className}`}>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="font-medium">{resolveUpdateStatusLabel(update, loading)}</p>
         {update?.checkedAt ? <p className="text-xs opacity-80">Checked {formatDate(update.checkedAt)}</p> : null}
@@ -144,7 +146,7 @@ function UpdateStatusBanner({ update, loading }: { update: UpdateStatus | null; 
 
 function ReleaseNotes({ update }: { update: UpdateStatus | null }) {
   return (
-    <div className="border-y py-4 text-sm">
+    <div className="rounded-md bg-muted/20 p-4 text-sm">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="font-medium">{update?.releaseName ?? update?.message ?? "Release information is unavailable."}</p>
@@ -159,7 +161,7 @@ function ReleaseNotes({ update }: { update: UpdateStatus | null }) {
 
 function ProfileSelector({ value, onChange }: { value: UpdateInstallProfile; onChange: (value: UpdateInstallProfile) => void }) {
   return (
-    <div className="inline-flex rounded-md border bg-background p-1">
+    <div className="inline-flex rounded-md bg-muted/30 p-1">
       <ProfileButton active={value === "docker"} onClick={() => onChange("docker")}>Docker Compose</ProfileButton>
       <ProfileButton active={value === "service"} onClick={() => onChange("service")}>Windows / NSSM</ProfileButton>
     </div>
@@ -172,11 +174,11 @@ function ProfileButton({ active, children, onClick }: { active: boolean; childre
 
 function CommandBlock({ commands, copied, description, onCopy }: { commands: string[]; copied: boolean; description: string; onCopy: () => void }) {
   return (
-    <div className="overflow-hidden rounded-md border bg-background">
-      <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="overflow-hidden rounded-md bg-background">
+      <div className="flex flex-col gap-3 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3"><Terminal className="mt-0.5 h-4 w-4 text-muted-foreground" /><p className="text-xs leading-5 text-muted-foreground">{description}</p></div>
         <Button type="button" variant="outline" size="sm" onClick={onCopy} disabled={commands.length === 0}>
-          {copied ? <Check className="mr-2 h-4 w-4" /> : <Clipboard className="mr-2 h-4 w-4" />}{copied ? "Copied" : "Copy"}
+          {copied ? <Check data-icon="inline-start" className="h-4 w-4" /> : <Clipboard data-icon="inline-start" className="h-4 w-4" />}{copied ? "Copied" : "Copy"}
         </Button>
       </div>
       <pre className="max-h-80 overflow-auto p-4 text-xs leading-6 text-foreground"><code>{commands.join("\n")}</code></pre>
@@ -185,7 +187,7 @@ function CommandBlock({ commands, copied, description, onCopy }: { commands: str
 }
 
 function RepositoryHint() {
-  return <div className="border-l-2 border-amber-500 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-300">Repository metadata is missing. Set `APP_UPDATE_REPO=owner/repository`, then restart the app.</div>;
+  return <div className="rounded-md bg-amber-500/5 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-300">Repository metadata is missing. Set `APP_UPDATE_REPO=owner/repository`, then restart the app.</div>;
 }
 
 async function copyText(value: string) {
@@ -211,7 +213,7 @@ function resolveProfileDescription(profile: UpdateInstallProfile) {
 }
 
 function UpdateMetric({ label, value }: { label: string; value: string }) {
-  return <div className="border-b px-4 py-4 last:border-b-0 md:border-b-0"><dt className="text-xs font-medium text-muted-foreground">{label}</dt><dd className="mt-2 text-lg font-semibold">{value}</dd></div>;
+  return <div><dt className="text-xs font-medium text-muted-foreground">{label}</dt><dd className="mt-2 text-lg font-semibold">{value}</dd></div>;
 }
 
 function resolveUpdateStatusLabel(update: UpdateStatus | null, loading: boolean) {
@@ -223,8 +225,6 @@ function resolveUpdateStatusLabel(update: UpdateStatus | null, loading: boolean)
 }
 
 function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "Unknown"
-    : new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(date);
+  const formatted = formatPanelDateTime(value, { dateStyle: "short", timeStyle: "short" });
+  return formatted === "--" ? "Unknown" : formatted;
 }

@@ -7,6 +7,7 @@ import {
   filterDuplicateMonitorInputs,
   normalizeHeartbeatTokenInput,
   hasMonitorTargetChanged,
+  resolveMonitorBatchSize,
   selectDueMonitorsForCycle,
   spreadInitialMonitorChecks,
   summarizeCompanyRecentChecks,
@@ -36,26 +37,46 @@ describe("monitor due selection", () => {
         buildDueMonitor("normal-newer", false, "2026-05-08T06:56:00.000Z"),
         buildDueMonitor("verification", true, "2026-05-08T06:59:00.000Z"),
       ],
-      new Map([["user-1", 2]])
+      new Map([["workspace-1", 2]])
     );
 
     expect(selected.map((monitor) => monitor.id)).toEqual(["verification", "normal-old"]);
   });
 
-  it("keeps per-user batch limits independent", () => {
+  it("shares one workspace batch limit across monitors created by different members", () => {
     const selected = selectDueMonitorsForCycle(
       [
-        buildDueMonitor("user-1-verification", true, "2026-05-08T06:59:00.000Z", "user-1"),
-        buildDueMonitor("user-1-normal", false, "2026-05-08T06:55:00.000Z", "user-1"),
-        buildDueMonitor("user-2-normal", false, "2026-05-08T06:55:00.000Z", "user-2"),
+        buildDueMonitor("member-1-verification", true, "2026-05-08T06:59:00.000Z", "workspace-1", "member-1"),
+        buildDueMonitor("member-1-normal", false, "2026-05-08T06:55:00.000Z", "workspace-1", "member-1"),
+        buildDueMonitor("member-2-normal", false, "2026-05-08T06:55:00.000Z", "workspace-1", "member-2"),
+      ],
+      new Map([["workspace-1", 1]])
+    );
+
+    expect(selected.map((monitor) => monitor.id)).toEqual(["member-1-verification"]);
+  });
+
+  it("keeps batch limits independent between workspaces", () => {
+    const selected = selectDueMonitorsForCycle(
+      [
+        buildDueMonitor("workspace-1-verification", true, "2026-05-08T06:59:00.000Z", "workspace-1"),
+        buildDueMonitor("workspace-1-normal", false, "2026-05-08T06:55:00.000Z", "workspace-1"),
+        buildDueMonitor("workspace-2-normal", false, "2026-05-08T06:55:00.000Z", "workspace-2"),
       ],
       new Map([
-        ["user-1", 1],
-        ["user-2", 1],
+        ["workspace-1", 1],
+        ["workspace-2", 1],
       ])
     );
 
-    expect(selected.map((monitor) => monitor.id)).toEqual(["user-1-verification", "user-2-normal"]);
+    expect(selected.map((monitor) => monitor.id)).toEqual(["workspace-1-verification", "workspace-2-normal"]);
+  });
+
+  it("uses current workspace batch settings and only falls back to legacy values without a workspace row", () => {
+    expect(resolveMonitorBatchSize({ monitoringBatchSize: 7 }, 99)).toBe(7);
+    expect(resolveMonitorBatchSize({ monitoring_batch_size: 8 }, 99)).toBe(8);
+    expect(resolveMonitorBatchSize({}, 99)).toBe(20);
+    expect(resolveMonitorBatchSize(null, 9)).toBe(9);
   });
 });
 
@@ -235,10 +256,12 @@ function buildDueMonitor(
   id: string,
   verificationMode: boolean,
   nextCheckAt: string,
+  workspaceId = "workspace-1",
   userId = "user-1"
 ) {
   return {
     id,
+    workspaceId,
     userId,
     verificationMode,
     nextCheckAt: new Date(nextCheckAt),
@@ -295,10 +318,24 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     responseMaxLength: 1024,
     telegramTemplate: null,
     emailSubject: null,
+    emailHeadline: null,
     emailBody: null,
     slowResponseEmailSubject: null,
+    slowResponseEmailHeadline: null,
     slowResponseEmailBody: null,
     slowResponseTelegramTemplate: null,
+    recoveryEmailSubject: null,
+    recoveryEmailHeadline: null,
+    recoveryEmailBody: null,
+    recoveryTelegramTemplate: null,
+    prolongedDowntimeEmailSubject: null,
+    prolongedDowntimeEmailHeadline: null,
+    prolongedDowntimeEmailBody: null,
+    prolongedDowntimeTelegramTemplate: null,
+    sslExpiryEmailSubject: null,
+    sslExpiryEmailHeadline: null,
+    sslExpiryEmailBody: null,
+    sslExpiryTelegramTemplate: null,
     sendOutageScreenshot: false,
     isActive: true,
     publishOnStatusPage: false,

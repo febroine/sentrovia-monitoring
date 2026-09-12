@@ -62,20 +62,20 @@ export function LogsFiltersPanel({
   const activeFilterChips = buildActiveFilterChips(filters);
 
   return (
-    <section className="border-y py-3" aria-label="Event log filters">
+    <section className="rounded-md bg-muted/20 p-3" aria-label="Event log filters">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">
           {activeFilterChips.length ? `${activeFilterChips.length} active filter${activeFilterChips.length === 1 ? "" : "s"}` : "No active filters"}
           {presets.length ? ` · ${presets.length} saved` : ""}
         </span>
         <Button variant="outline" size="sm" onClick={onToggleOpen}>
-            {filtersOpen ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+            {filtersOpen ? <ChevronUp data-icon="inline-start" className="h-4 w-4" /> : <ChevronDown data-icon="inline-start" className="h-4 w-4" />}
             {filtersOpen ? "Hide filters" : "Show filters"}
         </Button>
       </div>
 
       {filtersOpen ? (
-        <div className="space-y-4 border-t pt-4">
+        <div className="mt-3 space-y-4 rounded-md bg-background/25 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap gap-2">
                 {QUICK_DATE_PRESETS.map((preset) => (
@@ -105,7 +105,7 @@ export function LogsFiltersPanel({
           </div>
 
           <div className="grid gap-3 lg:grid-cols-3 2xl:grid-cols-6">
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="log-level">Level</Label>
                 <Select value={filters.level} onValueChange={(value) => onUpdateFilter("level", String(value))}>
                   <SelectTrigger id="log-level">
@@ -120,7 +120,7 @@ export function LogsFiltersPanel({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="log-status-code">Status code</Label>
                 <Input
                   id="log-status-code"

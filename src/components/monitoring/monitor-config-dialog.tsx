@@ -99,7 +99,7 @@ export function MonitorConfigDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-3xl">
-        <DialogHeader className="border-b px-6 py-5">
+        <DialogHeader className="bg-muted/20 px-6 py-5">
           <DialogTitle>Monitoring as Code</DialogTitle>
           <DialogDescription>
             Export the current monitor fleet or paste a JSON/YAML bundle to restore declarative monitor definitions.
@@ -153,9 +153,9 @@ export function MonitorConfigDialog({
               />
             </div>
 
-            {message ? <div className="border-l-2 border-border px-3 py-2 text-sm">{message}</div> : null}
+            {message ? <div className="rounded-md bg-primary/10 px-3 py-3 text-sm">{message}</div> : null}
             {preview ? (
-              <div className="space-y-3 border-y py-4">
+              <div className="space-y-3 rounded-md bg-muted/20 p-4">
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <PreviewCount label="Add" value={preview.summary.added} tone="text-emerald-600" />
                   <PreviewCount label="Skip" value={preview.summary.skipped} tone="text-amber-600" />
@@ -163,7 +163,7 @@ export function MonitorConfigDialog({
                 </div>
                 <div className="max-h-52 space-y-2 overflow-y-auto">
                   {preview.items.map((item) => (
-                    <div key={`${item.index}-${item.target}`} className="flex items-start justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                    <div key={`${item.index}-${item.target}`} className="flex items-start justify-between gap-3 rounded-md bg-background px-3 py-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{item.name}</p>
                         <p className="truncate text-xs text-muted-foreground">{item.target}</p>
@@ -180,7 +180,7 @@ export function MonitorConfigDialog({
           </div>
         </div>
 
-        <DialogFooter className="m-0 shrink-0 rounded-none border-t bg-background px-6 py-4">
+         <DialogFooter className="m-0 shrink-0 rounded-none border-t bg-background px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           <Button
             onClick={() => void handleImport(preview ? "apply" : "preview")}
@@ -199,7 +199,7 @@ export function MonitorConfigDialog({
 
 function PreviewCount({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <div className="rounded-md border bg-background px-3 py-2">
+    <div className="rounded-md bg-background px-3 py-2">
       <p className={`text-lg font-semibold ${tone}`}>{value}</p>
       <p className="text-[11px] text-muted-foreground">{label}</p>
     </div>

@@ -1,0 +1,15 @@
+ALTER TABLE "monitors"
+  ADD COLUMN IF NOT EXISTS "email_headline" text,
+  ADD COLUMN IF NOT EXISTS "slow_response_email_headline" text,
+  ADD COLUMN IF NOT EXISTS "recovery_email_subject" text,
+  ADD COLUMN IF NOT EXISTS "recovery_email_headline" text,
+  ADD COLUMN IF NOT EXISTS "recovery_email_body" text,
+  ADD COLUMN IF NOT EXISTS "recovery_telegram_template" text,
+  ADD COLUMN IF NOT EXISTS "prolonged_downtime_email_subject" text,
+  ADD COLUMN IF NOT EXISTS "prolonged_downtime_email_headline" text,
+  ADD COLUMN IF NOT EXISTS "prolonged_downtime_email_body" text,
+  ADD COLUMN IF NOT EXISTS "prolonged_downtime_telegram_template" text,
+  ADD COLUMN IF NOT EXISTS "ssl_expiry_email_subject" text,
+  ADD COLUMN IF NOT EXISTS "ssl_expiry_email_headline" text,
+  ADD COLUMN IF NOT EXISTS "ssl_expiry_email_body" text,
+  ADD COLUMN IF NOT EXISTS "ssl_expiry_telegram_template" text;

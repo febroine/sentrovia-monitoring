@@ -4,6 +4,7 @@ import { companies, monitorEvents, monitors } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import type { LogLevel } from "@/lib/logs/types";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
+import { formatPanelDateTime } from "@/lib/time";
 import { toEnglishUppercase } from "@/lib/text/casing";
 
 const HIDDEN_NOTIFICATION_MARKER_EVENTS: string[] = [...NOTIFICATION_MARKER_EVENT_TYPES];
@@ -394,10 +395,10 @@ function buildUpSummaryRow(row: {
     monitorId: row.monitorId,
     monitorName: row.monitorName,
     detailTitle: "Latest healthy check",
-    detailSummary: `The latest successful check completed at ${latestSuccessfulCheck.toLocaleString()}.`,
+    detailSummary: `The latest successful check completed at ${formatPanelDateTime(latestSuccessfulCheck)}.`,
     detailItems: [
-      { label: "Latest successful check", value: latestSuccessfulCheck.toLocaleString() },
-      { label: "Last check", value: row.lastCheckedAt?.toLocaleString() ?? "Never checked" },
+      { label: "Latest successful check", value: formatPanelDateTime(latestSuccessfulCheck) },
+      { label: "Last check", value: row.lastCheckedAt ? formatPanelDateTime(row.lastCheckedAt) : "Never checked" },
       { label: "Current code", value: row.statusCode ? `HTTP ${row.statusCode}` : "No status code" },
       { label: "Latest latency", value: row.latencyMs !== null ? `${row.latencyMs}ms` : "No latency sample" },
       { label: "Target", value: row.url },

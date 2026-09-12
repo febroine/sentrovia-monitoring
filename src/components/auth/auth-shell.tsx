@@ -1,6 +1,7 @@
 "use client";
 
-import { SentroviaMark } from "@/components/brand/sentrovia-mark";
+import { ObservatoryShell } from "@/components/auth/observatory-shell";
+import styles from "./auth-shell.module.css";
 
 export function AuthShell({
   formTitle,
@@ -12,28 +13,16 @@ export function AuthShell({
   children: React.ReactNode;
 }) {
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <section className="flex min-h-svh px-5 py-6 sm:px-8">
-        <div className="mx-auto flex w-full max-w-[410px] flex-col">
-          <Brand />
-          <div className="my-auto py-10 sm:py-14">
-            <div className="mb-8">
-              <h1 className="text-[1.7rem] font-semibold tracking-[-0.025em]">{formTitle}</h1>
-              <p className="mt-2.5 max-w-sm text-sm leading-6 text-muted-foreground">{formDescription}</p>
-            </div>
-            {children}
+    <ObservatoryShell contextLabel="Self-hosted monitoring" footerText="Your monitoring data stays with you.">
+      <section className="flex min-h-svh items-center justify-center px-5 py-24 sm:px-8 sm:py-28">
+        <div className={`${styles.authForm} w-full max-w-[29rem]`}>
+          <div className="mb-8 text-center sm:mb-9">
+            <h1 className="text-balance text-[2.35rem] font-semibold leading-none tracking-[-0.045em] text-white sm:text-[2.8rem]">{formTitle}</h1>
+            <p className="mx-auto mt-3 max-w-md text-[0.95rem] leading-6 text-blue-100/68 sm:text-base">{formDescription}</p>
           </div>
+          {children}
         </div>
       </section>
-    </main>
-  );
-}
-
-function Brand() {
-  return (
-    <header className="flex items-center gap-3">
-      <SentroviaMark className="size-8 shrink-0 text-primary" />
-      <p className="text-[1.05rem] font-semibold tracking-[-0.02em]">Sentrovia</p>
-    </header>
+    </ObservatoryShell>
   );
 }

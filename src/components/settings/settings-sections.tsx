@@ -2,14 +2,27 @@
 
 import type { ReactNode } from "react";
 import {
+  BellRing,
   ChevronRight,
+  Database,
+  Download,
+  Eye,
+  FileText,
+  HardDrive,
+  Mail,
+  RadioTower,
+  Send,
+  Settings2,
+  type LucideIcon,
 } from "lucide-react";
 import { NotificationChannelsEditor } from "@/components/settings/notification-channels-editor";
 import { BackupRestorePanel } from "@/components/settings/backup-restore-panel";
 import { SavedRecipientsManager } from "@/components/settings/saved-recipients-manager";
 import { TemplateEditor } from "@/components/settings/template-editor";
+import { NotificationTemplatePreviewPanel } from "@/components/settings/notification-template-preview";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatPanelDateTime } from "@/lib/time";
 import {
   Field,
   SectionCard,
@@ -21,11 +34,13 @@ import {
 import type { SettingsPayload } from "@/lib/settings/types";
 import type { SettingsSaveSection } from "@/lib/settings/section-save";
 import { TIME_ZONE_OPTIONS } from "@/lib/time";
+import { ACCENT_OPTIONS, normalizeSidebarAccent } from "@/lib/settings/accent-theme";
 
 export { UpdateAssistantTab } from "@/components/settings/update-assistant-tab";
 export { PublicStatusSettingsTab } from "@/components/settings/public-status-pages-manager";
 
 const TEMPLATE_TOKENS = [
+  "{name}",
   "{domain}",
   "{url}",
   "{url_link}",
@@ -43,6 +58,7 @@ const TEMPLATE_TOKENS = [
   "{downtime_minutes}",
   "{downtime_hours}",
   "{rca_summary}",
+  "{rca_details}",
   "{organization}",
 ];
 
@@ -66,7 +82,7 @@ function TemplateGroup({
   children: ReactNode;
 }) {
   return (
-    <details className="group border-t first:border-t-0">
+    <details className="group">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 [&::-webkit-details-marker]:hidden">
         <span>
           <span className="block text-sm font-medium">{title}</span>
@@ -82,6 +98,39 @@ function TemplateGroup({
   );
 }
 
+function SettingsDisclosure({
+  id,
+  title,
+  description,
+  children,
+  icon: Icon,
+}: {
+  id?: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+  icon?: LucideIcon;
+}) {
+  return (
+    <details id={id} className="group scroll-mt-6 border-t border-border/70 pt-1">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="flex items-center gap-2.5 text-base font-semibold">
+            {Icon ? <Icon aria-hidden="true" className="size-5 shrink-0 text-primary" /> : null}
+            {title}
+          </span>
+          <span className="mt-1 block text-sm leading-6 text-muted-foreground">{description}</span>
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className="size-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
+      </summary>
+      <div className="space-y-8 pb-4 pt-3">{children}</div>
+    </details>
+  );
+}
+
 export function NotificationSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const { saveSection, savingSection } = useSectionSave(saveSettings);
 
@@ -90,6 +139,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
       <SectionCard
         title="Alert conditions"
         description="Choose which monitor state changes produce notifications."
+        icon={BellRing}
         action={
           <SectionSaveButton
             sectionId="alert-conditions"
@@ -190,18 +240,26 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
         </Field>
       </SectionCard>
 
-      <SectionCard
-        title="SMTP delivery"
-        description="Credentials used by the worker. Stored passwords are encrypted."
-        action={
-          <SectionSaveButton
-            sectionId="smtp-delivery"
-            saving={saving}
-            savingSection={savingSection}
-            onSave={saveSection}
-          />
-        }
+      <SettingsDisclosure
+        id="delivery-infrastructure"
+        title="Delivery infrastructure"
+        description="Configure SMTP credentials, saved recipients, Discord, and webhook destinations when you need them."
+        icon={Send}
       >
+        <SectionCard
+          id="smtp-delivery"
+          title="SMTP delivery"
+          description="Credentials used by the worker. Stored passwords are encrypted."
+          icon={Mail}
+          action={
+            <SectionSaveButton
+              sectionId="smtp-delivery"
+              saving={saving}
+              savingSection={savingSection}
+              onSave={saveSection}
+            />
+          }
+        >
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Host">
             <Input
@@ -277,36 +335,47 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             onChange={(checked) => updateSetting("notifications.smtpInsecureSkipVerify", checked)}
           />
         </div>
-      </SectionCard>
+        </SectionCard>
 
-      <SectionCard
-        title="Additional channels"
-        description="Send worker notifications to Discord and webhook destinations."
-        action={
-          <SectionSaveButton
-            sectionId="additional-notification-channels"
-            saving={saving}
-            savingSection={savingSection}
-            onSave={saveSection}
-          />
-        }
-      >
-        <NotificationChannelsEditor settings={settings} updateSetting={updateSetting} />
-      </SectionCard>
+        <SectionCard
+          id="additional-notification-channels"
+          title="Additional channels"
+          description="Send worker notifications to Discord and webhook destinations."
+          icon={RadioTower}
+          action={
+            <SectionSaveButton
+              sectionId="additional-notification-channels"
+              saving={saving}
+              savingSection={savingSection}
+              onSave={saveSection}
+            />
+          }
+        >
+          <NotificationChannelsEditor settings={settings} updateSetting={updateSetting} />
+        </SectionCard>
+      </SettingsDisclosure>
 
-      <SectionCard
-        title="Notification templates"
-        description="Workspace defaults used when a monitor has no template override."
-        action={
-          <SectionSaveButton
-            sectionId="notification-templates"
-            saving={saving}
-            savingSection={savingSection}
-            onSave={saveSection}
-          />
-        }
+      <SettingsDisclosure
+        id="message-templates"
+        title="Message templates"
+        description="Edit branding and event-specific email or Telegram content only when the workspace defaults are not enough."
+        icon={FileText}
       >
-        <div className="border-y py-4">
+        <NotificationTemplatePreviewPanel settings={settings} />
+        <SectionCard
+          title="Notification templates"
+          description="Workspace defaults used when a monitor has no template override."
+          icon={FileText}
+          action={
+            <SectionSaveButton
+              sectionId="notification-templates"
+              saving={saving}
+              savingSection={savingSection}
+              onSave={saveSection}
+            />
+          }
+        >
+        <div className="rounded-md bg-muted/20 px-4 py-4">
           <p className="text-sm font-medium">Available template tokens</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             Tokens are replaced at delivery time. In email bodies, “Label: value” becomes a report row, “## Heading” starts a section, and “- Item” creates a list entry. Other sentences remain regular paragraphs.
@@ -324,7 +393,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
               onChange={(event) => updateSetting("notifications.notificationEmailBrandName", event.target.value)}
             />
           </Field>
-          <Field label="Email footer text" hint="Shown before the monitoring link. Leave blank to use the notification language default.">
+          <Field label="Email footer text" hint="Shown at the bottom of every notification email. Leave blank to use the notification language default.">
             <Input
               value={settings.notifications.notificationEmailFooterText}
               onChange={(event) => updateSetting("notifications.notificationEmailFooterText", event.target.value)}
@@ -337,12 +406,20 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             title="Down notification"
             description="Message sent after a monitor is confirmed unavailable."
           >
-            <Field label="Email subject" hint="Use event and monitor tokens from the list above.">
-              <Input
-                value={settings.notifications.defaultEmailSubjectTemplate}
-                onChange={(event) => updateSetting("notifications.defaultEmailSubjectTemplate", event.target.value)}
-              />
-            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Email subject" hint="Shown in the recipient's inbox.">
+                <Input
+                  value={settings.notifications.defaultEmailSubjectTemplate}
+                  onChange={(event) => updateSetting("notifications.defaultEmailSubjectTemplate", event.target.value)}
+                />
+              </Field>
+              <Field label="Email headline" hint="Large heading shown inside the email. Template tokens are supported.">
+                <Input
+                  value={settings.notifications.defaultEmailHeadlineTemplate}
+                  onChange={(event) => updateSetting("notifications.defaultEmailHeadlineTemplate", event.target.value)}
+                />
+              </Field>
+            </div>
             <TemplateEditor
               label="Email body"
               hint="The email header is added automatically. Use rows for facts and regular sentences for notes."
@@ -363,12 +440,20 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             title="Recovery notification"
             description="Message sent when an unavailable monitor becomes healthy."
           >
-            <Field label="Email subject">
-              <Input
-                value={settings.notifications.recoveryEmailSubjectTemplate}
-                onChange={(event) => updateSetting("notifications.recoveryEmailSubjectTemplate", event.target.value)}
-              />
-            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Email subject" hint="Shown in the recipient's inbox.">
+                <Input
+                  value={settings.notifications.recoveryEmailSubjectTemplate}
+                  onChange={(event) => updateSetting("notifications.recoveryEmailSubjectTemplate", event.target.value)}
+                />
+              </Field>
+              <Field label="Email headline" hint="Large heading shown inside the email. Template tokens are supported.">
+                <Input
+                  value={settings.notifications.recoveryEmailHeadlineTemplate}
+                  onChange={(event) => updateSetting("notifications.recoveryEmailHeadlineTemplate", event.target.value)}
+                />
+              </Field>
+            </div>
             <TemplateEditor
               label="Email body"
               hint="The report header automatically uses the healthy status treatment."
@@ -389,12 +474,20 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             title="Slow response notification"
             description="Sent when an online monitor completes above its slow-response threshold."
           >
-            <Field label="Email subject">
-              <Input
-                value={settings.notifications.slowResponseEmailSubjectTemplate}
-                onChange={(event) => updateSetting("notifications.slowResponseEmailSubjectTemplate", event.target.value)}
-              />
-            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Email subject" hint="Shown in the recipient's inbox.">
+                <Input
+                  value={settings.notifications.slowResponseEmailSubjectTemplate}
+                  onChange={(event) => updateSetting("notifications.slowResponseEmailSubjectTemplate", event.target.value)}
+                />
+              </Field>
+              <Field label="Email headline" hint="Large heading shown inside the email. Template tokens are supported.">
+                <Input
+                  value={settings.notifications.slowResponseEmailHeadlineTemplate}
+                  onChange={(event) => updateSetting("notifications.slowResponseEmailHeadlineTemplate", event.target.value)}
+                />
+              </Field>
+            </div>
             <TemplateEditor
               label="Email body"
               hint="This is a warning notification. The monitor remains online and does not reduce uptime."
@@ -415,14 +508,24 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             title="Downtime reminder"
             description="Follow-up message sent while a confirmed outage remains active."
           >
-            <Field label="Email subject" hint="Downtime duration and start-time tokens are available here.">
-              <Input
-                value={settings.notifications.prolongedDowntimeEmailSubjectTemplate}
-                onChange={(event) =>
-                  updateSetting("notifications.prolongedDowntimeEmailSubjectTemplate", event.target.value)
-                }
-              />
-            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Email subject" hint="Shown in the recipient's inbox; downtime tokens are supported.">
+                <Input
+                  value={settings.notifications.prolongedDowntimeEmailSubjectTemplate}
+                  onChange={(event) =>
+                    updateSetting("notifications.prolongedDowntimeEmailSubjectTemplate", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Email headline" hint="Large heading shown inside the email. Template tokens are supported.">
+                <Input
+                  value={settings.notifications.prolongedDowntimeEmailHeadlineTemplate}
+                  onChange={(event) =>
+                    updateSetting("notifications.prolongedDowntimeEmailHeadlineTemplate", event.target.value)
+                  }
+                />
+              </Field>
+            </div>
             <TemplateEditor
               label="Email body"
               hint="Supports the same detail rows, section headings, lists, and notes as the down template."
@@ -438,8 +541,43 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
               onChange={(value) => updateSetting("notifications.prolongedDowntimeTelegramTemplate", value)}
             />
           </TemplateGroup>
+
+          <TemplateGroup
+            title="SSL expiry notification"
+            description="Warning sent when a monitored site's TLS certificate is close to expiring."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Email subject" hint="Shown in the recipient's inbox.">
+                <Input
+                  value={settings.notifications.sslExpiryEmailSubjectTemplate}
+                  onChange={(event) => updateSetting("notifications.sslExpiryEmailSubjectTemplate", event.target.value)}
+                />
+              </Field>
+              <Field label="Email headline" hint="Large heading shown inside the email. Template tokens are supported.">
+                <Input
+                  value={settings.notifications.sslExpiryEmailHeadlineTemplate}
+                  onChange={(event) => updateSetting("notifications.sslExpiryEmailHeadlineTemplate", event.target.value)}
+                />
+              </Field>
+            </div>
+            <TemplateEditor
+              label="Email body"
+              hint="Use certificate details and recommended checks that help the recipient renew it in time."
+              reportLayoutTools
+              value={settings.notifications.sslExpiryEmailBodyTemplate}
+              onChange={(value) => updateSetting("notifications.sslExpiryEmailBodyTemplate", value)}
+            />
+            <TemplateEditor
+              label="Telegram message"
+              hint="Sent through the monitor's effective Telegram channel."
+              rows={6}
+              value={settings.notifications.sslExpiryTelegramTemplate}
+              onChange={(value) => updateSetting("notifications.sslExpiryTelegramTemplate", value)}
+            />
+          </TemplateGroup>
         </div>
-      </SectionCard>
+        </SectionCard>
+      </SettingsDisclosure>
     </div>
   );
 }
@@ -451,6 +589,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
     <SectionCard
       title="Monitor defaults"
       description="Applied when a monitor or CSV import omits a value."
+      icon={Settings2}
       action={
         <SectionSaveButton
           sectionId="default-monitor-configuration"
@@ -460,7 +599,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
         />
       }
     >
-      <div className="border-l-2 border-border px-4 py-2">
+      <div className="rounded-md bg-muted/20 px-4 py-3">
         <p className="text-sm font-medium">Override behavior</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           These values fill the gaps when a monitor is created manually or imported from CSV. A monitor-specific value
@@ -469,7 +608,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="border-y py-4">
+        <div className="rounded-md bg-muted/20 p-4">
           <div className="space-y-1">
             <p className="text-sm font-medium">Scheduling and execution</p>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -537,12 +676,12 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
               />
             </Field>
           </div>
-          <p className="mt-4 border-l-2 border-amber-500/60 pl-3 text-xs leading-5 text-muted-foreground">
+          <p className="mt-4 rounded-md bg-amber-500/5 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
             A check that completes between the slow-response threshold and hard failure timeout remains online. It can send a separate slow-response warning, but it is never counted as DOWN.
           </p>
         </div>
 
-        <div className="border-y py-4">
+        <div className="rounded-md bg-muted/20 p-4">
           <div className="space-y-1">
             <p className="text-sm font-medium">HTTP request defaults</p>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -618,11 +757,15 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
 
 export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const { saveSection, savingSection } = useSectionSave(saveSettings);
+  const selectedAccent = ACCENT_OPTIONS.find(
+    (option) => option.value === normalizeSidebarAccent(settings.appearance.sidebarAccent)
+  ) ?? ACCENT_OPTIONS.find((option) => option.value === "emerald") ?? ACCENT_OPTIONS[0];
 
   return (
     <SectionCard
       title="Display preferences"
       description="Density, contrast, time format, and dashboard defaults."
+      icon={Eye}
       action={
         <SectionSaveButton
           sectionId="workspace-experience"
@@ -673,20 +816,25 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
         checked={settings.appearance.use24HourClock}
         onChange={(checked) => updateSetting("appearance.use24HourClock", checked)}
       />
-      <Field label="Sidebar accent">
+      <Field label="Accent color">
+        <p className="-mt-1 text-xs text-muted-foreground">
+          Choose the highlight color used across navigation, controls, and dashboard accents.
+        </p>
         <Select
-          value={settings.appearance.sidebarAccent === "violet" ? "emerald" : settings.appearance.sidebarAccent}
+          value={selectedAccent.value}
           onValueChange={(value) => updateSetting("appearance.sidebarAccent", String(value))}
         >
           <SelectTrigger>
-            <SelectValue />
+            <SelectValue>
+              {() => <AccentOptionPreview option={selectedAccent} />}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="amber">Amber</SelectItem>
-            <SelectItem value="emerald">Emerald</SelectItem>
-            <SelectItem value="sky">Sky</SelectItem>
-            <SelectItem value="rose">Rose</SelectItem>
-            <SelectItem value="slate">Slate</SelectItem>
+            {ACCENT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <AccentOptionPreview option={option} />
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </Field>
@@ -723,15 +871,33 @@ export function AppearanceSettingsTab({ settings, saving, saveSettings, updateSe
   );
 }
 
+function AccentOptionPreview({
+  option,
+}: {
+  option: (typeof ACCENT_OPTIONS)[number];
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="size-3 shrink-0 rounded-full border border-black/20 shadow-inner dark:border-white/20"
+        style={{ backgroundColor: option.hex }}
+      />
+      <span className="min-w-0 truncate">{option.label}</span>
+    </span>
+  );
+}
+
 export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const isAdmin = settings.profile.role === "admin";
   const { saveSection, savingSection } = useSectionSave(saveSettings);
 
   return (
-    <>
+    <div className="space-y-6">
       <SectionCard
         title="Data retention"
         description="How long operational history remains in PostgreSQL."
+        icon={Database}
         action={
           <SectionSaveButton
             sectionId="retention-and-backups"
@@ -779,6 +945,7 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
         <SectionCard
           title="Automatic database backup"
           description="Create a daily encrypted PostgreSQL backup on the worker host."
+          icon={HardDrive}
         >
           <ToggleRow
             label="Enable automatic backups"
@@ -806,9 +973,9 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
               />
             </Field>
           </div>
-          <div className="border-y py-3 text-xs text-muted-foreground">
+          <div className="rounded-md bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
             Last automatic backup: {settings.data.lastAutomaticBackupAt
-              ? new Date(settings.data.lastAutomaticBackupAt).toLocaleString()
+              ? formatPanelDateTime(settings.data.lastAutomaticBackupAt)
               : "Not completed yet"}
             {settings.data.lastBackupStatus ? ` · ${settings.data.lastBackupStatus}` : ""}
             {settings.data.lastBackupError ? (
@@ -829,6 +996,7 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
       <SectionCard
         title="Workspace backup"
         description="Export or restore configuration. Database records remain under the deployment backup policy."
+        icon={Download}
       >
         {isAdmin ? (
           <BackupRestorePanel
@@ -836,11 +1004,11 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
             onBackupCreated={(value) => updateSetting("data.lastBackupAt", value)}
           />
         ) : (
-          <p className="border-y py-4 text-sm text-muted-foreground">
+          <p className="rounded-md bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
             Backup export and restore are available to administrators only.
           </p>
         )}
       </SectionCard>
-    </>
+    </div>
   );
 }

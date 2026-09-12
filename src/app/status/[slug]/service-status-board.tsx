@@ -92,7 +92,7 @@ function ServiceBoardHeader({
   const filters = buildStatusFilters(services);
 
   return (
-    <div className="space-y-4 border-y border-border py-4">
+    <div className="space-y-4 rounded-lg bg-card/45 p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Service status</h2>
@@ -122,12 +122,12 @@ function ServiceBoardHeader({
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto rounded-md border border-border bg-background/65 p-1">
+      <div className="flex gap-1 overflow-x-auto rounded-md bg-background/65 p-1">
         {filters.map((filter) => (
           <button
             aria-pressed={statusFilter === filter.value}
             className={cn(
-              "flex h-9 shrink-0 items-center gap-2 rounded-sm px-3 text-sm font-medium transition-colors",
+              "flex h-9 shrink-0 items-center gap-2 rounded-sm px-3 pb-px text-sm leading-none font-medium transition-colors",
               statusFilter === filter.value
                 ? filter.activeClass
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -160,7 +160,7 @@ function ServicePanel({
   const outageStartedAt = formatStatusDate(service.outageStartedAt, timeDisplaySettings, "None");
 
   return (
-    <article className={cn("flex flex-col rounded-md border border-l-4", meta.panel)}>
+    <article className={cn("flex flex-col overflow-hidden rounded-md", meta.panel)}>
       <div className="flex flex-1 flex-col gap-5 p-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-muted-foreground">{service.company}</p>
@@ -176,7 +176,7 @@ function ServicePanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 bg-background/20 p-2 sm:grid-cols-4">
         <ServiceDetail label="Health" value={`${service.healthScore} / ${service.healthLabel}`} />
         <ServiceDetail label="Uptime" value={service.uptime} />
         <ServiceDetail label="Latency" value={formatLatency(service)} />
@@ -257,7 +257,7 @@ function getStatusMeta(status: ServiceStatus) {
     return {
       label: "DOWN",
       icon: AlertTriangle,
-      panel: "border-rose-500 bg-rose-50/90 dark:bg-rose-950/30",
+      panel: "bg-rose-50/90 dark:bg-rose-950/30",
       status: "text-rose-700 dark:text-rose-300",
       url: "text-rose-800 dark:text-rose-200",
     };
@@ -267,7 +267,7 @@ function getStatusMeta(status: ServiceStatus) {
     return {
       label: "DEGRADED",
       icon: Clock3,
-      panel: "border-amber-500 bg-amber-50/90 dark:bg-amber-950/30",
+      panel: "bg-amber-50/90 dark:bg-amber-950/30",
       status: "text-amber-700 dark:text-amber-300",
       url: "text-amber-900 dark:text-amber-100",
     };
@@ -276,7 +276,7 @@ function getStatusMeta(status: ServiceStatus) {
   return {
     label: "UP",
     icon: CheckCircle2,
-    panel: "border-emerald-500 bg-emerald-50/90 dark:bg-emerald-950/30",
+    panel: "bg-emerald-50/90 dark:bg-emerald-950/30",
     status: "text-emerald-700 dark:text-emerald-300",
     url: "text-emerald-800 dark:text-emerald-100",
   };

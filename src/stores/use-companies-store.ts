@@ -22,12 +22,17 @@ async function readJsonOrNull<T>(response: Response): Promise<T | null> {
   return (await response.json().catch(() => null)) as T | null;
 }
 
+let companiesLoadRequestVersion = 0;
+let activeCompaniesLoadRequestVersion: number | null = null;
+
 export const useCompaniesStore = create<CompaniesState>((set) => ({
   companies: [],
   loading: true,
   saving: false,
   error: null,
   loadCompanies: async () => {
+    const requestVersion = ++companiesLoadRequestVersion;
+    activeCompaniesLoadRequestVersion = requestVersion;
     set({ loading: true });
     try {
       const response = await fetch("/api/companies", { cache: "no-store" });
@@ -35,13 +40,24 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       if (!response.ok || !data) {
         throw new Error(data?.message ?? "Unable to load companies.");
       }
+      if (requestVersion !== companiesLoadRequestVersion) {
+        finishStaleCompanyLoad(requestVersion, set);
+        return;
+      }
 
+      activeCompaniesLoadRequestVersion = null;
       set({ companies: data.companies ?? [], loading: false, error: null });
     } catch (error) {
+      if (requestVersion !== companiesLoadRequestVersion) {
+        finishStaleCompanyLoad(requestVersion, set);
+        return;
+      }
+      activeCompaniesLoadRequestVersion = null;
       set({ loading: false, error: error instanceof Error ? error.message : "Unable to load companies." });
     }
   },
   createCompany: async (payload) => {
+    invalidateCompanyLoads();
     set({ saving: true });
     try {
       const response = await fetch("/api/companies", {
@@ -55,6 +71,7 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       }
 
       const company = data.company;
+      invalidateCompanyLoads();
       set((state) => ({
         companies: [company, ...state.companies],
         saving: false,
@@ -62,11 +79,13 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       }));
       return company;
     } catch (error) {
+      invalidateCompanyLoads();
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to create company." });
       return null;
     }
   },
   updateCompany: async (id, payload) => {
+    invalidateCompanyLoads();
     set({ saving: true });
     try {
       const response = await fetch(`/api/companies/${id}`, {
@@ -80,6 +99,7 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       }
 
       const company = data.company;
+      invalidateCompanyLoads();
       set((state) => ({
         companies: state.companies.map((item) => (item.id === id ? company : item)),
         saving: false,
@@ -87,11 +107,13 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       }));
       return company;
     } catch (error) {
+      invalidateCompanyLoads();
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to update company." });
       return null;
     }
   },
   deleteCompany: async (id) => {
+    invalidateCompanyLoads();
     set({ saving: true });
     try {
       const response = await fetch(`/api/companies/${id}`, {
@@ -102,6 +124,7 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         throw new Error(data?.message ?? "Unable to delete company.");
       }
 
+      invalidateCompanyLoads();
       set((state) => ({
         companies: state.companies.filter((item) => item.id !== id),
         saving: false,
@@ -109,11 +132,13 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       }));
       return { ids: [data.id], undoUntil: data.undoUntil ?? null };
     } catch (error) {
+      invalidateCompanyLoads();
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to delete company." });
       return null;
     }
   },
   bulkAction: async (action, ids) => {
+    invalidateCompanyLoads();
     set({ saving: true });
     try {
       const response = await fetch("/api/companies/bulk", {
@@ -132,6 +157,7 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         throw new Error(data?.message ?? "Unable to process company action.");
       }
 
+      invalidateCompanyLoads();
       set((state) => ({
         companies:
           action === "delete"
@@ -146,11 +172,13 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         undoUntil: action === "delete" ? (data.undoUntil ?? null) : null,
       };
     } catch (error) {
+      invalidateCompanyLoads();
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to process company action." });
       return null;
     }
   },
   restoreCompanies: async (ids) => {
+    invalidateCompanyLoads();
     set({ saving: true });
     try {
       const response = await fetch("/api/companies/restore", {
@@ -169,11 +197,28 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
         throw new Error(companiesData?.message ?? "Companies were restored but could not be refreshed.");
       }
 
+      invalidateCompanyLoads();
       set({ companies: companiesData.companies, saving: false, error: null });
       return true;
     } catch (error) {
+      invalidateCompanyLoads();
       set({ saving: false, error: error instanceof Error ? error.message : "Unable to restore companies." });
       return false;
     }
   },
 }));
+
+function invalidateCompanyLoads() {
+  companiesLoadRequestVersion += 1;
+}
+
+function finishStaleCompanyLoad(
+  requestVersion: number,
+  set: (partial: Partial<CompaniesState>) => void
+) {
+  if (activeCompaniesLoadRequestVersion !== requestVersion) {
+    return;
+  }
+  activeCompaniesLoadRequestVersion = null;
+  set({ loading: false });
+}

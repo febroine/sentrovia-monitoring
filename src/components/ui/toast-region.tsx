@@ -46,9 +46,9 @@ function Toast({ item, onClose }: { item: ToastItem; onClose: () => void }) {
     <div
       role={item.tone === "error" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-3 rounded-md border bg-background px-3 py-3 shadow-md",
-        item.tone === "success" && "border-emerald-500/30",
-        item.tone === "error" && "border-destructive/40"
+        "flex items-start gap-3 rounded-md bg-background px-3 py-3 shadow-md",
+        item.tone === "success" && "bg-emerald-500/10",
+        item.tone === "error" && "bg-destructive/10"
       )}
     >
       <ToastIcon tone={item.tone} />

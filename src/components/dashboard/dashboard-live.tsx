@@ -1,24 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  Activity,
+  ArrowRight,
+  BellRing,
+  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Gauge,
+  ListChecks,
+  Radio,
+  RefreshCw,
   SlidersHorizontal,
   X,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 import { DashboardCustomizationPanel } from "@/components/dashboard/dashboard-customization-panel";
+import { getActivationProgress } from "@/components/dashboard/dashboard-activation";
 import { DashboardMonitorFocus } from "@/components/dashboard/dashboard-monitor-focus";
 import { SystemHealthCard } from "@/components/dashboard/system-health-card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { DEFAULT_DASHBOARD_PREFERENCES, type DashboardPreferences, type DashboardWidgetId } from "@/lib/dashboard/preferences";
 import type { DashboardData } from "@/lib/dashboard/service";
 import { formatDateTime, resolveTimeDisplaySettings, type TimeDisplaySettings } from "@/lib/time";
+import { cn } from "@/lib/utils";
 
 export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const [data, setData] = useState(initialData);
@@ -110,36 +121,6 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     }
   }
 
-  const cards = useMemo(
-    () => [
-      {
-        label: "Total monitors",
-        value: String(data.summary.total),
-        sub: `${data.summary.active} active / ${data.summary.paused} paused`,
-        tone: "text-slate-700 dark:text-slate-100",
-      },
-      {
-        label: "Online",
-        value: String(data.summary.online),
-        sub: data.summary.online > 0 ? "Healthy endpoints" : "No monitors online",
-        tone: data.summary.online > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
-      },
-      {
-        label: "Offline",
-        value: String(data.summary.offline),
-        sub: "Need attention",
-        tone: data.summary.offline > 0 ? "text-destructive" : "text-muted-foreground",
-      },
-      {
-        label: "Average latency",
-        value: data.summary.avgLatency === null ? "--" : `${data.summary.avgLatency}ms`,
-        sub: data.summary.avgLatency === null ? "No completed checks" : `${data.summary.coverage.toFixed(1)}% coverage`,
-        tone: data.summary.avgLatency === null ? "text-muted-foreground" : "text-foreground",
-      },
-    ],
-    [data]
-  );
-
   const companyPages = Math.max(1, Math.ceil(data.companyHealth.length / 4));
   const eventPages = Math.max(1, Math.ceil(data.events.length / 5));
   const currentCompanyPage = Math.min(companyPage, companyPages);
@@ -158,24 +139,16 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
 
     return showChartsSection || !["company-health", "recent-events", "delivery"].includes(widget);
   });
+  const activationVisible = isAdmin && !data.activation.complete;
+  const isEmptyWorkspace = activationVisible && data.summary.total === 0;
+  const summaryVisible = visibleWidgets.includes("summary") && !isEmptyWorkspace;
+  const detailWidgets = visibleWidgets.filter((widget) =>
+    widget !== "summary" && (!isEmptyWorkspace || widget === "system")
+  );
 
   function renderWidget(widget: DashboardWidgetId): ReactNode {
-    if (widget === "summary") {
-      return (
-        <dl className="flex flex-wrap gap-x-8 gap-y-3 border-y py-3">
-          {cards.map((card) => (
-            <div key={card.label} className="flex flex-wrap items-baseline gap-x-2">
-              <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
-              <dd className={`text-base font-semibold tabular-nums ${card.tone}`}>{card.value}</dd>
-              <p className="w-full text-xs text-muted-foreground">{card.sub}</p>
-            </div>
-          ))}
-        </dl>
-      );
-    }
-
     if (widget === "system") {
-      return <SystemHealthCard />;
+      return <SystemHealthCard timeDisplaySettings={timeDisplaySettings} />;
     }
 
     if (widget === "monitor-focus") {
@@ -190,35 +163,35 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       return <PanelRecentEvents events={eventItems} page={currentEventPage} totalPages={eventPages} onPageChange={setEventPage} timeDisplaySettings={timeDisplaySettings} />;
     }
 
-    return (
-      <section className="border-t py-4">
-        <header className="pb-3"><h2 className="text-base">Notification delivery</h2></header>
-        <div>
-          <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <MetricCard label="Delivered" value={String(data.delivery.delivered)} sub="Successful recent deliveries" tone="green" />
-          <MetricCard label="Retry Queue" value={String(data.delivery.pendingRetries)} sub="Delivery items waiting for retry" tone="amber" />
-          <MetricCard label="Failed" value={String(data.delivery.failed)} sub="Review failed attempts" tone="rose" />
-          <MetricCard label="Retrying" value={String(data.delivery.retrying)} sub="Pending the next attempt" tone="neutral" />
-          <MetricCard label="Dead-lettered" value={String(data.delivery.deadLettered)} sub="Exhausted or permanent failures" tone="rose" />
-          </dl>
-        </div>
-      </section>
-    );
+    return <PanelDelivery delivery={data.delivery} />;
   }
 
   return (
     <div className="space-y-6">
       <header className="space-y-1">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-            <span className={`flex items-center gap-1.5 text-xs ${streamError ? "text-amber-600 dark:text-amber-400" : "text-sky-600 dark:text-sky-400"}`}>
-              <span className={`size-1.5 ${streamError ? "bg-amber-500" : "bg-sky-500"}`} />
+            <span
+              role="status"
+              aria-live="polite"
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-md bg-muted/30 px-2 py-1 text-[0.7rem] font-medium tracking-wide",
+                streamError
+                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "bg-primary/10 text-primary",
+              )}
+            >
+              {streamError ? (
+                <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Radio className="size-3.5" aria-hidden="true" />
+              )}
               {streamError ? "Reconnecting" : "Live"}
             </span>
           </div>
           <Button variant="outline" size="sm" onClick={() => { setCustomizationError(null); setCustomizationOpen((open) => !open); }}>
-            <SlidersHorizontal className="h-4 w-4" />
+              <SlidersHorizontal data-icon="inline-start" className="h-4 w-4" />
             Customize
           </Button>
         </div>
@@ -240,19 +213,19 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       ) : null}
 
       {customizationError ? (
-        <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
+        <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {customizationError}
         </div>
       ) : null}
 
       {streamError ? (
-        <div className="border-l-2 border-amber-500 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
+        <div className="rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
           {streamError}
         </div>
       ) : null}
 
       {data.warnings.length > 0 ? (
-        <div className="border-l-2 border-amber-500 px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
+        <div className="rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
           Some dashboard data is temporarily unavailable: {data.warnings.join(", ")}. Review the server log and database migration status.
         </div>
       ) : null}
@@ -260,7 +233,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       {showOutageBanner && data.summary.offline > 0 && !outageBannerDismissed ? (
         <div
           role="alert"
-          className="flex items-center gap-3 border-l-2 border-destructive bg-destructive/5 py-2 pl-4 pr-2 text-sm text-destructive"
+          className="flex items-center gap-3 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
           <p className="min-w-0 flex-1">
             {data.summary.offline} monitor{data.summary.offline === 1 ? "" : "s"} currently offline. Verification and delivery history are available below.
@@ -279,34 +252,261 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         </div>
       ) : null}
 
-      {isAdmin && !data.activation.complete ? <ActivationChecklist activation={data.activation} /> : null}
-
       <div className="space-y-4">
-        {visibleWidgets.map((widget) => <div key={widget}>{renderWidget(widget)}</div>)}
+        {isEmptyWorkspace ? (
+          <div className={cn("grid gap-4", summaryVisible && "lg:grid-cols-12")}>
+            <div className={cn(summaryVisible ? "lg:col-span-8" : "lg:col-span-12")}>
+              <EmptyDashboardGuide activation={data.activation} />
+            </div>
+            {summaryVisible ? (
+              <div className="lg:col-span-4">
+                <SummaryOverview summary={data.summary} />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            {activationVisible ? <ActivationProgressStrip activation={data.activation} /> : null}
+            {summaryVisible ? <SummaryOverview summary={data.summary} /> : null}
+          </>
+        )}
+
+        {detailWidgets.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-12">
+            {detailWidgets.map((widget) => (
+              <div
+                className={detailWidgets.length === 1 ? "lg:col-span-12" : dashboardWidgetClass(widget)}
+                key={widget}
+              >
+                {renderWidget(widget)}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function ActivationChecklist({ activation }: { activation: DashboardData["activation"] }) {
+function SummaryOverview({ summary }: { summary: DashboardData["summary"] }) {
+  const metrics: Array<{ label: string; value: string; detail: string; Icon: LucideIcon; tone: string }> = [
+    {
+      label: "Total monitors",
+      value: String(summary.total),
+      detail: `${summary.active} active / ${summary.paused} paused`,
+      Icon: ListChecks,
+      tone: "text-foreground",
+    },
+    {
+      label: "Online",
+      value: String(summary.online),
+      detail: summary.online > 0 ? "Healthy endpoints" : "No monitors online",
+      Icon: Activity,
+      tone: summary.online > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground",
+    },
+    {
+      label: "Offline",
+      value: String(summary.offline),
+      detail: summary.offline > 0 ? "Need attention" : "No active incidents",
+      Icon: XCircle,
+      tone: summary.offline > 0 ? "text-destructive" : "text-foreground",
+    },
+    {
+      label: "Average latency",
+      value: summary.avgLatency === null ? "--" : `${summary.avgLatency}ms`,
+      detail: summary.avgLatency === null ? "No completed checks" : `${summary.coverage.toFixed(1)}% coverage`,
+      Icon: Gauge,
+      tone: summary.avgLatency === null ? "text-foreground" : "text-primary",
+    },
+  ];
+
   return (
-    <section className="border-y border-border py-4" aria-label="Activation checklist">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className="h-full rounded-lg bg-card p-4 shadow-sm sm:p-5" aria-label="Dashboard summary">
+      <header className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-semibold">Finish workspace activation</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{activation.completed} of {activation.steps.length} operational checks complete.</p>
+          <h2 className="text-base font-medium">At a glance</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Live signals from this workspace.</p>
         </div>
-        <ol className="grid min-w-0 flex-1 gap-2 sm:max-w-2xl sm:grid-cols-3">
-          {activation.steps.map((step) => (
-            <li className="flex items-center gap-2 text-sm" key={step.id}>
-              {step.complete ? <CheckCircle2 className="size-4 shrink-0 text-emerald-600" /> : <Clock3 className="size-4 shrink-0 text-muted-foreground" />}
-              {step.complete ? <span className="text-muted-foreground line-through">{step.label}</span> : <Link className="font-medium underline-offset-4 hover:underline" href={step.href}>{step.label}</Link>}
-            </li>
-          ))}
-        </ol>
+        <Activity className="size-4 text-primary" aria-hidden="true" />
+      </header>
+      <dl className="mt-5 grid grid-cols-2 gap-2">
+        {metrics.map(({ Icon, label, value, detail, tone }) => (
+          <div className="rounded-md bg-background/35 px-3 py-3" key={label}>
+            <dt className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <Icon className="size-3.5" aria-hidden="true" />
+              {label}
+            </dt>
+            <dd className={cn("mt-3 text-xl font-semibold tabular-nums tracking-tight", tone)}>{value}</dd>
+            <p className="mt-1 text-[11px] text-muted-foreground">{detail}</p>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function EmptyDashboardGuide({ activation }: { activation: DashboardData["activation"] }) {
+  const monitorStep = activation.steps.find((step) => step.id === "monitor") ?? activation.steps[0];
+  const upcomingSections: Array<{
+    title: string;
+    description: string;
+    Icon: LucideIcon;
+  }> = [
+    {
+      title: "Live status overview",
+      description: "See what is online, offline, paused, or waiting for its first check.",
+      Icon: Activity,
+    },
+    {
+      title: "Latency and coverage",
+      description: "Follow response time and successful check coverage as results arrive.",
+      Icon: Gauge,
+    },
+    {
+      title: "Incident timeline",
+      description: "Review verified failures and recoveries with their timestamps and evidence.",
+      Icon: Clock3,
+    },
+    {
+      title: "Notification delivery",
+      description: "Track delivered alerts, retries, and failures from one place.",
+      Icon: BellRing,
+    },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-xl bg-card shadow-sm" aria-labelledby="empty-dashboard-title">
+      <div className="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.9fr)]">
+        <div className="flex flex-col justify-between p-6 sm:p-8 lg:p-10">
+          <div className="max-w-3xl">
+            <div className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Activity className="size-5" aria-hidden="true" />
+            </div>
+            <h2 id="empty-dashboard-title" className="mt-6 max-w-2xl text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+              Your live dashboard is one monitor away.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
+              Add your first endpoint and this setup view will be replaced by live status, latency, incident, and delivery data. New check results update the dashboard automatically.
+            </p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Link href={monitorStep.href} className={cn(buttonVariants({ size: "lg" }), "w-full gap-2 sm:w-auto")}>
+                Create first monitor
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+              <p className="text-xs leading-5 text-muted-foreground">
+                This guide disappears as soon as the first monitor is added.
+              </p>
+            </div>
+          </div>
+
+          <ol className="mt-10 grid gap-4 border-t border-border/70 pt-6 sm:grid-cols-3">
+            {activation.steps.map((step, index) => (
+              <li className="flex items-start gap-3" key={step.id}>
+                {step.complete ? (
+                  <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-500" aria-hidden="true" />
+                ) : (
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground">
+                    {index + 1}
+                  </span>
+                )}
+                <div>
+                  <p className="text-sm font-medium">{step.label}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {step.complete ? "Complete" : index === 0 ? "Start here" : "Follows automatically"}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="bg-background/35 p-6 sm:p-8 lg:p-10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-base font-medium">What appears automatically</h3>
+            <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
+              After your first monitor
+            </span>
+          </div>
+          <div className="mt-6 divide-y divide-border/70">
+            {upcomingSections.map(({ title, description, Icon }) => (
+              <div className="flex gap-4 py-5 first:pt-0 last:pb-0" key={title}>
+                <Icon className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-medium">{title}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-7 flex items-start gap-2 border-t border-border/70 pt-5 text-xs leading-5 text-muted-foreground">
+            <RefreshCw className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            Dashboard sections stay current through the live connection—there is no manual refresh step.
+          </p>
+        </div>
       </div>
     </section>
   );
+}
+
+function ActivationProgressStrip({ activation }: { activation: DashboardData["activation"] }) {
+  const { completed, total, percent, nextStep } = getActivationProgress(activation);
+  if (!nextStep) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg bg-card px-4 py-3 shadow-sm" aria-labelledby="activation-progress-title">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <ListChecks className="size-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h2 id="activation-progress-title" className="text-sm font-medium">Workspace activation</h2>
+              <span
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className="text-xs tabular-nums text-muted-foreground"
+              >
+                {completed} of {total} steps complete
+              </span>
+            </div>
+            <p className="truncate text-xs text-muted-foreground">Next: {nextStep.label}</p>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div
+            className="h-1.5 min-w-20 flex-1 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-label="Workspace activation progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+            aria-valuetext={`${completed} of ${total} activation steps complete`}
+          >
+            <span className="block h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
+          </div>
+          <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">{percent}%</span>
+          <Link href={nextStep.href} className={cn(buttonVariants({ size: "sm" }), "min-h-9 shrink-0 gap-1.5") }>
+            {nextStep.id === "monitor" ? "Create first monitor" : "Continue setup"}
+            <ArrowRight className="size-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function dashboardWidgetClass(widget: DashboardWidgetId) {
+  if (widget === "system") return "lg:col-span-7";
+  if (widget === "monitor-focus") return "lg:col-span-5";
+  if (widget === "company-health") return "lg:col-span-4";
+  if (widget === "recent-events") return "lg:col-span-8";
+  if (widget === "delivery") return "lg:col-span-12";
+  return "lg:col-span-12";
 }
 
 function PanelCompanyHealth({
@@ -321,19 +521,29 @@ function PanelCompanyHealth({
   onPageChange: (page: number) => void;
 }) {
   return (
-    <section className="border-t py-4">
-      <header className="pb-2">
+    <section className="h-full rounded-lg bg-card p-4 shadow-sm sm:p-5">
+      <header>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm">Company health</h2>
+          <div>
+            <h2 className="text-base font-medium">Company health</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Grouped status across your monitored services.</p>
+          </div>
+          <Building2 className="size-4 text-muted-foreground" aria-hidden="true" />
           <PanelPager page={page} totalPages={totalPages} onPageChange={onPageChange} />
         </div>
       </header>
-      <div className="space-y-3">
+      <div className="mt-5 space-y-2">
         {companies.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No company groups in this scope.</p>
+          <div className="flex min-h-28 items-center gap-3 rounded-md bg-background/35 p-4">
+            <Building2 className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-medium">No company groups yet</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Add a company when you want to group monitors by team or service.</p>
+            </div>
+          </div>
         ) : (
           companies.map((company) => (
-            <div key={company.id} className="space-y-2 border-b py-3 last:border-b-0">
+            <div key={company.id} className="space-y-3 rounded-md bg-background/35 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">{company.name}</p>
@@ -356,7 +566,7 @@ function PanelCompanyHealth({
                   {company.paused > 0 ? <span className="text-muted-foreground">{company.paused} paused</span> : null}
                 </div>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full bg-emerald-500"
                   style={{ width: `${company.active > 0 ? (company.up / company.active) * 100 : 0}%` }}
@@ -384,19 +594,30 @@ function PanelRecentEvents({
   timeDisplaySettings: TimeDisplaySettings;
 }) {
   return (
-    <section className="border-t py-4">
-      <header className="pb-2">
+    <section className="h-full rounded-lg bg-card p-4 shadow-sm sm:p-5">
+      <header>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm">Recent events</h2>
+          <div>
+            <h2 className="text-base font-medium">Recent events</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Verified failures and recoveries that need context.</p>
+          </div>
+          <BellRing className="size-4 text-muted-foreground" aria-hidden="true" />
           <PanelPager page={page} totalPages={totalPages} onPageChange={onPageChange} />
         </div>
       </header>
-      <div className="space-y-2.5">
+      <div className="mt-5">
         {events.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No events in this scope.</p>
+          <div className="flex min-h-28 items-center gap-3 rounded-md bg-background/35 p-4">
+            <BellRing className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-medium">Nothing to review yet</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Verified incidents and recoveries will appear here after your first monitor runs.</p>
+            </div>
+          </div>
         ) : (
-          events.map((event) => (
-            <div key={event.id} className="flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between">
+          <div className="overflow-hidden rounded-md bg-background/20">
+            {events.map((event) => (
+            <div key={event.id} className="flex flex-col gap-2 bg-background/35 px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-2">
                 {event.eventType === "failure" ? (
                   <XCircle className="mt-0.5 h-4 w-4 text-destructive" />
@@ -418,7 +639,8 @@ function PanelRecentEvents({
                 {formatDateTime(event.createdAt, timeDisplaySettings)}
               </div>
             </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </section>
@@ -474,11 +696,42 @@ function MetricCard({
           : "";
 
   return (
-    <div className="flex items-baseline gap-2 py-2">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className={`text-sm font-semibold tabular-nums ${valueTone}`}>{value}</dd>
-      <span className="sr-only">{sub}</span>
+    <div className="rounded-md bg-background/35 p-3">
+      <dt className="text-[11px] font-medium text-muted-foreground">{label}</dt>
+      <dd className={`mt-3 text-lg font-semibold tabular-nums tracking-tight ${valueTone}`}>{value}</dd>
+      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{sub}</p>
     </div>
+  );
+}
+
+function PanelDelivery({ delivery }: { delivery: DashboardData["delivery"] }) {
+  const metrics = [
+    { label: "Delivered", value: String(delivery.delivered), sub: "Successful deliveries", tone: "green" as const },
+    { label: "Retry queue", value: String(delivery.pendingRetries), sub: "Waiting to retry", tone: "amber" as const },
+    { label: "Failed", value: String(delivery.failed), sub: "Need review", tone: "rose" as const },
+    { label: "Retrying", value: String(delivery.retrying), sub: "Next attempt pending", tone: "neutral" as const },
+    { label: "Dead-lettered", value: String(delivery.deadLettered), sub: "Permanent failures", tone: "rose" as const },
+  ];
+
+  return (
+    <section className="h-full rounded-lg bg-card p-4 shadow-sm sm:p-5">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-medium">Notification delivery</h2>
+          <p className="mt-1 text-xs text-muted-foreground">A clear trail from check to alert.</p>
+        </div>
+        <BellRing className="size-4 text-muted-foreground" aria-hidden="true" />
+      </header>
+      <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        {metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
+      </dl>
+      {delivery.delivered === 0 && delivery.failed === 0 && delivery.pendingRetries === 0 && delivery.retrying === 0 && delivery.deadLettered === 0 ? (
+        <p className="mt-4 flex items-center gap-2 rounded-md bg-background/35 px-3 py-2.5 text-xs text-muted-foreground">
+          <BellRing className="size-3.5 shrink-0" aria-hidden="true" />
+          Waiting for the first monitor delivery.
+        </p>
+      ) : null}
+    </section>
   );
 }
 

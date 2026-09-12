@@ -13,10 +13,15 @@ describe("notification templates", () => {
     );
 
     expect(rendered.htmlBody).toContain('href="https://api.example.com/health"');
+    expect(rendered.htmlBody).toContain(">Check site</a>");
     expect(rendered.htmlBody).toContain("Sentrovia monitoring notification");
     expect(rendered.htmlBody).not.toContain("Open monitoring");
+    expect(rendered.htmlBody).not.toContain("https://sentrovia.example.com/monitoring");
     expect(rendered.htmlBody).toContain("API");
     expect(rendered.htmlBody).toContain("font-family:'IBM Plex Sans'");
+    expect(rendered.htmlBody).toContain('content="light dark"');
+    expect(rendered.htmlBody).toContain("@media (prefers-color-scheme:dark)");
+    expect(rendered.htmlBody).toContain("[data-ogsc] .email-canvas");
     expect(rendered.htmlBody).not.toMatch(/Arial|Helvetica/);
   });
 
@@ -28,6 +33,24 @@ describe("notification templates", () => {
     );
 
     expect(rendered.htmlBody).toContain('href="https://api.example.com/health_check_now"');
+    expect(rendered.textBody).toContain("https://api.example.com/health_check_now");
+    expect(rendered.telegramBody).toContain("https://api.example.com/health_check_now");
+  });
+
+  it("strips paired markdown emphasis without removing literal underscores", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({
+        emailBody: "Owner: _Platform_team_\nRunbook: health_check_now",
+        telegramTemplate: "_Alert_team_: {url}",
+        url: "https://api.example.com/health_check_now",
+      }),
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.textBody).toContain("Owner: Platform_team");
+    expect(rendered.textBody).toContain("Runbook: health_check_now");
+    expect(rendered.telegramBody).toContain("Alert_team: https://api.example.com/health_check_now");
   });
 
   it("renders custom template content as report rows, sections, lists, and notes", () => {
@@ -67,6 +90,160 @@ describe("notification templates", () => {
     expect(rendered.htmlBody).toContain("margin:16px 0 12px");
   });
 
+  it("renders workspace-configured email headlines for every configurable event", () => {
+    const baseContext = buildContext();
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        defaultEmailHeadlineTemplate: "Alert: {name} cannot be reached",
+        recoveryEmailHeadlineTemplate: "Resolved: {name} is healthy",
+        slowResponseEmailHeadlineTemplate: "Performance warning for {domain}",
+        prolongedDowntimeEmailHeadlineTemplate: "{name} has been unavailable for {downtime_duration}",
+        sslExpiryEmailSubjectTemplate: "Certificate warning: {domain}",
+        sslExpiryEmailHeadlineTemplate: "Renew {name}'s certificate",
+        sslExpiryEmailBodyTemplate: "Certificate: {message}",
+        sslExpiryTelegramTemplate: "TLS {domain}: {message}",
+      },
+    };
+    const failure = renderNotificationTemplates(baseContext, settings, "https://sentrovia.example.com");
+    const recovery = renderNotificationTemplates(
+      { ...baseContext, kind: "recovery", result: { ...baseContext.result, ok: true, status: "up", statusCode: 200 } },
+      settings,
+      "https://sentrovia.example.com"
+    );
+    const latency = renderNotificationTemplates(
+      { ...baseContext, kind: "latency", result: { ...baseContext.result, ok: true, status: "up", statusCode: 200, latencyMs: 2400 } },
+      settings,
+      "https://sentrovia.example.com"
+    );
+    const reminder = renderNotificationTemplates(
+      { ...baseContext, kind: "downtime-reminder" },
+      settings,
+      "https://sentrovia.example.com"
+    );
+    const sslExpiry = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "ssl-expiry",
+        message: "TLS certificate expires in 10 days.",
+        result: {
+          ...baseContext.result,
+          ok: true,
+          status: "up",
+          statusCode: 200,
+          errorMessage: null,
+          failureReason: null,
+          sslExpiresAt: new Date("2026-05-23T08:00:00.000Z"),
+        },
+      },
+      settings,
+      "https://sentrovia.example.com"
+    );
+
+    expect(failure.htmlBody).toContain("Alert: API cannot be reached");
+    expect(recovery.htmlBody).toContain("Resolved: API is healthy");
+    expect(latency.htmlBody).toContain("Performance warning for api.example.com");
+    expect(reminder.htmlBody).toContain("API has been unavailable for 5m");
+    expect(sslExpiry.subject).toBe("Certificate warning: api.example.com");
+    expect(sslExpiry.htmlBody).toContain("Renew API's certificate");
+    expect(sslExpiry.textBody).toContain("Certificate: TLS certificate expires in 10 days.");
+    expect(sslExpiry.telegramBody).toBe("TLS api.example.com: TLS certificate expires in 10 days.");
+  });
+
+  it("uses monitor-level subject, headline, body, and Telegram overrides for every supported event", () => {
+    const monitor = {
+      emailSubject: "Down subject for {domain}",
+      emailHeadline: "Down headline for {name}",
+      emailBody: "Down body: {event_state}",
+      telegramTemplate: "DOWN Telegram: {domain}",
+      recoveryEmailSubject: "Recovery subject for {domain}",
+      recoveryEmailHeadline: "Recovery headline for {name}",
+      recoveryEmailBody: "Recovery body: {event_state}",
+      recoveryTelegramTemplate: "RECOVERY Telegram: {domain}",
+      slowResponseEmailSubject: "Slow subject for {domain}",
+      slowResponseEmailHeadline: "Slow headline for {name}",
+      slowResponseEmailBody: "Slow body: {event_state}",
+      slowResponseTelegramTemplate: "SLOW Telegram: {domain}",
+      prolongedDowntimeEmailSubject: "Reminder subject for {domain}",
+      prolongedDowntimeEmailHeadline: "Reminder headline for {name}",
+      prolongedDowntimeEmailBody: "Reminder body: {event_state}",
+      prolongedDowntimeTelegramTemplate: "REMINDER Telegram: {domain}",
+      sslExpiryEmailSubject: "SSL subject for {domain}",
+      sslExpiryEmailHeadline: "SSL headline for {name}",
+      sslExpiryEmailBody: "SSL body: {message}",
+      sslExpiryTelegramTemplate: "SSL Telegram: {domain}",
+    };
+    const baseContext = buildContext(monitor);
+    const failure = renderNotificationTemplates(baseContext, DEFAULT_SETTINGS, "https://sentrovia.example.com");
+    const recovery = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "recovery",
+        result: { ...baseContext.result, ok: true, status: "up", statusCode: 200 },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+    const latency = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "latency",
+        result: { ...baseContext.result, ok: true, status: "up", statusCode: 200, latencyMs: 2400 },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+    const reminder = renderNotificationTemplates(
+      { ...baseContext, kind: "downtime-reminder" },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+    const sslExpiry = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "ssl-expiry",
+        message: "TLS certificate expires in 10 days.",
+        result: {
+          ...baseContext.result,
+          ok: true,
+          status: "up",
+          statusCode: 200,
+          errorMessage: null,
+          failureReason: null,
+          sslExpiresAt: new Date("2026-05-23T08:00:00.000Z"),
+        },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(failure.subject).toBe("Down subject for api.example.com");
+    expect(failure.htmlBody).toContain("Down headline for API");
+    expect(failure.textBody).toContain("Down body: DOWN");
+    expect(failure.telegramBody).toBe("DOWN Telegram: api.example.com");
+
+    expect(recovery.subject).toBe("Recovery subject for api.example.com");
+    expect(recovery.htmlBody).toContain("Recovery headline for API");
+    expect(recovery.textBody).toContain("Recovery body: UP");
+    expect(recovery.telegramBody).toBe("RECOVERY Telegram: api.example.com");
+
+    expect(latency.subject).toBe("Slow subject for api.example.com");
+    expect(latency.htmlBody).toContain("Slow headline for API");
+    expect(latency.textBody).toContain("Slow body: SLOW");
+    expect(latency.telegramBody).toBe("SLOW Telegram: api.example.com");
+
+    expect(reminder.subject).toBe("Reminder subject for api.example.com");
+    expect(reminder.htmlBody).toContain("Reminder headline for API");
+    expect(reminder.textBody).toContain("Reminder body: DOWN");
+    expect(reminder.telegramBody).toBe("REMINDER Telegram: api.example.com");
+
+    expect(sslExpiry.subject).toBe("SSL subject for api.example.com");
+    expect(sslExpiry.htmlBody).toContain("SSL headline for API");
+    expect(sslExpiry.textBody).toContain("SSL body: TLS certificate expires in 10 days.");
+    expect(sslExpiry.telegramBody).toBe("SSL Telegram: api.example.com");
+  });
+
   it("uses a healthy report treatment for recovery emails", () => {
     const context = buildContext();
     const rendered = renderNotificationTemplates(
@@ -92,9 +269,34 @@ describe("notification templates", () => {
 
     expect(rendered.htmlBody).not.toContain('href="javascript:alert(1)"');
     expect(rendered.htmlBody).toContain("javascript:alert(1)");
+    expect(rendered.htmlBody).not.toContain(">Check site</a>");
   });
 
-  it("does not render non-http dashboard URLs as clickable email links", () => {
+  it("omits site actions for non-web monitor types", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext({ monitorType: "tcp", url: "db.internal:5432", name: "Primary database" }),
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).not.toContain("<a ");
+    expect(rendered.htmlBody).not.toContain(">Check site</a>");
+    expect(rendered.htmlBody).not.toContain("/monitoring");
+    expect(rendered.htmlBody).toContain("db.internal:5432");
+  });
+
+  it("uses readable failure reason labels in default emails", () => {
+    const rendered = renderNotificationTemplates(
+      buildContext(),
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.textBody).toContain("Failure reason: Unexpected HTTP status");
+    expect(rendered.htmlBody).not.toContain(">http_status</td>");
+  });
+
+  it("never renders application dashboard links from legacy dashboard placeholders", () => {
     const rendered = renderNotificationTemplates(
       buildContext(),
       {
@@ -107,7 +309,9 @@ describe("notification templates", () => {
       "javascript:alert(1)"
     );
 
-    expect(rendered.htmlBody).not.toContain('href="javascript:alert(1)/monitoring"');
+    expect(rendered.htmlBody).not.toContain("/monitoring");
+    expect(rendered.htmlBody).not.toContain("javascript:alert(1)");
+    expect(rendered.htmlBody).toContain('href="https://api.example.com/"');
     expect(rendered.htmlBody).toContain("api.example.com");
   });
 
@@ -158,8 +362,8 @@ describe("notification templates", () => {
     expect(rendered.textBody).toContain("State: SLOW");
     expect(rendered.telegramBody).toBe("SLOW api.example.com 21000 ms (limit 20000 ms)");
     expect(rendered.htmlBody).toContain("Response time");
-    expect(rendered.htmlBody).toContain("Hard timeout");
-    expect(rendered.htmlBody).toContain("50000 ms");
+    expect(rendered.htmlBody).toContain("Performance details");
+    expect(rendered.htmlBody).toContain(">Check site</a>");
     expect(rendered.htmlBody).toContain(">SLOW</span>");
   });
 
@@ -356,7 +560,7 @@ describe("notification templates", () => {
     expect(recovery.subject).toContain("düzeldi");
     expect(recovery.telegramBody).toContain("Servis düzeldi ve yeniden yanıt veriyor.");
     expect(latency.subject).toContain("yavaş yanıt veriyor");
-    expect(latency.textBody).toContain("erişilebilir ancak yavaş yanıt veriyor");
+    expect(latency.textBody).toContain("Servis çalışıyor ancak yavaş");
     expect(reminder.subject).toContain("3h süredir DOWN");
     expect(reminder.telegramBody).toContain("Servis 3s 0dk süredir down.");
   });
@@ -390,6 +594,8 @@ describe("notification templates", () => {
 
     expect(rendered.subject).toContain("SSL SÜRESİ DOLUYOR");
     expect(rendered.textBody).toContain("TLS sertifikasının süresi 2026-05-23 tarihinde, 10 gün içinde dolacak.");
+    expect(rendered.htmlBody).toContain("API sertifikasının süresi yaklaşıyor");
+    expect(rendered.htmlBody).toContain(">Sertifikayı kontrol et</a>");
     expect(rendered.telegramBody).toContain("TLS sertifikasının süresi 2026-05-23 tarihinde, 10 gün içinde dolacak.");
   });
 });
@@ -490,10 +696,24 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     responseMaxLength: 1024,
     telegramTemplate: null,
     emailSubject: null,
+    emailHeadline: null,
     emailBody: null,
     slowResponseEmailSubject: null,
+    slowResponseEmailHeadline: null,
     slowResponseEmailBody: null,
     slowResponseTelegramTemplate: null,
+    recoveryEmailSubject: null,
+    recoveryEmailHeadline: null,
+    recoveryEmailBody: null,
+    recoveryTelegramTemplate: null,
+    prolongedDowntimeEmailSubject: null,
+    prolongedDowntimeEmailHeadline: null,
+    prolongedDowntimeEmailBody: null,
+    prolongedDowntimeTelegramTemplate: null,
+    sslExpiryEmailSubject: null,
+    sslExpiryEmailHeadline: null,
+    sslExpiryEmailBody: null,
+    sslExpiryTelegramTemplate: null,
     sendOutageScreenshot: false,
     createdAt: now,
     updatedAt: now,

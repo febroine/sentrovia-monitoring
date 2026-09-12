@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, monitors, userSettings } from "@/lib/db/schema";
+import { companies, monitors, userSettings, workspaceSettings } from "@/lib/db/schema";
 import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
 
 interface NotificationRoutingCandidates {
@@ -21,6 +21,12 @@ export interface ResolvedNotificationRouting {
   telegramChatId: string | null;
 }
 
+type LegacyWorkspaceNotificationDefaults = {
+  email: string | null;
+  telegramBotToken: string | null;
+  telegramChatId: string | null;
+};
+
 export async function getMonitorNotificationRouting(
   userId: string,
   monitorId: string,
@@ -37,6 +43,7 @@ export async function getMonitorNotificationRouting(
       workspaceEmail: userSettings.smtpDefaultToEmail,
       workspaceTelegramBotToken: userSettings.defaultTelegramBotTokenEncrypted,
       workspaceTelegramChatId: userSettings.defaultTelegramChatId,
+      workspaceValues: workspaceSettings.valuesJson,
     })
     .from(monitors)
     .leftJoin(companies, and(
@@ -45,6 +52,7 @@ export async function getMonitorNotificationRouting(
       isNull(companies.deletedAt)
     ))
     .leftJoin(userSettings, eq(userSettings.userId, monitors.userId))
+    .leftJoin(workspaceSettings, eq(workspaceSettings.workspaceId, monitors.workspaceId))
     .where(and(
       eq(monitors.id, monitorId),
       workspaceId ? eq(monitors.workspaceId, workspaceId) : eq(monitors.userId, userId)
@@ -55,12 +63,43 @@ export async function getMonitorNotificationRouting(
     return null;
   }
 
+  const workspaceDefaults = resolveWorkspaceNotificationDefaults(row.workspaceValues, {
+    email: row.workspaceEmail,
+    telegramBotToken: row.workspaceTelegramBotToken,
+    telegramChatId: row.workspaceTelegramChatId,
+  });
+
   return resolveNotificationRouting({
     ...row,
     monitorTelegramBotToken: decryptValueOrLegacyPlaintext(row.monitorTelegramBotToken),
     companyTelegramBotToken: decryptValueOrLegacyPlaintext(row.companyTelegramBotToken),
-    workspaceTelegramBotToken: decryptValueOrLegacyPlaintext(row.workspaceTelegramBotToken),
+    workspaceEmail: workspaceDefaults.email,
+    workspaceTelegramBotToken: decryptValueOrLegacyPlaintext(workspaceDefaults.telegramBotToken),
+    workspaceTelegramChatId: workspaceDefaults.telegramChatId,
   });
+}
+
+export function resolveWorkspaceNotificationDefaults(
+  workspaceValues: Record<string, unknown> | null,
+  legacyDefaults: LegacyWorkspaceNotificationDefaults
+): LegacyWorkspaceNotificationDefaults {
+  if (workspaceValues === null) {
+    return legacyDefaults;
+  }
+
+  return {
+    email: readWorkspaceString(workspaceValues, "smtpDefaultToEmail", "smtp_default_to_email"),
+    telegramBotToken: readWorkspaceString(
+      workspaceValues,
+      "defaultTelegramBotTokenEncrypted",
+      "default_telegram_bot_token_encrypted"
+    ),
+    telegramChatId: readWorkspaceString(
+      workspaceValues,
+      "defaultTelegramChatId",
+      "default_telegram_chat_id"
+    ),
+  };
 }
 
 export function resolveNotificationRouting(
@@ -106,4 +145,13 @@ function joinCompanyEmails(recipients: string[] | null) {
 function cleanString(value: string | null) {
   const normalized = value?.trim() ?? "";
   return normalized || null;
+}
+
+function readWorkspaceString(
+  values: Record<string, unknown>,
+  propertyName: string,
+  columnName: string
+) {
+  const value = values[propertyName] ?? values[columnName];
+  return typeof value === "string" ? value : null;
 }

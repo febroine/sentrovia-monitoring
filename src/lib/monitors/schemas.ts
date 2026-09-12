@@ -69,6 +69,8 @@ function isHttpMonitorUrl(value: string) {
     const parsed = new URL(value.trim());
     return (
       (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      !parsed.username &&
+      !parsed.password &&
       isAllowedMonitorHostnameLiteral(parsed.hostname)
     );
   } catch {
@@ -155,10 +157,24 @@ const monitorInputObjectSchema = z
     responseMaxLength: z.coerce.number().int().min(0).max(100_000),
     telegramTemplate: optionalString(4000),
     emailSubject: optionalString(500),
+    emailHeadline: optionalString(500),
     emailBody: optionalString(4000),
     slowResponseEmailSubject: optionalString(500),
+    slowResponseEmailHeadline: optionalString(500),
     slowResponseEmailBody: optionalString(4000),
     slowResponseTelegramTemplate: optionalString(4000),
+    recoveryEmailSubject: optionalString(500),
+    recoveryEmailHeadline: optionalString(500),
+    recoveryEmailBody: optionalString(4000),
+    recoveryTelegramTemplate: optionalString(4000),
+    prolongedDowntimeEmailSubject: optionalString(500),
+    prolongedDowntimeEmailHeadline: optionalString(500),
+    prolongedDowntimeEmailBody: optionalString(4000),
+    prolongedDowntimeTelegramTemplate: optionalString(4000),
+    sslExpiryEmailSubject: optionalString(500),
+    sslExpiryEmailHeadline: optionalString(500),
+    sslExpiryEmailBody: optionalString(4000),
+    sslExpiryTelegramTemplate: optionalString(4000),
     sendOutageScreenshot: z.boolean().default(true),
     isActive: z.boolean().default(true),
     publishOnStatusPage: z.boolean().default(true),

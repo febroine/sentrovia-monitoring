@@ -4,7 +4,7 @@ import path from "node:path";
 import sharp from "sharp";
 
 const projectRoot = process.cwd();
-const sourcePath = path.join(projectRoot, "public", "sentrovia-mark-v2.png");
+const sourcePath = path.join(projectRoot, "public", "sentrovia-monogram.svg");
 const appIconPath = path.join(projectRoot, "src", "app", "icon.png");
 const faviconPath = path.join(projectRoot, "src", "app", "favicon.ico");
 const faviconSizes = [16, 32, 48];
@@ -29,14 +29,14 @@ async function createIcon(size) {
       width: markSize,
       height: markSize,
       channels: 3,
-      background: "#20C7B7",
+      background: "#38BDF8",
     },
   })
     .joinChannel(markAlpha)
     .png()
     .toBuffer();
   const background = Buffer.from(
-    `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg"><rect width="${size}" height="${size}" rx="${Math.round(size * 0.19)}" fill="#071315"/></svg>`
+    `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg"><rect width="${size}" height="${size}" rx="${Math.round(size * 0.19)}" fill="#080F1E"/></svg>`
   );
 
   return sharp(background)

@@ -1,6 +1,5 @@
 "use client";
 
-import type { ElementType } from "react";
 import {
   CalendarClock,
   ChartNoAxesCombined,
@@ -35,6 +34,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatPanelDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type {
   ReportCadence,
@@ -91,49 +92,50 @@ export default function ReportsPageClient() {
         <div
           role={message.tone === "error" ? "alert" : "status"}
           className={cn(
-            "border-l-2 px-4 py-2 text-sm",
-            message.tone === "error" && "border-destructive text-destructive",
-            message.tone === "success" && "border-emerald-500",
-            message.tone === "info" && "border-border"
+            "rounded-md px-4 py-3 text-sm",
+            message.tone === "error" && "bg-destructive/10 text-destructive",
+            message.tone === "success" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+            message.tone === "info" && "bg-muted/25 text-muted-foreground"
           )}
         >
           {message.text}
         </div>
       ) : null}
 
-      <div className="inline-flex w-full rounded-md border bg-muted/30 p-1 sm:w-auto">
-        <ReportModeButton
-          active={activeTab === "analytics"}
-          title="Analytics"
-          icon={ChartNoAxesCombined}
-          tone="text-muted-foreground"
-          onClick={() => setActiveTab("analytics")}
-        />
-        <ReportModeButton
-          active={activeTab === "preview"}
-          title="Preview"
-          icon={FileChartColumn}
-          tone="text-muted-foreground"
-          onClick={() => setActiveTab("preview")}
-        />
-        <ReportModeButton
-          active={activeTab === "schedules"}
-          title="Schedules"
-          icon={CalendarClock}
-          tone="text-muted-foreground"
-          onClick={() => setActiveTab("schedules")}
-        />
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          if (value === "analytics" || value === "preview" || value === "schedules") {
+            setActiveTab(value);
+          }
+        }}
+        className="gap-0"
+      >
+        <TabsList aria-label="Report view" className="inline-flex h-auto w-full rounded-md bg-muted/30 p-1 sm:w-auto">
+          <TabsTrigger value="analytics" className="flex-1 rounded-md px-4 py-2 text-center text-sm leading-none font-medium text-muted-foreground data-active:bg-background data-active:text-foreground sm:flex-none">
+            <ChartNoAxesCombined aria-hidden="true" className="block size-4 shrink-0 text-muted-foreground" />
+            Analytics
+          </TabsTrigger>
+          <TabsTrigger value="preview" className="flex-1 rounded-md px-4 py-2 text-center text-sm leading-none font-medium text-muted-foreground data-active:bg-background data-active:text-foreground sm:flex-none">
+            <FileChartColumn aria-hidden="true" className="block size-4 shrink-0 text-muted-foreground" />
+            Preview
+          </TabsTrigger>
+          <TabsTrigger value="schedules" className="flex-1 rounded-md px-4 py-2 text-center text-sm leading-none font-medium text-muted-foreground data-active:bg-background data-active:text-foreground sm:flex-none">
+            <CalendarClock aria-hidden="true" className="block size-4 shrink-0 text-muted-foreground" />
+            Schedules
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="space-y-4">
-          {activeTab === "analytics" ? (
-            <ReportAnalyticsWorkspace />
-          ) : activeTab === "preview" ? (
-            <ManualReportWorkspace state={pageState} />
-          ) : (
-            <ScheduledReportWorkspace state={pageState} />
-          )}
-        </div>
+        <TabsContent value="analytics" className="space-y-4">
+          <ReportAnalyticsWorkspace />
+        </TabsContent>
+        <TabsContent value="preview" className="space-y-4">
+          <ManualReportWorkspace state={pageState} />
+        </TabsContent>
+        <TabsContent value="schedules" className="space-y-4">
+          <ScheduledReportWorkspace state={pageState} />
+        </TabsContent>
+      </Tabs>
 
       <ScheduleDeleteDialog
         schedule={scheduleToDelete}
@@ -158,7 +160,7 @@ function ReportsHeader({ nextRunAt }: { nextRunAt?: string }) {
           nextRunAt ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
         )} />
         <span className="text-muted-foreground">
-          Next delivery: {nextRunAt ? new Date(nextRunAt).toLocaleString() : "No active schedule"}
+          Next delivery: {nextRunAt ? formatPanelDateTime(nextRunAt) : "No active schedule"}
         </span>
       </div>
     </header>
@@ -228,8 +230,8 @@ function ManualReportWorkspace({
 
   return (
     <>
-          <Card className="overflow-hidden border-border/70">
-            <CardHeader className="border-b pb-4">
+          <Card className="overflow-hidden">
+            <CardHeader className="bg-muted/20 pb-4">
               <CardTitle>Manual report</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5 pt-5">
@@ -373,7 +375,7 @@ function ManualReportActions({
         {saving ? "Generating..." : "Generate preview"}
       </Button>
       <Button variant="outline" onClick={onSend} disabled={saving || disabled || !hasRecipients}>
-        <Send className="mr-2 h-4 w-4" /> Send now
+        <Send data-icon="inline-start" className="h-4 w-4" /> Send now
       </Button>
       <Button variant="ghost" onClick={onReset} disabled={saving}>Reset</Button>
     </div>
@@ -392,8 +394,8 @@ function ScheduledReportWorkspace({ state }: { state: ReturnType<typeof useRepor
 function ScheduleBuilder({ state }: { state: ReturnType<typeof useReportsPageState> }) {
   const { companies, createSchedule, saving, scheduleDraft, scheduleNeedsCompany, scheduleRecipients, setScheduleDraft } = state;
   return (
-    <Card className="overflow-hidden border-border/70">
-      <CardHeader className="border-b pb-4"><CardTitle>Scheduled report</CardTitle></CardHeader>
+    <Card className="overflow-hidden">
+      <CardHeader className="bg-muted/20 pb-4"><CardTitle>Scheduled report</CardTitle></CardHeader>
       <CardContent className="space-y-5 pt-5">
         <ScheduleFields state={state} />
         <ReportOptionsPanel
@@ -497,7 +499,7 @@ function ScheduleDeliveryFields({ state }: { state: ReturnType<typeof useReports
           onChange={(event) => setScheduleDraft((current) => ({ ...current, nextRunAt: event.target.value }))}
         />
       </Field>
-      <div className="border-y py-3">
+      <div className="rounded-md bg-muted/25 p-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium">Auto-send</p>
@@ -542,8 +544,8 @@ function ScheduledReportsList({ state }: { state: ReturnType<typeof useReportsPa
   } = state;
   const hasFilters = Boolean(scheduleSearch.trim()) || scheduleFilter !== "all";
   return (
-    <Card className="overflow-hidden border-border/70">
-      <CardHeader className="border-b pb-4">
+    <Card className="overflow-hidden">
+      <CardHeader className="bg-muted/20 pb-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <CardTitle>Scheduled reports</CardTitle>
           <ScheduleFilters filter={scheduleFilter} search={scheduleSearch} setFilter={setScheduleFilter} setSearch={setScheduleSearch} />
@@ -604,37 +606,6 @@ function ScheduleFilters({
   );
 }
 
-function ReportModeButton({
-  active,
-  icon: Icon,
-  tone,
-  title,
-  onClick,
-}: {
-  active: boolean;
-  icon: ElementType;
-  tone: string;
-  title: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "flex-1 rounded-md px-4 py-2 text-center text-sm font-medium transition-colors sm:flex-none",
-        active
-          ? "bg-background text-foreground"
-          : "text-muted-foreground hover:text-foreground"
-      )}
-    >
-      <Icon className={cn("mr-2 inline size-4", tone)} />
-      {title}
-    </button>
-  );
-}
-
 function ReportOptionsPanel({
   template,
   draft,
@@ -653,7 +624,7 @@ function ReportOptionsPanel({
   onChange: (patch: Partial<ReportDeliveryDraft>) => void;
 }) {
   return (
-    <details open className="group border-y border-border/70">
+    <details open className="group rounded-md bg-muted/20">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <span>
           <span className="block text-sm font-medium">Report options</span>
@@ -663,7 +634,7 @@ function ReportOptionsPanel({
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
-      <div className="space-y-5 border-t border-border/70 px-4 py-4">
+      <div className="space-y-5 rounded-b-md bg-background/25 px-4 py-4">
         <TemplateStrip value={template} onChange={onTemplateChange} />
         <ReportDeliveryComposer
           template={template}
@@ -686,7 +657,7 @@ function TemplateStrip({
   onChange: (template: ReportTemplateVariant) => void;
 }) {
   return (
-    <div className="grid border-y lg:grid-cols-3 lg:divide-x">
+    <div className="grid gap-2 lg:grid-cols-3">
       {TEMPLATE_OPTIONS.map((template) => {
         const active = template.value === value;
 
@@ -696,7 +667,7 @@ function TemplateStrip({
             type="button"
             onClick={() => onChange(template.value)}
             className={cn(
-              "border-b px-4 py-3 text-left transition-colors last:border-b-0 lg:border-b-0",
+              "rounded-md px-4 py-3 text-left transition-colors",
               active
                 ? "bg-primary/5"
                 : "hover:bg-muted/20"
@@ -770,8 +741,8 @@ function ReportPackageOptions({
           </SelectContent>
         </Select>
       </Field>
-      <div className="divide-y border-y">
-        <div className="border-l-2 border-border px-3 py-1">
+      <div className="grid gap-2 rounded-md bg-muted/20 p-2">
+        <div className="rounded-md bg-background/30 px-3 py-2">
           <p className="text-xs font-semibold">HTML delivery</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             Scheduled and manual deliveries include one browser-ready HTML report.
@@ -823,7 +794,7 @@ function ReportEmailOptions({
           Leave blank to use the default subject. Add a template to replace the complete subject, including the report prefix.
         </p>
       </Field>
-      <div className="border-l-2 border-sky-500 px-4 py-2">
+      <div className="rounded-md bg-sky-500/10 px-4 py-3">
         <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Email subject preview</p>
         <p className="mt-1 break-words text-sm font-medium text-foreground">{subjectPreview}</p>
       </div>
@@ -894,7 +865,7 @@ function BuilderEmptyState({
   description: string;
 }) {
   return (
-    <div className="border-y px-1 py-5">
+    <div className="rounded-md bg-muted/20 px-4 py-5">
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
     </div>
@@ -903,7 +874,7 @@ function BuilderEmptyState({
 
 function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
   return (
-    <section className="border-y border-emerald-500/30 py-4">
+    <section className="rounded-lg bg-emerald-500/10 p-4">
       <div className="flex items-start gap-3 pb-3">
         <CircleCheckBig className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
         <div>
@@ -911,12 +882,12 @@ function DeliveryResultCard({ delivery }: { delivery: DeliveryResult }) {
         </div>
       </div>
       <div>
-        <dl className="grid border-y md:grid-cols-2 xl:grid-cols-4 xl:divide-x">
+        <dl className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         <DetailBlock label="Status" value={delivery.status} />
         <DetailBlock label="Report" value={delivery.reportTitle} />
         <DetailBlock
           label="Delivered"
-          value={delivery.deliveredAt ? new Date(delivery.deliveredAt).toLocaleString() : "Waiting for timestamp"}
+          value={delivery.deliveredAt ? formatPanelDateTime(delivery.deliveredAt) : "Waiting for timestamp"}
         />
         <DetailBlock label="Recipients" value={delivery.recipients.join(", ") || "No recipients"} />
         </dl>
@@ -973,7 +944,7 @@ function ScheduleCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="border-y py-4">
+    <div className="rounded-md bg-muted/20 p-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -984,9 +955,9 @@ function ScheduleCard({
             </span>
           </div>
 
-          <dl className="grid border-y sm:grid-cols-2 xl:grid-cols-6 xl:divide-x">
-            <DetailBlock label="Next run" value={new Date(schedule.nextRunAt).toLocaleString()} />
-            <DetailBlock label="Last delivery" value={schedule.lastDeliveredAt ? new Date(schedule.lastDeliveredAt).toLocaleString() : "No delivery yet"} />
+          <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+            <DetailBlock label="Next run" value={formatPanelDateTime(schedule.nextRunAt)} />
+            <DetailBlock label="Last delivery" value={schedule.lastDeliveredAt ? formatPanelDateTime(schedule.lastDeliveredAt) : "No delivery yet"} />
             <DetailBlock label="Delivery status" value={getScheduleDeliveryStatusLabel(schedule)} />
             <DetailBlock label="Recipients" value={schedule.recipientEmails.join(", ") || "No recipients"} />
             <DetailBlock label="Brand" value={schedule.reportBrandName || "Profile organization"} />
@@ -994,7 +965,7 @@ function ScheduleCard({
           </dl>
 
           {schedule.lastErrorMessage ? (
-            <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
+            <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {schedule.lastErrorMessage}
             </div>
           ) : null}
@@ -1045,7 +1016,7 @@ function StatusBadge({ schedule }: { schedule: ReportScheduleRecord }) {
 
 function DetailBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b px-3 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0">
+    <div className="rounded-md bg-background/30 px-3 py-3">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-sm leading-5 [overflow-wrap:anywhere]">{value}</dd>
     </div>

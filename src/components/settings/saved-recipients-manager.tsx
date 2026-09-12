@@ -38,7 +38,7 @@ export function SavedRecipientsManager({
   }
 
   return (
-    <div className="border-y py-4">
+    <div className="rounded-md bg-muted/20 p-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-medium">Saved notification recipients</p>
@@ -57,7 +57,7 @@ export function SavedRecipientsManager({
           placeholder="team-alerts@company.com"
         />
         <Button type="button" variant="outline" onClick={addRecipient} disabled={!canAdd}>
-          <MailPlus className="mr-2 h-4 w-4" />
+          <MailPlus data-icon="inline-start" className="h-4 w-4" />
           Add email
         </Button>
       </div>
@@ -71,7 +71,7 @@ export function SavedRecipientsManager({
               key={email}
               type="button"
               onClick={() => removeRecipient(email)}
-              className="max-w-full rounded-full border bg-background px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors [overflow-wrap:anywhere] hover:border-destructive/30 hover:text-destructive"
+              className="max-w-full rounded-full bg-muted/35 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors [overflow-wrap:anywhere] hover:bg-destructive/10 hover:text-destructive"
             >
               {email}
             </button>

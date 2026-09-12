@@ -1,4 +1,5 @@
 import type { CompanyRecord } from "@/lib/companies/types";
+import { formatPanelDateTime } from "@/lib/time";
 import type {
   ReportCadence,
   ReportPeriodRange,
@@ -225,19 +226,19 @@ export function buildSchedulePackageLabel(schedule: ReportScheduleRecord) {
 export function getScheduleDeliveryStatusLabel(schedule: ReportScheduleRecord) {
   if (schedule.lastStatus === "running") {
     return schedule.lastRunAt
-      ? `Sending since ${new Date(schedule.lastRunAt).toLocaleString()}`
+      ? `Sending since ${formatPanelDateTime(schedule.lastRunAt)}`
       : "Sending";
   }
 
   if (schedule.lastStatus === "delivered") {
     return schedule.lastDeliveredAt
-      ? `Delivered at ${new Date(schedule.lastDeliveredAt).toLocaleString()}`
+      ? `Delivered at ${formatPanelDateTime(schedule.lastDeliveredAt)}`
       : "Delivered";
   }
 
   if (schedule.lastStatus === "failed") {
     return schedule.lastRunAt
-      ? `Failed at ${new Date(schedule.lastRunAt).toLocaleString()}`
+      ? `Failed at ${formatPanelDateTime(schedule.lastRunAt)}`
       : "Failed";
   }
 

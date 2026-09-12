@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatPanelDateTime } from "@/lib/time";
 import { useWorkerStore } from "@/stores/use-worker-store";
 
 interface SystemData {
@@ -67,7 +68,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
   );
 
   return (
-    <Card className="border-border">
+    <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="space-y-1">
@@ -77,12 +78,12 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
                 variant="outline"
                 className={cn(
                   connectivityOffline
-                    ? "border-destructive/30 text-destructive"
+                    ? "bg-destructive/10 text-destructive"
                     : workerActive
-                    ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     : desiredRunning
-                      ? "border-amber-500/30 text-amber-600 dark:text-amber-400"
-                      : "border-border text-muted-foreground"
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "bg-muted/30 text-muted-foreground"
                 )}
               >
                 {loading
@@ -136,17 +137,17 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
                 label="Updated"
                 value={
                   lastUpdated
-                    ? lastUpdated.toLocaleTimeString([], {
+                    ? formatPanelDateTime(lastUpdated, {
                         hour: "2-digit",
                         minute: "2-digit",
-                        hour12: !use24HourClock,
+                        hourCycle: use24HourClock ? "h23" : "h12",
                       })
                     : "--:--"
                 }
               />
             </div>
 
-            <div className="space-y-4 border-y py-4">
+            <div className="space-y-4 rounded-md bg-muted/20 p-4">
               <StatusBar
                 label="CPU"
                 value={systemData?.cpu.usage ?? 0}
@@ -168,7 +169,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
             </div>
           </div>
 
-          <div className="border-y py-4">
+          <div className="rounded-md bg-muted/20 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-medium">Worker</p>
@@ -179,7 +180,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
               <Activity className={cn("size-4", workerActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")} />
             </div>
 
-            <div className="mt-4 divide-y border-y">
+            <div className="mt-4 grid gap-1 rounded-md bg-background/25 p-2">
               <MetricPanel
                 icon={connectivityOffline ? WifiOff : Wifi}
                 label="Internet"
@@ -211,11 +212,11 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
               disabled={commandLoading || !worker}
             >
               {commandLoading ? (
-                <LoaderCircle className="size-4 animate-spin" />
+                <LoaderCircle data-icon="inline-start" className="size-4 animate-spin" />
               ) : shouldOfferStop ? (
-                <Square className="size-4 fill-current" />
+                <Square data-icon="inline-start" className="size-4 fill-current" />
               ) : (
-                <Play className="size-4 fill-current" />
+                <Play data-icon="inline-start" className="size-4 fill-current" />
               )}
               {commandLoading ? "Applying" : shouldOfferStop ? "Stop Worker" : "Start Worker"}
             </Button>
@@ -287,9 +288,9 @@ function InlineAlert({
   return (
     <div
       className={cn(
-        "border-l-2 px-3 py-2 text-sm",
-        tone === "danger" && "border-destructive text-destructive",
-        tone === "warning" && "border-amber-500 text-amber-700 dark:text-amber-300"
+        "rounded-md px-3 py-3 text-sm",
+        tone === "danger" && "bg-destructive/10 text-destructive",
+        tone === "warning" && "bg-amber-500/10 text-amber-700 dark:text-amber-300"
       )}
     >
       {message}

@@ -48,6 +48,11 @@ export default async function RootLayout({
         <AppShell
           initialAuthenticated={Boolean(session)}
           initialAppearance={settings?.appearance ?? null}
+          initialUser={session ? {
+            firstName: session.firstName,
+            lastName: session.lastName,
+            role: session.role,
+          } : null}
         >
           {children}
         </AppShell>

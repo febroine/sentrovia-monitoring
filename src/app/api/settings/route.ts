@@ -5,6 +5,7 @@ import { assertPermission, hasPermission } from "@/lib/auth/permissions";
 import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
+import { invalidateDashboardCache } from "@/lib/dashboard/service";
 import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
@@ -68,6 +69,7 @@ export async function PATCH(request: NextRequest) {
       session.activeWorkspaceId!,
       allowBackupPolicyChanges
     );
+    invalidateDashboardCache(session.id, session.activeWorkspaceId!);
     await recordAuditEventSafely({
       userId: session.id,
       workspaceId: session.activeWorkspaceId!,

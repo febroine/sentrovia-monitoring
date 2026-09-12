@@ -1,11 +1,14 @@
 import type { ElementType } from "react";
 import {
+  Activity,
+  BellOff,
   BellRing,
   Box,
   Database,
   Mail,
   Radar,
   ServerCog,
+  TimerReset,
 } from "lucide-react";
 
 export type HelpCategory = {
@@ -20,10 +23,10 @@ export type HelpCategory = {
 };
 
 export const quickNotes = [
-  "Stale checks: open Monitoring > Worker pulse, then Dashboard > System health.",
-  "Missing alert: inspect Delivery before changing the monitor.",
-  "Workspace-wide stale data: verify the worker heartbeat and host connectivity.",
-  "Noisy timeout: distinguish a confirmed outage from a slow-response warning.",
+  { icon: Activity, text: "Stale checks: open Monitoring > Worker pulse, then Dashboard > System health." },
+  { icon: BellOff, text: "Missing alert: inspect Delivery before changing the monitor." },
+  { icon: ServerCog, text: "Workspace looks stale: check Worker pulse, then verify host connectivity." },
+  { icon: TimerReset, text: "Noisy timeout: distinguish a confirmed outage from a slow-response warning." },
 ];
 
 export const helpCategories: HelpCategory[] = [

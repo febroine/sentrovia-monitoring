@@ -240,7 +240,7 @@ function buildReportTextDetailLines(report: GeneratedReport, options: ReportDeli
       "Failure details:",
       ...report.recentFailures
         .slice(0, options.deliveryDetailLevel === "full" ? 8 : 5)
-        .map((event) => `- ${event.url}: ${event.statusCode ?? "N/A"} at ${new Date(event.createdAt).toLocaleString()} - ${event.detail}`)
+        .map((event) => `- ${event.url}: ${event.statusCode ?? "N/A"} at ${new Date(event.createdAt).toLocaleString("en-GB", { timeZone: report.timeZone })} - ${event.detail}`)
     );
   }
 
@@ -261,7 +261,7 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
       report.failingMonitors.slice(0, detailLimit).map((monitor) => [
         monitor.url,
         String(monitor.failures),
-        monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString() : "--",
+        monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString("en-GB", { timeZone: report.timeZone }) : "--",
       ])
     ),
     renderEmailTableSection(
@@ -497,7 +497,7 @@ function renderReportTemplate(template: string | null, report: GeneratedReport) 
     "{failures}": String(report.summary.failureEvents),
     "{down_now}": String(report.summary.currentlyDown),
     "{p95_latency}": formatReportP95Latency(report.summary),
-    "{generated_at}": new Date(report.generatedAt).toLocaleString(),
+    "{generated_at}": new Date(report.generatedAt).toLocaleString("en-GB", { timeZone: report.timeZone }),
   };
 
   return Object.entries(replacements).reduce(

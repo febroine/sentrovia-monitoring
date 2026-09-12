@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { monitors, userSettings, workspaceMembers, type Monitor } from "@/lib/db/schema";
+import { monitors, userSettings, workspaceMembers, workspaceSettings, type Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { encryptLegacyClaimedSecrets } from "@/lib/monitors/heartbeat-secrets";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
@@ -11,42 +11,76 @@ import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MONITOR_LEASE_SAFETY_MS = 120_000;
-const MAX_DUE_USERS_PER_CYCLE = 100;
-const DUE_USER_QUERY_CONCURRENCY = 10;
+const MAX_DUE_WORKSPACES_PER_CYCLE = 100;
+const DUE_WORKSPACE_QUERY_CONCURRENCY = 10;
 
 export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };
 
 export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
-  const dueUsers = await db
-    .select({ userId: monitors.userId })
+  const dueWorkspaces = await db
+    .select({ workspaceId: monitors.workspaceId })
     .from(monitors)
     .where(buildDueMonitorPredicate(now))
-    .groupBy(monitors.userId)
+    .groupBy(monitors.workspaceId)
     .orderBy(asc(sql`min(coalesce(${monitors.nextCheckAt}, ${monitors.createdAt}))`))
-    .limit(MAX_DUE_USERS_PER_CYCLE);
+    .limit(MAX_DUE_WORKSPACES_PER_CYCLE);
 
-  if (dueUsers.length === 0) {
+  if (dueWorkspaces.length === 0) {
     return [];
   }
 
-  const userIds = dueUsers.map((row) => row.userId);
-  const settingsRows = await db
-    .select({ userId: userSettings.userId, batchSize: userSettings.monitoringBatchSize })
-    .from(userSettings)
-    .where(inArray(userSettings.userId, userIds));
-
-  const batchSizeMap = new Map(
-    settingsRows.map((item) => [item.userId, item.batchSize ?? DEFAULT_SETTINGS.monitoring.batchSize])
-  );
+  const workspaceIds = dueWorkspaces.map((row) => row.workspaceId);
+  const [settingsRows, legacySettingsRows] = await Promise.all([
+    db
+      .select({ workspaceId: workspaceSettings.workspaceId, values: workspaceSettings.valuesJson })
+      .from(workspaceSettings)
+      .where(inArray(workspaceSettings.workspaceId, workspaceIds)),
+    db
+      .select({
+        workspaceId: workspaceMembers.workspaceId,
+        userId: workspaceMembers.userId,
+        role: workspaceMembers.role,
+        memberCreatedAt: workspaceMembers.createdAt,
+        batchSize: userSettings.monitoringBatchSize,
+      })
+      .from(workspaceMembers)
+      .leftJoin(userSettings, eq(userSettings.userId, workspaceMembers.userId))
+      .where(inArray(workspaceMembers.workspaceId, workspaceIds))
+      .orderBy(
+        asc(workspaceMembers.workspaceId),
+        asc(sql`case ${workspaceMembers.role}
+          when 'admin' then 0
+          when 'manager' then 1
+          when 'operator' then 2
+          else 3
+        end`),
+        asc(workspaceMembers.createdAt),
+        asc(workspaceMembers.userId)
+      ),
+  ]);
+  const settingsByWorkspace = new Map(settingsRows.map((row) => [row.workspaceId, row.values]));
+  const legacyBatchSizeByWorkspace = new Map<string, number | null>();
+  for (const row of legacySettingsRows) {
+    if (!legacyBatchSizeByWorkspace.has(row.workspaceId)) {
+      legacyBatchSizeByWorkspace.set(row.workspaceId, row.batchSize);
+    }
+  }
+  const batchSizeByWorkspace = new Map(workspaceIds.map((workspaceId) => [
+    workspaceId,
+    resolveMonitorBatchSize(
+      settingsByWorkspace.has(workspaceId) ? settingsByWorkspace.get(workspaceId)! : null,
+      legacyBatchSizeByWorkspace.get(workspaceId)
+    ),
+  ]));
   const selectedRows = (await mapWithConcurrency(
-    userIds,
-    DUE_USER_QUERY_CONCURRENCY,
-    (userId) => db
+    workspaceIds,
+    DUE_WORKSPACE_QUERY_CONCURRENCY,
+    (workspaceId) => db
       .select()
       .from(monitors)
-      .where(and(eq(monitors.userId, userId), buildDueMonitorPredicate(now)))
+      .where(and(eq(monitors.workspaceId, workspaceId), buildDueMonitorPredicate(now)))
       .orderBy(desc(monitors.verificationMode), asc(monitors.nextCheckAt), asc(monitors.createdAt))
-      .limit(batchSizeMap.get(userId) ?? DEFAULT_SETTINGS.monitoring.batchSize)
+      .limit(batchSizeByWorkspace.get(workspaceId) ?? DEFAULT_SETTINGS.monitoring.batchSize)
   )).flat();
 
   if (selectedRows.length === 0) {
@@ -91,6 +125,20 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
     telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
     allowPrivateTargets: env.monitorAllowPrivateTargets && hasPrivateTargetAccess(monitor, membershipRows),
   }));
+}
+
+export function resolveMonitorBatchSize(
+  workspaceValues: Record<string, unknown> | null,
+  legacyBatchSize: number | null | undefined
+) {
+  const configured = workspaceValues === null
+    ? legacyBatchSize
+    : workspaceValues.monitoringBatchSize ?? workspaceValues.monitoring_batch_size;
+  const batchSize = typeof configured === "number" ? configured : Number(configured);
+
+  return Number.isInteger(batchSize) && batchSize >= 1 && batchSize <= 500
+    ? batchSize
+    : DEFAULT_SETTINGS.monitoring.batchSize;
 }
 
 export function hasPrivateTargetAccess(

@@ -2,6 +2,7 @@ import type { MonitorHistoryPoint } from "@/lib/monitors/types";
 import { toEnglishUppercase } from "@/lib/text/casing";
 import { cn } from "@/lib/utils";
 import { formatLatency } from "@/components/monitoring/utils";
+import { formatPanelDateTime } from "@/lib/time";
 
 export function MonitorHistoryStrip({
   points,
@@ -30,7 +31,7 @@ export function MonitorHistoryStrip({
             onSelect?.(point);
           }}
           className={cn(
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
             compact ? "h-2.5 min-w-0 flex-1 rounded-[2px]" : "h-2.5 w-5 rounded-full",
             point.status === "up"
               ? "bg-emerald-500/85"
@@ -45,7 +46,7 @@ export function MonitorHistoryStrip({
 }
 
 function buildTitle(point: MonitorHistoryPoint) {
-  const timestamp = new Date(point.createdAt).toLocaleString();
+  const timestamp = formatPanelDateTime(point.createdAt);
   const code = point.statusCode ? ` · HTTP ${point.statusCode}` : "";
   const latency = typeof point.latencyMs === "number" ? ` · ${formatLatency(point.latencyMs)}` : "";
   return `${toEnglishUppercase(point.status)} · ${timestamp}${code}${latency}`;

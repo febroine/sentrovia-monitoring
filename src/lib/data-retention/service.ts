@@ -1,7 +1,12 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, type SQLWrapper } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { WORKER_STATE_ID } from "@/lib/worker/constants";
-import { workerState } from "@/lib/db/schema";
+import {
+  userSettings,
+  workerState,
+  workspaceMembers,
+  workspaceSettings,
+} from "@/lib/db/schema";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
 const RETENTION_LOCK_KEY = 54_821_903;
@@ -33,17 +38,21 @@ export async function runRetentionCleanup(now = new Date()) {
 
     await tx.execute(sql`
       delete from monitor_checks as record
-      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
-        (select settings.data_retention_days from user_settings as settings where settings.user_id = record.user_id),
-        ${DEFAULT_SETTINGS.data.retentionDays}
-      ))
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
+        "dataRetentionDays",
+        "data_retention_days",
+        userSettings.dataRetentionDays,
+        DEFAULT_SETTINGS.data.retentionDays
+      )})
     `);
     await tx.execute(sql`
       delete from monitor_events as record
-      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
-        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
-        ${DEFAULT_SETTINGS.data.eventRetentionDays}
-      ))
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
+        "eventRetentionDays",
+        "event_retention_days",
+        userSettings.eventRetentionDays,
+        DEFAULT_SETTINGS.data.eventRetentionDays
+      )})
         and not (
           record.event_type in ('failure-notification', 'downtime-reminder')
           and exists (
@@ -55,45 +64,55 @@ export async function runRetentionCleanup(now = new Date()) {
     `);
     await tx.execute(sql`
       delete from monitor_diagnostics as record
-      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
-        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
-        ${DEFAULT_SETTINGS.data.eventRetentionDays}
-      ))
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
+        "eventRetentionDays",
+        "event_retention_days",
+        userSettings.eventRetentionDays,
+        DEFAULT_SETTINGS.data.eventRetentionDays
+      )})
     `);
     await tx.execute(sql`
       delete from outage_events as record
-      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
-        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
-        ${DEFAULT_SETTINGS.data.eventRetentionDays}
-      ))
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
+        "eventRetentionDays",
+        "event_retention_days",
+        userSettings.eventRetentionDays,
+        DEFAULT_SETTINGS.data.eventRetentionDays
+      )})
     `);
     await tx.execute(sql`
       delete from monitor_outages as record
       where record.status = 'resolved'
-        and coalesce(record.resolved_at, record.updated_at) < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
-          (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
-          ${DEFAULT_SETTINGS.data.eventRetentionDays}
-        ))
+        and coalesce(record.resolved_at, record.updated_at) < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
+          "eventRetentionDays",
+          "event_retention_days",
+          userSettings.eventRetentionDays,
+          DEFAULT_SETTINGS.data.eventRetentionDays
+        )})
     `);
     await tx.execute(sql`
       delete from delivery_events as record
       where record.status in ('delivered', 'failed')
-        and record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
-          (select settings.delivery_retention_days from user_settings as settings where settings.user_id = record.user_id),
-          ${DEFAULT_SETTINGS.data.deliveryRetentionDays}
-        ))
+        and record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
+          "deliveryRetentionDays",
+          "delivery_retention_days",
+          userSettings.deliveryRetentionDays,
+          DEFAULT_SETTINGS.data.deliveryRetentionDays
+        )})
     `);
     await tx.execute(sql`
       delete from audit_events as record
-      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => coalesce(
-        (select settings.event_retention_days from user_settings as settings where settings.user_id = record.user_id),
-        ${DEFAULT_SETTINGS.data.eventRetentionDays}
-      ))
+      where record.created_at < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
+        "eventRetentionDays",
+        "event_retention_days",
+        userSettings.eventRetentionDays,
+        DEFAULT_SETTINGS.data.eventRetentionDays
+      )})
     `);
     await tx.execute(sql`
       delete from worker_cycle_metrics
       where created_at < (${queryTimestamp})::timestamptz - make_interval(
-        days => greatest(coalesce((select max(data_retention_days) from user_settings), 90), 7)
+        days => greatest(coalesce((${maximumEffectiveDataRetentionDays()}), ${DEFAULT_SETTINGS.data.retentionDays}), 7)
       )
     `);
     await tx
@@ -163,4 +182,57 @@ async function purgeExpiredSoftDeletes(executor: Parameters<Parameters<typeof db
 
 export function getSoftDeleteCutoff(now: Date) {
   return new Date(now.getTime() - SOFT_DELETE_GRACE_MS);
+}
+
+function retentionDaysForRecord(
+  workspaceProperty: string,
+  workspaceColumn: string,
+  legacyColumn: SQLWrapper,
+  fallbackDays: number
+) {
+  const workspaceValue = workspaceRetentionValue(
+    workspaceProperty,
+    workspaceColumn
+  );
+
+  return sql`case
+    when exists (
+      select 1 from ${workspaceSettings}
+      where ${workspaceSettings.workspaceId} = record.workspace_id
+    ) then coalesce(${workspaceValue}, ${fallbackDays})
+    else coalesce((
+      select ${legacyColumn} from ${userSettings}
+      where ${userSettings.userId} = record.user_id
+    ), ${fallbackDays})
+  end`;
+}
+
+function workspaceRetentionValue(
+  workspaceProperty: string,
+  workspaceColumn: string
+) {
+  return sql`(
+    select coalesce(
+      nullif(${workspaceSettings.valuesJson} ->> ${workspaceProperty}, '')::integer,
+      nullif(${workspaceSettings.valuesJson} ->> ${workspaceColumn}, '')::integer
+    )
+    from ${workspaceSettings}
+    where ${workspaceSettings.workspaceId} = record.workspace_id
+  )`;
+}
+
+function maximumEffectiveDataRetentionDays() {
+  return sql`select max(
+    case
+      when ${workspaceSettings.workspaceId} is not null then coalesce(
+        nullif(${workspaceSettings.valuesJson} ->> ${"dataRetentionDays"}, '')::integer,
+        nullif(${workspaceSettings.valuesJson} ->> ${"data_retention_days"}, '')::integer,
+        ${DEFAULT_SETTINGS.data.retentionDays}
+      )
+      else coalesce(${userSettings.dataRetentionDays}, ${DEFAULT_SETTINGS.data.retentionDays})
+    end
+  )
+  from ${userSettings}
+  left join ${workspaceMembers} on ${workspaceMembers.userId} = ${userSettings.userId}
+  left join ${workspaceSettings} on ${workspaceSettings.workspaceId} = ${workspaceMembers.workspaceId}`;
 }

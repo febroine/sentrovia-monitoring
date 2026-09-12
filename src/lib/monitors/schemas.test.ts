@@ -72,11 +72,109 @@ describe("monitor input schema", () => {
     expect(parsed.notificationLanguage).toBe("tr");
   });
 
+  it("keeps every monitor template override optional so blank values inherit workspace templates", () => {
+    const parsed = monitorInputSchema.parse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      emailSubject: "   ",
+      recoveryEmailHeadline: "   ",
+      prolongedDowntimeTelegramTemplate: "   ",
+      sslExpiryEmailBody: "   ",
+    });
+
+    expect(parsed.emailSubject).toBeNull();
+    expect(parsed.recoveryEmailHeadline).toBeNull();
+    expect(parsed.prolongedDowntimeTelegramTemplate).toBeNull();
+    expect(parsed.sslExpiryEmailBody).toBeNull();
+  });
+
+  it("accepts custom subject, headline, body, and Telegram overrides for each event", () => {
+    const parsed = monitorInputSchema.parse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Public API",
+      url: "https://api.example.com",
+      emailSubject: "down subject",
+      emailHeadline: "down headline",
+      emailBody: "down body",
+      telegramTemplate: "down Telegram",
+      recoveryEmailSubject: "recovery subject",
+      recoveryEmailHeadline: "recovery headline",
+      recoveryEmailBody: "recovery body",
+      recoveryTelegramTemplate: "recovery Telegram",
+      slowResponseEmailSubject: "slow subject",
+      slowResponseEmailHeadline: "slow headline",
+      slowResponseEmailBody: "slow body",
+      slowResponseTelegramTemplate: "slow Telegram",
+      prolongedDowntimeEmailSubject: "reminder subject",
+      prolongedDowntimeEmailHeadline: "reminder headline",
+      prolongedDowntimeEmailBody: "reminder body",
+      prolongedDowntimeTelegramTemplate: "reminder Telegram",
+      sslExpiryEmailSubject: "SSL subject",
+      sslExpiryEmailHeadline: "SSL headline",
+      sslExpiryEmailBody: "SSL body",
+      sslExpiryTelegramTemplate: "SSL Telegram",
+    });
+
+    expect(parsed).toMatchObject({
+      emailSubject: "down subject",
+      emailHeadline: "down headline",
+      emailBody: "down body",
+      telegramTemplate: "down Telegram",
+      recoveryEmailSubject: "recovery subject",
+      recoveryEmailHeadline: "recovery headline",
+      recoveryEmailBody: "recovery body",
+      recoveryTelegramTemplate: "recovery Telegram",
+      slowResponseEmailSubject: "slow subject",
+      slowResponseEmailHeadline: "slow headline",
+      slowResponseEmailBody: "slow body",
+      slowResponseTelegramTemplate: "slow Telegram",
+      prolongedDowntimeEmailSubject: "reminder subject",
+      prolongedDowntimeEmailHeadline: "reminder headline",
+      prolongedDowntimeEmailBody: "reminder body",
+      prolongedDowntimeTelegramTemplate: "reminder Telegram",
+      sslExpiryEmailSubject: "SSL subject",
+      sslExpiryEmailHeadline: "SSL headline",
+      sslExpiryEmailBody: "SSL body",
+      sslExpiryTelegramTemplate: "SSL Telegram",
+    });
+  });
+
   it("rejects non-http URLs for HTTP-based monitors", () => {
     const parsed = monitorInputSchema.safeParse({
       ...DEFAULT_MONITOR_FORM,
       name: "Public API",
       url: "ftp://api.example.com/health",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it.each([
+    "https://canary-user:canary-pass@example.com/health",
+    "https://canary-user@example.com/health",
+    "https://:canary-pass@example.com/health",
+    "https://%63anary-user:%63anary-pass@example.com/health",
+  ])("rejects HTTP monitor URLs with embedded credentials: %s", (url) => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      name: "Credential canary",
+      url,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it.each([
+    { monitorType: "http" as const },
+    { monitorType: "keyword" as const, keywordQuery: "ready" },
+    { monitorType: "json" as const, jsonPath: "status", jsonMatchMode: "exists" as const },
+  ])("rejects embedded credentials for $monitorType monitors", (typeFields) => {
+    const parsed = monitorInputSchema.safeParse({
+      ...DEFAULT_MONITOR_FORM,
+      ...typeFields,
+      name: "Credential canary",
+      url: "https://canary-user:canary-pass@example.com/health",
     });
 
     expect(parsed.success).toBe(false);

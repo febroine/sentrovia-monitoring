@@ -1,5 +1,13 @@
 import type { IntervalUnit } from "@/lib/monitors/types";
+import { stripHttpUrlCredentials } from "@/lib/monitors/targets";
 import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
+
+export {
+  buildOutageConfirmationSummary,
+  formatDurationInputMs,
+  formatDurationMs,
+  parseDurationInputSeconds,
+} from "@/lib/monitors/duration";
 
 function serializeMonitorDates<T extends Record<string, unknown>>(monitor: T) {
   return {
@@ -28,6 +36,11 @@ export function serializeMonitorRecord<
   const safeMonitor = { ...serialized };
   delete safeMonitor.databasePasswordEncrypted;
   delete safeMonitor.heartbeatTokenHash;
+  const redactedUrl =
+    (safeMonitor.monitorType === "http" || safeMonitor.monitorType === "keyword" || safeMonitor.monitorType === "json") &&
+    typeof safeMonitor["url"] === "string"
+      ? stripHttpUrlCredentials(safeMonitor["url"])
+      : null;
   if (typeof safeMonitor.heartbeatToken === "string") {
     safeMonitor.heartbeatToken = includeSecrets
       ? decryptValueOrLegacyPlaintext(safeMonitor.heartbeatToken)
@@ -41,6 +54,7 @@ export function serializeMonitorRecord<
 
   return {
     ...safeMonitor,
+    ...(redactedUrl !== null ? { url: redactedUrl } : {}),
     databasePasswordConfigured: Boolean(monitor.databasePasswordEncrypted),
   };
 }

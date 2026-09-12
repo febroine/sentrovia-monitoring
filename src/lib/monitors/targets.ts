@@ -239,10 +239,24 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     responseMaxLength: record.responseMaxLength,
     telegramTemplate: record.telegramTemplate ?? "",
     emailSubject: record.emailSubject ?? "",
+    emailHeadline: record.emailHeadline ?? "",
     emailBody: record.emailBody ?? "",
     slowResponseEmailSubject: record.slowResponseEmailSubject ?? "",
+    slowResponseEmailHeadline: record.slowResponseEmailHeadline ?? "",
     slowResponseEmailBody: record.slowResponseEmailBody ?? "",
     slowResponseTelegramTemplate: record.slowResponseTelegramTemplate ?? "",
+    recoveryEmailSubject: record.recoveryEmailSubject ?? "",
+    recoveryEmailHeadline: record.recoveryEmailHeadline ?? "",
+    recoveryEmailBody: record.recoveryEmailBody ?? "",
+    recoveryTelegramTemplate: record.recoveryTelegramTemplate ?? "",
+    prolongedDowntimeEmailSubject: record.prolongedDowntimeEmailSubject ?? "",
+    prolongedDowntimeEmailHeadline: record.prolongedDowntimeEmailHeadline ?? "",
+    prolongedDowntimeEmailBody: record.prolongedDowntimeEmailBody ?? "",
+    prolongedDowntimeTelegramTemplate: record.prolongedDowntimeTelegramTemplate ?? "",
+    sslExpiryEmailSubject: record.sslExpiryEmailSubject ?? "",
+    sslExpiryEmailHeadline: record.sslExpiryEmailHeadline ?? "",
+    sslExpiryEmailBody: record.sslExpiryEmailBody ?? "",
+    sslExpiryTelegramTemplate: record.sslExpiryTelegramTemplate ?? "",
     sendOutageScreenshot: record.sendOutageScreenshot,
     isActive: record.isActive,
     publishOnStatusPage: record.publishOnStatusPage,
@@ -263,6 +277,25 @@ export function sanitizeMonitorUrlForDisplay(value: string) {
     return url.toString();
   } catch {
     return sanitizePlainMonitorTarget(value);
+  }
+}
+
+export function stripHttpUrlCredentials(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return value;
+    }
+
+    if (!url.username && !url.password) {
+      return value;
+    }
+
+    url.username = "";
+    url.password = "";
+    return url.toString();
+  } catch {
+    return value;
   }
 }
 

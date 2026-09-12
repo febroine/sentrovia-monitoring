@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Globe2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -166,6 +166,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
       <SectionCard
         title="Public status pages"
         description="Publish company-specific or workspace-wide status pages."
+        icon={Globe2}
         action={
           <Button
             type="button"
@@ -173,14 +174,14 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
             onClick={openCreateDialog}
             disabled={!canManage || loading || availableScopes.length === 0}
           >
-            <Plus className="size-4" />
+            <Plus data-icon="inline-start" className="size-4" />
             Add page
           </Button>
         }
       >
-        {loading ? <p className="border-y py-6 text-sm text-muted-foreground">Loading pages...</p> : null}
+        {loading ? <p className="rounded-md bg-muted/20 px-4 py-6 text-sm text-muted-foreground">Loading pages…</p> : null}
         {!loading && error ? (
-          <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">
+          <div className="rounded-md bg-destructive/5 px-4 py-2 text-sm text-destructive">
             {error}
             <Button type="button" variant="link" size="sm" className="ml-2 h-auto p-0" onClick={() => void loadData()}>
               Retry
@@ -188,10 +189,10 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
           </div>
         ) : null}
         {!loading && !error && pages.length === 0 ? (
-          <p className="border-y py-6 text-sm text-muted-foreground">No public status pages</p>
+          <p className="rounded-md bg-muted/20 px-4 py-6 text-sm text-muted-foreground">No public status pages</p>
         ) : null}
         {!loading && !error && pages.length > 0 ? (
-          <div className="divide-y border-y">
+          <div className="space-y-1 rounded-md bg-muted/20 px-4">
             {pages.map((page) => (
               <PublicStatusPageRow
                 key={page.id}
@@ -215,7 +216,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
             <DialogDescription>Choose the scope and public URL for this page.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-1">
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label>Company scope</Label>
               <Select
                 value={draft.companyId}
@@ -234,7 +235,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="public-status-slug">Status page slug</Label>
               <Input
                 id="public-status-slug"
@@ -247,7 +248,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
               />
               <p className="text-xs text-muted-foreground">Public URL: /status/{draft.slug || "company-status"}</p>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="public-status-title">Page title</Label>
               <Input
                 id="public-status-title"
@@ -257,7 +258,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
                 maxLength={160}
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="public-status-summary">Summary</Label>
               <Textarea
                 id="public-status-summary"
@@ -268,7 +269,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
                 rows={3}
               />
             </div>
-            <div className="flex items-center justify-between gap-4 border-y py-3">
+            <div className="flex items-center justify-between gap-4 rounded-md bg-muted/20 px-3 py-3">
               <div>
                 <p className="text-sm font-medium">Published</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">The public URL responds only while this is enabled.</p>
@@ -282,7 +283,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
           </div>
           <DialogFooter showCloseButton>
             <Button type="button" onClick={() => void savePage()} disabled={!canManage || saving || draft.slug.length < 3}>
-              {saving ? "Saving..." : editingPage ? "Save changes" : "Create page"}
+              {saving ? "Saving…" : editingPage ? "Save changes" : "Create page"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -298,7 +299,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
           </DialogHeader>
           <DialogFooter showCloseButton>
             <Button type="button" variant="destructive" onClick={() => void deletePage()} disabled={!canManage || saving}>
-              {saving ? "Deleting..." : "Delete page"}
+              {saving ? "Deleting…" : "Delete page"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -10,16 +10,36 @@ import {
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationEmailHtml } from "@/worker/notification-email";
 
+const HISTORICAL_EMAIL_DEFAULTS: Record<string, readonly string[]> = {
+  defaultEmailBodyTemplate: [
+    "Monitor: {domain} ({url_link}) is now {event_state}\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    "Monitör: {domain} ({url_link}) şu anda {event_state}\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+  ],
+  slowResponseEmailBodyTemplate: [
+    "Monitor: {domain} ({url_link}) is online but responding slowly\nTime: {checked_at_local}\nResponse time: {latency_ms} ms\nSlow threshold: {slow_threshold_ms} ms\nHard timeout: {hard_timeout_ms} ms\nStatus: {status_code} - {status_label}\nOrganization: {organization}",
+    "Monitör: {domain} ({url_link}) erişilebilir ancak yavaş yanıt veriyor\nZaman: {checked_at_local}\nYanıt süresi: {latency_ms} ms\nYavaşlık eşiği: {slow_threshold_ms} ms\nKesin hata zaman aşımı: {hard_timeout_ms} ms\nDurum: {status_code} - {status_label}\nOrganizasyon: {organization}",
+  ],
+  recoveryEmailBodyTemplate: [
+    "Monitor: {domain} ({url_link}) recovered\nTime: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    "Monitör: {domain} ({url_link}) düzeldi\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+  ],
+  prolongedDowntimeEmailBodyTemplate: [
+    "Monitor: {domain} ({url_link}) has been down for {downtime_duration}\nStarted at: {downtime_started_at_local}\nLast checked: {checked_at_local}\nStatus: {status_code} - {status_label}\nRoot cause: {rca_summary}\nDetails: {message}\nOrganization: {organization}",
+    "Monitör: {domain} ({url_link}) {downtime_duration} süredir down\nBaşlangıç: {downtime_started_at_local}\nSon kontrol: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+  ],
+};
+
 const LEGACY_DEFAULT_EMAIL_SUBJECTS = new Set([
   ...Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
     normalizeForComparison(templates.defaultEmailSubjectTemplate)
   ),
 ]);
-const LEGACY_DEFAULT_EMAIL_BODIES = new Set(
-  Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
+const LEGACY_DEFAULT_EMAIL_BODIES = new Set([
+  ...Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
     normalizeForComparison(templates.defaultEmailBodyTemplate)
-  )
-);
+  ),
+  ...HISTORICAL_EMAIL_DEFAULTS.defaultEmailBodyTemplate.map(normalizeForComparison),
+]);
 const LEGACY_DEFAULT_TELEGRAM_TEMPLATES = new Set([
   ...Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).map((templates) =>
     normalizeForComparison(templates.defaultTelegramTemplate)
@@ -33,8 +53,10 @@ const NO_LEGACY_TEMPLATES = new Set<string>();
 export function renderNotificationTemplates(
   context: NotificationContext,
   settings: SettingsPayload,
-  appUrl: string
+  _appUrl: string
 ) {
+  // Keep the public signature stable, but notification emails intentionally never link to the app.
+  void _appUrl;
   const statusMeta = getHttpStatusMeta(context.result.statusCode);
   const language = resolveNotificationLanguage(context.monitor.notificationLanguage, settings.notifications.notificationLanguage);
   const domain = getDomain(context.monitor.url);
@@ -53,12 +75,14 @@ export function renderNotificationTemplates(
   const message = localizeMessage(language, context);
   const rcaTitle = localizeRcaTitle(language, context);
   const rcaSummary = localizeRcaSummary(language, context);
+  const rcaDetails = localizeRcaDetails(language, context);
   const htmlUrlPlaceholder = "__SENTROVIA_URL_LINK__";
   const htmlDashboardPlaceholder = "__SENTROVIA_DASHBOARD_LINK__";
-  const links = buildNotificationLinks(context, appUrl, displayTarget, domain);
+  const targetHref = normalizeHttpHref(displayTarget);
+  const targetLink = buildSafeAnchor(targetHref, displayTarget);
+  const emailPresentation = resolveEmailPresentation(context, language);
 
   const textReplacements = buildTemplateReplacements({
-    appUrl,
     context,
     displayTarget,
     domain,
@@ -69,6 +93,7 @@ export function renderNotificationTemplates(
     localTime,
     message,
     organization,
+    rcaDetails,
     rcaSummary,
     rcaTitle,
     settings,
@@ -92,19 +117,26 @@ export function renderNotificationTemplates(
     htmlBody: renderNotificationEmailHtml({
       body: renderedHtmlSource,
       htmlFragments: {
-        [htmlUrlPlaceholder]: links.monitor,
-        [htmlDashboardPlaceholder]: links.dashboard,
+        [htmlUrlPlaceholder]: targetLink,
+        [htmlDashboardPlaceholder]: targetLink,
       },
       brandName: settings.notifications.notificationEmailBrandName,
       footerText: settings.notifications.notificationEmailFooterText,
-      monitorName: context.monitor.name,
       monitorTarget: displayTarget,
       eventState,
+      headline: applyTemplate(
+        normalizeTemplate(resolveEmailHeadlineTemplate(context, settings, language, emailPresentation.headline)),
+        textReplacements
+      ),
+      lead: message,
+      contentTitle: emailPresentation.contentTitle,
+      primaryAction: targetHref
+        ? { href: targetHref, label: emailPresentation.actionLabel }
+        : null,
       checkedAt: localTime,
       status: `${statusCode} · ${statusLabel}`,
       duration: context.result.latencyMs === null ? "N/A" : `${context.result.latencyMs} ms`,
       durationKind: context.result.statusCode !== null || context.result.ok ? "response" : "check",
-      hardTimeout: `${context.monitor.timeout} ms`,
       language,
       tone: resolveEmailTone(context),
     }),
@@ -112,22 +144,7 @@ export function renderNotificationTemplates(
   };
 }
 
-function buildNotificationLinks(
-  context: NotificationContext,
-  appUrl: string,
-  displayTarget: string,
-  domain: string
-) {
-  return {
-    monitor: context.monitor.monitorType === "http"
-      ? buildSafeAnchor(displayTarget, displayTarget)
-      : escapeHtml(displayTarget),
-    dashboard: buildSafeAnchor(buildAppRouteUrl(appUrl, "/monitoring"), domain),
-  };
-}
-
 type TemplateReplacementInput = {
-  appUrl: string;
   context: NotificationContext;
   displayTarget: string;
   domain: string;
@@ -139,6 +156,7 @@ type TemplateReplacementInput = {
   message: string;
   organization: string;
   rcaSummary: string;
+  rcaDetails: string;
   rcaTitle: string;
   settings: SettingsPayload;
   statusCode: string;
@@ -153,7 +171,7 @@ function buildTemplateReplacements(input: TemplateReplacementInput) {
     "{url}": input.displayTarget,
     "{url_link}": input.displayTarget,
     "{domain}": input.domain,
-    "{dashboard_link}": `${input.appUrl}/monitoring`,
+    "{dashboard_link}": input.displayTarget,
     "{status_code}": input.statusCode,
     "{status_label}": input.statusLabel,
     "{latency_ms}": String(context.result.latencyMs ?? "N/A"),
@@ -177,6 +195,7 @@ function buildTemplateReplacements(input: TemplateReplacementInput) {
     "{rca_type}": context.rca.type,
     "{rca_title}": input.rcaTitle,
     "{rca_summary}": input.rcaSummary,
+    "{rca_details}": input.rcaDetails,
     "{organization}": input.organization,
   };
 }
@@ -190,9 +209,17 @@ function resolveNotificationLanguage(
 
 type NotificationTemplateKey =
   | "defaultEmailSubjectTemplate"
+  | "defaultEmailHeadlineTemplate"
   | "recoveryEmailSubjectTemplate"
+  | "recoveryEmailHeadlineTemplate"
   | "slowResponseEmailSubjectTemplate"
+  | "slowResponseEmailHeadlineTemplate"
   | "prolongedDowntimeEmailSubjectTemplate"
+  | "prolongedDowntimeEmailHeadlineTemplate"
+  | "sslExpiryEmailSubjectTemplate"
+  | "sslExpiryEmailHeadlineTemplate"
+  | "sslExpiryEmailBodyTemplate"
+  | "sslExpiryTelegramTemplate"
   | "defaultEmailBodyTemplate"
   | "recoveryEmailBodyTemplate"
   | "slowResponseEmailBodyTemplate"
@@ -202,13 +229,39 @@ type NotificationTemplateKey =
   | "slowResponseTelegramTemplate"
   | "prolongedDowntimeTelegramTemplate";
 
+function resolveEmailHeadlineTemplate(
+  context: NotificationContext,
+  settings: SettingsPayload,
+  language: NotificationLanguage,
+  generatedFallback: string
+) {
+  const keysByKind: Partial<Record<NotificationContext["kind"], NotificationTemplateKey>> = {
+    failure: "defaultEmailHeadlineTemplate",
+    recovery: "recoveryEmailHeadlineTemplate",
+    latency: "slowResponseEmailHeadlineTemplate",
+    "ssl-expiry": "sslExpiryEmailHeadlineTemplate",
+    "downtime-reminder": "prolongedDowntimeEmailHeadlineTemplate",
+  };
+  const key = keysByKind[context.kind];
+  const workspaceFallback = key
+    ? resolveLanguageDefault(settings.notifications[key], key, language)
+    : generatedFallback;
+  const monitorOverride = resolveMonitorEmailHeadline(context);
+
+  return monitorOverride
+    ? resolveMonitorTemplate(monitorOverride, workspaceFallback, NO_LEGACY_TEMPLATES)
+    : workspaceFallback;
+}
+
 type EventTemplateSources = {
   defaultKey: NotificationTemplateKey;
   recoveryKey: NotificationTemplateKey;
   latencyKey: NotificationTemplateKey;
   reminderKey: NotificationTemplateKey;
   monitorDefault: string | null;
+  monitorRecovery: string | null;
   monitorLatency: string | null;
+  monitorReminder: string | null;
   defaultLegacy: Set<string>;
 };
 
@@ -217,13 +270,24 @@ function resolveSubjectTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
+  if (context.kind === "ssl-expiry") {
+    const fallback = resolveLanguageDefault(
+      settings.notifications.sslExpiryEmailSubjectTemplate,
+      "sslExpiryEmailSubjectTemplate",
+      language
+    );
+    return resolveMonitorTemplate(context.monitor.sslExpiryEmailSubject, fallback, NO_LEGACY_TEMPLATES);
+  }
+
   return resolveEventTemplate(context, settings, language, {
     defaultKey: "defaultEmailSubjectTemplate",
     recoveryKey: "recoveryEmailSubjectTemplate",
     latencyKey: "slowResponseEmailSubjectTemplate",
     reminderKey: "prolongedDowntimeEmailSubjectTemplate",
     monitorDefault: context.monitor.emailSubject,
+    monitorRecovery: context.monitor.recoveryEmailSubject,
     monitorLatency: context.monitor.slowResponseEmailSubject,
+    monitorReminder: context.monitor.prolongedDowntimeEmailSubject,
     defaultLegacy: LEGACY_DEFAULT_EMAIL_SUBJECTS,
   });
 }
@@ -233,13 +297,24 @@ function resolveEmailBodyTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
+  if (context.kind === "ssl-expiry") {
+    const fallback = resolveLanguageDefault(
+      settings.notifications.sslExpiryEmailBodyTemplate,
+      "sslExpiryEmailBodyTemplate",
+      language
+    );
+    return resolveMonitorTemplate(context.monitor.sslExpiryEmailBody, fallback, NO_LEGACY_TEMPLATES);
+  }
+
   return resolveEventTemplate(context, settings, language, {
     defaultKey: "defaultEmailBodyTemplate",
     recoveryKey: "recoveryEmailBodyTemplate",
     latencyKey: "slowResponseEmailBodyTemplate",
     reminderKey: "prolongedDowntimeEmailBodyTemplate",
     monitorDefault: context.monitor.emailBody,
+    monitorRecovery: context.monitor.recoveryEmailBody,
     monitorLatency: context.monitor.slowResponseEmailBody,
+    monitorReminder: context.monitor.prolongedDowntimeEmailBody,
     defaultLegacy: LEGACY_DEFAULT_EMAIL_BODIES,
   });
 }
@@ -249,13 +324,24 @@ function resolveTelegramTemplate(
   settings: SettingsPayload,
   language: NotificationLanguage
 ) {
+  if (context.kind === "ssl-expiry") {
+    const fallback = resolveLanguageDefault(
+      settings.notifications.sslExpiryTelegramTemplate,
+      "sslExpiryTelegramTemplate",
+      language
+    );
+    return resolveMonitorTemplate(context.monitor.sslExpiryTelegramTemplate, fallback, NO_LEGACY_TEMPLATES);
+  }
+
   return resolveEventTemplate(context, settings, language, {
     defaultKey: "defaultTelegramTemplate",
     recoveryKey: "recoveryTelegramTemplate",
     latencyKey: "slowResponseTelegramTemplate",
     reminderKey: "prolongedDowntimeTelegramTemplate",
     monitorDefault: context.monitor.telegramTemplate,
+    monitorRecovery: context.monitor.recoveryTelegramTemplate,
     monitorLatency: context.monitor.slowResponseTelegramTemplate,
+    monitorReminder: context.monitor.prolongedDowntimeTelegramTemplate,
     defaultLegacy: LEGACY_DEFAULT_TELEGRAM_TEMPLATES,
   });
 }
@@ -276,16 +362,30 @@ function resolveEventTemplate(
   }
 
   if (context.kind === "downtime-reminder") {
-    return resolveLanguageDefault(
+    const fallback = resolveLanguageDefault(
       settings.notifications[sources.reminderKey],
       sources.reminderKey,
       language
     );
+    return resolveMonitorTemplate(sources.monitorReminder, fallback, NO_LEGACY_TEMPLATES);
   }
 
   const key = context.kind === "recovery" ? sources.recoveryKey : sources.defaultKey;
   const fallback = resolveLanguageDefault(settings.notifications[key], key, language);
-  return resolveMonitorTemplate(sources.monitorDefault, fallback, sources.defaultLegacy);
+  const monitorTemplate = context.kind === "recovery" ? sources.monitorRecovery : sources.monitorDefault;
+  return resolveMonitorTemplate(
+    monitorTemplate,
+    fallback,
+    context.kind === "recovery" ? NO_LEGACY_TEMPLATES : sources.defaultLegacy
+  );
+}
+
+function resolveMonitorEmailHeadline(context: NotificationContext) {
+  if (context.kind === "recovery") return context.monitor.recoveryEmailHeadline;
+  if (context.kind === "latency") return context.monitor.slowResponseEmailHeadline;
+  if (context.kind === "downtime-reminder") return context.monitor.prolongedDowntimeEmailHeadline;
+  if (context.kind === "ssl-expiry") return context.monitor.sslExpiryEmailHeadline;
+  return context.monitor.emailHeadline;
 }
 
 
@@ -368,9 +468,22 @@ const TURKISH_FAILURE_REASON_LABELS: Record<string, string> = {
   configuration: "yapılandırma",
 };
 
+const ENGLISH_FAILURE_REASON_LABELS: Record<string, string> = {
+  timeout: "Request timed out",
+  http_status: "Unexpected HTTP status",
+  dns: "DNS resolution failed",
+  tls: "TLS certificate error",
+  connection: "Connection failed",
+  assertion: "Content check failed",
+  redirect: "Redirect failed",
+  database: "Database connection failed",
+  network: "Network error",
+  configuration: "Configuration error",
+};
+
 function localizeFailureReason(language: NotificationLanguage, reason: string | null | undefined) {
   if (language !== "tr") {
-    return reason ?? "none";
+    return reason ? ENGLISH_FAILURE_REASON_LABELS[reason] ?? reason : "None";
   }
 
   return reason ? TURKISH_FAILURE_REASON_LABELS[reason] ?? "yok" : "yok";
@@ -541,6 +654,28 @@ function localizeRcaSummary(language: NotificationLanguage, context: Notificatio
     : "Geçerli bir uygulama yanıtı alınmadan önce ağ katmanında hata oluştu.";
 }
 
+const TURKISH_RCA_DETAILS: Record<string, string> = {
+  dns: "Alan adını, DNS A/AAAA kayıtlarını, nameserver sağlığını ve son DNS değişikliklerinin yayılımını kontrol edin.",
+  timeout: "Sunucu yanıt süresini, bağımlılıkları, yavaş veritabanı sorgularını ve yapılandırılan timeout değerini inceleyin.",
+  "connection-refused": "Hedef servisin çalıştığını, doğru portu dinlediğini ve host güvenlik duvarının bağlantıyı reddetmediğini doğrulayın.",
+  ssl: "Sertifika geçerlilik tarihlerini, zincir bütünlüğünü, alan adı eşleşmesini ve TLS sonlandırma ayarlarını inceleyin.",
+  "database-auth": "Kullanıcı adı, parola, veritabanı rol izinleri ve yakın zamanda yapılan kimlik bilgisi değişikliklerini doğrulayın.",
+  database: "Veritabanı erişilebilirliğini, bağlantı limitlerini, portu, SSL gereksinimlerini ve istemci oturumu kabul durumunu kontrol edin.",
+  "http-server": "Uygulama loglarını, son dağıtımları, bağımlılık sağlığını, veritabanı bağlantısını ve ağ geçidi hatalarını inceleyin.",
+  "http-client": "URL yolunu, kimlik doğrulama ve yetkilendirme kurallarını, istek yöntemini, yönlendirmeleri ve gerekli header değerlerini inceleyin.",
+  redirect: "Yönlendirme hedeflerini, HTTPS zorlamasını, olası döngüleri ve monitor yönlendirme politikasını kontrol edin.",
+  network: "Dış bağlantıyı, yönlendirmeyi, güvenlik gruplarını, yük dengeleyiciyi ve proxy davranışını inceleyin.",
+};
+
+function localizeRcaDetails(language: NotificationLanguage, context: NotificationContext) {
+  if (language !== "tr") {
+    return context.rca.details;
+  }
+
+  return TURKISH_RCA_DETAILS[context.rca.type]
+    ?? "İzlenen hedefin bağlantı, yapılandırma ve bağımlılık durumunu inceleyin.";
+}
+
 
 function resolveLanguageDefault(
   template: string,
@@ -550,6 +685,8 @@ function resolveLanguageDefault(
   const normalized = normalizeForComparison(template);
   const isDefaultTemplate = Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).some(
     (templates) => normalizeForComparison(templates[key]) === normalized
+  ) || (HISTORICAL_EMAIL_DEFAULTS[key] ?? []).some(
+    (template) => normalizeForComparison(template) === normalized
   );
 
   return isDefaultTemplate ? getDefaultNotificationTemplates(language)[key] : template;
@@ -578,16 +715,7 @@ function buildSafeAnchor(href: string | null, label: string) {
     return escapeHtml(label);
   }
 
-  return `<a href="${escapeHtml(safeHref)}">${escapeHtml(label)}</a>`;
-}
-
-function buildAppRouteUrl(appUrl: string, route: string) {
-  const safeBaseUrl = normalizeHttpHref(appUrl);
-  if (!safeBaseUrl) {
-    return null;
-  }
-
-  return `${safeBaseUrl.replace(/\/+$/, "")}${route}`;
+  return `<a class="email-link" href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer" style="color:#0f766e;text-decoration:underline;">${escapeHtml(label)}</a>`;
 }
 
 function normalizeHttpHref(value: string) {
@@ -605,6 +733,54 @@ function resolveEmailTone(context: NotificationContext) {
   return "critical" as const;
 }
 
+function resolveEmailPresentation(context: NotificationContext, language: NotificationLanguage) {
+  const name = context.monitor.name;
+
+  if (language === "tr") {
+    if (context.kind === "recovery") {
+      return { headline: `${name} yeniden erişilebilir`, contentTitle: "İyileşme ayrıntıları", actionLabel: "Siteyi kontrol et" };
+    }
+    if (context.kind === "latency") {
+      return { headline: `${name} yavaş yanıt veriyor`, contentTitle: "Performans ayrıntıları", actionLabel: "Siteyi kontrol et" };
+    }
+    if (context.kind === "ssl-expiry") {
+      return { headline: `${name} sertifikasının süresi yaklaşıyor`, contentTitle: "Sertifika ayrıntıları", actionLabel: "Sertifikayı kontrol et" };
+    }
+    if (context.kind === "downtime-reminder") {
+      return { headline: `${name} hâlâ erişilemiyor`, contentTitle: "Devam eden kesinti", actionLabel: "Siteyi kontrol et" };
+    }
+    if (context.kind === "status-change") {
+      return { headline: `${name} durum değiştirdi`, contentTitle: "Durum değişikliği", actionLabel: "Siteyi kontrol et" };
+    }
+    return {
+      headline: context.result.ok ? `${name} erişilebilir` : `${name} erişilemiyor`,
+      contentTitle: context.result.ok ? "Kontrol ayrıntıları" : "Ne oldu?",
+      actionLabel: "Siteyi kontrol et",
+    };
+  }
+
+  if (context.kind === "recovery") {
+    return { headline: `${name} is back online`, contentTitle: "Recovery details", actionLabel: "Check site" };
+  }
+  if (context.kind === "latency") {
+    return { headline: `${name} is responding slowly`, contentTitle: "Performance details", actionLabel: "Check site" };
+  }
+  if (context.kind === "ssl-expiry") {
+    return { headline: `${name} certificate expires soon`, contentTitle: "Certificate details", actionLabel: "Check certificate" };
+  }
+  if (context.kind === "downtime-reminder") {
+    return { headline: `${name} is still down`, contentTitle: "Ongoing incident", actionLabel: "Check site" };
+  }
+  if (context.kind === "status-change") {
+    return { headline: `${name} status changed`, contentTitle: "Status change", actionLabel: "Check site" };
+  }
+  return {
+    headline: context.result.ok ? `${name} is available` : `${name} is down`,
+    contentTitle: context.result.ok ? "Check details" : "What happened",
+    actionLabel: "Check site",
+  };
+}
+
 function normalizeTemplate(template: string) {
   return template.replaceAll("\r\n", "\n").replaceAll("\\n", "\n");
 }
@@ -614,7 +790,9 @@ function normalizeForComparison(template: string | null) {
 }
 
 function toPlainText(text: string) {
-  return text.replaceAll("**", "").replaceAll("_", "");
+  return text
+    .replaceAll("**", "")
+    .replace(/(^|[\s([{])_([^\r\n]+?)_(?=$|[\s)\]},.!?:;])/g, "$1$2");
 }
 
 function getDomain(url: string) {

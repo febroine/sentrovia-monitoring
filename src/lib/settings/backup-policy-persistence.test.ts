@@ -12,7 +12,7 @@ import { settingsSchema } from "@/lib/settings/schemas";
 import { upsertSettings } from "@/lib/settings/service";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 
-const backupProperties = ["autoBackupEnabled", "backupWindow", "backupRetentionCount"];
+const backupProperties = ["autoBackupEnabled", "backupWindow", "backupRetentionCount", "backupTimeZone"];
 
 function persistenceFixture(hasPersonalSettings: boolean) {
   const personalWrite = vi.fn();
@@ -75,7 +75,13 @@ describe("backup policy persistence authorization", () => {
     const query = new PgDialect().sqlToQuery(update);
     expect(query.sql).toBe('coalesce("workspace_settings"."values_json", \'{}\'::jsonb) || $1::jsonb');
     const patch = JSON.parse(query.params[0] as string);
-    for (const property of [...backupProperties, "auto_backup_enabled", "backup_window", "backup_retention_count"]) {
+    for (const property of [
+      ...backupProperties,
+      "auto_backup_enabled",
+      "backup_window",
+      "backup_retention_count",
+      "backup_time_zone",
+    ]) {
       expect(patch).not.toHaveProperty(property);
     }
   });
@@ -83,9 +89,18 @@ describe("backup policy persistence authorization", () => {
   it("preserves existing trusted admin and restore callers' ability to write backup policy", async () => {
     const fixture = persistenceFixture(true);
     await upsertSettings("admin", input(), fixture.executor, true, "workspace");
-    const expected = { autoBackupEnabled: false, backupWindow: "12:00", backupRetentionCount: 2 };
-    expect(fixture.personalWrite.mock.calls[0][0]).toMatchObject(expected);
-    expect(fixture.sharedInsert.mock.calls[0][0].valuesJson).toMatchObject(expected);
-    expect(fixture.sharedConflict.mock.calls[0][0].set.valuesJson).toMatchObject(expected);
+    const expectedLegacyPolicy = {
+      autoBackupEnabled: false,
+      backupWindow: "12:00",
+      backupRetentionCount: 2,
+    };
+    const expectedWorkspacePolicy = {
+      ...expectedLegacyPolicy,
+      backupTimeZone: DEFAULT_SETTINGS.appearance.timeZone,
+    };
+    expect(fixture.personalWrite.mock.calls[0][0]).toMatchObject(expectedLegacyPolicy);
+    expect(fixture.personalWrite.mock.calls[0][0]).not.toHaveProperty("backupTimeZone");
+    expect(fixture.sharedInsert.mock.calls[0][0].valuesJson).toMatchObject(expectedWorkspacePolicy);
+    expect(fixture.sharedConflict.mock.calls[0][0].set.valuesJson).toMatchObject(expectedWorkspacePolicy);
   });
 });

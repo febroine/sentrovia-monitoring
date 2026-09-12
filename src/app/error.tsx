@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 export default function ApplicationError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
     <main className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center px-5 py-12">
-      <div className="w-full border-y py-8">
+      <div className="w-full rounded-lg bg-card p-6 sm:p-8">
         <h1 className="text-xl font-semibold tracking-tight">This page could not be loaded</h1>
         <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
           Check the database and application services, then try the request again.

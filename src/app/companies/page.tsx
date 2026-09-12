@@ -22,11 +22,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { DEFAULT_COMPANY_FORM, type CompanyPayload, type CompanyRecord } from "@/lib/companies/types";
 import type { MonitorRecord } from "@/lib/monitors/types";
+import { formatPanelDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { parseSoftDeleteUndoDeadline } from "@/lib/soft-delete";
 import { useCompaniesStore } from "@/stores/use-companies-store";
 
 type PendingCompanyRestore = { ids: string[]; expiresAt: number };
+type CompanyDeleteRequest = { ids: string[]; names: string[]; monitorsCount: number };
 
 export default function CompaniesPage() {
   const { companies, loading, saving, error, loadCompanies, createCompany, updateCompany, deleteCompany, bulkAction, restoreCompanies } =
@@ -39,6 +41,7 @@ export default function CompaniesPage() {
   const [detailCompany, setDetailCompany] = useState<CompanyRecord | null>(null);
   const [monitors, setMonitors] = useState<MonitorRecord[]>([]);
   const [pendingRestores, setPendingRestores] = useState<PendingCompanyRestore[]>([]);
+  const [deleteRequest, setDeleteRequest] = useState<CompanyDeleteRequest | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -123,11 +126,35 @@ export default function CompaniesPage() {
   async function handleDeleteCompany(id: string) {
     const result = await deleteCompany(id);
     if (result) {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
       setPendingRestores((current) => [
         ...current,
         { ids: result.ids, expiresAt: parseSoftDeleteUndoDeadline(result.undoUntil) },
       ]);
     }
+  }
+
+  function requestCompanyDeletion(targets: CompanyRecord[]) {
+    setDeleteRequest({
+      ids: targets.map((company) => company.id),
+      names: targets.map((company) => company.name),
+      monitorsCount: targets.reduce((sum, company) => sum + company.monitorsCount, 0),
+    });
+  }
+
+  async function confirmCompanyDeletion() {
+    if (!deleteRequest) return;
+
+    if (deleteRequest.ids.length === 1) {
+      await handleDeleteCompany(deleteRequest.ids[0]);
+    } else {
+      await handleBulk("delete");
+    }
+    setDeleteRequest(null);
   }
 
   async function undoCompanyDeletion() {
@@ -191,39 +218,39 @@ export default function CompaniesPage() {
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search companies" className="pl-9" />
           </div>
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus data-icon="inline-start" className="h-4 w-4" />
             Add company
           </Button>
         </div>
       </header>
 
-      {error ? <div className="border-l-2 border-destructive px-4 py-2 text-sm text-destructive">{error}</div> : null}
+      {error ? <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
 
       {pendingRestores.length > 0 ? (
-        <div className="flex flex-col gap-3 border-l-2 border-emerald-500 px-4 py-2 sm:flex-row sm:items-center sm:justify-between" role="status">
+        <div className="flex flex-col gap-3 rounded-md bg-emerald-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
           <div>
             <p className="text-sm font-medium">{pendingRestores.flatMap((item) => item.ids).length} compan{pendingRestores.flatMap((item) => item.ids).length === 1 ? "y" : "ies"} deleted</p>
             <p className="mt-1 text-xs text-muted-foreground">Company assignments remain recoverable for 60 seconds.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => void undoCompanyDeletion()} disabled={saving}>
-            <Undo2 className="mr-2 h-4 w-4" /> Restore
+            <Undo2 data-icon="inline-start" className="h-4 w-4" /> Restore
           </Button>
         </div>
       ) : null}
 
-      <p className="border-y py-3 text-sm text-muted-foreground">
+      <p className="rounded-md bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
         {totals.companies} compan{totals.companies === 1 ? "y" : "ies"} · {totals.active} active · {totals.monitors} assigned monitor{totals.monitors === 1 ? "" : "s"}
       </p>
 
       {selectedIds.size > 0 ? (
-        <div className="flex flex-col gap-3 border-l-2 border-primary px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-md bg-primary/10 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-medium">{selectedIds.size} compan{selectedIds.size === 1 ? "y" : "ies"} selected</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => void handleBulk("activate")} disabled={saving}>Activate</Button>
             <Button variant="outline" size="sm" onClick={() => void handleBulk("deactivate")} disabled={saving}>Deactivate</Button>
-            <Button variant="destructive" size="sm" onClick={() => void handleBulk("delete")} disabled={saving}>Delete</Button>
+            <Button variant="destructive" size="sm" onClick={() => requestCompanyDeletion(companies.filter((company) => selectedIds.has(company.id)))} disabled={saving}>Delete</Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Clear</Button>
           </div>
         </div>
@@ -239,7 +266,7 @@ export default function CompaniesPage() {
                     type="button"
                     onClick={toggleAllFiltered}
                     aria-label={allFilteredSelected ? "Clear visible company selection" : "Select all visible companies"}
-                    className="flex items-center justify-center text-muted-foreground"
+                    className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
                     {allFilteredSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
@@ -248,28 +275,34 @@ export default function CompaniesPage() {
                 <TableHead>Monitors</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="w-[110px] pr-5 text-right">Actions</TableHead>
+                <TableHead className="w-[160px] pr-5 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Loading companies...</TableCell></TableRow> : null}
+              {loading ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Loading companies…</TableCell></TableRow> : null}
               {!loading && filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6}>
                     <EmptyState
                       title={search.trim() ? "No companies match this search" : "No companies yet"}
+                      description={search.trim() ? "Clear the search to return to every company." : "Create a company when monitors need shared ownership or notification recipients."}
+                      action={search.trim() ? (
+                        <Button variant="outline" size="sm" onClick={() => setSearch("")}>Clear search</Button>
+                      ) : (
+                        <Button size="sm" onClick={() => setCreateOpen(true)}>Add first company</Button>
+                      )}
                     />
                   </TableCell>
                 </TableRow>
               ) : null}
               {!loading ? filtered.map((company) => (
-                <TableRow key={company.id} className={cn(selectedIds.has(company.id) && "bg-primary/5", "cursor-pointer")} onClick={() => setDetailCompany(company)}>
-                  <TableCell className="pl-5" onClick={(event) => event.stopPropagation()}>
+                <TableRow key={company.id} className={cn(selectedIds.has(company.id) && "bg-primary/5")}>
+                  <TableCell className="pl-5">
                     <button
                       type="button"
                       onClick={() => toggleSelect(company.id)}
                       aria-label={selectedIds.has(company.id) ? `Deselect ${company.name}` : `Select ${company.name}`}
-                      className="flex items-center justify-center text-muted-foreground transition hover:text-foreground"
+                      className="flex items-center justify-center rounded-sm text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       {selectedIds.has(company.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                     </button>
@@ -286,19 +319,17 @@ export default function CompaniesPage() {
                       <p className="text-xs text-muted-foreground">{company.activeMonitors} active</p>
                     </div>
                   </TableCell>
-                  <TableCell><Badge variant="outline" className={company.isActive ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400" : "border-destructive/30 text-destructive"}>{company.isActive ? "Active" : "Inactive"}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{new Date(company.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell className="pr-5" onClick={(event) => event.stopPropagation()}>
+                  <TableCell><Badge variant="outline" className={company.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive"}>{company.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatPanelDateTime(company.createdAt, { dateStyle: "short" })}</TableCell>
+                  <TableCell className="pr-5">
                     <div className="flex justify-end gap-1.5">
+                      <Button variant="ghost" size="sm" onClick={() => setDetailCompany(company)}>View</Button>
                       <Button variant="ghost" size="icon-sm" aria-label={`Edit ${company.name}`} title="Edit company" onClick={() => openEdit(company)}><Pencil className="h-4 w-4" /></Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         aria-label={`Delete ${company.name}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleDeleteCompany(company.id);
-                        }}
+                        onClick={() => requestCompanyDeletion([company])}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -325,6 +356,25 @@ export default function CompaniesPage() {
 
       <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} onOpenChange={(open) => { setCreateOpen(open); if (!open) setForm(DEFAULT_COMPANY_FORM); }} onFormChange={setForm} onSubmit={handleCreate} />
       <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} onOpenChange={(open) => { if (!open) { setEditing(null); setForm(DEFAULT_COMPANY_FORM); } }} onFormChange={setForm} onSubmit={handleUpdate} />
+
+      <Dialog open={Boolean(deleteRequest)} onOpenChange={(open) => !open && setDeleteRequest(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete {deleteRequest?.ids.length === 1 ? deleteRequest.names[0] : `${deleteRequest?.ids.length ?? 0} companies`}?</DialogTitle>
+            <DialogDescription>
+              {deleteRequest?.monitorsCount
+                ? `${deleteRequest.monitorsCount} assigned monitor${deleteRequest.monitorsCount === 1 ? "" : "s"} will become unassigned. You can restore the deletion for 60 seconds.`
+                : "You can restore the deletion for 60 seconds."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleteRequest(null)}>Cancel</Button>
+            <Button type="button" variant="destructive" disabled={saving} onClick={() => void confirmCompanyDeletion()}>
+              {saving ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -375,7 +425,7 @@ function CompanyDialog({
               placeholder="Production services"
             />
           </Field>
-          <div className="border-t pt-4">
+          <div className="rounded-md bg-muted/20 p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium">Notification recipients</p>
@@ -423,7 +473,7 @@ function CompanyDialog({
                         ? true
                         : current.telegramBotTokenConfigured,
                     }))}
-                    placeholder={form.telegramBotTokenConfigured ? "Stored securely" : "123456:ABC..."}
+                    placeholder={form.telegramBotTokenConfigured ? "Stored securely" : "123456:ABC…"}
                   />
                 </Field>
                 <Field label="Telegram chat ID">
@@ -444,7 +494,7 @@ function CompanyDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Save Company"}
+              {saving ? "Saving…" : "Save Company"}
             </Button>
           </DialogFooter>
         </form>
@@ -455,5 +505,5 @@ function CompanyDialog({
 
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+  return <div className="space-y-2"><Label>{label}</Label>{children}</div>;
 }

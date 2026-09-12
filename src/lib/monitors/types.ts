@@ -101,10 +101,24 @@ export interface MonitorRecord {
   responseMaxLength: number;
   telegramTemplate: string | null;
   emailSubject: string | null;
+  emailHeadline: string | null;
   emailBody: string | null;
   slowResponseEmailSubject: string | null;
+  slowResponseEmailHeadline: string | null;
   slowResponseEmailBody: string | null;
   slowResponseTelegramTemplate: string | null;
+  recoveryEmailSubject: string | null;
+  recoveryEmailHeadline: string | null;
+  recoveryEmailBody: string | null;
+  recoveryTelegramTemplate: string | null;
+  prolongedDowntimeEmailSubject: string | null;
+  prolongedDowntimeEmailHeadline: string | null;
+  prolongedDowntimeEmailBody: string | null;
+  prolongedDowntimeTelegramTemplate: string | null;
+  sslExpiryEmailSubject: string | null;
+  sslExpiryEmailHeadline: string | null;
+  sslExpiryEmailBody: string | null;
+  sslExpiryTelegramTemplate: string | null;
   sendOutageScreenshot: boolean;
 }
 
@@ -312,10 +326,24 @@ export interface MonitorPayload {
   responseMaxLength: number;
   telegramTemplate: string;
   emailSubject: string;
+  emailHeadline: string;
   emailBody: string;
   slowResponseEmailSubject: string;
+  slowResponseEmailHeadline: string;
   slowResponseEmailBody: string;
   slowResponseTelegramTemplate: string;
+  recoveryEmailSubject: string;
+  recoveryEmailHeadline: string;
+  recoveryEmailBody: string;
+  recoveryTelegramTemplate: string;
+  prolongedDowntimeEmailSubject: string;
+  prolongedDowntimeEmailHeadline: string;
+  prolongedDowntimeEmailBody: string;
+  prolongedDowntimeTelegramTemplate: string;
+  sslExpiryEmailSubject: string;
+  sslExpiryEmailHeadline: string;
+  sslExpiryEmailBody: string;
+  sslExpiryTelegramTemplate: string;
   sendOutageScreenshot: boolean;
   isActive: boolean;
   publishOnStatusPage: boolean;
@@ -395,10 +423,24 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   responseMaxLength: 1024,
   telegramTemplate: "",
   emailSubject: "",
+  emailHeadline: "",
   emailBody: "",
   slowResponseEmailSubject: "",
+  slowResponseEmailHeadline: "",
   slowResponseEmailBody: "",
   slowResponseTelegramTemplate: "",
+  recoveryEmailSubject: "",
+  recoveryEmailHeadline: "",
+  recoveryEmailBody: "",
+  recoveryTelegramTemplate: "",
+  prolongedDowntimeEmailSubject: "",
+  prolongedDowntimeEmailHeadline: "",
+  prolongedDowntimeEmailBody: "",
+  prolongedDowntimeTelegramTemplate: "",
+  sslExpiryEmailSubject: "",
+  sslExpiryEmailHeadline: "",
+  sslExpiryEmailBody: "",
+  sslExpiryTelegramTemplate: "",
   sendOutageScreenshot: true,
   isActive: true,
   publishOnStatusPage: true,

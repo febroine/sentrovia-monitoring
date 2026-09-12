@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     createdAt: new Date("2026-05-18T07:00:00.000Z"),
   },
   hash: vi.fn(),
+  compare: vi.fn(),
   insertValues: vi.fn(),
   select: vi.fn(),
   insert: vi.fn(),
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("bcryptjs", () => ({
   default: {
     hash: mocks.hash,
-    compare: vi.fn(),
+    compare: mocks.compare,
   },
 }));
 
@@ -40,13 +41,20 @@ vi.mock("@/lib/env", () => ({
   getAuthSessionId: () => "test-deployment",
 }));
 
-import { createInitialAdmin, createMember, isCurrentSessionVersion } from "@/lib/auth/service";
+import {
+  createInitialAdmin,
+  createMember,
+  getActiveSessionUser,
+  isCurrentSessionVersion,
+  loginUser,
+} from "@/lib/auth/service";
 
 describe("auth service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createdUser.role = "operator";
     mocks.hash.mockResolvedValue("hashed-password");
+    mocks.compare.mockResolvedValue(true);
     mocks.select.mockImplementation((projection) => ({
       from: vi.fn(() => {
         if (projection && typeof projection === "object" && "total" in projection) {
@@ -136,6 +144,65 @@ describe("auth service", () => {
   it("rejects stale session versions after a credential change", () => {
     expect(isCurrentSessionVersion(1, 2)).toBe(false);
     expect(isCurrentSessionVersion(2, 2)).toBe(true);
+  });
+
+  it("rejects login for a retained user without an active workspace membership", async () => {
+    mocks.select
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn(() => Promise.resolve([{
+              ...mocks.createdUser,
+              passwordHash: "hashed-password",
+            }])),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn(() => Promise.resolve([])),
+            })),
+          })),
+        })),
+      });
+
+    await expect(loginUser({
+      identifier: "aykut@example.com",
+      password: "StrongPass!123",
+    })).rejects.toMatchObject({
+      message: "This account does not belong to an active workspace.",
+      status: 403,
+    });
+
+    expect(mocks.compare).toHaveBeenCalledWith("StrongPass!123", "hashed-password");
+  });
+
+  it("invalidates an existing session after its workspace membership is removed", async () => {
+    mocks.select
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn(() => Promise.resolve([mocks.createdUser])),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn(() => Promise.resolve([])),
+            })),
+          })),
+        })),
+      });
+
+    await expect(getActiveSessionUser(
+      mocks.createdUser.id,
+      mocks.createdUser.sessionVersion,
+      "workspace-removed"
+    )).resolves.toBeNull();
   });
 
   it("creates the initial admin inside an advisory-locked transaction", async () => {

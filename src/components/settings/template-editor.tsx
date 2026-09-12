@@ -71,36 +71,36 @@ export function TemplateEditor({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-1">
+      <div className="space-y-2">
         <Label className="text-sm">{label}</Label>
         <p className="text-xs text-muted-foreground">{hint}</p>
       </div>
-      <div className="overflow-hidden rounded-md border bg-card">
-        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-3 py-2">
+      <div className="overflow-hidden rounded-md bg-card">
+        <div className="flex flex-wrap items-center gap-2 bg-muted/20 px-3 py-2">
           <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => wrapSelection("**")}>
-            <Bold className="mr-1 h-3.5 w-3.5" />
+            <Bold data-icon="inline-start" className="h-3.5 w-3.5" />
             Bold
           </Button>
           <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => wrapSelection("_")}>
-            <Italic className="mr-1 h-3.5 w-3.5" />
+            <Italic data-icon="inline-start" className="h-3.5 w-3.5" />
             Italic
           </Button>
           <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor(URL_TOKEN)}>
-            <Link2 className="mr-1 h-3.5 w-3.5" />
+            <Link2 data-icon="inline-start" className="h-3.5 w-3.5" />
             URL token
           </Button>
           {reportLayoutTools ? (
             <>
               <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor("\nLabel: value")}>
-                <Rows3 className="mr-1 h-3.5 w-3.5" />
+                <Rows3 data-icon="inline-start" className="h-3.5 w-3.5" />
                 Detail row
               </Button>
               <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor("\n## Section heading\n")}>
-                <Heading3 className="mr-1 h-3.5 w-3.5" />
+                <Heading3 data-icon="inline-start" className="h-3.5 w-3.5" />
                 Section
               </Button>
               <Button type="button" variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => insertAtCursor("\n- List item")}>
-                <List className="mr-1 h-3.5 w-3.5" />
+                <List data-icon="inline-start" className="h-3.5 w-3.5" />
                 List item
               </Button>
             </>

@@ -135,7 +135,7 @@ export function MonitorForm({
           <TemplateMonitorSettings values={values} onFieldChange={setField} />
           {mode === "single" ? (
             <NotificationTemplatePreview
-              key={`${values.url}:${values.notificationLanguage}:${values.emailSubject}:${values.emailBody}:${values.telegramTemplate}:${values.slowResponseEmailSubject}:${values.slowResponseEmailBody}:${values.slowResponseTelegramTemplate}`}
+              key={`${values.url}:${values.notificationLanguage}:${values.emailSubject}:${values.emailHeadline}:${values.emailBody}:${values.telegramTemplate}:${values.recoveryEmailSubject}:${values.recoveryEmailHeadline}:${values.recoveryEmailBody}:${values.recoveryTelegramTemplate}:${values.slowResponseEmailSubject}:${values.slowResponseEmailHeadline}:${values.slowResponseEmailBody}:${values.slowResponseTelegramTemplate}:${values.prolongedDowntimeEmailSubject}:${values.prolongedDowntimeEmailHeadline}:${values.prolongedDowntimeEmailBody}:${values.prolongedDowntimeTelegramTemplate}:${values.sslExpiryEmailSubject}:${values.sslExpiryEmailHeadline}:${values.sslExpiryEmailBody}:${values.sslExpiryTelegramTemplate}`}
               payload={payload}
               monitorId={monitorId}
             />
@@ -145,13 +145,13 @@ export function MonitorForm({
 
       {mode === "single" && testResult ? <MonitorTestResultPanel result={testResult} /> : null}
 
-      <DialogFooter className="mt-6 border-t border-border pt-4">
+      <DialogFooter className="mt-6 pt-4">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         {mode === "single" ? (
           <Button type="button" variant="outline" onClick={() => void handleTestConnection()} disabled={submitting || testing}>
-            {testing ? <LoaderCircle className="animate-spin" /> : <PlugZap />}
+            {testing ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <PlugZap data-icon="inline-start" />}
             {testing ? "Testing..." : "Test connection"}
           </Button>
         ) : null}
@@ -193,7 +193,7 @@ function buildPayload(values: MonitorPayload, tagsText: string): MonitorPayload 
 
 function MonitorTestResultPanel({ result }: { result: MonitorTestResult }) {
   return (
-    <div className={`mt-5 border-l-2 px-4 py-2 ${result.ok ? "border-emerald-500" : "border-destructive"}`}>
+    <div className={`mt-5 rounded-md px-4 py-3 ${result.ok ? "bg-emerald-500/10" : "bg-destructive/10"}`}>
       <div className="flex items-start gap-3">
         {result.ok ? (
           <CheckCircle2 className="mt-0.5 size-5 text-emerald-500" />
@@ -210,7 +210,7 @@ function MonitorTestResultPanel({ result }: { result: MonitorTestResult }) {
           </div>
           {result.errorMessage ? <p className="mt-2 text-xs text-destructive">{result.errorMessage}</p> : null}
           {result.rca ? (
-            <div className="mt-2 border-t border-border/70 pt-2">
+            <div className="mt-2 rounded-md bg-muted/20 p-3">
               <p className="text-xs font-medium">{result.rca.title}</p>
               <p className="mt-1 text-xs text-muted-foreground">{result.rca.summary}</p>
             </div>
