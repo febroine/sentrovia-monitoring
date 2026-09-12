@@ -1,5 +1,18 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { findMissingRequiredTables, parseOptions, resolveDatabaseUrl } from "./repair-database.mjs";
+import {
+  findMissingRequiredTables,
+  findUnexpectedTables,
+  parseOptions,
+  resolveDatabaseUrl,
+} from "./repair-database.mjs";
+
+const schemaSource = readFileSync(resolve(import.meta.dirname, "../src/lib/db/schema.ts"), "utf8");
+
+function readSchemaTableNames() {
+  return [...schemaSource.matchAll(/pgTable\(\s*["']([^"']+)["']/g)].map((match) => match[1]);
+}
 
 describe("database repair options", () => {
   it("supports a rollback-only dry run", () => {
@@ -37,5 +50,9 @@ describe("database repair schema requirements", () => {
     expect(missing).not.toContain("maintenance_windows");
     expect(missing).not.toContain("monitor_incidents");
     expect(missing).toContain("monitors");
+  });
+
+  it("recognizes every table defined by the current application schema", () => {
+    expect(findUnexpectedTables(readSchemaTableNames())).toEqual([]);
   });
 });

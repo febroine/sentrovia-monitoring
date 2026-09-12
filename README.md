@@ -60,7 +60,9 @@ Sentrovia measures service reachability and response health. It is not a replace
 
 ## Quick Start
 
-### Requirements
+### Docker Compose (recommended)
+
+Requirements:
 
 - Git
 - Docker Engine with Docker Compose
@@ -87,7 +89,25 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 Open [http://localhost:3000](http://localhost:3000), create the first administrator account, and add your first monitor.
 
-For HTTPS, reverse-proxy settings, production Compose, native Windows services, updates, backups, and recovery, use the [deployment guide](docs/deployment.md).
+### Windows services with NSSM
+
+Requirements:
+
+- Windows with an Administrator PowerShell session
+- Git, Node.js 20.9 or newer, and npm
+- NSSM available in `PATH`
+- A PostgreSQL database with schema-change permissions
+
+```powershell
+git clone https://github.com/febroine/sentrovia-monitoring.git
+cd sentrovia-monitoring
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install-windows-nssm.ps1
+```
+
+The installer creates `.env.local`, installs exact dependencies and Chromium, builds Sentrovia, synchronizes the database schema, and configures the automatically restarting `sentrovia-web` and `sentrovia-worker` services.
+
+For HTTPS, reverse-proxy settings, remote PostgreSQL parameters, production Compose, updates, backups, and recovery, use the [deployment guide](docs/deployment.md).
 
 ## How Outage Verification Works
 
