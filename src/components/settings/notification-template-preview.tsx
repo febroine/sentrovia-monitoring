@@ -9,8 +9,6 @@ import { DEFAULT_MONITOR_FORM } from "@/lib/monitors/types";
 import type { SettingsPayload } from "@/lib/settings/types";
 
 type PreviewScenario = "timeout" | "http-500" | "recovery" | "slow-response" | "downtime-reminder" | "ssl-expiry";
-type PreviewTheme = "light" | "dark";
-
 type PreviewResult = {
   subject: string;
   htmlBody: string;
@@ -28,7 +26,6 @@ const PREVIEW_MONITOR_PAYLOAD = {
 
 export function NotificationTemplatePreviewPanel({ settings }: { settings: SettingsPayload }) {
   const [scenario, setScenario] = useState<PreviewScenario>("timeout");
-  const [theme, setTheme] = useState<PreviewTheme>("dark");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,10 +93,6 @@ export function NotificationTemplatePreviewPanel({ settings }: { settings: Setti
     }
   }
 
-  const previewHtml = preview
-    ? forceEmailTheme(preview.htmlBody, theme)
-    : "";
-
   return (
     <section className="overflow-hidden rounded-lg bg-card/45" aria-labelledby="template-preview-title">
       <div className="flex flex-col gap-4 bg-muted/20 p-4 lg:flex-row lg:items-end lg:justify-between">
@@ -112,7 +105,7 @@ export function NotificationTemplatePreviewPanel({ settings }: { settings: Setti
             Uses sample monitor data and updates after you edit a template. Nothing is sent automatically.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(180px,1fr)_140px_auto] lg:min-w-[560px]">
+        <div className="grid gap-3 sm:grid-cols-[minmax(180px,1fr)_auto] lg:min-w-[400px]">
           <label className="space-y-1.5 text-xs font-medium">
             <span className="block">Event</span>
             <Select value={scenario} onValueChange={(value) => setScenario(value as PreviewScenario)}>
@@ -124,16 +117,6 @@ export function NotificationTemplatePreviewPanel({ settings }: { settings: Setti
                 <SelectItem value="slow-response">Slow response</SelectItem>
                 <SelectItem value="downtime-reminder">Downtime reminder</SelectItem>
                 <SelectItem value="ssl-expiry">SSL expiry</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="space-y-1.5 text-xs font-medium">
-            <span className="block">Appearance</span>
-            <Select value={theme} onValueChange={(value) => setTheme(value as PreviewTheme)}>
-              <SelectTrigger aria-label="Preview appearance" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dark">Dark</SelectItem>
-                <SelectItem value="light">Light</SelectItem>
               </SelectContent>
             </Select>
           </label>
@@ -162,10 +145,10 @@ export function NotificationTemplatePreviewPanel({ settings }: { settings: Setti
           </div>
           {preview ? (
             <iframe
-              title={`${theme === "dark" ? "Dark" : "Light"} email template preview`}
+              title="Email template preview"
               sandbox=""
-              srcDoc={previewHtml}
-              className={theme === "dark" ? "h-[480px] w-full bg-[#0b1220]" : "h-[480px] w-full bg-[#eef2f7]"}
+              srcDoc={preview.htmlBody}
+              className="h-[480px] w-full bg-[#eef2f7]"
             />
           ) : (
             <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">Preview will appear here.</div>
@@ -255,20 +238,6 @@ async function requestPreview({
     throw new Error(data?.message ?? "Unable to render the notification template.");
   }
   return { preview: data.preview };
-}
-
-export function forceEmailTheme(html: string, theme: PreviewTheme) {
-  if (theme === "dark") {
-    return html.replace(/<body(?![^>]*data-ogsc)/i, '<body data-ogsc="true"');
-  }
-
-  return html
-    .replace(/\sdata-ogsc=("[^"]*"|'[^']*')/i, "")
-    .replace(/content=("|')light dark\1/gi, 'content="light"')
-    .replace(
-      /@media\s*\(prefers-color-scheme\s*:\s*dark\)/gi,
-      "@media (prefers-color-scheme: dark) and (max-width: 0px)"
-    );
 }
 
 function toMessage(error: unknown) {

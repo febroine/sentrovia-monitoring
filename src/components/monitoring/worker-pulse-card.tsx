@@ -30,7 +30,8 @@ export function WorkerPulseCard() {
     <section aria-label="Worker status" className="rounded-lg bg-card/55 p-4">
       <div>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">Worker Pulse</p>
               <span
@@ -48,16 +49,17 @@ export function WorkerPulseCard() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground">Heartbeat: {heartbeatAge === null ? "--" : `${heartbeatAge}s ago`}</p>
-            <details className="group text-xs text-muted-foreground">
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-foreground">
+            </div>
+            <details className="group mt-2 text-xs text-muted-foreground">
+              <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50">
                 Details <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
               </summary>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted/20 p-3">
-                <span>Last cycle: {formatPanelDateTime(worker?.lastCycleAt)}</span>
-                <span>PID: {worker?.processAlive ? worker?.pid ?? "--" : "Offline"}</span>
-                <span>Backlog: {worker?.observability?.summary.dueBacklog ?? 0}</span>
-                <span>Cycle duration: {formatNullableMs(worker?.lastCycleDurationMs)}</span>
-                <span>{sanitizeWorkerStatusMessage(error ?? worker?.statusMessage) ?? "Worker status will appear here."}</span>
+              <div className="mt-2 grid gap-x-6 gap-y-2 border-t border-border/70 pt-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,max-content)_minmax(14rem,1fr)]">
+                <WorkerDetail label="Last cycle" value={formatPanelDateTime(worker?.lastCycleAt)} />
+                <WorkerDetail label="PID" value={worker?.processAlive ? String(worker?.pid ?? "--") : "Offline"} />
+                <WorkerDetail label="Backlog" value={String(worker?.observability?.summary.dueBacklog ?? 0)} />
+                <WorkerDetail label="Cycle duration" value={formatNullableMs(worker?.lastCycleDurationMs)} />
+                <WorkerDetail label="Status" value={sanitizeWorkerStatusMessage(error ?? worker?.statusMessage) ?? "Worker status will appear here."} />
               </div>
             </details>
             {error ? <p role="alert" className="text-xs text-destructive">{sanitizeWorkerStatusMessage(error)}</p> : null}
@@ -93,6 +95,15 @@ export function WorkerPulseCard() {
         ) : null}
       </div>
     </section>
+  );
+}
+
+function WorkerDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="min-w-0">
+      <span className="font-medium text-foreground">{label}</span>
+      <span className="ml-1 break-words">{value}</span>
+    </span>
   );
 }
 

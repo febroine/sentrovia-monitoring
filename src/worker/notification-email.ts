@@ -33,7 +33,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
 <html lang="${input.language}">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+  <meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light">
   <style>
     @media only screen and (max-width:600px){
       .email-header,.email-section,.email-footer{padding-left:20px!important;padding-right:20px!important}
@@ -41,32 +41,6 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
       .summary-cell{display:block!important;width:auto!important;border-left:0!important;border-top:1px solid #e2e8f0}
       .summary-cell:first-child{border-top:0!important}
     }
-    @media (prefers-color-scheme:dark){
-      body,.email-canvas{background:#09090b!important;color:#f8fafc!important}
-      .email-surface,.email-header,.email-section{background:#111113!important}
-      .email-surface{border-top-color:${tone.darkAccent}!important}
-      .email-summary,.email-footer{background:#16181c!important}
-      .email-surface,.email-border,.email-summary,.summary-cell,.email-detail-cell{border-color:#2a2f36!important}
-      .email-heading,.email-title,.email-copy,.email-value{color:#f8fafc!important}
-      .email-muted,.email-label,.email-footer{color:#a8b2c1!important}
-      .email-status{background:${tone.darkSoft}!important;color:${tone.darkText}!important}
-      .email-status-value{color:${tone.darkText}!important}
-      .email-button{background:#0f766e!important;color:#ffffff!important}
-      .email-brand{color:#2dd4bf!important}
-      .email-link{color:#5eead4!important}
-    }
-    [data-ogsc] .email-canvas{background:#09090b!important}
-    [data-ogsc] .email-surface,[data-ogsc] .email-header,[data-ogsc] .email-section{background:#111113!important}
-    [data-ogsc] .email-surface{border-top-color:${tone.darkAccent}!important}
-    [data-ogsc] .email-summary,[data-ogsc] .email-footer{background:#16181c!important}
-    [data-ogsc] .email-surface,[data-ogsc] .email-border,[data-ogsc] .email-summary,[data-ogsc] .summary-cell,[data-ogsc] .email-detail-cell{border-color:#2a2f36!important}
-    [data-ogsc] .email-heading,[data-ogsc] .email-title,[data-ogsc] .email-copy,[data-ogsc] .email-value{color:#f8fafc!important}
-    [data-ogsc] .email-muted,[data-ogsc] .email-label,[data-ogsc] .email-footer{color:#a8b2c1!important}
-    [data-ogsc] .email-status{background:${tone.darkSoft}!important;color:${tone.darkText}!important}
-    [data-ogsc] .email-status-value{color:${tone.darkText}!important}
-    [data-ogsc] .email-button{background:#0f766e!important;color:#ffffff!important}
-    [data-ogsc] .email-brand{color:#2dd4bf!important}
-    [data-ogsc] .email-link{color:#5eead4!important}
   </style>
 </head>
 <body class="email-canvas" style="margin:0;background:#f1f5f9;color:#0f172a;font-family:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
@@ -119,7 +93,7 @@ function renderSummary(
 
   return `<table class="email-summary" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f8fafc" style="border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;">
     <tr>${items.map(([label, value, isStatus], index) => `<td class="summary-cell" width="33.33%" valign="top" style="padding:14px 14px;${index > 0 ? "border-left:1px solid #e2e8f0;" : ""}">
-      <div class="email-label" style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#64748b;">${label}</div>
+      <div class="email-label" style="font-size:11px;font-weight:700;letter-spacing:.01em;color:#64748b;">${label}</div>
       <div class="${isStatus ? "email-status-value" : "email-value"}" style="margin-top:6px;font-size:13px;font-weight:600;line-height:1.4;color:${isStatus ? statusColor : "#0f172a"};word-break:break-word;">${escapeHtml(value)}</div>
     </td>`).join("")}</tr>
   </table>`;

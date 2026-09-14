@@ -58,8 +58,20 @@ describe("monitor list route", () => {
     });
   });
 
-  it("rejects unsupported page sizes before querying", async () => {
+  it("accepts the bounded show-all page size", async () => {
     const response = await GET(new NextRequest("http://localhost/api/monitors?page=1&pageSize=500"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.listMonitorsPage).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ pageSize: 500 }),
+      undefined,
+      "workspace-1"
+    );
+  });
+
+  it("rejects page sizes beyond the monitor quota", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/monitors?page=1&pageSize=501"));
 
     expect(response.status).toBe(400);
     expect(mocks.listMonitorsPage).not.toHaveBeenCalled();
