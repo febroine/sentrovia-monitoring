@@ -51,16 +51,17 @@ import { useMonitoringStore } from "@/stores/use-monitoring-store";
 import { hasPermission } from "@/lib/auth/permissions";
 import { LatestRequestCommitter } from "@/lib/client/latest-request";
 
-const PAGE_SIZE_OPTIONS = [10, 50, 100] as const;
+const ALL_MONITORS_PAGE_SIZE = 500;
+const PAGE_SIZE_OPTIONS = [10, 50, 100, ALL_MONITORS_PAGE_SIZE] as const;
 const PAGE_NUMBER_WINDOW = 5;
-const BULK_ACTION_DELAY_MS = 10_000;
 const MAX_BROWSER_TIMEOUT_MS = 2_147_000_000;
 
-interface PendingBulkAction {
+type MonitorStatusFilter = "all" | "up" | "down";
+
+interface BulkProgress {
   title: string;
   detail: string;
-  expiresAt: number;
-  execute: () => Promise<void>;
+  count: number;
 }
 
 interface PendingMonitorRestore {
@@ -90,6 +91,7 @@ export default function MonitoringPage() {
   } = useMonitoringStore();
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<MonitorStatusFilter>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -116,8 +118,7 @@ export default function MonitoringPage() {
   const [pauseTargetIds, setPauseTargetIds] = useState<string[]>([]);
   const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
-  const [pendingBulkAction, setPendingBulkAction] = useState<PendingBulkAction | null>(null);
-  const [bulkActionSeconds, setBulkActionSeconds] = useState(0);
+  const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
   const [pendingRestores, setPendingRestores] = useState<PendingMonitorRestore[]>([]);
   const latestTimelineRequestRef = useRef(0);
   const historyRequestsRef = useRef(new LatestRequestCommitter());
@@ -221,7 +222,8 @@ export default function MonitoringPage() {
     pageSize,
     search,
     companyId: companyFilter,
-  }), [companyFilter, loadMonitors, page, pageSize, search]);
+    status: statusFilter === "all" ? undefined : statusFilter,
+  }), [companyFilter, loadMonitors, page, pageSize, search, statusFilter]);
 
   const refreshMonitoring = useCallback(async () => {
     await Promise.all([loadMonitorPage(), loadSupportingData()]);
@@ -267,32 +269,19 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [companyFilter, page, pageSize, search]);
+  }, [companyFilter, page, pageSize, search, statusFilter]);
 
   useEffect(() => {
-    if (!pendingBulkAction) {
-      setBulkActionSeconds(0);
+    if (!bulkProgress) {
       return;
     }
 
-    const updateCountdown = () => {
-      setBulkActionSeconds(Math.max(0, Math.ceil((pendingBulkAction.expiresAt - Date.now()) / 1_000)));
+    const preventAccidentalClose = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
     };
-    updateCountdown();
-    const countdownId = window.setInterval(updateCountdown, 250);
-    const executionId = window.setTimeout(() => {
-      const action = pendingBulkAction;
-      setPendingBulkAction(null);
-      void action.execute().catch((actionError) => {
-        showToast(actionError instanceof Error ? actionError.message : "Bulk operation failed.", "error");
-      });
-    }, Math.max(0, pendingBulkAction.expiresAt - Date.now()));
-
-    return () => {
-      window.clearInterval(countdownId);
-      window.clearTimeout(executionId);
-    };
-  }, [pendingBulkAction]);
+    window.addEventListener("beforeunload", preventAccidentalClose);
+    return () => window.removeEventListener("beforeunload", preventAccidentalClose);
+  }, [bulkProgress]);
 
   useEffect(() => {
     if (pendingRestores.length === 0) return;
@@ -340,20 +329,19 @@ export default function MonitoringPage() {
 
   async function handleBulkUpdate(payload: MonitorPayload) {
     const ids = Array.from(selectedIds);
-    if (!queueBulkAction(
-      `Bulk edit scheduled for ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+    setBulkEditOpen(false);
+    await runBulkAction(
+      `Updating ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
       "Schedule, check, notification, tag, and template settings will be updated.",
+      ids.length,
       async () => {
         const updated = await bulkUpdateMonitors(ids, payload);
         if (updated.length > 0) {
+          await loadMonitorPage();
           setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
         }
       }
-    )) {
-      return;
-    }
-
-    setBulkEditOpen(false);
+    );
   }
 
   async function handleToggleMonitorActive(monitor: MonitorRecord) {
@@ -434,9 +422,11 @@ export default function MonitoringPage() {
     }
 
     const ids = [...deleteTargetIds];
-    if (!queueBulkAction(
-      `Deletion scheduled for ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
-      "The monitors will be removed after the countdown and can be restored for another 60 seconds.",
+    setDeleteTargetIds([]);
+    await runBulkAction(
+      `Deleting ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+      "Selected monitors and their history are being removed.",
+      ids.length,
       async () => {
         const deletion = await deleteMonitors(ids);
         if (deletion && deletion.ids.length > 0) {
@@ -448,36 +438,28 @@ export default function MonitoringPage() {
           ]);
         }
       }
-    )) {
-      return;
-    }
-
-    setDeleteTargetIds([]);
+    );
   }
 
-  function queueBulkAction(title: string, detail: string, execute: () => Promise<void>) {
-    if (pendingBulkAction) {
-      showToast("Finish or undo the pending bulk operation first.", "error");
-      return false;
+  async function runBulkAction(
+    title: string,
+    detail: string,
+    count: number,
+    execute: () => Promise<void>
+  ) {
+    if (bulkProgress) {
+      throw new Error("Another bulk operation is already running.");
     }
 
-    setPendingBulkAction({
-      title,
-      detail,
-      expiresAt: Date.now() + BULK_ACTION_DELAY_MS,
-      execute,
-    });
-    showToast("Bulk operation scheduled. You have 10 seconds to undo it.", "info");
-    return true;
-  }
-
-  function undoPendingBulkAction() {
-    if (!pendingBulkAction) {
-      return;
+    setBulkProgress({ title, detail, count });
+    try {
+      await execute();
+    } catch (actionError) {
+      showToast(actionError instanceof Error ? actionError.message : "Bulk operation failed.", "error");
+      throw actionError;
+    } finally {
+      setBulkProgress(null);
     }
-
-    setPendingBulkAction(null);
-    showToast("Bulk operation cancelled. No changes were made.", "success");
   }
 
   async function restoreRecentlyDeletedMonitors() {
@@ -568,18 +550,6 @@ export default function MonitoringPage() {
         </div>
       ) : null}
 
-      {pendingBulkAction ? (
-        <div className="flex flex-col gap-3 rounded-md bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{pendingBulkAction.title}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{pendingBulkAction.detail} Running in {bulkActionSeconds}s. Keep this page open during the countdown.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={undoPendingBulkAction}>
-            <Undo2 data-icon="inline-start" /> Undo
-          </Button>
-        </div>
-      ) : null}
-
       {pendingRestores.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-md bg-emerald-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
           <div>
@@ -593,7 +563,14 @@ export default function MonitoringPage() {
       ) : null}
 
       {workspaceSettings?.profile.role === "admin" ? <WorkerPulseCard /> : null}
-      <MonitorStats summary={summary} />
+      <MonitorStats
+        summary={summary}
+        activeFilter={statusFilter}
+        onFilterChange={(filter) => {
+          setStatusFilter(filter);
+          setPage(1);
+        }}
+      />
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
@@ -638,7 +615,7 @@ export default function MonitoringPage() {
           <SelectContent>
             {PAGE_SIZE_OPTIONS.map((option) => (
               <SelectItem key={option} value={String(option)}>
-                Show {option}
+                {option === ALL_MONITORS_PAGE_SIZE ? "Show all" : `Show ${option}`}
               </SelectItem>
             ))}
           </SelectContent>
@@ -651,27 +628,27 @@ export default function MonitoringPage() {
             {selectedIds.size} monitor{selectedIds.size === 1 ? "" : "s"} selected
           </span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)} disabled={Boolean(pendingBulkAction)}>
+            <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)} disabled={Boolean(bulkProgress)}>
               Bulk edit
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)} disabled={Boolean(pendingBulkAction)}>
+            <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)} disabled={Boolean(bulkProgress)}>
               <Tags data-icon="inline-start" className="size-3.5" />
               Tags
             </Button>
-            <Button variant="outline" size="sm" onClick={() => openPauseDialog(Array.from(selectedIds))} disabled={saving || selectedActiveMonitors.length === 0 || Boolean(pendingBulkAction)}>
+            <Button variant="outline" size="sm" onClick={() => openPauseDialog(Array.from(selectedIds))} disabled={saving || selectedActiveMonitors.length === 0 || Boolean(bulkProgress)}>
               <Clock data-icon="inline-start" className="size-3.5" />
               Pause
             </Button>
             {selectedPausedMonitorIds.length > 0 ? (
-              <Button variant="outline" size="sm" onClick={() => void handleResumePaused(selectedPausedMonitorIds)} disabled={saving || Boolean(pendingBulkAction)}>
+              <Button variant="outline" size="sm" onClick={() => void handleResumePaused(selectedPausedMonitorIds)} disabled={saving || Boolean(bulkProgress)}>
                 <Play data-icon="inline-start" className="size-3.5" />
                 Resume paused
               </Button>
             ) : null}
-            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())} disabled={Boolean(pendingBulkAction)}>
+            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())} disabled={Boolean(bulkProgress)}>
               Clear
             </Button>
-            <Button variant="destructive" size="sm" onClick={openDeleteConfirmation} disabled={saving || Boolean(pendingBulkAction)}>
+            <Button variant="destructive" size="sm" onClick={openDeleteConfirmation} disabled={saving || Boolean(bulkProgress)}>
               <Trash2 data-icon="inline-start" className="size-3.5" />
               Delete selected
             </Button>
@@ -697,11 +674,11 @@ export default function MonitoringPage() {
         onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
         onEdit={setEditingMonitor}
         onOpenTimeline={(monitor) => void handleOpenTimeline(monitor)}
-        emptyState={search.trim() || companyFilter !== "all" ? {
+        emptyState={search.trim() || companyFilter !== "all" || statusFilter !== "all" ? {
           title: "No monitors match these filters",
-          description: "Clear the search and company filter to return to the full monitor list.",
+          description: "Clear the search, company, and status filters to return to the full monitor list.",
           action: (
-            <Button variant="outline" size="sm" onClick={() => { setSearch(""); setCompanyFilter("all"); setPage(1); }}>
+            <Button variant="outline" size="sm" onClick={() => { setSearch(""); setCompanyFilter("all"); setStatusFilter("all"); setPage(1); }}>
               Clear filters
             </Button>
           ),
@@ -883,7 +860,7 @@ export default function MonitoringPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-            Impact: {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}. Identity fields and targets remain unchanged. The operation waits 10 seconds before it is applied.
+            Impact: {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}. Identity fields and targets remain unchanged. The operation starts immediately.
           </div>
           {selectedIds.size > 0 ? (
             <MonitorForm
@@ -913,7 +890,7 @@ export default function MonitoringPage() {
           <DialogHeader>
             <DialogTitle>Delete monitor{deleteTargets.length === 1 ? "" : "s"}?</DialogTitle>
             <DialogDescription>
-              This permanently removes the selected monitor{deleteTargets.length === 1 ? "" : "s"} and related monitoring history after a 10-second undo window.
+              This removes the selected monitor{deleteTargets.length === 1 ? "" : "s"} and related monitoring history immediately. Deleted monitors remain recoverable for 60 seconds.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 rounded-md bg-destructive/10 px-4 py-3">
@@ -992,9 +969,11 @@ export default function MonitoringPage() {
         selectedCount={selectedIds.size}
         onApply={async ({ action, tags }) => {
           const ids = Array.from(selectedIds);
-          if (!queueBulkAction(
-            `${formatTagAction(action)} scheduled for ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
-            `Tags: ${tags.join(", ")}. The operation waits 10 seconds before it is applied.`,
+          setTagPatchOpen(false);
+          await runBulkAction(
+            `${formatTagAction(action)} on ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+            `Applying tags: ${tags.join(", ")}.`,
+            ids.length,
             async () => {
               const response = await fetch("/api/monitors/tags", {
                 method: "PATCH",
@@ -1010,11 +989,33 @@ export default function MonitoringPage() {
               setSelectedIds((current) => removeIds(current, ids));
               showToast("Monitor tags updated.", "success");
             }
-          )) {
-            throw new Error("Another bulk operation is already pending.");
-          }
+          );
         }}
       />
+
+      <Dialog open={Boolean(bulkProgress)} onOpenChange={() => undefined}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md" aria-busy="true">
+          <DialogHeader className="pr-0">
+            <DialogTitle>{bulkProgress?.title}</DialogTitle>
+            <DialogDescription>
+              {bulkProgress?.detail} Keep this page open until the operation finishes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3" role="status" aria-live="polite">
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-label="Bulk monitor operation in progress"
+              aria-valuetext={`Processing ${bulkProgress?.count ?? 0} monitors`}
+            >
+              <div className="h-full w-1/3 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
+            </div>
+            <p className="text-xs tabular-nums text-muted-foreground">
+              Processing {bulkProgress?.count ?? 0} monitor{bulkProgress?.count === 1 ? "" : "s"}…
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
       {exportOpen ? (
         <MonitorExportDialog
           open

@@ -21,7 +21,7 @@ export const runtime = "nodejs";
 
 const monitorListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(1_000_000).default(1),
-  pageSize: z.coerce.number().int().min(10).max(100).default(50),
+  pageSize: z.coerce.number().int().min(10).max(500).default(50),
   search: z.string().trim().max(200).optional(),
   companyId: z.string().trim().max(120).optional(),
   status: z.enum(["up", "down", "pending"]).optional(),

@@ -16,7 +16,6 @@ import {
   buildCanonicalMonitorTarget,
   buildHeartbeatMonitorTarget,
   buildMonitorIdentityKey,
-  parseHeartbeatMonitorTarget,
   parsePingMonitorTarget,
   parsePortMonitorTarget,
   parsePostgresMonitorTarget,
@@ -123,11 +122,10 @@ export async function listMonitorsPage(
   const runnablePauseState = or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now));
   const search = query.search?.trim();
   const searchPattern = search ? `%${search}%` : null;
-  const where = and(
+  const baseWhere = and(
     monitorOwnershipCondition(userId, workspaceId),
     isNull(monitors.deletedAt),
     query.companyId ? eq(monitors.companyId, query.companyId) : undefined,
-    query.status ? eq(monitors.status, query.status) : undefined,
     searchPattern
       ? or(
           ilike(monitors.name, searchPattern),
@@ -137,6 +135,10 @@ export async function listMonitorsPage(
         )
       : undefined
   );
+  const statusWhere = query.status
+    ? and(eq(monitors.status, query.status), eq(monitors.isActive, true), runnablePauseState)
+    : undefined;
+  const where = and(baseWhere, statusWhere);
   const sortColumn = {
     createdAt: monitors.createdAt,
     name: monitors.name,
@@ -145,7 +147,7 @@ export async function listMonitorsPage(
     latencyMs: monitors.latencyMs,
   }[query.sort];
   const order = query.direction === "asc" ? asc : desc;
-  const [summaryRows, monitorRows] = await Promise.all([
+  const [summaryRows, totalRows, monitorRows] = await Promise.all([
     database
       .select({
         total: count(),
@@ -156,6 +158,10 @@ export async function listMonitorsPage(
         pending: sql<number>`count(*) filter (where ${monitors.isActive} and ${runnablePauseState} and ${monitors.status} = 'pending')`,
         nextPauseExpiryAt: sql<Date | null>`min(${monitors.pausedUntil}) filter (where ${temporarilyPaused})`,
       })
+      .from(monitors)
+      .where(baseWhere),
+    database
+      .select({ total: count() })
       .from(monitors)
       .where(where),
     database
@@ -176,7 +182,7 @@ export async function listMonitorsPage(
     pending: Number(summaryRows[0]?.pending ?? 0),
     nextPauseExpiryAt: nextPauseExpiryAt ? new Date(nextPauseExpiryAt).toISOString() : null,
   };
-  const totalItems = summary.total;
+  const totalItems = Number(totalRows[0]?.total ?? 0);
   const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
   const uptimeByMonitorId = await getMonitorUptimeById(
     userId,
@@ -563,7 +569,6 @@ export async function bulkUpdateMonitors(
 ) {
   return db.transaction(async (tx) => {
     const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
-    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx, resolvedWorkspaceId);
     const existingMonitors = await tx
       .select()
       .from(monitors)
@@ -572,63 +577,114 @@ export async function bulkUpdateMonitors(
         inArray(monitors.id, ids),
         isNull(monitors.deletedAt)
       ));
-    const updated: Array<typeof monitors.$inferSelect> = [];
-    const pausedOutages: Array<Parameters<typeof resolveOutage>[0]> = [];
-
+    const now = new Date();
+    const groups = new Map<string, {
+      ids: string[];
+      values: ReturnType<typeof buildBulkEditableMonitorValues>;
+      active: boolean;
+    }>();
     for (const existingMonitor of existingMonitors) {
-      const mergedInput = buildBulkUpdatePayload(existingMonitor, input);
-      const values = await buildMonitorValues(
-        userId,
-        mergedInput,
-        existingMonitor,
-        allowPrivateTargets,
-        tx,
-        resolvedWorkspaceId
-      );
-      const now = new Date();
-      const scheduleUpdate = buildConfigurationScheduleUpdate(
-        existingMonitor.isActive,
-        values.isActive,
-        now
-      );
-      const [monitor] = await tx
-        .update(monitors)
-        .set({
-          ...values,
-          leaseToken: null,
-          leaseExpiresAt: null,
-          ...buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now),
-          ...scheduleUpdate,
-          userId,
-          updatedAt: now,
-        })
-        .where(and(
-          eq(monitors.id, existingMonitor.id),
-          eq(monitors.workspaceId, resolvedWorkspaceId),
-          isNull(monitors.deletedAt)
-        ))
-        .returning();
-
-      if (monitor) {
-        updated.push(monitor);
-      }
-
-      if (existingMonitor.isActive && !values.isActive) {
-        pausedOutages.push({
-          monitorId: existingMonitor.id,
-          userId: existingMonitor.userId,
-          checkedAt: now,
-          statusCode: existingMonitor.statusCode,
+      const monitorType = normalizeMonitorType(existingMonitor.monitorType);
+      const key = `${monitorType}:${existingMonitor.isActive ? "active" : "inactive"}`;
+      const group = groups.get(key);
+      if (group) {
+        group.ids.push(existingMonitor.id);
+      } else {
+        groups.set(key, {
+          ids: [existingMonitor.id],
+          values: buildBulkEditableMonitorValues(userId, resolvedWorkspaceId, monitorType, input),
+          active: existingMonitor.isActive,
         });
       }
     }
 
-    for (const outage of pausedOutages) {
-      await resolveOutage(outage, tx);
+    const updated: Array<typeof monitors.$inferSelect> = [];
+    for (const group of groups.values()) {
+      const rows = await tx
+        .update(monitors)
+        .set({
+          ...group.values,
+          leaseToken: null,
+          leaseExpiresAt: null,
+          ...(group.active ? { nextCheckAt: now } : {}),
+          updatedAt: now,
+        })
+        .where(and(
+          inArray(monitors.id, group.ids),
+          eq(monitors.workspaceId, resolvedWorkspaceId),
+          isNull(monitors.deletedAt)
+        ))
+        .returning();
+      updated.push(...rows);
     }
 
     return updated;
   });
+}
+
+function buildBulkEditableMonitorValues(
+  userId: string,
+  workspaceId: string,
+  monitorType: MonitorInput["monitorType"],
+  input: MonitorInput
+) {
+  const supportsHttpOptions = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
+  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat";
+
+  return {
+    workspaceId,
+    userId,
+    notificationPref: input.notificationPref,
+    notificationLanguage: input.notificationLanguage,
+    notifEmail: input.notifEmail,
+    telegramBotToken: input.telegramBotToken ? encryptValue(input.telegramBotToken) : null,
+    telegramChatId: input.telegramChatId,
+    intervalValue: input.intervalValue,
+    intervalUnit: input.intervalUnit,
+    timeout: input.timeout,
+    retries: input.retries,
+    tags: input.tags,
+    renotifyCount: input.renotifyCount,
+    telegramTemplate: input.telegramTemplate,
+    emailSubject: input.emailSubject,
+    emailHeadline: input.emailHeadline,
+    emailBody: input.emailBody,
+    slowResponseEmailSubject: input.slowResponseEmailSubject,
+    slowResponseEmailHeadline: input.slowResponseEmailHeadline,
+    slowResponseEmailBody: input.slowResponseEmailBody,
+    slowResponseTelegramTemplate: input.slowResponseTelegramTemplate,
+    recoveryEmailSubject: input.recoveryEmailSubject,
+    recoveryEmailHeadline: input.recoveryEmailHeadline,
+    recoveryEmailBody: input.recoveryEmailBody,
+    recoveryTelegramTemplate: input.recoveryTelegramTemplate,
+    prolongedDowntimeEmailSubject: input.prolongedDowntimeEmailSubject,
+    prolongedDowntimeEmailHeadline: input.prolongedDowntimeEmailHeadline,
+    prolongedDowntimeEmailBody: input.prolongedDowntimeEmailBody,
+    prolongedDowntimeTelegramTemplate: input.prolongedDowntimeTelegramTemplate,
+    sslExpiryEmailSubject: input.sslExpiryEmailSubject,
+    sslExpiryEmailHeadline: input.sslExpiryEmailHeadline,
+    sslExpiryEmailBody: input.sslExpiryEmailBody,
+    sslExpiryTelegramTemplate: input.sslExpiryTelegramTemplate,
+    sendOutageScreenshot: shouldPersistOutageScreenshot(
+      monitorType,
+      input.notificationPref,
+      input.sendOutageScreenshot
+    ),
+    slowResponseThresholdMs: shouldPersistSlowResponseThreshold(monitorType, input.slowResponseThresholdMs),
+    slowResponseAlertsEnabled: shouldPersistSlowResponseAlerts(monitorType, input.slowResponseAlertsEnabled),
+    expectedStatusCodes: shouldPersistExpectedStatusCodes(monitorType, input.expectedStatusCodes),
+    method: usesSyntheticGet ? "GET" as const : input.method,
+    databaseSsl: monitorType === "postgres" ? input.databaseSsl : true,
+    databaseTlsVerify: monitorType === "postgres" ? input.databaseTlsVerify : true,
+    maxRedirects: usesSyntheticGet ? 0 : input.maxRedirects,
+    ipFamily: monitorType === "postgres" || monitorType === "heartbeat" ? "auto" as const : input.ipFamily,
+    checkSslExpiry: supportsHttpOptions ? input.checkSslExpiry : false,
+    ignoreSslErrors: supportsHttpOptions ? input.ignoreSslErrors : false,
+    cacheBuster: supportsHttpOptions ? input.cacheBuster : false,
+    saveErrorPages: supportsHttpOptions ? input.saveErrorPages : false,
+    saveSuccessPages: supportsHttpOptions ? input.saveSuccessPages : false,
+    responseMaxLength: usesSyntheticGet ? 0 : input.responseMaxLength,
+  };
 }
 
 export async function updateMonitorTags(
@@ -1235,67 +1291,6 @@ function compareNullableDates(left: Date | null, right: Date | null) {
   return left.getTime() - right.getTime();
 }
 
-function buildBulkUpdatePayload(
-  existingMonitor: typeof monitors.$inferSelect,
-  input: MonitorInput
-): MonitorInput {
-  const monitorType = normalizeMonitorType(existingMonitor.monitorType);
-  const payload: MonitorInput = {
-    ...input,
-    name: existingMonitor.name,
-    monitorType,
-    companyId: existingMonitor.companyId,
-    company: existingMonitor.company,
-    heartbeatLastReceivedAt: existingMonitor.heartbeatLastReceivedAt?.toISOString() ?? null,
-    databasePassword: "",
-    databasePasswordConfigured: Boolean(existingMonitor.databasePasswordEncrypted),
-    isActive: existingMonitor.isActive,
-    publishOnStatusPage: existingMonitor.publishOnStatusPage,
-  };
-
-  if (monitorType === "http" || monitorType === "keyword" || monitorType === "json") {
-    payload.url = existingMonitor.url.split("#")[0];
-  }
-
-  if (monitorType === "keyword") {
-    payload.keywordQuery = existingMonitor.keywordQuery ?? "";
-    payload.keywordInvert = existingMonitor.keywordInvert;
-  }
-
-  if (monitorType === "json") {
-    payload.jsonPath = existingMonitor.jsonPath ?? "";
-    payload.jsonExpectedValue = existingMonitor.jsonExpectedValue ?? "";
-    payload.jsonMatchMode = normalizeJsonMatchMode(existingMonitor.jsonMatchMode);
-  }
-
-  if (monitorType === "ping") {
-    payload.portHost = parsePingMonitorTarget(existingMonitor.url).host;
-  }
-
-  if (monitorType === "port") {
-    const target = parsePortMonitorTarget(existingMonitor.url);
-    payload.portHost = target.host;
-    payload.portNumber = target.port;
-  }
-
-  if (monitorType === "heartbeat") {
-    payload.heartbeatToken =
-      existingMonitor.heartbeatToken ?? parseHeartbeatMonitorTarget(existingMonitor.url).token;
-  }
-
-  if (monitorType === "postgres") {
-    const target = parsePostgresMonitorTarget(existingMonitor.url);
-    payload.databaseHost = target.host;
-    payload.databasePort = target.port;
-    payload.databaseName = target.databaseName;
-    payload.databaseUsername = target.databaseUsername;
-    payload.databaseSsl = existingMonitor.databaseSsl;
-    payload.databaseTlsVerify = existingMonitor.databaseTlsVerify;
-  }
-
-  return payload;
-}
-
 function normalizeMonitorType(value: string | null | undefined): MonitorInput["monitorType"] {
   if (value === "port" || value === "postgres" || value === "keyword" || value === "json" || value === "ping" || value === "heartbeat") {
     return value;
@@ -1379,14 +1374,6 @@ function resolveMonitorTargetHostname(monitorType: MonitorInput["monitorType"], 
   }
 
   return new URL(url.split("#")[0]).hostname;
-}
-
-function normalizeJsonMatchMode(value: string | null | undefined): MonitorInput["jsonMatchMode"] {
-  if (value === "contains" || value === "exists") {
-    return value;
-  }
-
-  return "equals";
 }
 
 function resolveDatabasePassword(

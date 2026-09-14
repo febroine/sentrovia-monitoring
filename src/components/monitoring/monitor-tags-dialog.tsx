@@ -85,7 +85,7 @@ export function MonitorTagsDialog({
             />
           </div>
           <div className="rounded-md bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
-            Impact: {formatAction(action)} on {selectedCount} selected monitor{selectedCount === 1 ? "" : "s"}. The operation can be undone during a 10-second delay.
+            Impact: {formatAction(action)} on {selectedCount} selected monitor{selectedCount === 1 ? "" : "s"}. The operation starts immediately after confirmation.
           </div>
         </div>
 

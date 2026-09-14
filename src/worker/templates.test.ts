@@ -19,9 +19,9 @@ describe("notification templates", () => {
     expect(rendered.htmlBody).not.toContain("https://sentrovia.example.com/monitoring");
     expect(rendered.htmlBody).toContain("API");
     expect(rendered.htmlBody).toContain("font-family:'IBM Plex Sans'");
-    expect(rendered.htmlBody).toContain('content="light dark"');
-    expect(rendered.htmlBody).toContain("@media (prefers-color-scheme:dark)");
-    expect(rendered.htmlBody).toContain("[data-ogsc] .email-canvas");
+    expect(rendered.htmlBody).toContain('content="light only"');
+    expect(rendered.htmlBody).not.toContain("prefers-color-scheme:dark");
+    expect(rendered.htmlBody).not.toContain("data-ogsc");
     expect(rendered.htmlBody).not.toMatch(/Arial|Helvetica/);
   });
 
@@ -384,6 +384,8 @@ describe("notification templates", () => {
     );
 
     expect(rendered.htmlBody).toContain("Check duration");
+    expect(rendered.htmlBody).toContain('content="light only"');
+    expect(rendered.htmlBody).not.toContain("text-transform:uppercase");
     expect(rendered.htmlBody).not.toContain("Response time");
     expect(rendered.htmlBody).toContain("19001 ms");
     expect(rendered.htmlBody).toContain("50000 ms");
