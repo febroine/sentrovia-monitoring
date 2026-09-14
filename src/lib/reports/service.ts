@@ -605,21 +605,26 @@ async function loadScopedReportData(
     temporarilyPaused: Boolean(monitor.pausedUntil && monitor.pausedUntil > now),
   }));
   const reportMonitorRows = normalizedMonitorRows.filter((monitor) => !isReportMonitorExcluded(monitor, input));
-  const selectedMonitor = input.monitorId
-    ? reportMonitorRows.find((monitor) => monitor.id === input.monitorId)
-    : undefined;
-
-  if (input.monitorId && !normalizedMonitorRows.some((monitor) => monitor.id === input.monitorId)) {
-    throw new AuthError("The selected monitor could not be found in this report scope.", 404);
+  const requestedMonitorIds = Array.from(new Set([
+    ...(input.monitorIds ?? []),
+    ...(input.monitorId ? [input.monitorId] : []),
+  ]));
+  const requestedMonitorIdSet = new Set(requestedMonitorIds);
+  const availableMonitorIds = new Set(normalizedMonitorRows.map((monitor) => monitor.id));
+  const includedMonitorIds = new Set(reportMonitorRows.map((monitor) => monitor.id));
+  if (requestedMonitorIds.some((monitorId) => !availableMonitorIds.has(monitorId))) {
+    throw new AuthError("One or more selected monitors could not be found in this report scope.", 404);
+  }
+  if (requestedMonitorIds.some((monitorId) => !includedMonitorIds.has(monitorId))) {
+    throw new AuthError("One or more selected monitors are excluded by the current analytics filters.", 400);
   }
 
-  if (input.monitorId && !selectedMonitor) {
-    throw new AuthError("The selected monitor is excluded by the current analytics filters.", 400);
-  }
-
-  const scopedMonitorRows = input.monitorId
-    ? selectedMonitor ? [selectedMonitor] : []
+  const scopedMonitorRows = requestedMonitorIds.length > 0
+    ? reportMonitorRows.filter((monitor) => requestedMonitorIdSet.has(monitor.id))
     : reportMonitorRows;
+  const selectedMonitor = scopedMonitorRows.length === 1 && requestedMonitorIds.length === 1
+    ? scopedMonitorRows[0]
+    : undefined;
   const monitorIds = scopedMonitorRows.map((monitor) => monitor.id);
 
   const reportMetrics = monitorIds.length === 0

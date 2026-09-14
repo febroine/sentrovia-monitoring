@@ -2,7 +2,13 @@ import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, 
 import { getCompanyById } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
+  deliveryEvents,
+  monitorChecks,
+  monitorDiagnostics,
+  monitorEvents,
+  monitorOutages,
   monitors,
+  outageEvents,
 } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
 import { recordAuditEventSafely } from "@/lib/audit/service";
@@ -31,7 +37,7 @@ import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
 import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 import { DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { assertHeartbeatTokenAvailable } from "@/lib/monitors/heartbeat-secrets";
-import type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
+import { acquireMonitorHistoryLocks, type ClaimedMonitor } from "@/lib/monitors/runtime-service";
 import { requireWorkspaceIdForUser } from "@/lib/workspaces/ownership";
 export {
   normalizeHeartbeatTokenInput,
@@ -42,11 +48,13 @@ export {
   claimDueMonitors,
   countDueMonitors,
   isMonitorActive,
+  isMonitorLeaseActive,
   recordMonitorResult,
   refreshMonitorUptime,
   releaseMonitorLease,
   resolveMonitorBatchSize,
   renewMonitorLease,
+  withMonitorClaimHistoryLock,
 } from "@/lib/monitors/runtime-service";
 export type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
 export {
@@ -763,6 +771,86 @@ export async function deleteMonitors(userId: string, ids: string[], workspaceId?
 
     return deleted;
   });
+}
+
+export async function resetMonitorHistory(userId: string, ids: string[], workspaceId?: string) {
+  const now = new Date();
+  const resetMonitors = await db.transaction(async (tx) => {
+    const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
+    const existing = await tx
+      .select({ id: monitors.id })
+      .from(monitors)
+      .where(and(
+        eq(monitors.workspaceId, resolvedWorkspaceId),
+        inArray(monitors.id, ids),
+        isNull(monitors.deletedAt)
+      ));
+    const resetIds = existing.map((monitor) => monitor.id);
+    if (resetIds.length === 0) {
+      return [];
+    }
+
+    await acquireMonitorHistoryLocks(tx, resetIds);
+
+    await tx.delete(deliveryEvents).where(and(
+      eq(deliveryEvents.workspaceId, resolvedWorkspaceId),
+      inArray(deliveryEvents.monitorId, resetIds)
+    ));
+    await tx.delete(outageEvents).where(and(
+      eq(outageEvents.workspaceId, resolvedWorkspaceId),
+      inArray(outageEvents.monitorId, resetIds)
+    ));
+    await tx.delete(monitorOutages).where(and(
+      eq(monitorOutages.workspaceId, resolvedWorkspaceId),
+      inArray(monitorOutages.monitorId, resetIds)
+    ));
+    await tx.delete(monitorDiagnostics).where(and(
+      eq(monitorDiagnostics.workspaceId, resolvedWorkspaceId),
+      inArray(monitorDiagnostics.monitorId, resetIds)
+    ));
+    await tx.delete(monitorEvents).where(and(
+      eq(monitorEvents.workspaceId, resolvedWorkspaceId),
+      inArray(monitorEvents.monitorId, resetIds)
+    ));
+    await tx.delete(monitorChecks).where(and(
+      eq(monitorChecks.workspaceId, resolvedWorkspaceId),
+      inArray(monitorChecks.monitorId, resetIds)
+    ));
+
+    return tx
+      .update(monitors)
+      .set(buildMonitorHistoryResetState(now))
+      .where(and(
+        eq(monitors.workspaceId, resolvedWorkspaceId),
+        inArray(monitors.id, resetIds),
+        isNull(monitors.deletedAt)
+      ))
+      .returning();
+  });
+
+  await Promise.all(resetMonitors.map((monitor) => recordAuditEventSafely({
+    workspaceId: monitor.workspaceId,
+    userId,
+    actorUserId: userId,
+    actorLabel: userId,
+    entityType: "monitor",
+    entityId: monitor.id,
+    entityLabel: monitor.name,
+    action: "monitor.history.reset",
+    summary: "Monitor operational history was reset while its configuration was preserved.",
+  })));
+
+  return resetMonitors;
+}
+
+export function buildMonitorHistoryResetState(now: Date) {
+  return {
+    ...buildRestoredMonitorState(),
+    lastSuccessAt: null,
+    heartbeatLastReceivedAt: null,
+    nextCheckAt: sql`case when ${monitors.isActive} then (${now.toISOString()})::timestamptz else null end`,
+    updatedAt: now,
+  };
 }
 
 export async function restoreMonitors(

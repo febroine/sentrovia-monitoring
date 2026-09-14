@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { REPORT_ANALYTICS_LIMITS } from "@/lib/reports/limits";
 import { reportAnalyticsQuerySchema, reportPreviewSchema, reportSchedulePatchSchema } from "@/lib/reports/schemas";
 
 describe("report schemas", () => {
@@ -32,6 +33,27 @@ describe("report schemas", () => {
     expect(parsed.excludeMonitorIds).toEqual(["monitor-1"]);
     expect(parsed.excludeTags).toEqual(["staging"]);
     expect(parsed.excludeCompanyIds).toEqual(["company-1"]);
+  });
+
+  it("accepts company-scoped multi-monitor analytics", () => {
+    const parsed = reportAnalyticsQuerySchema.parse({
+      companyId: "company-1",
+      monitorIds: ["monitor-1", "monitor-2"],
+    });
+
+    expect(parsed.companyId).toBe("company-1");
+    expect(parsed.monitorIds).toEqual(["monitor-1", "monitor-2"]);
+  });
+
+  it("accepts every monitor allowed in a workspace", () => {
+    const monitorIds = Array.from(
+      { length: REPORT_ANALYTICS_LIMITS.maxSelectedMonitors },
+      (_, index) => `monitor-${index}`
+    );
+
+    expect(reportAnalyticsQuerySchema.parse({ monitorIds }).monitorIds)
+      .toHaveLength(REPORT_ANALYTICS_LIMITS.maxSelectedMonitors);
+    expect(() => reportAnalyticsQuerySchema.parse({ monitorIds: [...monitorIds, "monitor-over-limit"] })).toThrow();
   });
 
   it("accepts partial schedule updates", () => {

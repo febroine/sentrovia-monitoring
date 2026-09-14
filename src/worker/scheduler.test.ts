@@ -35,7 +35,7 @@ const mocks = vi.hoisted(() => ({
   claimDueMonitors: vi.fn(),
   countDueMonitors: vi.fn(),
   incrementWorkerCheckedCount: vi.fn(),
-  isMonitorActive: vi.fn(),
+  isMonitorLeaseActive: vi.fn(),
   openOrUpdateOutage: vi.fn(),
   recordMonitorResult: vi.fn(),
   refreshMonitorUptime: vi.fn(),
@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   sendMonitorNotifications: vi.fn(),
   buildFailureScreenshotAttachment: vi.fn(),
   updateWorkerState: vi.fn(),
+  withMonitorClaimHistoryLock: vi.fn(),
   runMonitorDiagnostics: vi.fn(),
   ensureWorkerConnectivity: vi.fn(),
   getRecentMonitorEventMessage: vi.fn(),
@@ -90,12 +91,13 @@ vi.mock("@/lib/monitors/service", () => ({
   claimDueMonitors: mocks.claimDueMonitors,
   countDueMonitors: mocks.countDueMonitors,
   incrementWorkerCheckedCount: mocks.incrementWorkerCheckedCount,
-  isMonitorActive: mocks.isMonitorActive,
+  isMonitorLeaseActive: mocks.isMonitorLeaseActive,
   recordMonitorResult: mocks.recordMonitorResult,
   refreshMonitorUptime: mocks.refreshMonitorUptime,
   releaseMonitorLease: mocks.releaseMonitorLease,
   renewMonitorLease: mocks.renewMonitorLease,
   updateWorkerState: mocks.updateWorkerState,
+  withMonitorClaimHistoryLock: mocks.withMonitorClaimHistoryLock,
   getRecentMonitorEventMessage: mocks.getRecentMonitorEventMessage,
 }));
 
@@ -163,7 +165,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.appendOutageEvent.mockResolvedValue(null);
     mocks.appendMonitorDiagnostic.mockResolvedValue(null);
     mocks.incrementWorkerCheckedCount.mockResolvedValue(null);
-    mocks.isMonitorActive.mockResolvedValue(true);
+    mocks.isMonitorLeaseActive.mockResolvedValue(true);
     mocks.recordMonitorResult.mockResolvedValue({ id: "monitor-1" } as Monitor);
     mocks.refreshMonitorUptime.mockResolvedValue(true);
     mocks.releaseMonitorLease.mockResolvedValue(true);
@@ -187,6 +189,7 @@ describe("monitoring scheduler verification flow", () => {
       createdAt: new Date("2026-05-08T07:00:00.000Z"),
     });
     mocks.updateWorkerState.mockResolvedValue(null);
+    mocks.withMonitorClaimHistoryLock.mockImplementation((_monitorId, _leaseToken, operation) => operation());
     mocks.sendMonitorNotifications.mockResolvedValue(false);
     mocks.getRecentMonitorEventMessage.mockResolvedValue(null);
     mocks.hasRecentFailedNotificationDelivery.mockResolvedValue(false);
@@ -1236,8 +1239,8 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
-  it("does not write side effects when a monitor is paused after result persistence", async () => {
-    mocks.isMonitorActive
+  it("does not write side effects when a monitor lease is revoked by a history reset", async () => {
+    mocks.isMonitorLeaseActive
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
@@ -1245,6 +1248,24 @@ describe("monitoring scheduler verification flow", () => {
     await runMonitoringCycle();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalled();
+    expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
+    expect(mocks.appendMonitorEvent).not.toHaveBeenCalled();
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+    expect(mocks.isMonitorLeaseActive).toHaveBeenCalledWith("monitor-1", "lease-1");
+  });
+
+  it("does not persist a completed probe when reset wins the history lock", async () => {
+    mocks.withMonitorClaimHistoryLock.mockResolvedValueOnce(null);
+    mocks.dueMonitors = [buildMonitor({ status: "up" })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.withMonitorClaimHistoryLock).toHaveBeenCalledWith(
+      "monitor-1",
+      "lease-1",
+      expect.any(Function)
+    );
+    expect(mocks.recordMonitorResult).not.toHaveBeenCalled();
     expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
     expect(mocks.appendMonitorEvent).not.toHaveBeenCalled();
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();

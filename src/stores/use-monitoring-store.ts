@@ -25,6 +25,7 @@ interface MonitoringState {
     flags: { isFavorite?: boolean; isCritical?: boolean; publishOnStatusPage?: boolean }
   ) => Promise<MonitorRecord | null>;
   bulkUpdateMonitors: (ids: string[], payload: MonitorPayload) => Promise<MonitorRecord[]>;
+  resetMonitorHistory: (ids: string[]) => Promise<MonitorRecord[]>;
   deleteMonitors: (ids: string[]) => Promise<SoftDeleteResult | null>;
   restoreMonitors: (ids: string[]) => Promise<MonitorRecord[]>;
   importMonitors: (items: MonitorRecord[]) => void;
@@ -331,6 +332,38 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: message,
       });
+      showToast(message, "error");
+      return [];
+    }
+  },
+  resetMonitorHistory: async (ids) => {
+    invalidateMonitorLoads();
+    set({ saving: true });
+
+    try {
+      const response = await fetch("/api/monitors/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      if (!response.ok || !data?.monitors) {
+        throw new Error(data?.message ?? "Unable to reset monitor history.");
+      }
+
+      const resetById = new Map(data.monitors.map((monitor) => [monitor.id, monitor]));
+      invalidateMonitorLoads();
+      set((state) => ({
+        monitors: state.monitors.map((monitor) => resetById.get(monitor.id) ?? monitor),
+        saving: false,
+        error: null,
+      }));
+      showToast(`${data.monitors.length} monitor${data.monitors.length === 1 ? "" : "s"} reset.`, "success");
+      return data.monitors;
+    } catch (error) {
+      const message = getErrorMessage(error, "Unable to reset monitor history.");
+      invalidateMonitorLoads();
+      set({ saving: false, error: message });
       showToast(message, "error");
       return [];
     }

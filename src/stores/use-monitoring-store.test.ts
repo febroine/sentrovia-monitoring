@@ -167,6 +167,38 @@ describe("monitoring store request ordering", () => {
       error: null,
     });
   });
+
+  it("replaces reset monitors with the fresh server state", async () => {
+    const originalMonitor = {
+      id: "monitor-1",
+      name: "Preserved name",
+      status: "offline",
+      uptime: "91.2%",
+    } as unknown as MonitorRecord;
+    const resetMonitor = {
+      ...originalMonitor,
+      status: "pending",
+      uptime: "--",
+      lastCheckedAt: null,
+    } as MonitorRecord;
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ monitors: [resetMonitor] }));
+    useMonitoringStore.setState({ monitors: [originalMonitor], loading: false });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await useMonitoringStore.getState().resetMonitorHistory([originalMonitor.id]);
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/monitors/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [originalMonitor.id] }),
+    });
+    expect(result).toEqual([resetMonitor]);
+    expect(useMonitoringStore.getState()).toMatchObject({
+      monitors: [resetMonitor],
+      saving: false,
+      error: null,
+    });
+  });
 });
 
 function emptySummary(): MonitorSummary {

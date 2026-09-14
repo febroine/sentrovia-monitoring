@@ -9,10 +9,11 @@ import {
   appendMonitorEvent,
   incrementWorkerCheckedCount,
   getRecentMonitorEventMessage,
-  isMonitorActive,
+  isMonitorLeaseActive,
   recordMonitorResult,
   refreshMonitorUptime,
   updateWorkerState,
+  withMonitorClaimHistoryLock,
   type ClaimedMonitor,
 } from "@/lib/monitors/service";
 import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
@@ -46,7 +47,6 @@ type ProbeSequence = {
   executedProbeCount: number;
   recoveredDuringFinalConfirmation: boolean;
   result: CheckResult;
-  terminalResult?: MonitorCycleResult;
 };
 
 type TransitionOutcome = {
@@ -75,19 +75,33 @@ export async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<Mo
     verificationAttempt,
     wasVerifying,
   });
-  if (!probe || probe.terminalResult) {
-    return probe?.terminalResult ?? null;
+  if (!probe) return null;
+
+  return withMonitorClaimHistoryLock(monitor.id, monitor.leaseToken, () => persistClaimedMonitorResult(
+    monitor,
+    probe,
+    { hadConfirmedOutage, previousStatus, previousStatusCode, threshold, verificationAttempt, wasVerifying }
+  ));
+}
+
+async function persistClaimedMonitorResult(
+  monitor: ClaimedMonitor,
+  probe: ProbeSequence,
+  state: ProbeState & { previousStatus: string; previousStatusCode: number | null }
+): Promise<MonitorCycleResult | null> {
+  if (!probe.result.ok && probe.result.failureReason === "configuration") {
+    return recordConfigurationFailure(monitor, probe.result, probe.checkCompletedAt);
   }
 
   const rca = analyzeRootCause(probe.result);
-  const diagnosticMonitor = !probe.result.ok && !hadConfirmedOutage && !wasVerifying
+  const diagnosticMonitor = !probe.result.ok && !state.hadConfirmedOutage && !state.wasVerifying
     ? withVerificationTimeout(monitor, 1)
     : probe.diagnosticMonitor;
   const transition = await applyMonitorTransition(monitor, probe, rca, {
-    hadConfirmedOutage,
-    previousStatus,
-    threshold,
-    wasVerifying,
+    hadConfirmedOutage: state.hadConfirmedOutage,
+    previousStatus: state.previousStatus,
+    threshold: state.threshold,
+    wasVerifying: state.wasVerifying,
   });
   if (!transition) {
     return null;
@@ -96,11 +110,13 @@ export async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<Mo
   if (!(await recordCycleCheck(monitor, probe, transition.checkStatus))) {
     return null;
   }
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await handleSuccessfulCheck(monitor, probe, rca, {
-    hadConfirmedOutage,
-    verificationAttempt,
-    wasVerifying,
+    hadConfirmedOutage: state.hadConfirmedOutage,
+    verificationAttempt: state.verificationAttempt,
+    wasVerifying: state.wasVerifying,
   });
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   const failureNotificationSent = await handleFailedCheck(
     monitor,
     diagnosticMonitor,
@@ -108,13 +124,17 @@ export async function processClaimedMonitor(monitor: ClaimedMonitor): Promise<Mo
     rca,
     transition
   );
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await sendDowntimeReminderIfNeeded(monitor, probe.result, rca, transition, failureNotificationSent);
-  await handleRecovery(monitor, probe.result, rca, hadConfirmedOutage);
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
+  await handleRecovery(monitor, probe.result, rca, state.hadConfirmedOutage);
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await handleStatusCodeChange(monitor, probe.result, rca, transition, {
-    hadConfirmedOutage,
-    previousStatusCode,
+    hadConfirmedOutage: state.hadConfirmedOutage,
+    previousStatusCode: state.previousStatusCode,
   });
 
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await retryTransitionNotifications(monitor, probe.result, rca);
 
   return {
@@ -133,7 +153,13 @@ async function executeProbeSequence(
   const firstProbeCompletedAt = new Date();
 
   if (!result.ok && result.failureReason === "configuration") {
-    return terminalProbe(await recordConfigurationFailure(monitor, result, firstProbeCompletedAt), diagnosticMonitor, result);
+    return {
+      checkCompletedAt: firstProbeCompletedAt,
+      diagnosticMonitor,
+      executedProbeCount,
+      recoveredDuringFinalConfirmation: false,
+      result,
+    };
   }
   if (!result.ok && !(await ensureWorkerConnectivity()).available) {
     return null;
@@ -152,27 +178,10 @@ async function executeProbeSequence(
 
   const checkCompletedAt = new Date();
   if (!result.ok && result.failureReason === "configuration") {
-    return terminalProbe(await recordConfigurationFailure(monitor, result, checkCompletedAt), diagnosticMonitor, result);
+    return { checkCompletedAt, diagnosticMonitor, executedProbeCount, recoveredDuringFinalConfirmation, result };
   }
 
   return { checkCompletedAt, diagnosticMonitor, executedProbeCount, recoveredDuringFinalConfirmation, result };
-}
-
-function terminalProbe(
-  terminalResult: MonitorCycleResult | null,
-  diagnosticMonitor: Monitor,
-  result: CheckResult
-): ProbeSequence | null {
-  return terminalResult
-    ? {
-        checkCompletedAt: new Date(),
-        diagnosticMonitor,
-        executedProbeCount: 1,
-        recoveredDuringFinalConfirmation: false,
-        result,
-        terminalResult,
-      }
-    : null;
 }
 
 async function applyMonitorTransition(
@@ -262,7 +271,7 @@ async function recordVerificationTransition(
   });
   if (!recorded) return null;
   if (!confirmedOutage) {
-    if (!(await isMonitorActive(monitor.id))) return null;
+    if (!(await isCurrentMonitorClaim(monitor))) return null;
     await recordPendingVerification(monitor, probe.diagnosticMonitor, result, rca, verificationCount, threshold);
   }
   return {
@@ -296,7 +305,7 @@ async function recordInitialFailureTransition(
     latencyMs: result.latencyMs,
   });
   if (!recorded) return null;
-  if (!(await isMonitorActive(monitor.id))) return null;
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await appendDetailedEvent(monitor, result, "verification", `Verification mode started. Attempt 1 of ${threshold} failed.`, rca, "pending");
   await appendTimelineEvent({
     monitorId: monitor.id,
@@ -319,8 +328,10 @@ async function recordPendingVerification(
   verificationCount: number,
   threshold: number
 ) {
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = `Verification attempt ${verificationCount} of ${threshold} failed. Outage is pending confirmation.`;
   await appendDetailedEvent(monitor, result, "verification", message, rca, "pending");
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await appendTimelineEvent({
     monitorId: monitor.id,
     userId: monitor.userId,
@@ -330,6 +341,7 @@ async function recordPendingVerification(
     metadata: buildAttemptMetadata(result, verificationCount, threshold),
     createdAt: result.checkedAt,
   });
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await recordFailureDiagnostics(diagnosticMonitor);
 }
 
@@ -338,11 +350,13 @@ function defaultTransition(checkStatus: TransitionOutcome["checkStatus"]): Trans
 }
 
 async function recordCycleCheck(monitor: ClaimedMonitor, probe: ProbeSequence, checkStatus: TransitionOutcome["checkStatus"]) {
-  if (!(await isMonitorActive(monitor.id))) {
+  if (!(await isCurrentMonitorClaim(monitor))) {
     return false;
   }
   await updateWorkerState({ heartbeatAt: new Date() });
+  if (!(await isCurrentMonitorClaim(monitor))) return false;
   await incrementWorkerCheckedCount(probe.executedProbeCount);
+  if (!(await isCurrentMonitorClaim(monitor))) return false;
   await appendMonitorCheck({
     monitorId: monitor.id,
     userId: monitor.userId,
@@ -352,6 +366,7 @@ async function recordCycleCheck(monitor: ClaimedMonitor, probe: ProbeSequence, c
     createdAt: probe.result.checkedAt,
   });
   if (checkStatus !== "pending") {
+    if (!(await isCurrentMonitorClaim(monitor))) return false;
     await refreshMonitorUptimeSafely(monitor, probe.result.checkedAt);
   }
   return true;
@@ -365,10 +380,14 @@ async function handleSuccessfulCheck(
 ) {
   if (!probe.result.ok) return;
   if (state.wasVerifying && !state.hadConfirmedOutage) {
+    if (!(await isCurrentMonitorClaim(monitor))) return;
     await recordVerificationRecovery(monitor, probe, rca, state.verificationAttempt);
   }
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await appendCheckEvent(monitor, probe.result, rca);
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await handleSlowResponse(monitor, probe.result, rca);
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await sendSslExpiryWarning(monitor, probe.result, rca);
 }
 
@@ -378,10 +397,12 @@ async function recordVerificationRecovery(
   rca: RootCause,
   verificationAttempt: number
 ) {
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = probe.recoveredDuringFinalConfirmation
     ? "Final confirmation recovered before outage confirmation."
     : "Verification recovered before outage confirmation.";
   await appendDetailedEvent(monitor, probe.result, "verification", message, rca, "up");
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await appendTimelineEvent({
     monitorId: monitor.id,
     userId: monitor.userId,
@@ -399,12 +420,14 @@ async function recordVerificationRecovery(
 }
 
 async function handleSlowResponse(monitor: ClaimedMonitor, result: CheckResult, rca: RootCause) {
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = buildSlowResponseMessage(monitor, result);
   if (!message) return;
   await appendDetailedEvent(monitor, result, "latency", message, rca, "up");
   if (!monitor.slowResponseAlertsEnabled || !hasEnteredSlowResponseState(monitor, result)) return;
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const notificationSent = await sendMonitorNotifications({ kind: "latency", message, monitor, result, rca });
-  if (notificationSent) {
+  if (notificationSent && await isCurrentMonitorClaim(monitor)) {
     await appendDetailedEvent(monitor, result, "latency-notification", message, rca, "up");
   }
 }
@@ -417,10 +440,12 @@ async function handleFailedCheck(
   transition: TransitionOutcome
 ) {
   if (result.ok || !transition.failureEventMessage) return false;
+  if (!(await isCurrentMonitorClaim(monitor))) return false;
   const message = transition.failureEventMessage;
   await appendDetailedEvent(monitor, result, "failure", message, rca, transition.checkStatus);
+  if (!(await isCurrentMonitorClaim(monitor))) return false;
   const diagnostic = await recordFailureDiagnostics(diagnosticMonitor);
-  if (!(await isMonitorActive(monitor.id))) {
+  if (!(await isCurrentMonitorClaim(monitor))) {
     return false;
   }
   const outage = await openOrUpdateOutage({
@@ -430,8 +455,10 @@ async function handleFailedCheck(
     statusCode: result.statusCode,
     errorMessage: message,
   });
+  if (!(await isCurrentMonitorClaim(monitor))) return false;
   await recordOutageTimeline(monitor, result, transition, message, diagnostic?.summary, outage?.id);
   if (transition.checkStatus !== "down") return false;
+  if (!(await isCurrentMonitorClaim(monitor))) return false;
   const sent = await sendMonitorNotifications({
     kind: "failure",
     message,
@@ -440,7 +467,9 @@ async function handleFailedCheck(
     rca,
     buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
   });
-  if (sent) await appendDetailedEvent(monitor, result, "failure-notification", message, rca, "down");
+  if (sent && await isCurrentMonitorClaim(monitor)) {
+    await appendDetailedEvent(monitor, result, "failure-notification", message, rca, "down");
+  }
   return sent;
 }
 
@@ -477,6 +506,7 @@ async function sendDowntimeReminderIfNeeded(
   failureNotificationSent: boolean
 ) {
   if (result.ok || transition.checkStatus !== "down" || transition.outageConfirmedThisCycle || failureNotificationSent) return;
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = buildDowntimeReminderMessage(monitor, result.checkedAt);
   if (!message) return;
   const sent = await sendMonitorNotifications({
@@ -487,19 +517,24 @@ async function sendDowntimeReminderIfNeeded(
     rca,
     buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
   });
-  if (sent) await appendDetailedEvent(monitor, result, "downtime-reminder", message, rca, "down");
+  if (sent && await isCurrentMonitorClaim(monitor)) {
+    await appendDetailedEvent(monitor, result, "downtime-reminder", message, rca, "down");
+  }
 }
 
 async function handleRecovery(monitor: ClaimedMonitor, result: CheckResult, rca: RootCause, hadConfirmedOutage: boolean) {
   if (!result.ok || !hadConfirmedOutage) return;
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = "Service recovered and is responding again.";
   await appendDetailedEvent(monitor, result, "recovery", message, rca, "up");
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const outage = await resolveOutage({
     monitorId: monitor.id,
     userId: monitor.userId,
     checkedAt: result.checkedAt,
     statusCode: result.statusCode,
   });
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await appendTimelineEvent({
     outageId: outage?.id ?? null,
     monitorId: monitor.id,
@@ -510,8 +545,11 @@ async function handleRecovery(monitor: ClaimedMonitor, result: CheckResult, rca:
     metadata: { statusCode: result.statusCode, latencyMs: result.latencyMs },
     createdAt: result.checkedAt,
   });
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const sent = await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
-  if (sent) await appendDetailedEvent(monitor, result, "recovery-notification", message, rca, "up");
+  if (sent && await isCurrentMonitorClaim(monitor)) {
+    await appendDetailedEvent(monitor, result, "recovery-notification", message, rca, "up");
+  }
 }
 
 async function handleStatusCodeChange(
@@ -522,8 +560,10 @@ async function handleStatusCodeChange(
   state: { hadConfirmedOutage: boolean; previousStatusCode: number | null }
 ) {
   if (!shouldNotifyStatusCodeChange(monitor, result, transition, state)) return;
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = `Status code changed from ${state.previousStatusCode} to ${result.statusCode}.`;
   await appendDetailedEvent(monitor, result, "status-change", message, rca, transition.checkStatus);
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const sent = await sendMonitorNotifications({
     kind: "status-change",
     message,
@@ -532,7 +572,9 @@ async function handleStatusCodeChange(
     rca,
     buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
   });
-  if (sent) await appendDetailedEvent(monitor, result, "status-change-notification", message, rca, transition.checkStatus);
+  if (sent && await isCurrentMonitorClaim(monitor)) {
+    await appendDetailedEvent(monitor, result, "status-change-notification", message, rca, transition.checkStatus);
+  }
 }
 
 function shouldNotifyStatusCodeChange(
@@ -579,13 +621,15 @@ async function recordConfigurationFailure(
   if (!recorded) {
     return null;
   }
-  if (!(await isMonitorActive(monitor.id))) {
+  if (!(await isCurrentMonitorClaim(monitor))) {
     return null;
   }
 
   const rca = analyzeRootCause(result);
   await updateWorkerState({ heartbeatAt: completedAt });
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await incrementWorkerCheckedCount(1);
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await appendMonitorCheck({
     monitorId: monitor.id,
     userId: monitor.userId,
@@ -594,6 +638,7 @@ async function recordConfigurationFailure(
     latencyMs: result.latencyMs,
     createdAt: result.checkedAt,
   });
+  if (!(await isCurrentMonitorClaim(monitor))) return null;
   await appendDetailedEvent(
     monitor,
     result,
@@ -622,6 +667,7 @@ async function retryTransitionNotifications(
   if (!result.ok) {
     return;
   }
+  if (!(await isCurrentMonitorClaim(monitor))) return;
 
   const before = new Date(result.checkedAt.getTime() - 1);
   const since = new Date(before.getTime() - DAY_MS);
@@ -637,6 +683,7 @@ async function retryTransitionNotification(
   since: Date,
   before: Date
 ) {
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const transitionMessage = await getRecentMonitorEventMessage({
     monitorId: monitor.id,
     eventType: kind,
@@ -668,6 +715,7 @@ async function retryTransitionNotification(
     return;
   }
 
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const notificationSent = await sendMonitorNotifications({
     kind,
     message: transitionMessage,
@@ -678,7 +726,7 @@ async function retryTransitionNotification(
       ? () => buildAlertEmailAttachments(monitor, result)
       : undefined,
   });
-  if (notificationSent) {
+  if (notificationSent && await isCurrentMonitorClaim(monitor)) {
     await appendDetailedEvent(
       monitor,
       result,
@@ -712,7 +760,7 @@ async function buildAlertEmailAttachments(
     skippedReason = reason;
   });
 
-  if (skippedReason) {
+  if (skippedReason && await isCurrentMonitorClaim(monitor)) {
     await appendMonitorEvent({
       monitorId: monitor.id,
       userId: monitor.userId,
@@ -730,11 +778,13 @@ async function buildAlertEmailAttachments(
 async function recordFailureDiagnostics(monitor: Monitor) {
   try {
     const diagnostic = await runMonitorDiagnostics(monitor);
+    if (!(await isCurrentMonitorClaim(monitor))) return null;
     await appendMonitorDiagnostic({
       monitorId: monitor.id,
       userId: monitor.userId,
       diagnostic,
     });
+    if (!(await isCurrentMonitorClaim(monitor))) return null;
     await appendTimelineEvent({
       monitorId: monitor.id,
       userId: monitor.userId,
@@ -796,7 +846,11 @@ async function recordActiveMonitorResult(monitor: Monitor, update: MonitorResult
     return false;
   }
 
-  return isMonitorActive(monitor.id);
+  return isCurrentMonitorClaim(monitor);
+}
+
+function isCurrentMonitorClaim(monitor: Pick<Monitor, "id" | "leaseToken">) {
+  return isMonitorLeaseActive(monitor.id, monitor.leaseToken);
 }
 
 function withVerificationTimeout(monitor: Monitor, verificationAttempt: number) {
@@ -876,6 +930,7 @@ async function sendSslExpiryWarning(
   result: Awaited<ReturnType<typeof checkMonitor>>,
   rca: ReturnType<typeof analyzeRootCause>
 ) {
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = buildSslExpiryMessage(monitor, result);
   if (!message) {
     return;
@@ -889,8 +944,9 @@ async function sendSslExpiryWarning(
     rca,
   });
 
-  if (notificationSent) {
+  if (notificationSent && await isCurrentMonitorClaim(monitor)) {
     await appendDetailedEvent(monitor, result, "ssl-expiry", message, rca, "up");
+    if (!(await isCurrentMonitorClaim(monitor))) return;
     await appendDetailedEvent(monitor, result, "ssl-expiry-notification", message, rca, "up");
   }
 }
@@ -947,6 +1003,7 @@ async function appendCheckEvent(
   result: Awaited<ReturnType<typeof checkMonitor>>,
   rca: ReturnType<typeof analyzeRootCause>
 ) {
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = `Check completed successfully in ${result.latencyMs ?? "n/a"}ms.`;
   await appendMonitorEvent({
     monitorId: monitor.id,
@@ -970,6 +1027,7 @@ async function appendDetailedEvent(
   rca: ReturnType<typeof analyzeRootCause>,
   status: "up" | "down" | "pending"
 ) {
+  if (!(await isCurrentMonitorClaim(monitor))) return;
   await appendMonitorEvent({
     monitorId: monitor.id,
     userId: monitor.userId,

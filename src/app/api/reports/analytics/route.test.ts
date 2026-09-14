@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/reports/service", () => ({ generateReportPreview: mocks.generateReportPreview }));
 
-import { GET } from "@/app/api/reports/analytics/route";
+import { GET, POST } from "@/app/api/reports/analytics/route";
 
 describe("report analytics route", () => {
   beforeEach(() => {
@@ -35,6 +35,29 @@ describe("report analytics route", () => {
         excludeCompanyIds: ["company-2"],
         periodRange: "30d",
         timeZone: "UTC",
+      }),
+      expect.any(Date),
+      "workspace-1"
+    );
+  });
+
+  it("accepts a company scope with multiple selected monitors", async () => {
+    const response = await POST(new NextRequest("http://localhost/api/reports/analytics", {
+      method: "POST",
+      body: JSON.stringify({
+        companyId: "company-1",
+        monitorIds: ["monitor-1", "monitor-2"],
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.generateReportPreview).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        scope: "company",
+        companyId: "company-1",
+        monitorIds: ["monitor-1", "monitor-2"],
       }),
       expect.any(Date),
       "workspace-1"
