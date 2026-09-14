@@ -67,5 +67,8 @@ async function generateAnalyticsResponse(
     session.activeWorkspaceId ?? undefined
   );
 
-  return NextResponse.json({ report });
+  return NextResponse.json(
+    { report },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }

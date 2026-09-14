@@ -4,6 +4,11 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+### Fixed
+
+- Ensured monitor history reset removes all monitor-owned report and operational records, including legacy records with stale workspace scope.
+- Refreshed open report analytics and previews after a monitor history reset and prevented stale concurrent responses from replacing newer results.
+
 ## [0.1.1] - 2026-09-13
 
 ### Fixed

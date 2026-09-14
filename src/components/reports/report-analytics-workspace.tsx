@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { formatPanelDateTime } from "@/lib/time";
+import { subscribeToMonitorHistoryReset } from "@/lib/client/monitor-history-events";
 import {
   formatMonitorAverageLatency,
   formatMonitorP95Latency,
@@ -62,11 +63,14 @@ export function ReportAnalyticsWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const filtersRef = useRef(filters);
+  const analyticsRequestRef = useRef(0);
   const hasMonitors = monitors.length > 0;
   const invalidRange = filters.periodRange === "custom"
     && (!filters.startedAt || !filters.endedAt || filters.startedAt > filters.endedAt);
 
   const loadAnalytics = useCallback(async (nextFilters: AnalyticsFilters) => {
+    const requestId = ++analyticsRequestRef.current;
     setLoading(true);
     setError(null);
     setNotice(null);
@@ -79,6 +83,7 @@ export function ReportAnalyticsWorkspace() {
       const companiesData = (await companiesResponse.json()) as { companies?: CompanyOption[]; message?: string };
       if (!monitorsResponse.ok) throw new Error(monitorsData.message ?? "Unable to load monitors.");
       if (!companiesResponse.ok) throw new Error(companiesData.message ?? "Unable to load companies.");
+      if (requestId !== analyticsRequestRef.current) return;
 
       const activeMonitors = (monitorsData.monitors ?? []).filter((monitor) => monitor.isActive);
       const activeCompanyIds = new Set(activeMonitors.flatMap((monitor) => monitor.companyId ? [monitor.companyId] : []));
@@ -95,6 +100,7 @@ export function ReportAnalyticsWorkspace() {
 
       let { response: reportResponse, data: reportData } = await requestAnalyticsReport(resolvedFilters);
       if (shouldRetryAnalyticsWithoutMonitor(reportResponse.status, resolvedFilters.monitorIds)) {
+        if (requestId !== analyticsRequestRef.current) return;
         setReport(null);
         resolvedFilters = reconcileFiltersWithCatalog(
           { ...resolvedFilters, monitorIds: [] },
@@ -110,21 +116,32 @@ export function ReportAnalyticsWorkspace() {
         ));
       }
       if (!reportResponse.ok || !reportData.report) throw new Error(reportData.message ?? "Unable to load analytics.");
+      if (requestId !== analyticsRequestRef.current) return;
       setReport(reportData.report);
       setAppliedFilters(resolvedFilters);
       if (selectionReset) {
         setNotice(SELECTION_RESET_NOTICE);
       }
     } catch (loadError) {
+      if (requestId !== analyticsRequestRef.current) return;
       setError(loadError instanceof Error ? loadError.message : "Unable to load analytics.");
     } finally {
-      setLoading(false);
+      if (requestId === analyticsRequestRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadAnalytics(INITIAL_FILTERS);
   }, [loadAnalytics]);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
+  useEffect(() => subscribeToMonitorHistoryReset(() => {
+    setReport(null);
+    void loadAnalytics(filtersRef.current);
+  }), [loadAnalytics]);
 
   return (
     <div className="space-y-5" aria-busy={loading}>
@@ -833,6 +850,7 @@ async function requestAnalyticsReport(filters: AnalyticsFilters) {
   if (filters.companyId !== "all") payload.companyId = filters.companyId;
   const response = await fetch("/api/reports/analytics", {
     method: "POST",
+    cache: "no-store",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
