@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REPORT_ANALYTICS_LIMITS } from "@/lib/reports/limits";
 
 const reportScopeSchema = z.enum(["global", "company"]);
 const reportCadenceSchema = z.enum(["weekly", "monthly", "all_time"]);
@@ -7,6 +8,9 @@ const reportTemplateSchema = z.enum(["executive", "operations", "client"]);
 const deliveryDetailLevelSchema = z.enum(["summary", "standard", "full"]);
 const companyIdSchema = z.string().trim().max(120).nullable().optional();
 const monitorIdSchema = z.string().trim().max(120).nullable().optional();
+const monitorIdsSchema = z.array(z.string().trim().min(1).max(120))
+  .max(REPORT_ANALYTICS_LIMITS.maxSelectedMonitors)
+  .default([]);
 const exclusionIdsSchema = z.array(z.string().trim().min(1).max(120)).max(100).default([]);
 const exclusionTagsSchema = z.array(z.string().trim().min(1).max(40)).max(100).default([]);
 const recipientEmailsSchema = z.array(z.string().trim().email()).min(1).max(25);
@@ -36,7 +40,9 @@ const reportPreviewShape = {
 export const reportPreviewSchema = z.object(reportPreviewShape).superRefine(validateReportPeriod);
 
 export const reportAnalyticsQuerySchema = z.object({
+  companyId: companyIdSchema,
   monitorId: monitorIdSchema,
+  monitorIds: monitorIdsSchema,
   excludeMonitorIds: exclusionIdsSchema,
   excludeTags: exclusionTagsSchema,
   excludeCompanyIds: exclusionIdsSchema,

@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import postgres from "postgres";
+import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, workspaceMembers, workspaceSettings, type Monitor } from "@/lib/db/schema";
-import { env } from "@/lib/env";
+import { env, getDatabaseUrl } from "@/lib/env";
 import { encryptLegacyClaimedSecrets } from "@/lib/monitors/heartbeat-secrets";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
 import { getMonitorUptimeById, NO_MONITOR_UPTIME_DATA } from "@/lib/monitoring/uptime";
@@ -13,6 +14,18 @@ const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_DUE_WORKSPACES_PER_CYCLE = 100;
 const DUE_WORKSPACE_QUERY_CONCURRENCY = 10;
+const MONITOR_HISTORY_LOCK_POOL_SIZE = 10;
+const globalForMonitorHistoryLock = globalThis as unknown as {
+  monitorHistoryLockSql?: ReturnType<typeof postgres>;
+};
+const monitorHistoryLockSql = globalForMonitorHistoryLock.monitorHistoryLockSql ?? postgres(getDatabaseUrl(), {
+  max: MONITOR_HISTORY_LOCK_POOL_SIZE,
+  prepare: false,
+});
+
+if (process.env.NODE_ENV !== "production") {
+  globalForMonitorHistoryLock.monitorHistoryLockSql = monitorHistoryLockSql;
+}
 
 export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };
 
@@ -230,6 +243,66 @@ export async function isMonitorActive(monitorId: string) {
     .limit(1);
 
   return monitor?.isActive === true;
+}
+
+export async function isMonitorLeaseActive(monitorId: string, expectedLeaseToken: string | null) {
+  if (!expectedLeaseToken) {
+    return false;
+  }
+
+  const now = new Date();
+  const [monitor] = await db
+    .select({ id: monitors.id })
+    .from(monitors)
+    .where(and(
+      eq(monitors.id, monitorId),
+      eq(monitors.isActive, true),
+      isNull(monitors.deletedAt),
+      buildMonitorRunnablePredicate(now),
+      eq(monitors.leaseToken, expectedLeaseToken),
+      gt(monitors.leaseExpiresAt, now)
+    ))
+    .limit(1);
+
+  return monitor?.id === monitorId;
+}
+
+export async function acquireMonitorHistoryLocks(database: DatabaseExecutor, monitorIds: string[]) {
+  for (const monitorId of [...monitorIds].sort()) {
+    await database.execute(sql`select pg_advisory_xact_lock(hashtextextended(${monitorHistoryLockKey(monitorId)}, 0))`);
+  }
+}
+
+export async function withMonitorClaimHistoryLock<T>(
+  monitorId: string,
+  expectedLeaseToken: string | null,
+  operation: () => Promise<T>
+): Promise<T | null> {
+  if (!expectedLeaseToken) {
+    return null;
+  }
+
+  const result = await monitorHistoryLockSql.begin(async (lockTransaction) => {
+    await lockTransaction`select pg_advisory_xact_lock(hashtextextended(${monitorHistoryLockKey(monitorId)}, 0))`;
+    const [monitor] = await lockTransaction<{ id: string }[]>`
+      select id
+      from monitors
+      where id = ${monitorId}
+        and is_active = true
+        and deleted_at is null
+        and (paused_until is null or paused_until <= now())
+        and lease_token = ${expectedLeaseToken}
+        and lease_expires_at > now()
+    `;
+
+    return monitor?.id === monitorId ? operation() : null;
+  });
+
+  return result as T | null;
+}
+
+function monitorHistoryLockKey(monitorId: string) {
+  return `sentrovia:monitor-history:${monitorId}`;
 }
 
 export async function recordMonitorResult(

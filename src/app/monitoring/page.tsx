@@ -12,6 +12,7 @@ import {
   Plus,
   Play,
   RefreshCw,
+  RotateCcw,
   Search,
   Tags,
   Trash2,
@@ -84,6 +85,7 @@ export default function MonitoringPage() {
     updateMonitorPause,
     updateMonitorFlags,
     bulkUpdateMonitors,
+    resetMonitorHistory,
     deleteMonitors,
     restoreMonitors,
     importMonitors,
@@ -118,6 +120,7 @@ export default function MonitoringPage() {
   const [pauseTargetIds, setPauseTargetIds] = useState<string[]>([]);
   const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
+  const [resetTargetIds, setResetTargetIds] = useState<string[]>([]);
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
   const [pendingRestores, setPendingRestores] = useState<PendingMonitorRestore[]>([]);
   const latestTimelineRequestRef = useRef(0);
@@ -143,6 +146,7 @@ export default function MonitoringPage() {
     return firstSelected ? payloadFromMonitor(firstSelected) : defaultForm;
   }, [defaultForm, monitors, selectedIds]);
   const deleteTargets = monitors.filter((monitor) => deleteTargetIds.includes(monitor.id));
+  const resetTargets = monitors.filter((monitor) => resetTargetIds.includes(monitor.id));
   const selectedActiveMonitors = monitors.filter((monitor) => selectedIds.has(monitor.id) && monitor.isActive);
   const selectedPausedMonitorIds = selectedActiveMonitors
     .filter((monitor) => isMonitorTemporarilyPaused(monitor.pausedUntil))
@@ -410,6 +414,46 @@ export default function MonitoringPage() {
     setDeleteTargetIds(ids);
   }
 
+  function openResetConfirmation() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
+      return;
+    }
+
+    clearError();
+    setResetTargetIds(ids);
+  }
+
+  function closeResetConfirmation() {
+    if (!saving) {
+      setResetTargetIds([]);
+    }
+  }
+
+  async function confirmResetSelected() {
+    if (resetTargetIds.length === 0) {
+      return;
+    }
+
+    const ids = [...resetTargetIds];
+    setResetTargetIds([]);
+    await runBulkAction(
+      `Resetting ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+      "Check, report, timeline, outage, diagnostic, and delivery history is being cleared.",
+      ids.length,
+      async () => {
+        const reset = await resetMonitorHistory(ids);
+        if (reset.length > 0) {
+          await loadMonitorPage();
+          setSelectedIds((current) => removeIds(current, reset.map((monitor) => monitor.id)));
+          setHistoryByMonitor((current) => omitRecordKeys(current, ids));
+          setDiagnosticsByMonitor((current) => omitRecordKeys(current, ids));
+          setOutageEventsByMonitor((current) => omitRecordKeys(current, ids));
+        }
+      }
+    );
+  }
+
   function closeDeleteConfirmation() {
     if (!saving) {
       setDeleteTargetIds([]);
@@ -647,6 +691,10 @@ export default function MonitoringPage() {
             ) : null}
             <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())} disabled={Boolean(bulkProgress)}>
               Clear
+            </Button>
+            <Button variant="outline" size="sm" onClick={openResetConfirmation} disabled={saving || Boolean(bulkProgress)}>
+              <RotateCcw data-icon="inline-start" className="size-3.5" />
+              Reset history
             </Button>
             <Button variant="destructive" size="sm" onClick={openDeleteConfirmation} disabled={saving || Boolean(bulkProgress)}>
               <Trash2 data-icon="inline-start" className="size-3.5" />
@@ -917,6 +965,38 @@ export default function MonitoringPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={resetTargetIds.length > 0} onOpenChange={(open) => !open && closeResetConfirmation()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Reset monitor history?</DialogTitle>
+            <DialogDescription>
+              This makes the selected monitor{resetTargets.length === 1 ? "" : "s"} start with fresh health and report data. Monitor settings, targets, companies, notifications, templates, active state, and pause state will not change.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 rounded-md bg-destructive/10 px-4 py-3">
+            <p className="text-sm font-medium text-destructive">History removal cannot be undone.</p>
+            <div className="divide-y divide-border/70">
+              {resetTargets.slice(0, 5).map((monitor) => (
+                <div key={monitor.id} className="py-2 first:pt-0 last:pb-0">
+                  <p className="text-sm font-medium text-foreground">{monitor.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{monitor.url}</p>
+                </div>
+              ))}
+              {resetTargets.length > 5 ? (
+                <p className="pt-2 text-xs text-muted-foreground">And {resetTargets.length - 5} more monitors.</p>
+              ) : null}
+            </div>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+          <DialogFooter className="flex-col">
+            <Button variant="outline" onClick={closeResetConfirmation} disabled={saving}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void confirmResetSelected()} disabled={saving || resetTargets.length === 0}>
+              {saving ? "Resetting…" : `Reset ${resetTargets.length === 1 ? "monitor" : `${resetTargets.length} monitors`}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <MonitorHistoryDialog
         open={Boolean(timelineMonitor)}
         monitor={timelineMonitor}
@@ -1042,6 +1122,11 @@ async function readJsonOrNull<T>(response: Response) {
 function removeIds(current: Set<string>, ids: string[]) {
   const removed = new Set(ids);
   return new Set(Array.from(current).filter((id) => !removed.has(id)));
+}
+
+function omitRecordKeys<T>(current: Record<string, T>, ids: string[]) {
+  const omittedIds = new Set(ids);
+  return Object.fromEntries(Object.entries(current).filter(([id]) => !omittedIds.has(id)));
 }
 
 function formatTagAction(action: "add" | "remove" | "replace") {

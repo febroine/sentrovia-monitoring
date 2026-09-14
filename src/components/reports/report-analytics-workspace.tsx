@@ -30,7 +30,8 @@ type MonitorOption = {
 type CompanyOption = { id: string; name: string };
 type AnalyticsFilters = {
   periodRange: ReportPeriodRange;
-  monitorId: string;
+  companyId: string;
+  monitorIds: string[];
   startedAt: string;
   endedAt: string;
   excludeMonitorIds: string[];
@@ -40,7 +41,8 @@ type AnalyticsFilters = {
 
 const INITIAL_FILTERS: AnalyticsFilters = {
   periodRange: "7d",
-  monitorId: "all",
+  companyId: "all",
+  monitorIds: [],
   startedAt: "",
   endedAt: "",
   excludeMonitorIds: [],
@@ -48,7 +50,8 @@ const INITIAL_FILTERS: AnalyticsFilters = {
   excludeCompanyIds: [],
 };
 const MAX_EXCLUSIONS_PER_GROUP = 100;
-const SELECTION_RESET_NOTICE = "The selected monitor is no longer in the current analytics scope. Analytics now include all remaining monitors.";
+const MAX_VISIBLE_MONITOR_OPTIONS = 200;
+const SELECTION_RESET_NOTICE = "One or more selected monitors are no longer in the current analytics scope. Analytics were refreshed with the available selection.";
 
 export function ReportAnalyticsWorkspace() {
   const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -81,7 +84,7 @@ export function ReportAnalyticsWorkspace() {
       const activeCompanyIds = new Set(activeMonitors.flatMap((monitor) => monitor.companyId ? [monitor.companyId] : []));
       const relevantCompanies = (companiesData.companies ?? []).filter((company) => activeCompanyIds.has(company.id));
       let resolvedFilters = reconcileFiltersWithCatalog(nextFilters, activeMonitors, relevantCompanies);
-      let selectionReset = nextFilters.monitorId !== "all" && resolvedFilters.monitorId === "all";
+      let selectionReset = nextFilters.monitorIds.length !== resolvedFilters.monitorIds.length;
       setFilters((currentFilters) => reconcileFiltersWithCatalog(
         currentFilters,
         activeMonitors,
@@ -91,27 +94,19 @@ export function ReportAnalyticsWorkspace() {
       setCompanies(relevantCompanies);
 
       let { response: reportResponse, data: reportData } = await requestAnalyticsReport(resolvedFilters);
-      if (shouldRetryAnalyticsWithoutMonitor(reportResponse.status, resolvedFilters.monitorId)) {
-        const removedMonitorId = resolvedFilters.monitorId;
+      if (shouldRetryAnalyticsWithoutMonitor(reportResponse.status, resolvedFilters.monitorIds)) {
         setReport(null);
-        const remainingMonitors = activeMonitors.filter((monitor) => monitor.id !== removedMonitorId);
-        const remainingCompanyIds = new Set(remainingMonitors.flatMap((monitor) => monitor.companyId ? [monitor.companyId] : []));
-        const remainingCompanies = relevantCompanies.filter((company) => remainingCompanyIds.has(company.id));
         resolvedFilters = reconcileFiltersWithCatalog(
-          { ...resolvedFilters, monitorId: "all" },
-          remainingMonitors,
-          remainingCompanies
+          { ...resolvedFilters, monitorIds: [] },
+          activeMonitors,
+          relevantCompanies
         );
         ({ response: reportResponse, data: reportData } = await requestAnalyticsReport(resolvedFilters));
         selectionReset = true;
-        setMonitors(remainingMonitors);
-        setCompanies(remainingCompanies);
         setFilters((currentFilters) => reconcileFiltersWithCatalog(
-          currentFilters.monitorId === removedMonitorId
-            ? { ...currentFilters, monitorId: "all" }
-            : currentFilters,
-          remainingMonitors,
-          remainingCompanies
+          { ...currentFilters, monitorIds: [] },
+          activeMonitors,
+          relevantCompanies
         ));
       }
       if (!reportResponse.ok || !reportData.report) throw new Error(reportData.message ?? "Unable to load analytics.");
@@ -190,6 +185,8 @@ function AnalyticsFilters({
     monitors.flatMap((monitor) => monitor.tags).map((tag) => [tag.toLowerCase(), tag] as const)
   ).values()).sort((left, right) => left.localeCompare(right));
   const visibleMonitors = monitors.filter((monitor) => !isMonitorExcludedByFilters(monitor, filters));
+  const visibleCompanies = companies.filter((company) => !filters.excludeCompanyIds.includes(company.id));
+  const scopedMonitors = visibleMonitors.filter((monitor) => filters.companyId === "all" || monitor.companyId === filters.companyId);
   const exclusionCount = countExclusions(filters);
 
   function updateExclusion(
@@ -200,16 +197,33 @@ function AnalyticsFilters({
     const current = filters[key];
     const nextValues = changeExclusionSelection(current, value, excluded, key === "excludeTags");
     const nextFilters = { ...filters, [key]: nextValues };
-    const selectedMonitor = monitors.find((monitor) => monitor.id === filters.monitorId);
+    const companyId = key === "excludeCompanyIds" && nextValues.includes(filters.companyId)
+      ? "all"
+      : filters.companyId;
     onChange({
       ...nextFilters,
-      monitorId: selectedMonitor && isMonitorExcludedByFilters(selectedMonitor, nextFilters) ? "all" : filters.monitorId,
+      companyId,
+      monitorIds: filters.monitorIds.filter((monitorId) => {
+        const monitor = monitors.find((item) => item.id === monitorId);
+        return monitor && !isMonitorExcludedByFilters(monitor, nextFilters);
+      }),
+    });
+  }
+
+  function updateCompany(companyId: string) {
+    onChange({
+      ...filters,
+      companyId,
+      monitorIds: filters.monitorIds.filter((monitorId) => {
+        const monitor = monitors.find((item) => item.id === monitorId);
+        return monitor && (companyId === "all" || monitor.companyId === companyId);
+      }),
     });
   }
 
   return (
     <section className="rounded-lg bg-surface-low px-3 py-4 shadow-sm sm:px-4" aria-label="Reliability analytics filters">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[180px_minmax(240px,1fr)_160px_160px_auto]">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[180px_240px_minmax(280px,1fr)_auto]">
         <div className="space-y-2">
           <Label htmlFor="analytics-period">Period</Label>
           <Select value={filters.periodRange} onValueChange={(value) => onChange({ ...filters, periodRange: value as ReportPeriodRange })}>
@@ -222,19 +236,30 @@ function AnalyticsFilters({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="analytics-monitor">Monitor</Label>
-          <Select value={filters.monitorId} onValueChange={(value) => onChange({ ...filters, monitorId: String(value) })}>
-            <SelectTrigger id="analytics-monitor"><SelectValue placeholder="All monitors" /></SelectTrigger>
+          <Label htmlFor="analytics-company">Company</Label>
+          <Select value={filters.companyId} onValueChange={(value) => updateCompany(String(value))}>
+            <SelectTrigger id="analytics-company"><SelectValue placeholder="All companies" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All monitors</SelectItem>
-              {visibleMonitors.map((monitor) => (
-                <SelectItem key={monitor.id} value={monitor.id}>{monitor.name} · {monitor.url}</SelectItem>
+              <SelectItem value="all">All companies</SelectItem>
+              {visibleCompanies.map((company) => (
+                <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium leading-none">Monitors</p>
+          <MonitorSelectionPicker
+            monitors={scopedMonitors}
+            selected={filters.monitorIds}
+            onChange={(monitorIds) => onChange({
+              ...filters,
+              monitorIds,
+            })}
+          />
+        </div>
         {filters.periodRange === "custom" ? (
-          <>
+          <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 xl:col-span-3">
             <div className="space-y-2">
               <Label htmlFor="analytics-from">From</Label>
               <Input id="analytics-from" type="date" value={filters.startedAt} aria-invalid={invalidRange} aria-describedby={invalidRange ? "analytics-range-error" : undefined} onChange={(event) => onChange({ ...filters, startedAt: event.target.value })} />
@@ -243,16 +268,14 @@ function AnalyticsFilters({
               <Label htmlFor="analytics-through">Through</Label>
               <Input id="analytics-through" type="date" min={filters.startedAt || undefined} value={filters.endedAt} aria-invalid={invalidRange} aria-describedby={invalidRange ? "analytics-range-error" : undefined} onChange={(event) => onChange({ ...filters, endedAt: event.target.value })} />
             </div>
-          </>
-        ) : (
-          <div className="hidden xl:block" aria-hidden="true" />
-        )}
-        <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1">
-          <Button onClick={onApply} disabled={loading || invalidRange}>
+          </div>
+        ) : null}
+        <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1 xl:justify-end">
+          <Button className="min-w-28" onClick={onApply} disabled={loading || invalidRange}>
             <RefreshCw data-icon="inline-start" className={cn("size-4", loading && "animate-spin motion-reduce:animate-none")} />
             {loading ? "Refreshing" : "Refresh"}
           </Button>
-          <Button variant="ghost" onClick={onReset} disabled={loading}>Reset</Button>
+          <Button className="min-w-20" variant="outline" onClick={onReset} disabled={loading}>Reset</Button>
         </div>
       </div>
       {invalidRange ? <p id="analytics-range-error" className="mt-2 text-xs text-destructive">Choose both dates, with the start on or before the end date.</p> : null}
@@ -308,6 +331,96 @@ function NoMonitorsAnalytics() {
       <p className="mt-1 text-sm text-muted-foreground">Analytics becomes available after a monitor has recorded checks.</p>
       <Link className="mt-3 inline-flex text-sm font-medium text-primary underline underline-offset-4" href="/monitoring">Go to monitoring</Link>
     </section>
+  );
+}
+
+function MonitorSelectionPicker({
+  monitors,
+  selected,
+  onChange,
+}: {
+  monitors: MonitorOption[];
+  selected: string[];
+  onChange: (monitorIds: string[]) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredMonitors = normalizedSearch
+    ? monitors.filter((monitor) => `${monitor.name} ${monitor.url}`.toLowerCase().includes(normalizedSearch))
+    : monitors;
+  const visibleMonitors = filteredMonitors.slice(0, MAX_VISIBLE_MONITOR_OPTIONS);
+  const selectedIds = new Set(selected);
+  const summary = selected.length === 0
+    ? "All monitors"
+    : `${selected.length} monitor${selected.length === 1 ? "" : "s"} selected`;
+
+  return (
+    <details className="group relative">
+      <summary
+        className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+        aria-label={`Monitors: ${summary}`}
+      >
+        <span className="truncate">{summary}</span>
+        <span className="text-xs text-muted-foreground">Choose</span>
+      </summary>
+      <div className="mt-1 rounded-md border border-border bg-popover p-2 shadow-lg sm:absolute sm:left-0 sm:z-30 sm:w-[26rem]">
+        <div className="flex items-center gap-2 border-b border-border/70 p-1 pb-2">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search monitors"
+            aria-label="Search monitors"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onChange(monitors.map((monitor) => monitor.id))}
+            disabled={monitors.length === 0 || selected.length === monitors.length}
+          >
+            Select all
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange([])}
+            disabled={selected.length === 0}
+          >
+            Clear
+          </Button>
+        </div>
+        <fieldset className="mt-1">
+          <legend className="sr-only">Monitors included in analytics</legend>
+          <div className="grid max-h-64 gap-1 overflow-y-auto">
+            {filteredMonitors.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-muted-foreground">No matching monitors.</p>
+            ) : visibleMonitors.map((monitor) => {
+              const checked = selectedIds.has(monitor.id);
+              return (
+                <label key={monitor.id} className="flex cursor-pointer items-start gap-3 px-2 py-2.5 hover:bg-muted/60">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 accent-primary"
+                    checked={checked}
+                    onChange={(event) => onChange(changeMonitorSelection(selected, monitor.id, event.target.checked))}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium" title={monitor.name}>{monitor.name}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={monitor.url}>{monitor.url}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {filteredMonitors.length > visibleMonitors.length ? (
+            <p className="border-t border-border/70 px-2 pt-2 text-xs text-muted-foreground">
+              Showing the first {visibleMonitors.length} of {filteredMonitors.length}. Search to narrow the list.
+            </p>
+          ) : null}
+        </fieldset>
+      </div>
+    </details>
   );
 }
 
@@ -372,13 +485,16 @@ function ExclusionPicker({
 function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedReport; filters: AnalyticsFilters; refreshing: boolean }) {
   const hasChecks = report.summary.hasCompletedChecks;
   const exclusionCount = countExclusions(filters);
+  const scopeLabel = filters.monitorIds.length > 1
+    ? `${filters.monitorIds.length} selected monitors`
+    : report.monitorName ?? report.companyName ?? "All monitors";
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-2 rounded-md bg-muted/20 p-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Reliability over time</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {report.monitorName ?? "All monitors"} · {report.periodLabel} · {report.timeZone}
+            {scopeLabel} · {report.periodLabel} · {report.timeZone}
             {exclusionCount > 0 ? ` · ${formatExclusionSummary(filters)}` : ""}
           </p>
         </div>
@@ -704,26 +820,28 @@ function MobileMetric({ label, value, tone }: { label: string; value: string; to
   return <div><dt className="text-muted-foreground">{label}</dt><dd className={cn("mt-0.5 font-medium tabular-nums", tone)}>{value}</dd></div>;
 }
 
-function appendAnalyticsExclusions(params: URLSearchParams, filters: AnalyticsFilters) {
-  for (const monitorId of filters.excludeMonitorIds) params.append("excludeMonitorIds", monitorId);
-  for (const tag of filters.excludeTags) params.append("excludeTags", tag);
-  for (const companyId of filters.excludeCompanyIds) params.append("excludeCompanyIds", companyId);
-}
-
 async function requestAnalyticsReport(filters: AnalyticsFilters) {
-  const analyticsParams = new URLSearchParams();
+  const payload: Record<string, string | string[]> = {
+    monitorIds: filters.monitorIds,
+    excludeMonitorIds: filters.excludeMonitorIds,
+    excludeTags: filters.excludeTags,
+    excludeCompanyIds: filters.excludeCompanyIds,
+  };
   for (const [key, value] of Object.entries(buildPeriodPayload(filters))) {
-    if (value) analyticsParams.set(key, value);
+    if (value) payload[key] = value;
   }
-  if (filters.monitorId !== "all") analyticsParams.set("monitorId", filters.monitorId);
-  appendAnalyticsExclusions(analyticsParams, filters);
-  const response = await fetch(`/api/reports/analytics?${analyticsParams}`, { cache: "no-store" });
+  if (filters.companyId !== "all") payload.companyId = filters.companyId;
+  const response = await fetch("/api/reports/analytics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   const data = (await response.json()) as { report?: GeneratedReport; message?: string };
   return { response, data };
 }
 
-export function shouldRetryAnalyticsWithoutMonitor(status: number, monitorId: string) {
-  return status === 404 && monitorId !== "all";
+export function shouldRetryAnalyticsWithoutMonitor(status: number, monitorIds: string[]) {
+  return status === 404 && monitorIds.length > 0;
 }
 
 export function reconcileFiltersWithCatalog(
@@ -734,20 +852,36 @@ export function reconcileFiltersWithCatalog(
   const monitorIds = new Set(monitors.map((monitor) => monitor.id));
   const companyIds = new Set(companies.map((company) => company.id));
   const tags = new Set(monitors.flatMap((monitor) => monitor.tags).map((tag) => tag.toLowerCase()));
+  const validCompanyId = filters.companyId === "all" || companyIds.has(filters.companyId)
+    ? filters.companyId
+    : "all";
+  const companyId = validCompanyId !== "all" && filters.excludeCompanyIds.includes(validCompanyId)
+    ? "all"
+    : validCompanyId;
   const reconciledFilters = {
     ...filters,
-    monitorId: filters.monitorId === "all" || monitorIds.has(filters.monitorId) ? filters.monitorId : "all",
+    companyId,
+    monitorIds: filters.monitorIds.filter((id) => monitorIds.has(id)),
     excludeMonitorIds: filters.excludeMonitorIds.filter((id) => monitorIds.has(id)),
     excludeTags: dedupeCaseInsensitive(filters.excludeTags.filter((tag) => tags.has(tag.toLowerCase()))),
     excludeCompanyIds: filters.excludeCompanyIds.filter((id) => companyIds.has(id)),
   };
-  const selectedMonitor = monitors.find((monitor) => monitor.id === reconciledFilters.monitorId);
   return {
     ...reconciledFilters,
-    monitorId: selectedMonitor && isMonitorExcludedByFilters(selectedMonitor, reconciledFilters)
-      ? "all"
-      : reconciledFilters.monitorId,
+    monitorIds: reconciledFilters.monitorIds.filter((monitorId) => {
+      const monitor = monitors.find((item) => item.id === monitorId);
+      return monitor
+        && (reconciledFilters.companyId === "all" || monitor.companyId === reconciledFilters.companyId)
+        && !isMonitorExcludedByFilters(monitor, reconciledFilters);
+    }),
   };
+}
+
+export function changeMonitorSelection(selected: string[], monitorId: string, shouldSelect: boolean) {
+  if (shouldSelect) {
+    return selected.includes(monitorId) ? selected : [...selected, monitorId];
+  }
+  return selected.filter((id) => id !== monitorId);
 }
 
 export function isMonitorExcludedByFilters(monitor: MonitorOption, filters: AnalyticsFilters) {

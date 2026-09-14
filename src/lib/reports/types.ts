@@ -9,6 +9,7 @@ export interface ReportPreviewInput {
   cadence: ReportCadence;
   companyId?: string | null;
   monitorId?: string | null;
+  monitorIds?: string[];
   excludeMonitorIds?: string[];
   excludeTags?: string[];
   excludeCompanyIds?: string[];

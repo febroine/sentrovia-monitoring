@@ -3,6 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import {
   buildConfigurationScheduleUpdate,
+  buildMonitorHistoryResetState,
   buildMonitorTargetResetState,
   buildRestoredMonitorState,
   calculateMonitorLeaseMs,
@@ -117,6 +118,36 @@ describe("monitor restore state", () => {
       leaseToken: null,
       leaseExpiresAt: null,
     });
+  });
+});
+
+describe("monitor history reset state", () => {
+  it("clears runtime health without changing monitor configuration", () => {
+    const now = new Date("2026-09-14T12:00:00.000Z");
+    const state = buildMonitorHistoryResetState(now);
+
+    expect(state).toMatchObject({
+      status: "pending",
+      statusCode: null,
+      uptime: "--",
+      heartbeatLastReceivedAt: null,
+      lastCheckedAt: null,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      lastErrorMessage: null,
+      consecutiveFailures: 0,
+      verificationMode: false,
+      verificationFailureCount: 0,
+      latencyMs: null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      updatedAt: now,
+    });
+    expect(state).not.toHaveProperty("name");
+    expect(state).not.toHaveProperty("url");
+    expect(state).not.toHaveProperty("isActive");
+    expect(state).not.toHaveProperty("pausedUntil");
+    expect(state).not.toHaveProperty("notificationPref");
   });
 });
 

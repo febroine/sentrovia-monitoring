@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFailureSegments,
+  changeMonitorSelection,
   changeExclusionSelection,
   getChartAvailability,
   isExclusionSelected,
@@ -15,7 +16,8 @@ describe("report analytics catalog reconciliation", () => {
   it("clears a deleted selection and stale exclusions before the report request", () => {
     const filters = reconcileFiltersWithCatalog({
       periodRange: "7d",
-      monitorId: "deleted-monitor",
+      companyId: "all",
+      monitorIds: ["deleted-monitor", "monitor-1"],
       startedAt: "",
       endedAt: "",
       excludeMonitorIds: ["deleted-monitor", "monitor-1"],
@@ -31,7 +33,8 @@ describe("report analytics catalog reconciliation", () => {
     }], [{ id: "company-1", name: "Acme" }]);
 
     expect(filters).toMatchObject({
-      monitorId: "all",
+      companyId: "all",
+      monitorIds: [],
       excludeMonitorIds: ["monitor-1"],
       excludeTags: ["production"],
       excludeCompanyIds: ["company-1"],
@@ -49,7 +52,8 @@ describe("report analytics catalog reconciliation", () => {
     };
     const filters = reconcileFiltersWithCatalog({
       periodRange: "7d",
-      monitorId: "monitor-1",
+      companyId: "all",
+      monitorIds: ["monitor-1"],
       startedAt: "",
       endedAt: "",
       excludeMonitorIds: [],
@@ -58,7 +62,7 @@ describe("report analytics catalog reconciliation", () => {
     }, [monitor], [{ id: "company-1", name: "Acme" }]);
 
     expect(filters.excludeTags).toEqual(["production"]);
-    expect(filters.monitorId).toBe("all");
+    expect(filters.monitorIds).toEqual([]);
     expect(isMonitorExcludedByFilters(monitor, filters)).toBe(true);
     expect(isExclusionSelected(filters.excludeTags, "PRODUCTION", true)).toBe(true);
     expect(changeExclusionSelection(filters.excludeTags, "PRODUCTION", true, true)).toEqual(["production"]);
@@ -71,9 +75,70 @@ describe("report analytics catalog reconciliation", () => {
   });
 
   it("only retries a missing selected monitor with the all-monitors scope", () => {
-    expect(shouldRetryAnalyticsWithoutMonitor(404, "monitor-1")).toBe(true);
-    expect(shouldRetryAnalyticsWithoutMonitor(404, "all")).toBe(false);
-    expect(shouldRetryAnalyticsWithoutMonitor(500, "monitor-1")).toBe(false);
+    expect(shouldRetryAnalyticsWithoutMonitor(404, ["monitor-1"])).toBe(true);
+    expect(shouldRetryAnalyticsWithoutMonitor(404, [])).toBe(false);
+    expect(shouldRetryAnalyticsWithoutMonitor(500, ["monitor-1"])).toBe(false);
+  });
+
+  it("adds and removes multiple monitor selections without duplicates", () => {
+    expect(changeMonitorSelection(["monitor-1"], "monitor-2", true)).toEqual(["monitor-1", "monitor-2"]);
+    expect(changeMonitorSelection(["monitor-1"], "monitor-1", true)).toEqual(["monitor-1"]);
+    expect(changeMonitorSelection(["monitor-1", "monitor-2"], "monitor-1", false)).toEqual(["monitor-2"]);
+  });
+
+  it("keeps only selected monitors that belong to the selected company", () => {
+    const filters = reconcileFiltersWithCatalog({
+      periodRange: "7d",
+      companyId: "company-1",
+      monitorIds: ["monitor-1", "monitor-2"],
+      startedAt: "",
+      endedAt: "",
+      excludeMonitorIds: [],
+      excludeTags: [],
+      excludeCompanyIds: [],
+    }, [{
+      id: "monitor-1",
+      name: "Checkout API",
+      url: "https://example.com/health",
+      companyId: "company-1",
+      tags: [],
+      isActive: true,
+    }, {
+      id: "monitor-2",
+      name: "Client Portal",
+      url: "https://client.example.com",
+      companyId: "company-2",
+      tags: [],
+      isActive: true,
+    }], [
+      { id: "company-1", name: "Acme" },
+      { id: "company-2", name: "Client" },
+    ]);
+
+    expect(filters.monitorIds).toEqual(["monitor-1"]);
+  });
+
+  it("returns to the global scope when the selected company is excluded", () => {
+    const filters = reconcileFiltersWithCatalog({
+      periodRange: "7d",
+      companyId: "company-1",
+      monitorIds: ["monitor-1"],
+      startedAt: "",
+      endedAt: "",
+      excludeMonitorIds: [],
+      excludeTags: [],
+      excludeCompanyIds: ["company-1"],
+    }, [{
+      id: "monitor-1",
+      name: "Checkout API",
+      url: "https://example.com/health",
+      companyId: "company-1",
+      tags: [],
+      isActive: true,
+    }], [{ id: "company-1", name: "Acme" }]);
+
+    expect(filters.companyId).toBe("all");
+    expect(filters.monitorIds).toEqual([]);
   });
 });
 

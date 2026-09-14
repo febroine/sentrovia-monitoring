@@ -3,6 +3,7 @@ import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitors } from "@/lib/db/schema";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
 import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
+import { acquireMonitorHistoryLocks } from "@/lib/monitors/runtime-service";
 import { appendMonitorEvent } from "@/lib/monitors/runtime-store";
 import { buildHeartbeatMonitorTarget } from "@/lib/monitors/targets";
 import { encryptValue, hashSecretValue } from "@/lib/security/encryption";
@@ -20,14 +21,19 @@ async function receiveHeartbeatTransaction(
 ) {
   const tokenHash = hashSecretValue("heartbeat-token", normalizedToken);
   const { hashedMonitor, legacyMonitor } = await findHeartbeatCandidates(tx, normalizedToken, tokenHash);
-  const foundMonitor = legacyMonitor ?? hashedMonitor;
+  const candidate = legacyMonitor ?? hashedMonitor;
+  if (!candidate) return null;
+
+  await acquireMonitorHistoryLocks(tx, [candidate.id]);
+  const lockedCandidates = await findHeartbeatCandidates(tx, normalizedToken, tokenHash);
+  const foundMonitor = lockedCandidates.legacyMonitor ?? lockedCandidates.hashedMonitor;
   if (!foundMonitor) return null;
 
   const existingMonitor = await migrateLegacyHeartbeatToken(
     tx,
     foundMonitor,
-    legacyMonitor,
-    hashedMonitor,
+    lockedCandidates.legacyMonitor,
+    lockedCandidates.hashedMonitor,
     normalizedToken,
     tokenHash
   );
