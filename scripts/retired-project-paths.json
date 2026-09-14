@@ -36,6 +36,7 @@
   "src/components/page-hero.tsx",
   "src/components/settings/app-update-card.tsx",
   "src/components/settings/maintenance-windows-editor.tsx",
+  "src/components/settings/notification-template-preview.test.ts",
   "src/components/update-banner.tsx",
   "src/context/translation-context.tsx",
   "src/lib/app-update",
