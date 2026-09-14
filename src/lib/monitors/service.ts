@@ -792,30 +792,13 @@ export async function resetMonitorHistory(userId: string, ids: string[], workspa
 
     await acquireMonitorHistoryLocks(tx, resetIds);
 
-    await tx.delete(deliveryEvents).where(and(
-      eq(deliveryEvents.workspaceId, resolvedWorkspaceId),
-      inArray(deliveryEvents.monitorId, resetIds)
-    ));
-    await tx.delete(outageEvents).where(and(
-      eq(outageEvents.workspaceId, resolvedWorkspaceId),
-      inArray(outageEvents.monitorId, resetIds)
-    ));
-    await tx.delete(monitorOutages).where(and(
-      eq(monitorOutages.workspaceId, resolvedWorkspaceId),
-      inArray(monitorOutages.monitorId, resetIds)
-    ));
-    await tx.delete(monitorDiagnostics).where(and(
-      eq(monitorDiagnostics.workspaceId, resolvedWorkspaceId),
-      inArray(monitorDiagnostics.monitorId, resetIds)
-    ));
-    await tx.delete(monitorEvents).where(and(
-      eq(monitorEvents.workspaceId, resolvedWorkspaceId),
-      inArray(monitorEvents.monitorId, resetIds)
-    ));
-    await tx.delete(monitorChecks).where(and(
-      eq(monitorChecks.workspaceId, resolvedWorkspaceId),
-      inArray(monitorChecks.monitorId, resetIds)
-    ));
+    // The monitor ownership check above is authoritative; child history can retain a legacy scope value.
+    await tx.delete(deliveryEvents).where(inArray(deliveryEvents.monitorId, resetIds));
+    await tx.delete(outageEvents).where(inArray(outageEvents.monitorId, resetIds));
+    await tx.delete(monitorOutages).where(inArray(monitorOutages.monitorId, resetIds));
+    await tx.delete(monitorDiagnostics).where(inArray(monitorDiagnostics.monitorId, resetIds));
+    await tx.delete(monitorEvents).where(inArray(monitorEvents.monitorId, resetIds));
+    await tx.delete(monitorChecks).where(inArray(monitorChecks.monitorId, resetIds));
 
     return tx
       .update(monitors)

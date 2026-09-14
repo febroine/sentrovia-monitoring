@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { MonitorPayload, MonitorRecord, MonitorSummary } from "@/lib/monitors/types";
 import { showToast } from "@/lib/client-toast";
 import type { MonitorPauseUnit } from "@/lib/monitors/pause";
+import { notifyMonitorHistoryReset } from "@/lib/client/monitor-history-events";
 
 interface MonitoringState {
   monitors: MonitorRecord[];
@@ -358,6 +359,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: null,
       }));
+      notifyMonitorHistoryReset(data.monitors.map((monitor) => monitor.id));
       showToast(`${data.monitors.length} monitor${data.monitors.length === 1 ? "" : "s"} reset.`, "success");
       return data.monitors;
     } catch (error) {

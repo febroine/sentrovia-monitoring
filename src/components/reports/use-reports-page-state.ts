@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { showToast, type ToastTone } from "@/lib/client-toast";
+import { subscribeToMonitorHistoryReset } from "@/lib/client/monitor-history-events";
 import type { CompanyRecord } from "@/lib/companies/types";
 import type { GeneratedReport, ReportScheduleRecord } from "@/lib/reports/types";
 import {
@@ -165,6 +166,10 @@ export function useReportsPageState() {
   const [preview, setPreview] = useState<GeneratedReport | null>(null);
   const [lastDeliveryResult, setLastDeliveryResult] = useState<DeliveryResult | null>(null);
   const [saving, setSaving] = useState(false);
+  useEffect(() => subscribeToMonitorHistoryReset(() => {
+    setPreview(null);
+    setLastDeliveryResult(null);
+  }), []);
   const actions = buildReportsPageActions({
     activeTab, catalog, notify: notice.notify, preview, previewDraft, schedule,
     setLastDeliveryResult, setPreview, setSaving,
