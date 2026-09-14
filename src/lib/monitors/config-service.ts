@@ -79,7 +79,7 @@ export async function previewMonitorConfigImport(
   workspaceId?: string
 ) {
   const [existing, allowPrivateTargets] = await Promise.all([
-    listReservedMonitorTargets(userId, undefined, new Date(), workspaceId),
+    listReservedMonitorTargets(userId, undefined, workspaceId),
     canUserAccessPrivateTargets(userId, undefined, workspaceId),
   ]);
   const validationErrors = await Promise.all(
