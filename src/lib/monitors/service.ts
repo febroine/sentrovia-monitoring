@@ -383,19 +383,9 @@ async function assertMonitorTargetAvailable(
   database: DatabaseExecutor = db,
   workspaceId?: string
 ) {
-  const targetKey = buildMonitorIdentityKey({ monitorType, url });
-  const existing = await listReservedMonitorTargets(userId, database, new Date(), workspaceId);
-
-  const conflict = existing.some((monitor) => {
-    if (monitor.id === excludedMonitorId) {
-      return false;
-    }
-
-    return targetKey === buildMonitorIdentityKey({
-      monitorType: normalizeMonitorType(monitor.monitorType),
-      url: monitor.url,
-    });
-  });
+  const existing = await listReservedMonitorTargets(userId, database, workspaceId);
+  const reservedTargets = existing.filter((monitor) => monitor.id !== excludedMonitorId);
+  const conflict = hasMonitorTargetConflict([{ monitorType, url }], reservedTargets);
 
   if (conflict) {
     throw new AuthError("A monitor with this target already exists.", 409);
@@ -786,8 +776,8 @@ export async function restoreMonitors(
     await lockMonitorTargets(tx, resolvedWorkspaceId);
     const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
     const nextCheckTimestamp = now.toISOString();
-    const [restorable] = await tx
-      .select({ total: count() })
+    const restorable = await tx
+      .select({ id: monitors.id, monitorType: monitors.monitorType, url: monitors.url })
       .from(monitors)
       .where(and(
         eq(monitors.workspaceId, resolvedWorkspaceId),
@@ -795,7 +785,12 @@ export async function restoreMonitors(
         isNotNull(monitors.deletedAt),
         gte(monitors.deletedAt, undoCutoff)
       ));
-    await assertMonitorQuota(userId, Number(restorable?.total ?? 0), tx, resolvedWorkspaceId);
+    await assertMonitorQuota(userId, restorable.length, tx, resolvedWorkspaceId);
+
+    const reservedTargets = await listReservedMonitorTargets(userId, tx, resolvedWorkspaceId);
+    if (hasMonitorTargetConflict(restorable, reservedTargets)) {
+      throw new AuthError("A monitor with this target already exists and prevents restoration.", 409);
+    }
 
     return tx
       .update(monitors)
@@ -876,7 +871,7 @@ async function persistManyMonitors(
   database: DatabaseExecutor,
   workspaceId: string
 ) {
-  const existing = await listReservedMonitorTargets(userId, database, new Date(), workspaceId);
+  const existing = await listReservedMonitorTargets(userId, database, workspaceId);
   const allowPrivateTargets = await canUserAccessPrivateTargets(userId, database, workspaceId);
 
   const existingTargets = new Set(
@@ -928,19 +923,39 @@ async function assertMonitorQuota(
 export async function listReservedMonitorTargets(
   userId: string,
   database: DatabaseExecutor = db,
-  now = new Date(),
   workspaceId?: string
 ) {
-  const undoCutoff = new Date(now.getTime() - SOFT_DELETE_UNDO_MS);
   return database
     .select({ id: monitors.id, monitorType: monitors.monitorType, url: monitors.url })
     .from(monitors)
     .where(
       and(
         monitorOwnershipCondition(userId, workspaceId),
-        or(isNull(monitors.deletedAt), gte(monitors.deletedAt, undoCutoff))
+        isNull(monitors.deletedAt)
       )
     );
+}
+
+export function hasMonitorTargetConflict(
+  candidates: Array<{ monitorType: string | null; url: string }>,
+  reservedTargets: Array<{ monitorType: string | null; url: string }>
+) {
+  const seenTargets = new Set(reservedTargets.map((monitor) => buildMonitorIdentityKey({
+    monitorType: normalizeMonitorType(monitor.monitorType),
+    url: monitor.url,
+  })));
+
+  return candidates.some((monitor) => {
+    const targetKey = buildMonitorIdentityKey({
+      monitorType: normalizeMonitorType(monitor.monitorType),
+      url: monitor.url,
+    });
+    if (seenTargets.has(targetKey)) {
+      return true;
+    }
+    seenTargets.add(targetKey);
+    return false;
+  });
 }
 
 export function filterDuplicateMonitorInputs(inputs: MonitorInput[], existingTargets: Set<string>) {

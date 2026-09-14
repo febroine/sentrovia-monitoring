@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import {
   buildConfigurationScheduleUpdate,
   buildMonitorTargetResetState,
   buildRestoredMonitorState,
   calculateMonitorLeaseMs,
   filterDuplicateMonitorInputs,
+  hasMonitorTargetConflict,
+  listReservedMonitorTargets,
   normalizeHeartbeatTokenInput,
   hasMonitorTargetChanged,
   resolveMonitorBatchSize,
@@ -140,6 +144,40 @@ describe("monitor target changes", () => {
       verificationFailureCount: 0,
       nextCheckAt: now,
     });
+  });
+});
+
+describe("monitor target restoration", () => {
+  it("does not reserve soft-deleted targets against recreation", async () => {
+    const where = vi.fn<(condition: SQL) => Promise<never[]>>().mockResolvedValue([]);
+    const database = {
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({ where })),
+      })),
+    } as unknown as NonNullable<Parameters<typeof listReservedMonitorTargets>[1]>;
+
+    await listReservedMonitorTargets("user-1", database, "workspace-1");
+
+    const query = new PgDialect().sqlToQuery(where.mock.calls[0]![0]);
+    expect(query.sql).toContain('"monitors"."deleted_at" is null');
+    expect(query.sql).not.toContain('"monitors"."deleted_at" >=');
+  });
+
+  it("prevents restoring a target that has since been recreated", () => {
+    expect(hasMonitorTargetConflict(
+      [{ monitorType: "http", url: "https://example.com/health" }],
+      [{ monitorType: "http", url: "https://EXAMPLE.com/health" }]
+    )).toBe(true);
+  });
+
+  it("prevents restoring duplicate deleted targets together", () => {
+    expect(hasMonitorTargetConflict(
+      [
+        { monitorType: "ping", url: "ping://example.com" },
+        { monitorType: "ping", url: "ping://example.com" },
+      ],
+      []
+    )).toBe(true);
   });
 });
 
