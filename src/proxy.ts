@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
+import { buildLoginRedirectPath } from "@/lib/auth/redirect";
 import { SESSION_COOKIE_NAME, getSessionCookieOptions, verifySessionToken } from "@/lib/auth/token";
 import { hasPermission, type Permission } from "@/lib/auth/permissions";
 
@@ -25,8 +25,10 @@ export async function proxy(request: NextRequest) {
   const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 
   if (!isPublicRoute(pathname) && !session) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", resolveSafeAuthRedirect(pathname));
+    const loginUrl = new URL(
+      buildLoginRedirectPath(`${pathname}${request.nextUrl.search}`),
+      request.url
+    );
     const response = NextResponse.redirect(loginUrl);
     if (request.cookies.has(SESSION_COOKIE_NAME)) {
       response.cookies.set({

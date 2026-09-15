@@ -331,6 +331,16 @@ export function isCurrentSessionVersion(tokenVersion: number, userVersion: numbe
   return Number.isInteger(tokenVersion) && tokenVersion === userVersion;
 }
 
+export async function invalidateUserSessions(userId: string) {
+  await db
+    .update(users)
+    .set({
+      sessionVersion: sql`${users.sessionVersion} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+}
+
 function serializeMember(user: AuthSessionRecord, role: UserRole) {
   return {
     id: user.id,

@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type CSSProperties } from 'react';
 import Sidebar from '@/components/sidebar';
 import BottomNav from '@/components/bottom-nav';
@@ -8,6 +8,7 @@ import type { UserRole } from '@/lib/auth/permissions';
 import { APPEARANCE_SETTINGS_UPDATED_EVENT } from '@/stores/use-settings-store';
 import { accentThemes, normalizeSidebarAccent, type SidebarAccent } from '@/lib/settings/accent-theme';
 import { cn } from '@/lib/utils';
+import { buildLoginRedirectPath } from '@/lib/auth/redirect';
 
 const AUTH_ROUTES = ['/login', '/onboarding'];
 const PUBLIC_ROUTES = ['/status'];
@@ -44,6 +45,7 @@ export default function AppShell({
   initialUser: InitialUser | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isAuth = AUTH_ROUTES.some((r) => pathname.startsWith(r));
   const isPublicRoute = PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`))
     || (!initialAuthenticated && PUBLIC_INFO_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`)));
@@ -55,6 +57,16 @@ export default function AppShell({
     highContrastSurfaces: initialAppearance?.highContrastSurfaces ?? DEFAULT_APPEARANCE.highContrastSurfaces,
     sidebarAccent: normalizeSidebarAccent(initialAppearance?.sidebarAccent),
   }));
+
+  useEffect(() => {
+    if (!isProtectedRoute || initialAuthenticated) {
+      return;
+    }
+
+    router.replace(
+      buildLoginRedirectPath(`${window.location.pathname}${window.location.search}`)
+    );
+  }, [initialAuthenticated, isProtectedRoute, router]);
 
   useEffect(() => {
     if (isAuth || isPublicRoute || isRootTransition || !initialAuthenticated) {

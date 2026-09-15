@@ -12,3 +12,7 @@ export function resolveSafeAuthRedirect(value: string | null | undefined) {
 
   return trimmed;
 }
+
+export function buildLoginRedirectPath(value: string | null | undefined) {
+  return `/login?next=${encodeURIComponent(resolveSafeAuthRedirect(value))}`;
+}

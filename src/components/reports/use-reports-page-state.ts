@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { showToast, type ToastTone } from "@/lib/client-toast";
 import { subscribeToMonitorHistoryReset } from "@/lib/client/monitor-history-events";
 import type { CompanyRecord } from "@/lib/companies/types";
@@ -121,16 +121,13 @@ type ReportsActionContext = {
   catalog: ReturnType<typeof useReportsCatalog>;
   notify: (message: string, tone: ToastTone) => void;
   preview: GeneratedReport | null;
-  previewDraft: DraftReport;
   schedule: ReturnType<typeof useScheduleWorkspace>;
   setLastDeliveryResult: Setter<DeliveryResult | null>;
-  setPreview: Setter<GeneratedReport | null>;
   setSaving: Setter<boolean>;
 };
 
 function buildReportsPageActions(context: ReportsActionContext) {
   const base = { notify: context.notify, setSaving: context.setSaving };
-  const previewRuntime = { ...base, setLastDeliveryResult: context.setLastDeliveryResult, setPreview: context.setPreview };
   const scheduleRuntime = { ...base, setSchedules: context.catalog.setSchedules };
   return {
     createSchedule: () => createReportSchedule(context.schedule.scheduleDraft, {
@@ -141,13 +138,11 @@ function buildReportsPageActions(context: ReportsActionContext) {
     deleteSchedule: (id: string) => deleteReportSchedule(id, scheduleRuntime),
     duplicateSchedule: (item: ReportScheduleRecord) => duplicateReportSchedule(item, scheduleRuntime),
     exportPreviewHtml: () => exportReportPreview(context.preview),
-    generatePreview: () => generateReportPreview(context.previewDraft, previewRuntime),
     loadScheduleIntoBuilder: (item: ReportScheduleRecord) => loadReportSchedule(
       item,
       context.schedule.setScheduleDraft,
       context.activeTab.setActiveTab
     ),
-    sendPreviewNow: () => sendReportPreview(context.previewDraft, previewRuntime),
     sendScheduleNow: (id: string) => sendScheduledReport(id, {
       ...scheduleRuntime,
       refreshPage: context.catalog.refreshPage,
@@ -166,19 +161,42 @@ export function useReportsPageState() {
   const [preview, setPreview] = useState<GeneratedReport | null>(null);
   const [lastDeliveryResult, setLastDeliveryResult] = useState<DeliveryResult | null>(null);
   const [saving, setSaving] = useState(false);
+  const previewRequestVersion = useRef(0);
+  const generatePreview = () => {
+    const requestVersion = ++previewRequestVersion.current;
+    return generateReportPreview(previewDraft, {
+      isCurrent: () => requestVersion === previewRequestVersion.current,
+      notify: notice.notify,
+      setLastDeliveryResult,
+      setPreview,
+      setSaving,
+    });
+  };
+  const sendPreviewNow = () => {
+    const requestVersion = ++previewRequestVersion.current;
+    return sendReportPreview(previewDraft, {
+      isCurrent: () => requestVersion === previewRequestVersion.current,
+      notify: notice.notify,
+      setLastDeliveryResult,
+      setPreview,
+      setSaving,
+    });
+  };
   useEffect(() => subscribeToMonitorHistoryReset(() => {
+    previewRequestVersion.current += 1;
     setPreview(null);
     setLastDeliveryResult(null);
   }), []);
   const actions = buildReportsPageActions({
-    activeTab, catalog, notify: notice.notify, preview, previewDraft, schedule,
-    setLastDeliveryResult, setPreview, setSaving,
+    activeTab, catalog, notify: notice.notify, preview, schedule,
+    setLastDeliveryResult, setSaving,
   });
   return {
     ...actions,
     ...schedule,
     activeTab: activeTab.activeTab,
     companies: catalog.companies,
+    generatePreview,
     lastDeliveryResult,
     loading: catalog.loading,
     message: notice.message,
@@ -192,6 +210,7 @@ export function useReportsPageState() {
     ),
     previewRecipients: parseRecipients(previewDraft.recipients),
     saving,
+    sendPreviewNow,
     scheduleNeedsCompany: schedule.scheduleDraft.scope === "company" && !schedule.scheduleDraft.companyId,
     scheduleRecipients: parseRecipients(schedule.scheduleDraft.recipients),
     setActiveTab: activeTab.setActiveTab,

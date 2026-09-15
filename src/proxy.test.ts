@@ -23,6 +23,17 @@ describe("authenticated route matcher", () => {
     expect(response.cookies.get(SESSION_COOKIE_NAME)?.value).toBe("");
   });
 
+  it("preserves a protected page query when redirecting through login", async () => {
+    const request = new NextRequest("http://localhost/monitoring?create=1&company=company-1");
+
+    const response = await proxy(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/login?next=%2Fmonitoring%3Fcreate%3D1%26company%3Dcompany-1"
+    );
+  });
+
   it("blocks read-only viewers from API mutations", async () => {
     const token = await createSessionToken({
       id: "viewer-1",

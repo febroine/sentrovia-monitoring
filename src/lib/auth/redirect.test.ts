@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveSafeAuthRedirect } from "@/lib/auth/redirect";
+import { buildLoginRedirectPath, resolveSafeAuthRedirect } from "@/lib/auth/redirect";
 
 describe("resolveSafeAuthRedirect", () => {
   it("keeps internal application paths", () => {
@@ -20,5 +20,19 @@ describe("resolveSafeAuthRedirect", () => {
     const result = resolveSafeAuthRedirect(`/${control}/example.com/path`);
     expect(new URL(result, "https://sentrovia.test").origin).toBe("https://sentrovia.test");
     expect(result).toBe("/dashboard");
+  });
+});
+
+describe("buildLoginRedirectPath", () => {
+  it("encodes the complete protected destination", () => {
+    expect(buildLoginRedirectPath("/monitoring?create=1&company=company-1")).toBe(
+      "/login?next=%2Fmonitoring%3Fcreate%3D1%26company%3Dcompany-1"
+    );
+  });
+
+  it("falls back before encoding an unsafe destination", () => {
+    expect(buildLoginRedirectPath("https://example.com")).toBe(
+      "/login?next=%2Fdashboard"
+    );
   });
 });

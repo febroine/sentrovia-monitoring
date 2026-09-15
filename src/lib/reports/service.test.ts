@@ -97,6 +97,16 @@ describe("scheduleNextRunAfter", () => {
 
     expect(nextRun.toISOString()).toBe("2027-03-31T08:00:00.000Z");
   });
+
+  it("restores a non-month-end anchor after a shorter month", () => {
+    const nextRun = scheduleNextRunAfter(
+      new Date("2027-01-30T08:00:00.000Z"),
+      "monthly",
+      new Date("2027-03-01T08:00:00.000Z")
+    );
+
+    expect(nextRun.toISOString()).toBe("2027-03-30T08:00:00.000Z");
+  });
 });
 
 describe("resolveReportPeriod", () => {
