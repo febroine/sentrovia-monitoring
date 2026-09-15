@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   insertValues: vi.fn(),
   select: vi.fn(),
   insert: vi.fn(),
+  update: vi.fn(),
+  updateSet: vi.fn(),
+  updateWhere: vi.fn(),
   transaction: vi.fn(),
   transactionExecute: vi.fn(),
 }));
@@ -32,6 +35,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     select: mocks.select,
     insert: mocks.insert,
+    update: mocks.update,
     transaction: mocks.transaction,
   },
 }));
@@ -45,6 +49,7 @@ import {
   createInitialAdmin,
   createMember,
   getActiveSessionUser,
+  invalidateUserSessions,
   isCurrentSessionVersion,
   loginUser,
 } from "@/lib/auth/service";
@@ -74,6 +79,9 @@ describe("auth service", () => {
     mocks.insert.mockReturnValue({
       values: mocks.insertValues,
     });
+    mocks.updateWhere.mockResolvedValue(undefined);
+    mocks.updateSet.mockReturnValue({ where: mocks.updateWhere });
+    mocks.update.mockReturnValue({ set: mocks.updateSet });
     mocks.transactionExecute.mockResolvedValue(undefined);
     mocks.transaction.mockImplementation(async (callback) =>
       callback({
@@ -144,6 +152,17 @@ describe("auth service", () => {
   it("rejects stale session versions after a credential change", () => {
     expect(isCurrentSessionVersion(1, 2)).toBe(false);
     expect(isCurrentSessionVersion(2, 2)).toBe(true);
+  });
+
+  it("invalidates every copied session token when the user signs out", async () => {
+    await invalidateUserSessions("user-1");
+
+    expect(mocks.update).toHaveBeenCalled();
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      sessionVersion: expect.anything(),
+      updatedAt: expect.any(Date),
+    }));
+    expect(mocks.updateWhere).toHaveBeenCalled();
   });
 
   it("rejects login for a retained user without an active workspace membership", async () => {

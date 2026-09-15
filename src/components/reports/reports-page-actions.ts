@@ -19,10 +19,15 @@ import {
 type Setter<T> = Dispatch<SetStateAction<T>>;
 type Notify = (message: string, tone: ToastTone) => void;
 type ActionRuntime = { notify: Notify; setSaving: Setter<boolean> };
+type PreviewActionRuntime = ActionRuntime & {
+  isCurrent?: () => boolean;
+  setLastDeliveryResult: Setter<DeliveryResult | null>;
+  setPreview: Setter<GeneratedReport | null>;
+};
 
 export async function generateReportPreview(
   draft: DraftReport,
-  runtime: ActionRuntime & { setLastDeliveryResult: Setter<DeliveryResult | null>; setPreview: Setter<GeneratedReport | null> }
+  runtime: PreviewActionRuntime
 ) {
   runtime.setSaving(true);
   runtime.setLastDeliveryResult(null);
@@ -41,9 +46,11 @@ export async function generateReportPreview(
     });
     const data = (await response.json()) as { report?: GeneratedReport; message?: string };
     if (!response.ok || !data.report) throw new Error(data.message ?? "Unable to generate the report preview.");
+    if (runtime.isCurrent?.() === false) return;
     runtime.setPreview(data.report);
     runtime.notify("Report preview updated.", "success");
   } catch (error) {
+    if (runtime.isCurrent?.() === false) return;
     runtime.notify(error instanceof Error ? error.message : "Unable to generate the report preview.", "error");
   } finally {
     runtime.setSaving(false);
@@ -52,7 +59,7 @@ export async function generateReportPreview(
 
 export async function sendReportPreview(
   draft: DraftReport,
-  runtime: ActionRuntime & { setLastDeliveryResult: Setter<DeliveryResult | null>; setPreview: Setter<GeneratedReport | null> }
+  runtime: PreviewActionRuntime
 ) {
   runtime.setSaving(true);
   try {
@@ -78,6 +85,7 @@ export async function sendReportPreview(
     if (!response.ok || !data.report || data.delivery?.status !== "delivered") {
       throw new Error(data.message ?? "Unable to send the report.");
     }
+    if (runtime.isCurrent?.() === false) return;
     runtime.setPreview(data.report);
     runtime.setLastDeliveryResult({
       status: data.delivery.status,
@@ -87,6 +95,7 @@ export async function sendReportPreview(
     });
     runtime.notify("Report sent successfully with an HTML attachment.", "success");
   } catch (error) {
+    if (runtime.isCurrent?.() === false) return;
     runtime.notify(error instanceof Error ? error.message : "Unable to send the report.", "error");
   } finally {
     runtime.setSaving(false);

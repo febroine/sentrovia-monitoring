@@ -1366,12 +1366,14 @@ function roundToTwoDecimals(value: number) {
 
 export function scheduleNextRunAfter(currentRunAt: Date, cadence: ReportCadence, after: Date) {
   const nextRunAt = new Date(currentRunAt);
+  const monthlyAnchorDay = currentRunAt.getUTCDate();
+  const staysAtMonthEnd = isLastDayOfUtcMonth(currentRunAt);
 
   while (nextRunAt <= after) {
     if (cadence === "weekly") {
       nextRunAt.setUTCDate(nextRunAt.getUTCDate() + 7);
     } else {
-      advanceOneMonthClamped(nextRunAt);
+      advanceOneMonthClamped(nextRunAt, monthlyAnchorDay, staysAtMonthEnd);
     }
   }
 
@@ -1489,14 +1491,7 @@ async function completeClaimedReportSchedule(
   return updated ?? null;
 }
 
-function advanceOneMonthClamped(value: Date) {
-  const dayOfMonth = value.getUTCDate();
-  const lastDayOfCurrentMonth = new Date(Date.UTC(
-    value.getUTCFullYear(),
-    value.getUTCMonth() + 1,
-    0
-  )).getUTCDate();
-  const staysAtMonthEnd = dayOfMonth === lastDayOfCurrentMonth;
+function advanceOneMonthClamped(value: Date, anchorDay: number, staysAtMonthEnd: boolean) {
   value.setUTCDate(1);
   value.setUTCMonth(value.getUTCMonth() + 1);
   const lastDayOfTargetMonth = new Date(Date.UTC(
@@ -1504,7 +1499,15 @@ function advanceOneMonthClamped(value: Date) {
     value.getUTCMonth() + 1,
     0
   )).getUTCDate();
-  value.setUTCDate(staysAtMonthEnd ? lastDayOfTargetMonth : Math.min(dayOfMonth, lastDayOfTargetMonth));
+  value.setUTCDate(staysAtMonthEnd ? lastDayOfTargetMonth : Math.min(anchorDay, lastDayOfTargetMonth));
+}
+
+function isLastDayOfUtcMonth(value: Date) {
+  return value.getUTCDate() === new Date(Date.UTC(
+    value.getUTCFullYear(),
+    value.getUTCMonth() + 1,
+    0
+  )).getUTCDate();
 }
 
 async function completeManualReportSchedule(

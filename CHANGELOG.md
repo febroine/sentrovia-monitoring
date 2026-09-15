@@ -4,10 +4,17 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+### Security
+
+- Enforced the `audit.read` permission for event-log reads and deletion so lower-privileged workspace roles cannot access restricted operational history.
+- Revoked existing session tokens during sign-out by advancing the account session version while still clearing the local cookie on failures.
+
 ### Fixed
 
 - Ensured monitor history reset removes all monitor-owned report and operational records, including legacy records with stale workspace scope.
 - Refreshed open report analytics and previews after a monitor history reset and prevented stale concurrent responses from replacing newer results.
+- Redirected authenticated users away from sign-in and completed onboarding pages without rendering stale authentication screens.
+- Preserved protected-page query parameters through sign-in and redirected invalidated sessions instead of leaving protected pages blank.
 
 ## [0.1.1] - 2026-09-13
 
