@@ -10,6 +10,12 @@ describe("report exports", () => {
     expect(html).toContain('font-family: "IBM Plex Sans"');
     expect(html).not.toMatch(/Arial|Helvetica|Inter/);
     expect(html).toContain("Service snapshot");
+    expect(html).toContain('<dl class="snapshot-grid">');
+    expect(html).toContain("<dt>Reporting window</dt>");
+    expect(html).toContain("Executive brief");
+    expect(html).toContain("Availability trend");
+    expect(html).toContain("Failed checks by day");
+    expect(html).toContain("not a configured SLA");
     expect(html).toContain("What needs attention");
     expect(html).toContain("Failure details");
     expect(html).toContain("Top failing URLs");
@@ -35,6 +41,22 @@ describe("report exports", () => {
 
     expect(html).toContain("paused until 06/05/2026, 04:00:00");
     expect(html).toContain("05/05/2026, 03:30:00");
+  });
+
+  it("renders measured trends and escapes monitor names in the executive brief", () => {
+    const report = buildSampleReport();
+    report.monitorBreakdown[0].name = "<script>alert(1)</script>";
+    report.dailyMetrics = [{
+      date: "2026-05-04", totalChecks: 10, upChecks: 8, downChecks: 2,
+      uptimePct: 80, latencySamples: 8, averageLatencyMs: 210, p95LatencyMs: 640,
+    }];
+
+    const html = buildPrintableReportHtml(report, { output: "pdf" });
+    expect(html).toContain('role="img" aria-label="Availability trend');
+    expect(html).toContain("80.00% availability, 2 failed checks");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("PDF report");
   });
 });
 

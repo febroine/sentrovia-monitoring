@@ -10,6 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { formatPanelDateTime } from "@/lib/time";
 import { subscribeToMonitorHistoryReset } from "@/lib/client/monitor-history-events";
+import { downloadFile, downloadBlob } from "@/components/reports/reports-page-model";
+import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
+import { AVAILABILITY_REFERENCE_PCT, getExecutiveInsights, getMonitorRiskPoints } from "@/lib/reports/analytics-insights";
 import {
   formatMonitorAverageLatency,
   formatMonitorP95Latency,
@@ -305,6 +308,7 @@ function AnalyticsFilters({
           <div className="grid gap-2 sm:grid-cols-3 lg:w-[660px]">
             <ExclusionPicker
               label="Monitors"
+              searchable
               options={monitors.map((monitor) => ({ value: monitor.id, label: monitor.name, detail: monitor.url }))}
               selected={filters.excludeMonitorIds}
               onChange={(value, excluded) => updateExclusion("excludeMonitorIds", value, excluded)}
@@ -446,15 +450,19 @@ function ExclusionPicker({
   options,
   selected,
   caseInsensitive = false,
+  searchable = false,
   onChange,
 }: {
   label: string;
   options: Array<{ value: string; label: string; detail?: string }>;
   selected: string[];
   caseInsensitive?: boolean;
+  searchable?: boolean;
   onChange: (value: string, excluded: boolean) => void;
 }) {
+  const [search, setSearch] = useState("");
   const limitReached = selected.length >= MAX_EXCLUSIONS_PER_GROUP;
+  const filteredOptions = searchable ? filterExclusionOptions(options, search) : options;
   return (
     <details className="group relative">
       <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 rounded-md bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
@@ -462,12 +470,21 @@ function ExclusionPicker({
         <span className="text-xs tabular-nums text-muted-foreground">{selected.length || "None"}</span>
       </summary>
       <div className="mt-1 rounded-md bg-background p-2 shadow-lg sm:absolute sm:right-0 sm:z-20 sm:w-80">
+        {searchable ? <Input
+          className="mb-2"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search monitors"
+          aria-label="Search excluded monitors"
+        /> : null}
         <fieldset>
           <legend className="sr-only">{`Exclude ${label.toLocaleLowerCase()} from analytics`}</legend>
           <div className="max-h-56 grid gap-1 overflow-y-auto">
             {options.length === 0 ? (
               <p className="px-2 py-3 text-xs text-muted-foreground">No {label.toLocaleLowerCase()} available.</p>
-            ) : options.map((option) => {
+            ) : filteredOptions.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-muted-foreground">No matching monitors.</p>
+            ) : filteredOptions.map((option) => {
               const checked = isExclusionSelected(selected, option.value, caseInsensitive);
               return (
                 <label
@@ -500,11 +517,37 @@ function ExclusionPicker({
 }
 
 function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedReport; filters: AnalyticsFilters; refreshing: boolean }) {
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const hasChecks = report.summary.hasCompletedChecks;
   const exclusionCount = countExclusions(filters);
   const scopeLabel = filters.monitorIds.length > 1
     ? `${filters.monitorIds.length} selected monitors`
     : report.monitorName ?? report.companyName ?? "All monitors";
+
+  async function exportPdf() {
+    setExportingPdf(true);
+    setExportError(null);
+    try {
+      const response = await fetch("/api/reports/analytics/pdf", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildAnalyticsRequestPayload(filters)),
+      });
+      if (!response.ok) {
+        const data = (await response.json()) as { message?: string };
+        throw new Error(data.message ?? "Unable to generate the PDF.");
+      }
+      const filename = response.headers.get("X-Report-Filename") ?? `${buildReportFileSlug(report)}.pdf`;
+      downloadBlob(await response.blob(), filename);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Unable to generate the PDF.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-2 rounded-md bg-muted/20 p-4 lg:flex-row lg:items-end lg:justify-between">
@@ -515,10 +558,17 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
             {exclusionCount > 0 ? ` · ${formatExclusionSummary(filters)}` : ""}
           </p>
         </div>
-        <p className="text-xs text-muted-foreground" aria-live="polite">
-          {refreshing ? "Refreshing data…" : `Updated ${formatPanelDateTime(report.generatedAt)}`}
-        </p>
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <p className="mr-1 text-xs text-muted-foreground" aria-live="polite">
+            {refreshing ? "Refreshing data…" : `Updated ${formatPanelDateTime(report.generatedAt)}`}
+          </p>
+          <Button size="sm" variant="outline" disabled={refreshing || exportingPdf} onClick={() => downloadFile(buildPrintableReportHtml(report), `${buildReportFileSlug(report)}.html`, "text/html;charset=utf-8")}>Export HTML</Button>
+          <Button size="sm" variant="outline" disabled={refreshing || exportingPdf} onClick={() => void exportPdf()}>{exportingPdf ? "Generating PDF…" : "Generate PDF"}</Button>
+        </div>
       </header>
+      <p className="-mt-4 text-xs text-muted-foreground lg:text-right">HTML saves the displayed snapshot; PDF uses the latest checks for these filters.</p>
+      {exportError ? <p role="alert" className="text-sm text-destructive">{exportError} Try again.</p> : null}
+      <span className="sr-only" role="status">{exportingPdf ? "Generating PDF report" : ""}</span>
 
       <SummaryStrip report={report} />
 
@@ -531,9 +581,14 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
         </section>
       ) : (
         <>
+          <ExecutiveBrief report={report} />
           <div className="grid gap-6 xl:grid-cols-2">
+            <AvailabilityChart data={report.dailyMetrics} />
             <FailureChart data={report.dailyMetrics} />
+          </div>
+          <div className="grid gap-6 xl:grid-cols-2">
             <LatencyChart data={report.dailyMetrics} />
+            <MonitorRiskMatrix report={report} />
           </div>
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <FailureConcentration report={report} />
@@ -547,6 +602,103 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
       )}
     </div>
   );
+}
+
+function ExecutiveBrief({ report }: { report: GeneratedReport }) {
+  const insights = getExecutiveInsights(report);
+  const signals = [
+    {
+      label: "Days at 99.9% reference",
+      value: `${insights.daysAtReference} / ${insights.observedDays}`,
+      detail: "Observed days with completed checks",
+    },
+    {
+      label: "Monitors below reference",
+      value: String(insights.belowReference),
+      detail: `${insights.missingData} without completed checks`,
+    },
+    {
+      label: "Largest failure contributor",
+      value: insights.leadingFailure ? `${insights.leadingFailure.sharePct.toFixed(1)}%` : "None",
+      detail: insights.leadingFailure ? `${insights.leadingFailure.name} · ${insights.leadingFailure.failures} failed checks` : "No failed checks in scope",
+    },
+  ];
+  return (
+    <section aria-labelledby="executive-brief-title" className="border-y border-border/70 py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="executive-brief-title" className="text-base font-semibold">Executive brief</h3>
+        <p className="text-xs text-muted-foreground">99.9% is a reference threshold, not a configured SLA.</p>
+      </div>
+      <dl className="mt-3 grid gap-x-6 gap-y-4 md:grid-cols-3">
+        {signals.map((signal) => <div key={signal.label} className="min-w-0 border-t border-border/60 pt-3">
+          <dt className="text-xs text-muted-foreground">{signal.label}</dt>
+          <dd className="mt-1 text-lg font-semibold tabular-nums">{signal.value}</dd>
+          <p className="mt-1 truncate text-xs text-muted-foreground" title={signal.detail}>{signal.detail}</p>
+        </div>)}
+      </dl>
+    </section>
+  );
+}
+
+function AvailabilityChart({ data }: { data: GeneratedReport["dailyMetrics"] }) {
+  const observed = data.filter((day) => day.upChecks + day.downChecks > 0);
+  const maxBars = 45;
+  const bucketSize = Math.max(1, Math.ceil(data.length / maxBars));
+  const buckets = Array.from({ length: Math.ceil(data.length / bucketSize) }, (_, index) => {
+    const days = data.slice(index * bucketSize, (index + 1) * bucketSize);
+    const completed = days.reduce((sum, day) => sum + day.upChecks + day.downChecks, 0);
+    return {
+      date: days[0].date,
+      label: days.length === 1 ? shortDate(days[0].date) : `${shortDate(days[0].date)}–${shortDate(days[days.length - 1].date)}`,
+      uptimePct: completed ? days.reduce((sum, day) => sum + day.upChecks, 0) / completed * 100 : null,
+    };
+  });
+  const referenceY = 178 - AVAILABILITY_REFERENCE_PCT / 100 * 150;
+  return <ChartSection title="Availability trend" description={bucketSize === 1 ? "Daily availability from completed checks against a 99.9% reference." : "Completed-check-weighted availability by interval against a 99.9% reference."} legend="Availability" legendTone="bg-emerald-500">
+    {observed.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No completed checks to chart.</p> : <>
+      <svg viewBox="0 0 720 230" className="w-full" style={{ minWidth: chartMinWidth(buckets.length) }} role="img" aria-label="Availability percentage by period against a 99.9 percent reference" aria-describedby="availability-values">
+        <ChartAxis />
+        <line x1="42" x2="700" y1={referenceY} y2={referenceY} className="stroke-amber-500" strokeDasharray="4 4" />
+        <text x="36" y="31" textAnchor="end" className="fill-muted-foreground text-[10px]">100%</text>
+        <text x="36" y="181" textAnchor="end" className="fill-muted-foreground text-[10px]">0%</text>
+        {buckets.map((bucket, index) => {
+          const x = chartX(index, buckets.length);
+          const height = bucket.uptimePct === null ? 0 : bucket.uptimePct / 100 * 150;
+          return <g key={bucket.date}>
+            <rect x={x - 6} y={178 - height} width="12" height={height} className={bucket.uptimePct !== null && bucket.uptimePct < AVAILABILITY_REFERENCE_PCT ? "fill-rose-500" : "fill-emerald-500"} />
+            {showDateLabel(index, buckets.length) ? <text x={x} y="207" textAnchor="middle" className="fill-muted-foreground text-[10px]">{bucket.label}</text> : null}
+            <title>{`${bucket.label}: ${bucket.uptimePct === null ? "no completed checks" : `${bucket.uptimePct.toFixed(2)}% availability`}`}</title>
+          </g>;
+        })}
+      </svg>
+      <p id="availability-values" className="sr-only">{buckets.map((bucket) => `${bucket.label}: ${bucket.uptimePct === null ? "no completed checks" : `${bucket.uptimePct.toFixed(2)} percent`}`).join("; ")}</p>
+    </>}
+  </ChartSection>;
+}
+
+function MonitorRiskMatrix({ report }: { report: GeneratedReport }) {
+  const { monitors, medianLatencyMs } = getMonitorRiskPoints(report);
+  const points = monitors.toSorted((left, right) => left.uptimePct - right.uptimePct || right.p95LatencyMs - left.p95LatencyMs).slice(0, 40);
+  const maxLatency = Math.max(1, ...points.map((monitor) => monitor.p95LatencyMs));
+  const latencyThreshold = medianLatencyMs ?? 0;
+  const riskCount = monitors.filter((monitor) => monitor.uptimePct < AVAILABILITY_REFERENCE_PCT && monitor.p95LatencyMs > latencyThreshold).length;
+  return <ChartSection title="Reliability and latency risk" description={`Monitor P95 latency versus uptime. ${riskCount} below 99.9% and above the fleet median P95 (${Math.round(latencyThreshold)}ms).`} legend="Monitor" legendTone="bg-cyan-500">
+    {points.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No monitors have both completed checks and latency samples.</p> : <>
+      {monitors.length > points.length ? <p className="mb-2 text-xs text-muted-foreground">Showing the {points.length} lowest-uptime monitors of {monitors.length} with latency data.</p> : null}
+      <svg viewBox="0 0 720 230" className="w-full" style={{ minWidth: "320px" }} role="img" aria-label="Monitor uptime and P95 latency comparison" aria-describedby="risk-matrix-values">
+        <ChartAxis />
+        <line x1={50 + ((AVAILABILITY_REFERENCE_PCT - 95) / 5) * 640} x2={50 + ((AVAILABILITY_REFERENCE_PCT - 95) / 5) * 640} y1="28" y2="178" strokeDasharray="4 4" className="stroke-amber-500" />
+        {latencyThreshold <= maxLatency ? <line x1="42" x2="700" y1={178 - latencyThreshold / maxLatency * 150} y2={178 - latencyThreshold / maxLatency * 150} strokeDasharray="4 4" className="stroke-muted-foreground/70" /> : null}
+        <text x="36" y="31" textAnchor="end" className="fill-muted-foreground text-[10px]">{maxLatency}ms</text>
+        <text x="50" y="207" textAnchor="start" className="fill-muted-foreground text-[10px]">≤95%</text>
+        <text x="690" y="207" textAnchor="end" className="fill-muted-foreground text-[10px]">100% uptime</text>
+        {points.map((monitor) => <circle key={monitor.monitorId} cx={50 + Math.max(0, (monitor.uptimePct - 95) / 5) * 640} cy={178 - monitor.p95LatencyMs / maxLatency * 150} r="5" className={monitor.uptimePct < AVAILABILITY_REFERENCE_PCT && monitor.p95LatencyMs > latencyThreshold ? "fill-rose-500" : "fill-cyan-500"}>
+          <title>{`${monitor.name}: ${monitor.uptimePct.toFixed(2)}% uptime, ${monitor.p95LatencyMs}ms P95`}</title>
+        </circle>)}
+      </svg>
+      <p id="risk-matrix-values" className="sr-only">{points.map((monitor) => `${monitor.name}: ${monitor.uptimePct.toFixed(2)} percent uptime, ${monitor.p95LatencyMs} milliseconds P95`).join("; ")}</p>
+    </>}
+  </ChartSection>;
 }
 
 function SummaryStrip({ report }: { report: GeneratedReport }) {
@@ -838,6 +990,17 @@ function MobileMetric({ label, value, tone }: { label: string; value: string; to
 }
 
 async function requestAnalyticsReport(filters: AnalyticsFilters) {
+  const response = await fetch("/api/reports/analytics", {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildAnalyticsRequestPayload(filters)),
+  });
+  const data = (await response.json()) as { report?: GeneratedReport; message?: string };
+  return { response, data };
+}
+
+function buildAnalyticsRequestPayload(filters: AnalyticsFilters) {
   const payload: Record<string, string | string[]> = {
     monitorIds: filters.monitorIds,
     excludeMonitorIds: filters.excludeMonitorIds,
@@ -848,14 +1011,12 @@ async function requestAnalyticsReport(filters: AnalyticsFilters) {
     if (value) payload[key] = value;
   }
   if (filters.companyId !== "all") payload.companyId = filters.companyId;
-  const response = await fetch("/api/reports/analytics", {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = (await response.json()) as { report?: GeneratedReport; message?: string };
-  return { response, data };
+  return payload;
+}
+
+export function filterExclusionOptions<T extends { label: string; detail?: string }>(options: T[], query: string): T[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  return normalized ? options.filter((option) => `${option.label} ${option.detail ?? ""}`.toLocaleLowerCase().includes(normalized)) : options;
 }
 
 export function shouldRetryAnalyticsWithoutMonitor(status: number, monitorIds: string[]) {

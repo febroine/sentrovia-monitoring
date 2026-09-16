@@ -4,6 +4,7 @@ import {
   changeMonitorSelection,
   changeExclusionSelection,
   getChartAvailability,
+  filterExclusionOptions,
   isExclusionSelected,
   isMonitorExcludedByFilters,
   reconcileFiltersWithCatalog,
@@ -13,6 +14,16 @@ import { getFailureBarWidth } from "@/components/reports/report-preview-panel";
 import type { GeneratedReport } from "@/lib/reports/types";
 
 describe("report analytics catalog reconciliation", () => {
+  it("searches exclusion monitors by name or target without changing the catalog", () => {
+    const options = [
+      { value: "a", label: "Checkout API", detail: "https://example.com/health" },
+      { value: "b", label: "Portal", detail: "https://portal.example.com" },
+    ];
+    expect(filterExclusionOptions(options, "  CHECKout ")).toEqual([options[0]]);
+    expect(filterExclusionOptions(options, "portal.example")).toEqual([options[1]]);
+    expect(filterExclusionOptions(options, "none")).toEqual([]);
+    expect(options).toHaveLength(2);
+  });
   it("clears a deleted selection and stale exclusions before the report request", () => {
     const filters = reconcileFiltersWithCatalog({
       periodRange: "7d",
