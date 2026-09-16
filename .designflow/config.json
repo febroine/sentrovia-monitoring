@@ -62,6 +62,10 @@
     {
       "name": "monitoring-lint",
       "argv": ["npx", "eslint", "src/app/monitoring/page.tsx", "src/components/monitoring", "src/app/api/monitors"]
+    },
+    {
+      "name": "reports-lint",
+      "argv": ["npx", "eslint", "src/app/reports", "src/components/reports", "src/app/api/reports", "src/lib/reports"]
     }
   ],
   "checks_omitted_reason": "",
@@ -72,6 +76,9 @@
   "design_sources": [
     "src/app/globals.css",
     "src/app/monitoring/page.tsx",
+    "src/app/reports/page.tsx",
+    "src/components/reports/report-analytics-workspace.tsx",
+    "src/lib/reports/export.ts",
     "src/components/ui/button.tsx",
     "src/components/ui/dialog.tsx",
     "src/components/ui/select.tsx",

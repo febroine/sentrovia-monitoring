@@ -13,6 +13,8 @@ incumbent interface sources; it does not introduce a new design system.
 | Shared UI components | [Button](../src/components/ui/button.tsx), [Dialog](../src/components/ui/dialog.tsx), [Select](../src/components/ui/select.tsx) | Existing implementation |
 | Navigation / behavior | [Monitoring page](../src/app/monitoring/page.tsx) | Existing implementation |
 | Good existing screens / references | [Monitoring page](../src/app/monitoring/page.tsx) and [monitor table](../src/components/monitoring/monitor-table.tsx) | Preserve current operational density |
+| Reports analytics surface | [Reports page](../src/app/reports/page.tsx) and [analytics workspace](../src/components/reports/report-analytics-workspace.tsx) | Preserve current report hierarchy and filter behavior |
+| Exported report presentation | [Printable report builder](../src/lib/reports/export.ts) | Keep browser HTML and PDF output aligned with analytics semantics |
 | Platform accessibility requirements | Existing semantic components and WCAG-compatible browser behavior | Verify in scoped review |
 | Run/build/test/capture commands | [Package scripts](../package.json) | `npm run dev`, `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` |
 
