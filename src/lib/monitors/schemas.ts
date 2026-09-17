@@ -359,6 +359,11 @@ export const monitorBulkUpdateSchema = z.object({
   payload: monitorInputSchema,
 });
 
+export const monitorBulkCompanySchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500).refine((ids) => new Set(ids).size === ids.length),
+  companyId: z.string().uuid().nullable(),
+});
+
 export const monitorActiveStateSchema = z.object({
   isActive: z.boolean(),
 });

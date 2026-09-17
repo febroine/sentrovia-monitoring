@@ -8,6 +8,7 @@ import {
   buildRestoredMonitorState,
   calculateMonitorLeaseMs,
   filterDuplicateMonitorInputs,
+  getMonitorImportIdentityKey,
   hasMonitorTargetConflict,
   listReservedMonitorTargets,
   normalizeHeartbeatTokenInput,
@@ -19,6 +20,8 @@ import {
 } from "@/lib/monitors/service";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import { buildMonitorIdentityKey } from "@/lib/monitors/targets";
+import { buildHeartbeatMonitorTarget } from "@/lib/monitors/targets";
+import { hashSecretValue } from "@/lib/security/encryption";
 
 describe("monitor due selection", () => {
   it("keeps leases longer than the slowest monitor timeout", () => {
@@ -265,6 +268,19 @@ describe("monitor import duplicate filtering", () => {
     );
 
     expect(filtered.map((monitor) => monitor.name)).toEqual(["Job A"]);
+  });
+
+  it("matches an explicit heartbeat token against its stored hashed target", () => {
+    const token = "heartbeat-token-123456";
+    const existingTargets = new Set([buildMonitorIdentityKey({
+      monitorType: "heartbeat",
+      url: buildHeartbeatMonitorTarget(hashSecretValue("heartbeat-token", token)),
+    })]);
+    expect(filterDuplicateMonitorInputs([
+      buildMonitorInput({ name: "Existing job", monitorType: "heartbeat", heartbeatToken: token }),
+    ], existingTargets)).toEqual([]);
+    expect(getMonitorImportIdentityKey(buildMonitorInput({ monitorType: "heartbeat", heartbeatToken: token })))
+      .toBe([...existingTargets][0]);
   });
 
   it("removes imports that duplicate existing monitor targets", () => {

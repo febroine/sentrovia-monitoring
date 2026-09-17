@@ -26,6 +26,8 @@ interface MonitoringState {
     flags: { isFavorite?: boolean; isCritical?: boolean; publishOnStatusPage?: boolean }
   ) => Promise<MonitorRecord | null>;
   bulkUpdateMonitors: (ids: string[], payload: MonitorPayload) => Promise<MonitorRecord[]>;
+  bulkMoveMonitorsToCompany: (ids: string[], companyId: string | null) => Promise<MonitorRecord[]>;
+  bulkUpdateMonitorPublication: (ids: string[], publishOnStatusPage: boolean) => Promise<MonitorRecord[]>;
   resetMonitorHistory: (ids: string[]) => Promise<MonitorRecord[]>;
   deleteMonitors: (ids: string[]) => Promise<SoftDeleteResult | null>;
   restoreMonitors: (ids: string[]) => Promise<MonitorRecord[]>;
@@ -333,6 +335,66 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         saving: false,
         error: message,
       });
+      showToast(message, "error");
+      return [];
+    }
+  },
+  bulkMoveMonitorsToCompany: async (ids, companyId) => {
+    invalidateMonitorLoads();
+    set({ saving: true });
+    try {
+      const response = await fetch("/api/monitors/bulk/company", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, companyId }),
+      });
+      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      if (!response.ok || !data?.monitors) {
+        throw new Error(data?.message ?? "Unable to move selected monitors.");
+      }
+      const updatedMap = new Map(data.monitors.map((monitor) => [monitor.id, monitor]));
+      invalidateMonitorLoads();
+      set((state) => ({
+        monitors: state.monitors.map((monitor) => updatedMap.get(monitor.id) ?? monitor),
+        saving: false,
+        error: null,
+      }));
+      showToast(`${data.monitors.length} monitor${data.monitors.length === 1 ? "" : "s"} moved.`, "success");
+      return data.monitors;
+    } catch (error) {
+      const message = getErrorMessage(error, "Unable to move selected monitors.");
+      invalidateMonitorLoads();
+      set({ saving: false, error: message });
+      showToast(message, "error");
+      return [];
+    }
+  },
+  bulkUpdateMonitorPublication: async (ids, publishOnStatusPage) => {
+    invalidateMonitorLoads();
+    set({ saving: true });
+    try {
+      const response = await fetch("/api/monitors/bulk/publication", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, publishOnStatusPage }),
+      });
+      const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
+      if (!response.ok || !data?.monitors) {
+        throw new Error(data?.message ?? "Unable to update public status visibility.");
+      }
+      const updatedMap = new Map(data.monitors.map((monitor) => [monitor.id, monitor]));
+      invalidateMonitorLoads();
+      set((state) => ({
+        monitors: state.monitors.map((monitor) => updatedMap.get(monitor.id) ?? monitor),
+        saving: false,
+        error: null,
+      }));
+      showToast(`${data.monitors.length} monitor${data.monitors.length === 1 ? "" : "s"} updated.`, "success");
+      return data.monitors;
+    } catch (error) {
+      const message = getErrorMessage(error, "Unable to update public status visibility.");
+      invalidateMonitorLoads();
+      set({ saving: false, error: message });
       showToast(message, "error");
       return [];
     }

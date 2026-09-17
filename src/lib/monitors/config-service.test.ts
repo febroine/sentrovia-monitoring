@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMonitorConfigImportPreview,
   parseMonitorConfigBundle,
+  preserveRedactedMonitorSettings,
   redactMonitorExportSecrets,
 } from "@/lib/monitors/config-service";
 import { DEFAULT_MONITOR_FORM } from "@/lib/monitors/types";
@@ -97,7 +98,7 @@ describe("monitor config import preview", () => {
       { ...DEFAULT_MONITOR_FORM, name: "Repeated", url: "https://new.example.com" },
     ], [{ monitorType: "http", url: "https://existing.example.com/" }]);
 
-    expect(preview.summary).toEqual({ added: 1, skipped: 2, invalid: 0 });
+    expect(preview.summary).toEqual({ added: 1, updated: 0, skipped: 2, invalid: 0 });
     expect(preview.items.map((item) => item.status)).toEqual(["skipped", "added", "skipped"]);
   });
 
@@ -107,7 +108,7 @@ describe("monitor config import preview", () => {
       { ...DEFAULT_MONITOR_FORM, name: "Job B", monitorType: "heartbeat", heartbeatToken: "" },
     ], []);
 
-    expect(preview.summary).toEqual({ added: 2, skipped: 0, invalid: 0 });
+    expect(preview.summary).toEqual({ added: 2, updated: 0, skipped: 0, invalid: 0 });
     expect(preview.items.map((item) => item.status)).toEqual(["added", "added"]);
   });
 
@@ -122,7 +123,98 @@ describe("monitor config import preview", () => {
       ["Monitor target is not allowed by the current network safety policy.", null]
     );
 
-    expect(preview.summary).toEqual({ added: 1, skipped: 0, invalid: 1 });
+    expect(preview.summary).toEqual({ added: 1, updated: 0, skipped: 0, invalid: 1 });
     expect(preview.items.map((item) => item.status)).toEqual(["invalid", "added"]);
+  });
+
+  it("distinguishes updated, unchanged, and duplicate bundle records", () => {
+    const current = { ...DEFAULT_MONITOR_FORM, name: "Original", url: "https://existing.example.com" };
+    const preview = buildMonitorConfigImportPreview([
+      { ...current, name: "Renamed" },
+      { ...current },
+      { ...DEFAULT_MONITOR_FORM, name: "New", url: "https://new.example.com" },
+    ], [{ id: "monitor-1", monitorType: "http", url: current.url, config: current }], [], {
+      updateExisting: true,
+      ids: ["monitor-1", "monitor-1", undefined],
+    });
+
+    expect(preview.summary).toEqual({ added: 1, updated: 1, skipped: 1, invalid: 0 });
+    expect(preview.items.map((item) => item.status)).toEqual(["updated", "skipped", "added"]);
+    expect(preview.items[0].monitorId).toBe("monitor-1");
+    expect(preview.items[0].changedFields).toContain("name");
+  });
+
+  it("preserves a redacted workspace-level Telegram preference", () => {
+    const current = { ...DEFAULT_MONITOR_FORM, notificationPref: "both" as const };
+    const imported = { ...current, notificationPref: "email" as const };
+
+    expect(preserveRedactedMonitorSettings(imported, current).notificationPref).toBe("both");
+    const preview = buildMonitorConfigImportPreview([imported], [
+      { id: "monitor-1", monitorType: "http", url: current.url, config: current },
+    ], [], { updateExisting: true, ids: ["monitor-1"] });
+    expect(preview.items[0].status).toBe("skipped");
+    expect(preserveRedactedMonitorSettings(imported, current, true).notificationPref).toBe("email");
+  });
+
+  it("matches an older bundle by target when no ID is present", () => {
+    const current = { ...DEFAULT_MONITOR_FORM, url: "https://existing.example.com" };
+    const preview = buildMonitorConfigImportPreview([
+      { ...current, intervalValue: 10 },
+    ], [{ id: "monitor-1", monitorType: "http", url: current.url, config: current }], [], {
+      updateExisting: true,
+    });
+
+    expect(preview.items[0].status).toBe("updated");
+    expect(preview.items[0].monitorId).toBe("monitor-1");
+    expect(preview.items[0].changedFields).toEqual(["intervalValue"]);
+  });
+
+  it("preserves redacted Telegram credentials and preference during an update", () => {
+    const current = {
+      ...DEFAULT_MONITOR_FORM,
+      telegramBotToken: "123456:secret",
+      telegramChatId: "123456",
+      notificationPref: "both" as const,
+    };
+    const imported = {
+      ...current,
+      telegramBotToken: "",
+      telegramChatId: "",
+      notificationPref: "email" as const,
+    };
+
+    expect(preserveRedactedMonitorSettings(imported, current)).toMatchObject({
+      telegramBotToken: "123456:secret",
+      telegramChatId: "123456",
+      notificationPref: "both",
+    });
+  });
+
+  it("requires an ID to match a redacted heartbeat in update mode", () => {
+    const preview = buildMonitorConfigImportPreview([
+      { ...DEFAULT_MONITOR_FORM, name: "Daily job", monitorType: "heartbeat", heartbeatToken: "" },
+    ], [], [], { updateExisting: true });
+
+    expect(preview.items[0].status).toBe("invalid");
+  });
+
+  it("asks for the database password before changing a PostgreSQL connection", () => {
+    const current = {
+      ...DEFAULT_MONITOR_FORM,
+      monitorType: "postgres" as const,
+      databaseHost: "db.example.com",
+      databaseName: "app",
+      databaseUsername: "app",
+      databasePasswordConfigured: true,
+    };
+    const preview = buildMonitorConfigImportPreview([
+      { ...current, databaseTlsVerify: false },
+    ], [{ id: "monitor-1", monitorType: "postgres", url: "postgres://app@db.example.com:5432/app", config: current }], [], {
+      updateExisting: true,
+      ids: ["monitor-1"],
+    });
+
+    expect(preview.items[0].status).toBe("invalid");
+    expect(preview.items[0].reason).toContain("Re-enter the database password");
   });
 });

@@ -3,8 +3,8 @@
 </h1>
 
 <p align="center">
-  <strong>Self-hosted uptime monitoring that verifies failures before alerting.</strong><br>
-  Monitor websites, APIs, TCP ports, PostgreSQL databases, ping targets, and cron or heartbeat jobs from one evidence-first operations workspace.
+  <strong>Self-hosted uptime monitoring for websites, APIs, and jobs.</strong><br>
+  Check websites, APIs, ports, PostgreSQL databases, servers, and cron jobs. Sentrovia confirms failures before it sends an outage alert.
 </p>
 
 <p align="center">
@@ -28,35 +28,36 @@
   </a>
 </p>
 
-<p align="center"><sub>Real Sentrovia UI populated with isolated synthetic demo data.</sub></p>
+<p align="center"><sub>Sentrovia running with synthetic demo data.</sub></p>
 
-## Overview
+## Self-hosted website and API monitoring
 
-Sentrovia is an open-source, self-hosted uptime monitoring platform for small teams and operators who want trustworthy outage alerts without sending operational data to a hosted monitoring vendor. It combines service checks, failure verification, screenshot evidence, notification delivery history, reliability reports, and public status pages in one workspace.
+Sentrovia is an open-source uptime monitor you run on your own server. It checks whether your websites, APIs, and other services respond, then keeps the check history, alerts, and public status pages in your own PostgreSQL database. It is built for small teams that need to know what failed and whether an alert reached anyone.
 
-The core premise is simple: **a failed request is evidence to verify, not immediately an outage to announce.** Sentrovia checks again, confirms that the monitoring host still has internet access, and performs a final probe before recording an outage and notifying the team.
+One failed check does not automatically become an outage. Sentrovia retries it, checks the monitoring server's internet connection, and makes one final probe before notifying your team. A brief network hiccup is less likely to wake everyone up; a confirmed failure leaves a trail you can inspect.
 
-## Why Sentrovia Exists
+## What you can monitor
 
-Transient DNS failures, short network interruptions, and connectivity loss on the monitoring server can all look like a service outage. Sentrovia is built to reduce those false alarms while leaving an inspectable trail when a failure is real.
+| Check | What it covers |
+| --- | --- |
+| HTTP and HTTPS | Website uptime, response status, redirects, latency, and TLS behavior |
+| API and JSON | Endpoint availability and expected values in a JSON response |
+| Keyword | Required or unwanted text in an HTTP response |
+| TCP port | Reachability of services such as SSH, SMTP, and custom applications |
+| ICMP ping | Whether a server or network device responds to ping |
+| PostgreSQL | Database connectivity, with configurable TLS verification |
+| Cron and heartbeat | Jobs or services that report in on schedule |
 
-- **Verify before escalating:** retry thresholds, verification scheduling, connectivity canaries, and a final confirmation probe protect against one-off failures.
-- **Keep evidence with the event:** supported HTTP-style checks can capture screenshots, diagnostics, timelines, response details, and the root-cause summary.
-- **Audit notification delivery:** email, Telegram, Discord, and generic webhook attempts have bounded retries and visible outcomes.
-- **Own the deployment and data:** run the complete stack with Docker Compose or as native services on Windows Server.
+Sentrovia checks reachability and response health. It does not collect host CPU, memory, disk, or network-traffic metrics.
 
 ## Features
 
-- **Monitoring:** HTTP/HTTPS, API and JSON assertions, keyword checks, TCP ports, ICMP ping, PostgreSQL, and cron/heartbeat monitors.
-- **Outage verification:** failure thresholds, scheduled verification probes, a final confirmation probe, and monitoring-host connectivity checks.
-- **Evidence:** check history, timelines, latency and response details, diagnostics, and best-effort screenshots for confirmed HTTP-style failures.
-- **Alerts:** SMTP email, Telegram, Discord webhooks, generic webhooks, slow-response warnings, recovery notices, downtime reminders, and TLS-expiry notices.
-- **Notification content:** workspace and per-monitor templates, English or Turkish notification content, editable branding, and light/dark email previews.
-- **Operations:** live dashboard, monitor and company views, delivery history, dead-letter visibility, manual resend, logs, and temporary monitor pauses.
-- **Status and reporting:** public status pages, uptime and latency analytics, scheduled reports, HTML export, and company-scoped reporting.
-- **Administration:** administrator/member roles, workspace isolation, monitor import/export, Prometheus metrics, and encrypted PostgreSQL backups.
-
-Sentrovia measures service reachability and response health. It is not a replacement for host-level CPU, memory, disk, log, or network-traffic observability.
+- **Verified outage alerts:** set failure thresholds; the worker retries and confirms an outage before sending a down notification.
+- **Evidence when a check fails:** review check history, response details, diagnostics, and timelines. Confirmed HTTP-style failures can also have a screenshot when capture is available.
+- **Notification delivery history:** send email, Telegram, Discord, or webhook alerts and see which attempts succeeded, failed, or need a resend.
+- **Public status pages:** share service availability without giving visitors access to the private console.
+- **Uptime reports:** review availability and latency, schedule reports, and export HTML reports for a workspace or company.
+- **Self-hosted deployment:** install with Docker Compose or run the web app and worker as Windows services. Administrator and member roles keep workspaces separate.
 
 ## Quick Start
 
@@ -67,7 +68,7 @@ Requirements:
 - Git
 - Docker Engine with Docker Compose
 
-The installer generates private application and database secrets, starts PostgreSQL, applies the schema, and launches the web console and monitoring worker.
+The installer creates the private secrets, starts PostgreSQL, sets up the database, and launches the web app and monitoring worker.
 
 Linux or macOS:
 
@@ -105,7 +106,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-windows-nssm.ps1
 ```
 
-The installer creates `.env.local`, installs exact dependencies and Chromium, builds Sentrovia, synchronizes the database schema, and configures the automatically restarting `sentrovia-web` and `sentrovia-worker` services.
+The installer creates `.env.local`, installs dependencies and Chromium, builds Sentrovia, sets up the database, and registers the `sentrovia-web` and `sentrovia-worker` services with automatic restart.
 
 For HTTPS, reverse-proxy settings, remote PostgreSQL parameters, production Compose, updates, backups, and recovery, use the [deployment guide](docs/deployment.md).
 
@@ -126,7 +127,7 @@ flowchart LR
     I --> J["Notify configured channels"]
 ```
 
-Before claiming monitor work, the worker also checks multiple independent public canaries. If every canary is unreachable, Sentrovia pauses checks and outbound delivery instead of marking healthy targets down. Processing resumes when connectivity returns.
+Before running checks, the worker tests its own internet connection against multiple independent public endpoints. If none is reachable, it pauses checks and notifications so a monitoring-server outage does not make every target look down. It resumes when the connection returns.
 
 ## Product Tour
 
@@ -134,17 +135,17 @@ Before claiming monitor work, the worker also checks multiple independent public
   <img src="docs/screenshots/demo.gif" alt="Sentrovia product tour covering the dashboard, monitor inventory, delivery history, reports, notification templates, and public status pages" width="100%">
 </p>
 
-<p align="center"><sub>Dashboard → monitors → delivery → reports → notification templates → public status page.</sub></p>
+<p align="center"><sub>Dashboard, monitors, delivery history, reports, notification templates, and a public status page.</sub></p>
 
 ## Alerts and Evidence
 
-Notification destinations resolve from monitor settings to company settings and then workspace defaults. Recipient-facing email actions open the monitored target through **Check site**; notification messages do not link recipients into the private Sentrovia panel.
+Sentrovia uses a monitor's notification settings first, then its company's settings, then workspace defaults. The **Check site** link in an email opens the monitored target, not the private Sentrovia console.
 
-For confirmed HTTP, keyword, and JSON failures, screenshot capture is best effort. An unavailable Chromium process never blocks the alert itself. Delivery tests use the real configured transport and appear in delivery history, but are excluded from channel health and delivery summary counters.
+For confirmed HTTP, keyword, and JSON failures, Sentrovia tries to capture a screenshot. Alerts still go out if Chromium is unavailable. Test notifications use the configured channel and appear in delivery history, but do not count toward delivery health totals.
 
 ## Synthetic Demo Workspace
 
-Sentrovia includes an opt-in seed for documentation, evaluation, and screenshots. It creates an isolated workspace with synthetic companies, monitors, thirty days of check history, outage events, delivery attempts, a report schedule, and a public status page. Reserved `.example` targets are used and scheduled checks are parked in the future.
+You can create a separate demo workspace to try the interface or take screenshots. It contains fictional companies and monitors, thirty days of check history, outages, delivery attempts, a report schedule, and a public status page. Its targets use reserved `.example` addresses, and their checks will not run.
 
 Create a demo workspace with a unique identifier containing at least eight letters or numbers:
 

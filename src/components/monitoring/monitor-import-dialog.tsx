@@ -68,6 +68,12 @@ export function MonitorImportDialog({
   const [csvText, setCsvText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{
+    added: number;
+    skipped: number;
+    invalid: number;
+    rows: Array<{ lineNumber: number; name: string; target: string; status: "added" | "skipped" | "invalid"; reason: string | null }>;
+  } | null>(null);
 
   const mapping = useMemo(() => {
     const entries = mappingText
@@ -83,6 +89,7 @@ export function MonitorImportDialog({
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    setPreview(null);
 
     if (!file.name.toLowerCase().endsWith(".csv")) {
       event.target.value = "";
@@ -113,9 +120,10 @@ export function MonitorImportDialog({
     }
   }
 
-  async function handleImport() {
+  async function handleImport(previewOnly: boolean) {
     setSubmitting(true);
     setError(null);
+    if (previewOnly) setPreview(null);
 
     try {
       const rows = parseMonitorCsv(csvText);
@@ -136,18 +144,26 @@ export function MonitorImportDialog({
         body: JSON.stringify({
           monitors,
           lineNumbers: importRows.map(({ lineNumber }) => lineNumber),
+          preview: previewOnly,
         }),
       });
-      const data = (await response.json()) as { message?: string; monitors?: MonitorRecord[] };
+      const data = (await response.json()) as { message?: string; monitors?: MonitorRecord[]; preview?: NonNullable<typeof preview> };
 
-      if (!response.ok || !data.monitors) {
-        throw new Error(data.message ?? "Unable to import CSV.");
+      if (!response.ok) {
+        throw new Error(data.message ?? (previewOnly ? "Unable to preview CSV." : "Unable to import CSV."));
       }
+      if (previewOnly) {
+        if (!data.preview) throw new Error("Unable to preview CSV.");
+        setPreview(data.preview);
+        return;
+      }
+      if (!data.monitors) throw new Error("Unable to import CSV.");
 
       onImported(data.monitors);
       onOpenChange(false);
       setFileName(null);
       setCsvText("");
+      setPreview(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to import CSV.");
     } finally {
@@ -186,14 +202,33 @@ export function MonitorImportDialog({
                 <p className="text-sm font-medium">{fileName ?? "Choose a CSV file"}</p>
                 <p className="text-xs text-muted-foreground">Accepted format: `.csv`</p>
               </div>
-              <input type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => void handleFileChange(event)} />
+              <input type="file" accept=".csv,text/csv" className="hidden" disabled={submitting} onChange={(event) => void handleFileChange(event)} />
             </label>
           </div>
 
           <div className="space-y-2">
             <Label>Column mapping</Label>
-            <Textarea rows={8} value={mappingText} onChange={(event) => setMappingText(event.target.value)} className="max-h-[240px] font-mono text-xs" />
+            <Textarea rows={8} value={mappingText} disabled={submitting} onChange={(event) => { setMappingText(event.target.value); setPreview(null); }} className="max-h-[240px] font-mono text-xs" />
           </div>
+
+          {preview ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium" role="status" aria-live="polite">Preview: {preview.added} to add · {preview.skipped} skipped · {preview.invalid} invalid</p>
+              <p className="text-xs text-muted-foreground">Import checks the file again before saving. Fix invalid rows to continue.</p>
+              <div className="max-h-56 overflow-auto rounded-md border border-border/60">
+                <table className="w-full text-left text-xs">
+                  <thead><tr className="border-b border-border/60"><th className="p-2">Row</th><th className="p-2">Monitor</th><th className="p-2">Result</th></tr></thead>
+                  <tbody>{preview.rows.map((row) => (
+                    <tr key={row.lineNumber} className="border-b border-border/40 last:border-0">
+                      <td className="p-2 align-top tabular-nums">{row.lineNumber}</td>
+                      <td className="min-w-0 p-2 align-top"><span className="block break-all font-medium">{row.name}</span><span className="block break-all text-muted-foreground">{row.target}</span></td>
+                      <td className="p-2 align-top"><span>{row.status === "added" ? "Add" : row.status === "skipped" ? "Skip" : "Invalid"}</span>{row.reason ? <span className="mt-1 block text-muted-foreground">{row.reason}</span> : null}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
 
           {error ? (
             <div role="alert" aria-live="polite" className="rounded-md bg-destructive/10 px-3 py-3 text-sm text-destructive">
@@ -204,8 +239,11 @@ export function MonitorImportDialog({
 
         <DialogFooter className="pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => void handleImport()} disabled={submitting || !csvText}>
-            {submitting ? "Importing..." : "Import CSV"}
+          <Button variant="outline" onClick={() => void handleImport(true)} disabled={submitting || !csvText}>
+            {submitting ? "Working..." : preview ? "Refresh preview" : "Preview CSV"}
+          </Button>
+          <Button onClick={() => void handleImport(false)} disabled={submitting || !preview || preview.invalid > 0 || preview.added === 0}>
+            {preview ? `Import ${preview.added} monitor${preview.added === 1 ? "" : "s"}` : "Import CSV"}
           </Button>
         </DialogFooter>
         </div>

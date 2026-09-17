@@ -85,6 +85,8 @@ export default function MonitoringPage() {
     updateMonitorPause,
     updateMonitorFlags,
     bulkUpdateMonitors,
+    bulkMoveMonitorsToCompany,
+    bulkUpdateMonitorPublication,
     resetMonitorHistory,
     deleteMonitors,
     restoreMonitors,
@@ -94,6 +96,8 @@ export default function MonitoringPage() {
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<MonitorStatusFilter>("all");
+  const [sort, setSort] = useState<"createdAt" | "name" | "status" | "lastCheckedAt" | "latencyMs">("createdAt");
+  const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -105,6 +109,10 @@ export default function MonitoringPage() {
   const [configOpen, setConfigOpen] = useState(false);
   const [editingMonitor, setEditingMonitor] = useState<MonitorRecord | null>(null);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkCompanyOpen, setBulkCompanyOpen] = useState(false);
+  const [bulkCompanyId, setBulkCompanyId] = useState("");
+  const [bulkPublicationOpen, setBulkPublicationOpen] = useState(false);
+  const [publishSelected, setPublishSelected] = useState(true);
   const [tagPatchOpen, setTagPatchOpen] = useState(false);
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
@@ -227,7 +235,9 @@ export default function MonitoringPage() {
     search,
     companyId: companyFilter,
     status: statusFilter === "all" ? undefined : statusFilter,
-  }), [companyFilter, loadMonitors, page, pageSize, search, statusFilter]);
+    sort,
+    direction,
+  }), [companyFilter, direction, loadMonitors, page, pageSize, search, sort, statusFilter]);
 
   const refreshMonitoring = useCallback(async () => {
     await Promise.all([loadMonitorPage(), loadSupportingData()]);
@@ -273,7 +283,7 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [companyFilter, page, pageSize, search, statusFilter]);
+  }, [companyFilter, direction, page, pageSize, search, sort, statusFilter]);
 
   useEffect(() => {
     if (!bulkProgress) {
@@ -340,6 +350,42 @@ export default function MonitoringPage() {
       ids.length,
       async () => {
         const updated = await bulkUpdateMonitors(ids, payload);
+        if (updated.length > 0) {
+          await loadMonitorPage();
+          setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
+        }
+      }
+    );
+  }
+
+  async function handleBulkCompanyMove() {
+    const ids = Array.from(selectedIds);
+    const companyId = bulkCompanyId === "unassigned" ? null : bulkCompanyId;
+    const destination = companies.find((company) => company.id === companyId)?.name ?? "Unassigned";
+    setBulkCompanyOpen(false);
+    await runBulkAction(
+      `Moving ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
+      `Assigning selected monitors to ${destination}.`,
+      ids.length,
+      async () => {
+        const updated = await bulkMoveMonitorsToCompany(ids, companyId);
+        if (updated.length > 0) {
+          await Promise.all([loadMonitorPage(), loadSupportingData()]);
+          setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
+        }
+      }
+    );
+  }
+
+  async function handleBulkPublication() {
+    const ids = Array.from(selectedIds);
+    setBulkPublicationOpen(false);
+    await runBulkAction(
+      `${publishSelected ? "Publishing" : "Unpublishing"} ${ids.length} monitors`,
+      "Updating public status visibility for selected monitors.",
+      ids.length,
+      async () => {
+        const updated = await bulkUpdateMonitorPublication(ids, publishSelected);
         if (updated.length > 0) {
           await loadMonitorPage();
           setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
@@ -616,7 +662,7 @@ export default function MonitoringPage() {
         }}
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <Input
@@ -646,6 +692,19 @@ export default function MonitoringPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={sort} onValueChange={(value) => { setSort(value as typeof sort); setPage(1); }}>
+          <SelectTrigger className="w-full sm:w-44" aria-label="Sort monitors"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="createdAt">Date added</SelectItem>
+            <SelectItem value="name">Name</SelectItem>
+            <SelectItem value="status">Status</SelectItem>
+            <SelectItem value="lastCheckedAt">Last checked</SelectItem>
+            <SelectItem value="latencyMs">Latency</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" aria-label={`Sort ${direction === "asc" ? "descending" : "ascending"}`} onClick={() => { setDirection((current) => current === "asc" ? "desc" : "asc"); setPage(1); }}>
+          {direction === "asc" ? "Ascending" : "Descending"}
+        </Button>
         <Select
           value={String(pageSize)}
           onValueChange={(value) => {
@@ -674,6 +733,12 @@ export default function MonitoringPage() {
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)} disabled={Boolean(bulkProgress)}>
               Bulk edit
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setBulkCompanyId(""); setBulkCompanyOpen(true); }} disabled={Boolean(bulkProgress)}>
+              Change company
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setPublishSelected(true); setBulkPublicationOpen(true); }} disabled={Boolean(bulkProgress)}>
+              Public status
             </Button>
             <Button variant="outline" size="sm" onClick={() => setTagPatchOpen(true)} disabled={Boolean(bulkProgress)}>
               <Tags data-icon="inline-start" className="size-3.5" />
@@ -925,6 +990,48 @@ export default function MonitoringPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={bulkCompanyOpen} onOpenChange={setBulkCompanyOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change company</DialogTitle>
+            <DialogDescription>Move {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"} to a company. Check settings and history stay with each monitor. Company notification recipients may change. Published monitors may appear on the destination company&apos;s public status page.</DialogDescription>
+          </DialogHeader>
+          <Select value={bulkCompanyId} onValueChange={(value) => setBulkCompanyId(String(value))}>
+            <SelectTrigger aria-label="Destination company"><SelectValue placeholder="Select company" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unassigned">Unassigned</SelectItem>
+              {companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkCompanyOpen(false)}>Cancel</Button>
+            <Button onClick={() => void handleBulkCompanyMove()} disabled={selectedIds.size === 0 || !bulkCompanyId || saving}>Move monitors</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkPublicationOpen} onOpenChange={setBulkPublicationOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Public status visibility</DialogTitle>
+            <DialogDescription>{selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}; {monitors.filter((monitor) => selectedIds.has(monitor.id) && monitor.publishOnStatusPage).length} currently published. Published monitors can appear on public status pages for their company or workspace.</DialogDescription>
+          </DialogHeader>
+          <Select value={publishSelected ? "publish" : "unpublish"} onValueChange={(value) => setPublishSelected(value === "publish")}>
+            <SelectTrigger aria-label="Public status action"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="publish">Publish selected</SelectItem>
+              <SelectItem value="unpublish">Unpublish selected</SelectItem>
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkPublicationOpen(false)}>Cancel</Button>
+            <Button onClick={() => void handleBulkPublication()} disabled={selectedIds.size === 0 || saving}>
+              {publishSelected ? "Publish" : "Unpublish"} {selectedIds.size} monitor{selectedIds.size === 1 ? "" : "s"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <MonitorPauseDialog
         open={pauseTargetIds.length > 0}
         monitorCount={pauseTargetIds.length}
@@ -1097,10 +1204,12 @@ export default function MonitoringPage() {
         </DialogContent>
       </Dialog>
       {exportOpen ? (
-        <MonitorExportDialog
+      <MonitorExportDialog
           open
           onOpenChange={setExportOpen}
           selectedIds={Array.from(selectedIds)}
+          filteredCount={pagination.totalItems}
+          filters={{ search, companyId: companyFilter === "all" ? undefined : companyFilter, status: statusFilter === "all" ? undefined : statusFilter, sort, direction }}
         />
       ) : null}
     </div>

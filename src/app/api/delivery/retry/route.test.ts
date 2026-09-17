@@ -72,4 +72,42 @@ describe("delivery retry route", () => {
 
     expect(response.status).toBe(409);
   });
+
+  it("retries only selected failed events and reports unavailable records", async () => {
+    mocks.retryDeliveryEvent.mockResolvedValueOnce({ id: "delivery-1" }).mockResolvedValueOnce(null);
+    const response = await POST(new Request("http://localhost/api/delivery/retry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: ["delivery-1", "delivery-2"] }),
+    }) as never);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ result: { processed: 1, unavailable: 1, failed: 0 } });
+    expect(mocks.retryDeliveryEvent).toHaveBeenCalledTimes(2);
+    expect(mocks.retryDeliveryQueue).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate selected delivery IDs", async () => {
+    const response = await POST(new Request("http://localhost/api/delivery/retry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: ["delivery-1", "delivery-1"] }),
+    }) as never);
+
+    expect(response.status).toBe(400);
+    expect(mocks.retryDeliveryEvent).not.toHaveBeenCalled();
+  });
+
+  it("continues remaining selected retries after one delivery errors", async () => {
+    mocks.retryDeliveryEvent.mockRejectedValueOnce(new Error("Transport error"));
+    const response = await POST(new Request("http://localhost/api/delivery/retry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: ["delivery-1", "delivery-2"] }),
+    }) as never);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ result: { processed: 1, unavailable: 0, failed: 1 } });
+    expect(mocks.retryDeliveryEvent).toHaveBeenCalledTimes(2);
+  });
 });
