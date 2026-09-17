@@ -176,7 +176,8 @@ export async function listMonitorsPage(
       .select()
       .from(monitors)
       .where(where)
-      .orderBy(order(sortColumn), order(monitors.id))
+      // Keep monitors without a measurement at the end for latency and last-checked sorting.
+      .orderBy(sql`${sortColumn} is null`, order(sortColumn), order(monitors.id))
       .limit(query.pageSize)
       .offset((query.page - 1) * query.pageSize),
   ]);
@@ -306,73 +307,106 @@ export async function updateMonitor(
   return db.transaction(async (tx) => {
     const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
     await lockMonitorTargets(tx, resolvedWorkspaceId);
-    const existingMonitor = await getMonitorById(userId, monitorId, tx, resolvedWorkspaceId);
-    if (!existingMonitor) {
-      return null;
-    }
+    return updateMonitorInTransaction(userId, monitorId, input, tx, resolvedWorkspaceId);
+  });
+}
 
-    const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx, resolvedWorkspaceId);
-    const values = await buildMonitorValues(
+async function updateMonitorInTransaction(
+  userId: string,
+  monitorId: string,
+  input: MonitorInput,
+  tx: DatabaseExecutor,
+  resolvedWorkspaceId: string
+) {
+  const existingMonitor = await getMonitorById(userId, monitorId, tx, resolvedWorkspaceId);
+  if (!existingMonitor) {
+    return null;
+  }
+
+  const allowPrivateTargets = await canUserAccessPrivateTargets(userId, tx, resolvedWorkspaceId);
+  const values = await buildMonitorValues(
+    userId,
+    input,
+    existingMonitor,
+    allowPrivateTargets,
+    tx,
+    resolvedWorkspaceId
+  );
+  await assertMonitorTargetAvailable(
+    userId,
+    values.monitorType,
+    values.url,
+    monitorId,
+    tx,
+    resolvedWorkspaceId
+  );
+  const now = new Date();
+  const targetChanged = hasMonitorTargetChanged(existingMonitor, values);
+  const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
+  const scheduleUpdate = buildConfigurationScheduleUpdate(
+    existingMonitor.isActive,
+    values.isActive,
+    now
+  );
+  const targetResetUpdate = targetChanged
+    ? buildMonitorTargetResetState(values.isActive, now)
+    : {};
+  const [monitor] = await tx
+    .update(monitors)
+    .set({
+      ...values,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      ...activeStateUpdate,
+      ...scheduleUpdate,
+      ...targetResetUpdate,
+      ...(existingMonitor.isActive === values.isActive ? {} : { pausedUntil: null }),
       userId,
-      input,
-      existingMonitor,
-      allowPrivateTargets,
-      tx,
-      resolvedWorkspaceId
-    );
-    await assertMonitorTargetAvailable(
-      userId,
-      values.monitorType,
-      values.url,
-      monitorId,
-      tx,
-      resolvedWorkspaceId
-    );
-    const now = new Date();
-    const targetChanged = hasMonitorTargetChanged(existingMonitor, values);
-    const activeStateUpdate = buildActiveStateUpdate(existingMonitor.isActive, values.isActive, now);
-    const scheduleUpdate = buildConfigurationScheduleUpdate(
-      existingMonitor.isActive,
-      values.isActive,
-      now
-    );
-    const targetResetUpdate = targetChanged
-      ? buildMonitorTargetResetState(values.isActive, now)
-      : {};
-    const [monitor] = await tx
-      .update(monitors)
-      .set({
-        ...values,
-        leaseToken: null,
-        leaseExpiresAt: null,
-        ...activeStateUpdate,
-        ...scheduleUpdate,
-        ...targetResetUpdate,
-        ...(existingMonitor.isActive === values.isActive ? {} : { pausedUntil: null }),
-        userId,
-        updatedAt: now,
-      })
-      .where(and(
-        eq(monitors.id, monitorId),
-        eq(monitors.workspaceId, resolvedWorkspaceId),
-        isNull(monitors.deletedAt)
-      ))
-      .returning();
+      updatedAt: now,
+    })
+    .where(and(
+      eq(monitors.id, monitorId),
+      eq(monitors.workspaceId, resolvedWorkspaceId),
+      isNull(monitors.deletedAt)
+    ))
+    .returning();
 
-    if (!monitor) {
-      return null;
-    }
+  if (!monitor) {
+    return null;
+  }
 
-    await resolveOutageOnPause(existingMonitor, values.isActive, now, tx);
-    if (targetChanged && existingMonitor.isActive && values.isActive) {
-      await resolveOutage({
-        monitorId: existingMonitor.id,
-        userId: existingMonitor.userId,
-        checkedAt: now,
-        statusCode: existingMonitor.statusCode,
-      }, tx);
+  await resolveOutageOnPause(existingMonitor, values.isActive, now, tx);
+  if (targetChanged && existingMonitor.isActive && values.isActive) {
+    await resolveOutage({
+      monitorId: existingMonitor.id,
+      userId: existingMonitor.userId,
+      checkedAt: now,
+      statusCode: existingMonitor.statusCode,
+    }, tx);
+  }
+  return monitor;
+}
+
+export async function applyMonitorConfigChanges(
+  userId: string,
+  additions: MonitorInput[],
+  updates: Array<{ id: string; input: MonitorInput }>,
+  workspaceId: string
+) {
+  return db.transaction(async (tx) => {
+    await lockMonitorTargets(tx, workspaceId);
+    const updated = [];
+    for (const change of updates) {
+      const monitor = await updateMonitorInTransaction(userId, change.id, change.input, tx, workspaceId);
+      if (!monitor) {
+        throw new AuthError("A monitor changed since the import preview. Preview the bundle again.", 409);
+      }
+      updated.push(monitor);
     }
-    return monitor;
+    const added = additions.length > 0
+      ? await createManyMonitors(userId, additions, tx, workspaceId)
+      : [];
+    return { added, updated };
   });
 }
 
@@ -616,6 +650,72 @@ export async function bulkUpdateMonitors(
       updated.push(...rows);
     }
 
+    return updated;
+  });
+}
+
+export async function bulkMoveMonitorsToCompany(
+  userId: string,
+  ids: string[],
+  companyId: string | null,
+  workspaceId: string
+) {
+  return db.transaction(async (tx) => {
+    const company = companyId ? await getCompanyById({ userId, workspaceId }, companyId, tx) : null;
+    if (companyId && !company) {
+      throw new AuthError("The selected company is unavailable.", 404);
+    }
+
+    const existing = await tx.select({ id: monitors.id }).from(monitors).where(and(
+      eq(monitors.workspaceId, workspaceId),
+      inArray(monitors.id, ids),
+      isNull(monitors.deletedAt)
+    ));
+    if (existing.length !== ids.length) {
+      throw new AuthError("One or more selected monitors are unavailable.", 404);
+    }
+
+    const updated = await tx.update(monitors).set({
+      companyId: company?.id ?? null,
+      company: company?.name ?? null,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(monitors.workspaceId, workspaceId),
+      inArray(monitors.id, ids),
+      isNull(monitors.deletedAt)
+    )).returning();
+    if (updated.length !== ids.length) {
+      throw new AuthError("One or more selected monitors are unavailable.", 404);
+    }
+    return updated;
+  });
+}
+
+export async function bulkUpdateMonitorPublication(
+  ids: string[],
+  publishOnStatusPage: boolean,
+  workspaceId: string
+) {
+  return db.transaction(async (tx) => {
+    const existing = await tx.select({ id: monitors.id }).from(monitors).where(and(
+      eq(monitors.workspaceId, workspaceId),
+      inArray(monitors.id, ids),
+      isNull(monitors.deletedAt)
+    ));
+    if (existing.length !== ids.length) {
+      throw new AuthError("One or more selected monitors are unavailable.", 404);
+    }
+    const updated = await tx.update(monitors).set({
+      publishOnStatusPage,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(monitors.workspaceId, workspaceId),
+      inArray(monitors.id, ids),
+      isNull(monitors.deletedAt)
+    )).returning();
+    if (updated.length !== ids.length) {
+      throw new AuthError("One or more selected monitors are unavailable.", 404);
+    }
     return updated;
   });
 }
@@ -1050,6 +1150,13 @@ export function filterDuplicateMonitorInputs(inputs: MonitorInput[], existingTar
 export function getMonitorImportIdentityKey(input: MonitorInput) {
   if (input.monitorType === "heartbeat" && input.heartbeatToken.trim().length === 0) {
     return null;
+  }
+
+  if (input.monitorType === "heartbeat") {
+    return buildMonitorIdentityKey({
+      monitorType: "heartbeat",
+      url: buildHeartbeatMonitorTarget(hashSecretValue("heartbeat-token", input.heartbeatToken.trim())),
+    });
   }
 
   return buildMonitorIdentityKey({

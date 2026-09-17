@@ -15,16 +15,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { showToast } from "@/lib/client-toast";
 import type { MonitorExportFormat } from "@/lib/monitors/export";
 
-type ExportScope = "all" | "selected";
+type ExportScope = "all" | "selected" | "filtered";
+type MonitorExportFilters = {
+  search: string;
+  companyId?: string;
+  status?: "up" | "down";
+  sort: "createdAt" | "name" | "status" | "lastCheckedAt" | "latencyMs";
+  direction: "asc" | "desc";
+};
 
 export function MonitorExportDialog({
   open,
   onOpenChange,
   selectedIds,
+  filteredCount,
+  filters,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: string[];
+  filteredCount: number;
+  filters: MonitorExportFilters;
 }) {
   const [scope, setScope] = useState<ExportScope>(selectedIds.length > 0 ? "selected" : "all");
   const [format, setFormat] = useState<MonitorExportFormat>("xlsx");
@@ -41,6 +52,12 @@ export function MonitorExportDialog({
       const params = new URLSearchParams({ format, scope: effectiveScope });
       if (effectiveScope === "selected") {
         selectedIds.forEach((id) => params.append("id", id));
+      } else if (effectiveScope === "filtered") {
+        if (filters.search.trim()) params.set("search", filters.search.trim());
+        if (filters.companyId) params.set("companyId", filters.companyId);
+        if (filters.status) params.set("status", filters.status);
+        params.set("sort", filters.sort);
+        params.set("direction", filters.direction);
       }
 
       const response = await fetch(`/api/monitors/export?${params.toString()}`, { cache: "no-store" });
@@ -61,7 +78,7 @@ export function MonitorExportDialog({
 
       onOpenChange(false);
       showToast(
-        `${effectiveScope === "selected" ? selectedIds.length : "All"} monitor${selectedIds.length === 1 && effectiveScope === "selected" ? "" : "s"} exported.`,
+        "Monitor export downloaded.",
         "success"
       );
     } catch (caughtError) {
@@ -94,6 +111,7 @@ export function MonitorExportDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All workspace monitors</SelectItem>
+                <SelectItem value="filtered" disabled={filteredCount === 0}>Current filters ({filteredCount})</SelectItem>
                 <SelectItem value="selected" disabled={selectedScopeUnavailable}>
                   Selected monitors ({selectedIds.length})
                 </SelectItem>

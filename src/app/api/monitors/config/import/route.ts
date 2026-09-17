@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { toAuthError } from "@/lib/auth/errors";
+import { AuthError, toAuthError } from "@/lib/auth/errors";
 import { assertPermission } from "@/lib/auth/permissions";
-import { parseMonitorConfigBundle, previewMonitorConfigImport } from "@/lib/monitors/config-service";
-import { createManyMonitors } from "@/lib/monitors/service";
+import { parseMonitorConfigBundle, preserveRedactedMonitorSettings, previewMonitorConfigImport } from "@/lib/monitors/config-service";
+import { applyMonitorConfigChanges, createManyMonitors, listMonitors } from "@/lib/monitors/service";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
 import { getSettings } from "@/lib/settings/service";
@@ -11,6 +11,8 @@ import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
 import { readJsonBody } from "@/lib/http/json-body";
+import { toMonitorPayload } from "@/lib/monitors/targets";
+import type { MonitorRecord } from "@/lib/monitors/types";
 
 export const runtime = "nodejs";
 
@@ -27,11 +29,15 @@ export async function POST(request: NextRequest) {
       format?: string;
       content?: string;
       mode?: string;
+      updateExisting?: boolean;
     };
     const format = body.format === "yaml" ? "yaml" : "json";
     const mode = body.mode ?? "apply";
     if (mode !== "preview" && mode !== "apply") {
       return NextResponse.json({ message: "Invalid monitor import mode." }, { status: 400 });
+    }
+    if (body.updateExisting !== undefined && typeof body.updateExisting !== "boolean") {
+      return NextResponse.json({ message: "Invalid monitor update option." }, { status: 400 });
     }
     const content = body.content?.trim();
 
@@ -40,6 +46,12 @@ export async function POST(request: NextRequest) {
     }
 
     const bundle = parseMonitorConfigBundle(content, format);
+    if (bundle.monitors.some((monitor) =>
+      monitor.applyRedactedNotificationPref !== undefined
+      && typeof monitor.applyRedactedNotificationPref !== "boolean"
+    )) {
+      return NextResponse.json({ message: "Invalid notification preference import option." }, { status: 400 });
+    }
     const settings = await getSettings(session.id, true, session.activeWorkspaceId!);
     const validatedEntries = bundle.monitors.map((monitor, index) => {
       const parsed = monitorInputSchema.safeParse(applyMonitorDefaults(monitor, settings));
@@ -53,7 +65,9 @@ export async function POST(request: NextRequest) {
         };
       }
       try {
-        assertRestorablePostgresMonitorPasswords([parsed.data]);
+        if (!body.updateExisting) {
+          assertRestorablePostgresMonitorPasswords([parsed.data]);
+        }
         return { index: index + 1, input: parsed.data, name: parsed.data.name, target: parsed.data.url, reason: null };
       } catch (error) {
         return {
@@ -72,8 +86,32 @@ export async function POST(request: NextRequest) {
     const validPreview = await previewMonitorConfigImport(
       session.id,
       validEntries.map((entry) => entry.input),
-      session.activeWorkspaceId!
+      session.activeWorkspaceId!,
+      {
+        updateExisting: body.updateExisting,
+        ids: validEntries.map((entry) => {
+          const id = bundle.monitors[entry.index - 1]?.id;
+          return typeof id === "string" ? id : undefined;
+        }),
+        applyRedactedNotificationPrefs: validEntries.map((entry) =>
+          bundle.monitors[entry.index - 1]?.applyRedactedNotificationPref === true
+        ),
+      }
     );
+    if (body.updateExisting) {
+      for (const item of validPreview.items) {
+        const entry = validEntries[item.index - 1];
+        if (item.status !== "added" || !entry) continue;
+        try {
+          assertRestorablePostgresMonitorPasswords([entry.input]);
+        } catch (error) {
+          item.status = "invalid";
+          item.reason = error instanceof Error ? error.message : "PostgreSQL password is required.";
+          validPreview.summary.added--;
+          validPreview.summary.invalid++;
+        }
+      }
+    }
     const invalidItems = validatedEntries
       .filter((entry) => entry.input === null)
       .map((entry) => ({
@@ -107,16 +145,35 @@ export async function POST(request: NextRequest) {
     const importableMonitors = validEntries
       .filter((_, index) => validPreview.items[index]?.status === "added")
       .map((entry) => entry.input);
-    const created = importableMonitors.length > 0
-      ? await createManyMonitors(
+    const currentMonitors = body.updateExisting ? await listMonitors(session.id, undefined, session.activeWorkspaceId!) : [];
+    const currentById = new Map(currentMonitors.map((monitor) => [monitor.id, monitor]));
+    const updates = validEntries.flatMap((entry, index) => {
+      const item = validPreview.items[index];
+      if (item?.status !== "updated" || !item.monitorId) return [];
+      const current = currentById.get(item.monitorId);
+      if (!current) {
+        throw new AuthError("A monitor changed since the import preview. Preview the bundle again.", 409);
+      }
+      return [{
+        id: item.monitorId,
+        input: preserveRedactedMonitorSettings(
+          entry.input,
+          toMonitorPayload(serializeMonitorRecord(current) as MonitorRecord),
+          bundle.monitors[entry.index - 1]?.applyRedactedNotificationPref === true
+        ),
+      }];
+    });
+    const changes = body.updateExisting
+      ? await applyMonitorConfigChanges(session.id, importableMonitors, updates, session.activeWorkspaceId!)
+      : { added: importableMonitors.length > 0 ? await createManyMonitors(
           session.id,
           importableMonitors,
           undefined,
           session.activeWorkspaceId!
-        )
-      : [];
+        ) : [], updated: [] };
     return NextResponse.json({
-      monitors: created.map((monitor) => serializeMonitorRecord(monitor)),
+      monitors: changes.added.map((monitor) => serializeMonitorRecord(monitor)),
+      updated: changes.updated.map((monitor) => ({ id: monitor.id })),
       preview,
     });
   } catch (error) {

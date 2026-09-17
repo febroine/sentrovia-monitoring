@@ -13,7 +13,7 @@ export interface MonitorConfigBundle {
   version: 1;
   exportedAt: string;
   source: "sentrovia";
-  monitors: MonitorPayload[];
+  monitors: Array<MonitorPayload & { id?: string; applyRedactedNotificationPref?: boolean }>;
 }
 
 export interface WorkspaceBackupBundle {

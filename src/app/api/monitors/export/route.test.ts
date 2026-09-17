@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   listMonitors: vi.fn(),
+  listMonitorsPage: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }));
-vi.mock("@/lib/monitors/service", () => ({ listMonitors: mocks.listMonitors }));
+vi.mock("@/lib/monitors/service", () => ({ listMonitors: mocks.listMonitors, listMonitorsPage: mocks.listMonitorsPage }));
 
 import { GET } from "@/app/api/monitors/export/route";
 
@@ -45,6 +46,21 @@ describe("monitor export route", () => {
     ));
 
     expect(response.status).toBe(400);
+    expect(mocks.listMonitors).not.toHaveBeenCalled();
+  });
+
+  it("exports filtered monitors across every page in the requested order", async () => {
+    mocks.listMonitorsPage
+      .mockResolvedValueOnce({ monitors: [buildMonitor("11111111-1111-4111-8111-111111111111", "First")], pagination: { totalPages: 2 } })
+      .mockResolvedValueOnce({ monitors: [buildMonitor("22222222-2222-4222-8222-222222222222", "Second")], pagination: { totalPages: 2 } });
+    const response = await GET(new NextRequest(
+      "http://localhost/api/monitors/export?format=json&scope=filtered&search=health&status=up&sort=name&direction=asc"
+    ));
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).map((row: { name: string }) => row.name)).toEqual(["First", "Second"]);
+    expect(mocks.listMonitorsPage).toHaveBeenNthCalledWith(1, "user-1", expect.objectContaining({ page: 1, search: "health", status: "up", sort: "name", direction: "asc" }), undefined, "workspace-1");
+    expect(mocks.listMonitorsPage).toHaveBeenNthCalledWith(2, "user-1", expect.objectContaining({ page: 2 }), undefined, "workspace-1");
     expect(mocks.listMonitors).not.toHaveBeenCalled();
   });
 });

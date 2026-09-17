@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
 import { toEnglishUppercase } from "@/lib/text/casing";
@@ -15,10 +16,11 @@ type MonitorImportPreview = {
     index: number;
     name: string;
     target: string;
-    status: "added" | "skipped" | "invalid";
+    status: "added" | "updated" | "skipped" | "invalid";
     reason: string | null;
+    changedFields?: string[];
   }>;
-  summary: { added: number; skipped: number; invalid: number };
+  summary: { added: number; updated: number; skipped: number; invalid: number };
 };
 
 export function MonitorConfigDialog({
@@ -32,6 +34,7 @@ export function MonitorConfigDialog({
 }) {
   const [format, setFormat] = useState<"json" | "yaml">("json");
   const [content, setContent] = useState("");
+  const [updateExisting, setUpdateExisting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [preview, setPreview] = useState<MonitorImportPreview | null>(null);
@@ -67,12 +70,13 @@ export function MonitorConfigDialog({
       const response = await fetch("/api/monitors/config/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, content, mode }),
+        body: JSON.stringify({ format, content, mode, updateExisting }),
       });
       const data = (await response.json().catch(() => null)) as {
         message?: string;
         preview?: MonitorImportPreview;
         monitors?: unknown[];
+        updated?: unknown[];
       } | null;
 
       if (!response.ok) {
@@ -84,7 +88,7 @@ export function MonitorConfigDialog({
         setPreview(data?.preview ?? null);
         setMessage(data?.preview ? "Import preview is ready. Review the changes before applying." : null);
       } else {
-        setMessage(`Imported ${data?.monitors?.length ?? 0} monitor(s).`);
+        setMessage(`Added ${data?.monitors?.length ?? 0}, updated ${data?.updated?.length ?? 0} monitor(s).`);
         setContent("");
         setPreview(null);
         onImported();
@@ -153,13 +157,26 @@ export function MonitorConfigDialog({
               />
             </div>
 
+            <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+              <div>
+                <Label htmlFor="monitor-config-update-existing">Update matching monitors</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Match by exported ID or target. Existing secrets stay in place.</p>
+                {updateExisting ? <p className="mt-1 text-xs text-muted-foreground">To replace a redacted Telegram routing preference, set applyRedactedNotificationPref: true on that monitor.</p> : null}
+              </div>
+              <Switch id="monitor-config-update-existing" checked={updateExisting} onCheckedChange={(checked) => {
+                setUpdateExisting(checked);
+                setPreview(null);
+              }} />
+            </div>
+
             {message ? <div className="rounded-md bg-primary/10 px-3 py-3 text-sm">{message}</div> : null}
             {preview ? (
               <div className="space-y-3 rounded-md bg-muted/20 p-4">
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <PreviewCount label="Add" value={preview.summary.added} tone="text-emerald-600" />
-                  <PreviewCount label="Skip" value={preview.summary.skipped} tone="text-amber-600" />
-                  <PreviewCount label="Invalid" value={preview.summary.invalid} tone="text-destructive" />
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums">
+                  <span>Add {preview.summary.added}</span>
+                  <span>Update {preview.summary.updated}</span>
+                  <span>Skip {preview.summary.skipped}</span>
+                  <span>Invalid {preview.summary.invalid}</span>
                 </div>
                 <div className="max-h-52 space-y-2 overflow-y-auto">
                   {preview.items.map((item) => (
@@ -167,10 +184,11 @@ export function MonitorConfigDialog({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{item.name}</p>
                         <p className="truncate text-xs text-muted-foreground">{item.target}</p>
+                        {item.changedFields?.length ? <p className="mt-1 text-xs text-muted-foreground">Changes: {item.changedFields.map((field) => field.replace(/([A-Z])/g, " $1").trim().toLowerCase()).join(", ")}</p> : null}
                         {item.reason ? <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{item.reason}</p> : null}
                       </div>
-                      <span className={item.status === "added" ? "text-xs font-medium text-emerald-600" : item.status === "invalid" ? "text-xs font-medium text-destructive" : "text-xs font-medium text-amber-600"}>
-                        {item.status === "added" ? "Add" : item.status === "invalid" ? "Invalid" : "Skip"}
+                      <span className={item.status === "invalid" ? "text-xs font-medium text-destructive" : "text-xs font-medium text-muted-foreground"}>
+                        {item.status === "added" ? "Add" : item.status === "updated" ? "Update" : item.status === "invalid" ? "Invalid" : "Skip"}
                       </span>
                     </div>
                   ))}
@@ -184,24 +202,20 @@ export function MonitorConfigDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           <Button
             onClick={() => void handleImport(preview ? "apply" : "preview")}
-            disabled={submitting || !content.trim() || Boolean(preview && preview.summary.added === 0)}
+            disabled={submitting || !content.trim() || Boolean(
+              preview && (
+                preview.summary.invalid > 0
+                || preview.summary.added + preview.summary.updated === 0
+              )
+            )}
           >
             <Upload data-icon="inline-start" />
             {submitting
               ? preview ? "Importing…" : "Analyzing…"
-              : preview ? `Import ${preview.summary.added}` : "Preview import"}
+              : preview ? `Apply ${preview.summary.added + preview.summary.updated}` : "Preview import"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function PreviewCount({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="rounded-md bg-background px-3 py-2">
-      <p className={`text-lg font-semibold ${tone}`}>{value}</p>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-    </div>
   );
 }

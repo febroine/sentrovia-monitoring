@@ -1,5 +1,6 @@
 import { parse, stringify } from "yaml";
 import { MONITOR_CONFIG_IMPORT_LIMITS } from "@/lib/import-limits";
+import { DEFAULT_MONITOR_FORM } from "@/lib/monitors/types";
 import type { MonitorInput } from "@/lib/monitors/schemas";
 import {
   assertMonitorNetworkTargetAllowed,
@@ -12,6 +13,25 @@ import { buildCanonicalMonitorTarget, buildMonitorIdentityKey, getMonitorTargetD
 import { serializeMonitorRecord } from "@/lib/monitors/utils";
 import type { MonitorConfigBundle, MonitorPayload, MonitorRecord, MonitorType } from "@/lib/monitors/types";
 
+export type MonitorConfigImportPreview = {
+  items: Array<{
+    index: number;
+    name: string;
+    target: string;
+    status: "added" | "updated" | "skipped" | "invalid";
+    reason: string | null;
+    monitorId?: string;
+    changedFields?: string[];
+  }>;
+  summary: { added: number; updated: number; skipped: number; invalid: number };
+};
+
+type MonitorConfigImportOptions = {
+  updateExisting?: boolean;
+  ids?: Array<string | undefined>;
+  applyRedactedNotificationPrefs?: boolean[];
+};
+
 export async function buildMonitorConfigBundle(
   userId: string,
   workspaceId?: string
@@ -22,9 +42,10 @@ export async function buildMonitorConfigBundle(
     version: 1,
     exportedAt: new Date().toISOString(),
     source: "sentrovia",
-    monitors: monitors.map((monitor) =>
-      redactMonitorExportSecrets(toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord))
-    ),
+    monitors: monitors.map((monitor) => ({
+      id: monitor.id,
+      ...redactMonitorExportSecrets(toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord)),
+    })),
   };
 }
 
@@ -76,28 +97,40 @@ export function parseMonitorConfigBundle(raw: string, format: "json" | "yaml") {
 export async function previewMonitorConfigImport(
   userId: string,
   inputs: MonitorInput[],
-  workspaceId?: string
+  workspaceId?: string,
+  options: MonitorConfigImportOptions = {}
 ) {
   const [existing, allowPrivateTargets] = await Promise.all([
-    listReservedMonitorTargets(userId, undefined, workspaceId),
+    options.updateExisting
+      ? listMonitors(userId, undefined, workspaceId).then((rows) => rows.map((monitor) => ({
+          id: monitor.id,
+          monitorType: monitor.monitorType,
+          url: monitor.url,
+          config: toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord),
+        })))
+      : listReservedMonitorTargets(userId, undefined, workspaceId),
     canUserAccessPrivateTargets(userId, undefined, workspaceId),
   ]);
   const validationErrors = await Promise.all(
     inputs.map((input) => validateImportNetworkTarget(input, allowPrivateTargets))
   );
-  return buildMonitorConfigImportPreview(inputs, existing, validationErrors);
+  return buildMonitorConfigImportPreview(inputs, existing, validationErrors, options);
 }
 
 export function buildMonitorConfigImportPreview(
   inputs: MonitorInput[],
-  existing: Array<{ monitorType: string; url: string }>,
-  validationErrors: Array<string | null> = []
-) {
-  const seenTargets = new Set(
-    existing.map((monitor) => buildMonitorIdentityKey({ monitorType: monitor.monitorType as MonitorType, url: monitor.url }))
-  );
+  existing: Array<{ id?: string; monitorType: string; url: string; config?: MonitorPayload }>,
+  validationErrors: Array<string | null> = [],
+  options: MonitorConfigImportOptions = {}
+): MonitorConfigImportPreview {
+  const byId = new Map(existing.filter((monitor) => monitor.id).map((monitor) => [monitor.id!, monitor]));
+  const byTarget = new Map(existing.map((monitor) => [
+    buildMonitorIdentityKey({ monitorType: monitor.monitorType as MonitorType, url: monitor.url }), monitor,
+  ]));
+  const seenTargets = new Set<string>();
+  const seenIds = new Set<string>();
 
-  const items = inputs.map((monitor, index) => {
+  const items: MonitorConfigImportPreview["items"] = inputs.map((monitor, index) => {
     const target = buildCanonicalMonitorTarget(monitor);
     const validationError = validationErrors[index] ?? null;
     if (validationError) {
@@ -111,17 +144,53 @@ export function buildMonitorConfigImportPreview(
     }
 
     const identityKey = getMonitorImportIdentityKey(monitor);
-    const duplicate = identityKey ? seenTargets.has(identityKey) : false;
+    const requestedId = options.ids?.[index];
+    const matched = options.updateExisting
+      ? (requestedId ? byId.get(requestedId) : undefined) ?? (identityKey ? byTarget.get(identityKey) : undefined)
+      : undefined;
+    if (matched && matched.monitorType !== monitor.monitorType) {
+      return { index: index + 1, name: monitor.name, target, status: "invalid" as const, reason: "A monitor's type cannot be changed by import." };
+    }
+    if (options.updateExisting && monitor.monitorType === "heartbeat" && !requestedId && !identityKey) {
+      return { index: index + 1, name: monitor.name, target, status: "invalid" as const, reason: "This heartbeat needs a monitor ID to update safely. Export a new bundle first." };
+    }
+    const conflictingTarget = identityKey ? byTarget.get(identityKey) : undefined;
+    if (matched && conflictingTarget && conflictingTarget.id !== matched.id) {
+      return { index: index + 1, name: monitor.name, target, status: "invalid" as const, reason: "The target belongs to another monitor in this workspace." };
+    }
+    if (matched?.config?.monitorType === "postgres" && !monitor.databasePassword && (
+      (identityKey && identityKey !== buildMonitorIdentityKey({ monitorType: "postgres", url: matched.url }))
+      || monitor.databaseSsl !== matched.config.databaseSsl
+      || monitor.databaseTlsVerify !== matched.config.databaseTlsVerify
+    )) {
+      return { index: index + 1, name: monitor.name, target, status: "invalid" as const, reason: "Re-enter the database password after changing connection settings." };
+    }
+    const duplicate = Boolean((identityKey && seenTargets.has(identityKey)) || (matched?.id && seenIds.has(matched.id)));
     if (identityKey) {
       seenTargets.add(identityKey);
     }
+    if (matched?.id) seenIds.add(matched.id);
+
+    const currentConfig = matched?.config;
+    const updateInput = currentConfig
+      ? preserveRedactedMonitorSettings(monitor, currentConfig, options.applyRedactedNotificationPrefs?.[index])
+      : monitor;
+    const changedFields = currentConfig ? getChangedMonitorFields(updateInput, currentConfig) : [];
+    const unchanged = Boolean(currentConfig && changedFields.length === 0);
+    const status = duplicate || (!options.updateExisting && Boolean(conflictingTarget))
+      ? "skipped" as const
+      : matched ? unchanged ? "skipped" as const : "updated" as const : "added" as const;
 
     return {
       index: index + 1,
       name: monitor.name,
       target: getMonitorTargetDisplay({ monitorType: monitor.monitorType, url: target }),
-      status: duplicate ? "skipped" as const : "added" as const,
-      reason: duplicate ? "A monitor with this target already exists in the workspace or import bundle." : null,
+      status,
+      monitorId: status === "updated" ? matched?.id : undefined,
+      changedFields: status === "updated" ? changedFields : undefined,
+      reason: duplicate ? "This monitor appears more than once in the import bundle."
+        : unchanged ? "No configuration changes."
+        : !options.updateExisting && conflictingTarget ? "A monitor with this target already exists in the workspace." : null,
     };
   });
 
@@ -129,10 +198,42 @@ export function buildMonitorConfigImportPreview(
     items,
     summary: {
       added: items.filter((item) => item.status === "added").length,
+      updated: items.filter((item) => item.status === "updated").length,
       skipped: items.filter((item) => item.status === "skipped").length,
       invalid: items.filter((item) => item.status === "invalid").length,
     },
   };
+}
+
+export function preserveRedactedMonitorSettings(
+  input: MonitorInput,
+  current: MonitorPayload,
+  applyRedactedNotificationPref = false
+): MonitorInput {
+  const secretWasRedacted = !input.telegramBotToken && !input.telegramChatId && Boolean(current.telegramBotToken);
+  const preferenceWasRedacted = !input.telegramBotToken && !input.telegramChatId && (
+    (current.notificationPref === "both" && input.notificationPref === "email")
+    || (current.notificationPref === "telegram" && input.notificationPref === "none")
+  );
+  return {
+    ...input,
+    telegramBotToken: secretWasRedacted ? current.telegramBotToken : input.telegramBotToken ?? "",
+    telegramChatId: secretWasRedacted ? current.telegramChatId : input.telegramChatId ?? "",
+    notificationPref: !applyRedactedNotificationPref && (secretWasRedacted || preferenceWasRedacted)
+      ? current.notificationPref : input.notificationPref,
+    databasePasswordConfigured: input.databasePasswordConfigured || current.databasePasswordConfigured,
+  };
+}
+
+function getChangedMonitorFields(input: MonitorInput, current: MonitorPayload) {
+  const changed = Object.keys(DEFAULT_MONITOR_FORM)
+    .filter((key) => key !== "heartbeatLastReceivedAt" && key !== "heartbeatToken")
+    .filter((key) => JSON.stringify(input[key as keyof MonitorInput]) !== JSON.stringify(current[key as keyof MonitorPayload]));
+  return Array.from(new Set(changed.map((key) => {
+    if (key === "telegramBotToken" || key === "telegramChatId") return "Telegram credentials";
+    if (key === "databasePassword") return "Database password";
+    return key;
+  })));
 }
 
 async function validateImportNetworkTarget(monitor: MonitorInput, allowPrivateTargets: boolean) {

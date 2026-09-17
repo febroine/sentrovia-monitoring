@@ -4,17 +4,35 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
-### Security
+## [0.1.3] - 2026-09-17
 
-- Enforced the `audit.read` permission for event-log reads and deletion so lower-privileged workspace roles cannot access restricted operational history.
-- Revoked existing session tokens during sign-out by advancing the account session version while still clearing the local cookie on failures.
+### Added
+
+- Added monitor sorting by name, status, latency, last check, or creation date with stable pagination.
+- Added export of all monitors matching the current search, company, status, and sort filters.
+- Added bulk company assignment and public status visibility updates for selected monitors.
+- Added CSV and text import previews with duplicate, quota, and network-policy checks.
+- Added declarative monitor configuration import updates with redacted-secret preservation.
+- Added retry for selected failed delivery records with partial-result reporting.
 
 ### Fixed
 
+- Kept monitors without latency or check timestamps at the end of metric-based sort results.
+- Rejected duplicate monitor IDs in bulk company operations.
+- Prevented applying a monitor configuration preview while invalid records remain.
 - Ensured monitor history reset removes all monitor-owned report and operational records, including legacy records with stale workspace scope.
 - Refreshed open report analytics and previews after a monitor history reset and prevented stale concurrent responses from replacing newer results.
 - Redirected authenticated users away from sign-in and completed onboarding pages without rendering stale authentication screens.
 - Preserved protected-page query parameters through sign-in and redirected invalidated sessions instead of leaving protected pages blank.
+
+### Validation
+
+- Release checks completed tests, lint, type checking, and a production build.
+
+### Security
+
+- Enforced the `audit.read` permission for event-log reads and deletion so lower-privileged workspace roles cannot access restricted operational history.
+- Revoked existing session tokens during sign-out by advancing the account session version while still clearing the local cookie on failures.
 
 ## [0.1.1] - 2026-09-13
 
@@ -57,6 +75,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - Release CI completed tests, lint, type checking, scale benchmark smoke testing, and a production build before publishing the source archive and Docker image.
 
-[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.2...v0.1.3
 [0.1.1]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/febroine/sentrovia-monitoring/releases/tag/v0.1.0

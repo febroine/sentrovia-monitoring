@@ -74,6 +74,7 @@ export function DeliveryPageClient() {
   const [telegramChatId, setTelegramChatId] = useState("");
   const [testMessage, setTestMessage] = useState("Sentrovia delivery smoke test.");
   const [selectedRow, setSelectedRow] = useState<DeliveryHistoryRecord | null>(null);
+  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [historyDeletionRange, setHistoryDeletionRange] = useState<HistoryDeletionRange>("last_7_days");
@@ -116,6 +117,7 @@ export function DeliveryPageClient() {
     [overview.summary]
   );
   const isFirstRun = isDeliveryFirstRun(overview);
+  const failedHistoryIds = overview.history.filter((item) => item.status === "failed").map((item) => item.id);
 
   const loadOverview = useCallback(async (requestedPage = 1) => {
     setLoading(true);
@@ -155,6 +157,7 @@ export function DeliveryPageClient() {
       const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
+      setSelectedDeliveryIds([]);
       setWebhookUrl(nextOverview.webhook?.url ?? "");
       setWebhookActive(nextOverview.webhook?.isActive ?? true);
       setMessage(null);
@@ -249,9 +252,40 @@ export function DeliveryPageClient() {
       const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
+      setSelectedDeliveryIds([]);
       setMessage({ text: `Processed ${data?.result?.processed ?? 0} delivery retry item(s).`, tone: "success" });
     } catch (error) {
       setMessage({ text: toMessage(error, "Unable to retry the delivery queue."), tone: "error" });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function retrySelected() {
+    if (selectedDeliveryIds.length === 0) return;
+    setPendingAction("retry-selected");
+
+    try {
+      const response = await fetch("/api/delivery/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedDeliveryIds }),
+      });
+      const data = await readJsonOrNull<{
+        result?: { processed: number; unavailable: number; failed: number };
+        message?: string;
+      }>(response);
+      if (!response.ok) throw new Error(data?.message ?? "Unable to retry selected deliveries.");
+
+      await loadOverview(historyPage);
+      const result = data?.result;
+      const skipped = (result?.unavailable ?? 0) + (result?.failed ?? 0);
+      setMessage({
+        text: `Retry attempted for ${result?.processed ?? 0} selected deliveries.${skipped ? ` ${skipped} could not be retried.` : ""}`,
+        tone: skipped ? "error" : "success",
+      });
+    } catch (error) {
+      setMessage({ text: toMessage(error, "Unable to retry selected deliveries."), tone: "error" });
     } finally {
       setPendingAction(null);
     }
@@ -270,6 +304,7 @@ export function DeliveryPageClient() {
       const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
       setHistoryPage(nextOverview.pagination.page);
+      setSelectedDeliveryIds((ids) => ids.filter((id) => id !== eventId));
       setSelectedRow(data?.delivery ?? null);
       setMessage({ text: "Delivery retry completed.", tone: "success" });
     } catch (error) {
@@ -449,6 +484,15 @@ export function DeliveryPageClient() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => void retrySelected()}
+                disabled={pendingAction !== null || selectedDeliveryIds.length === 0}
+              >
+                <RotateCcw data-icon="inline-start" className="h-4 w-4" />
+                Retry selected ({selectedDeliveryIds.length})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => void retryQueue()}
                 disabled={pendingAction !== null || overview.pagination.totalItems === 0}
               >
@@ -472,6 +516,16 @@ export function DeliveryPageClient() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
+                <TableHead className="w-10 pl-6">
+                  <input
+                    type="checkbox"
+                    aria-label="Select failed deliveries on this page"
+                    className="accent-primary"
+                    checked={failedHistoryIds.length > 0 && failedHistoryIds.every((id) => selectedDeliveryIds.includes(id))}
+                    onChange={(event) => setSelectedDeliveryIds(event.target.checked ? failedHistoryIds : [])}
+                    disabled={failedHistoryIds.length === 0 || pendingAction !== null}
+                  />
+                </TableHead>
                 <TableHead className="pl-6">Channel</TableHead>
                 <TableHead>Kind</TableHead>
                 <TableHead>Destination</TableHead>
@@ -484,7 +538,7 @@ export function DeliveryPageClient() {
             <TableBody>
               {overview.history.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <EmptyState
                       title="No deliveries yet"
                       description="Alert, report, and test deliveries will appear here."
@@ -494,6 +548,18 @@ export function DeliveryPageClient() {
               ) : (
                 overview.history.map((item) => (
                   <TableRow key={item.id} className="cursor-pointer" onClick={() => setSelectedRow(item)}>
+                    <TableCell className="pl-6" onClick={(event) => event.stopPropagation()}>
+                      {item.status === "failed" ? (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${toTitleCase(item.channel)} delivery to retry`}
+                          className="accent-primary"
+                          checked={selectedDeliveryIds.includes(item.id)}
+                          onChange={(event) => setSelectedDeliveryIds((ids) => event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))}
+                          disabled={pendingAction !== null}
+                        />
+                      ) : null}
+                    </TableCell>
                     <TableCell className="pl-6">
                       <button
                         type="button"
