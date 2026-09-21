@@ -60,6 +60,16 @@ describe("failure screenshot browser isolation", () => {
     expect(attachment?.content).toBeInstanceOf(Buffer);
   }, 25_000);
 
+  it("captures browser evidence when the approved target never responds", async () => {
+    const hangingServer = await createServer(() => undefined);
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(hangingServer)}/timeout`,
+    }));
+
+    expect(attachment?.content).toBeInstanceOf(Buffer);
+  }, 25_000);
+
   it.each(["page", "worker"])("blocks private WebSocket handshakes from %s scripts", async (realm) => {
     let privateRequests = 0;
     let publicRequests = 0;

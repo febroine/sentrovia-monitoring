@@ -3,6 +3,7 @@ import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { escapeHtml } from "@/lib/html";
+import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import {
   normalizeNetworkHostname,
   resolveMonitorNetworkTargetWithTimeout,
@@ -13,6 +14,7 @@ import {
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
 const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
+const SCREENSHOT_NAVIGATION_TIMEOUT_MS = 8_000;
 const SCREENSHOT_TOTAL_TIMEOUT_MS = 15_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
@@ -145,15 +147,23 @@ async function captureScreenshotAttachment(
       viewport: SCREENSHOT_VIEWPORT,
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
-    const page = await createScreenshotPage(context, screenshotUrl);
+    let page = await createScreenshotPage(context, screenshotUrl);
 
     try {
       await page.goto(screenshotUrl, {
         waitUntil: "domcontentloaded",
-        timeout: SCREENSHOT_TIMEOUT_MS,
+        timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
       });
     } catch {
-      await waitForNativeErrorPage(page);
+      await page.close().catch(() => undefined);
+      page = await createConfiguredScreenshotPage(context);
+      await page.setContent(
+        renderUnavailableTargetPage(monitor, "The monitored page did not render before the screenshot deadline."),
+        {
+          waitUntil: "domcontentloaded",
+          timeout: SCREENSHOT_TIMEOUT_MS,
+        }
+      );
     }
 
     const content = await capturePageScreenshot(monitor, page);
@@ -165,15 +175,6 @@ async function captureScreenshotAttachment(
   } finally {
     await browser.close().catch(() => undefined);
   }
-}
-
-async function waitForNativeErrorPage(page: Page) {
-  await page
-    .waitForFunction(() => document.body.innerText.trim().length > 0, undefined, {
-      timeout: 2_000,
-    })
-    .catch(() => undefined);
-  await page.waitForTimeout(250).catch(() => undefined);
 }
 
 async function capturePageScreenshot(monitor: Monitor, page: Page) {
@@ -205,6 +206,10 @@ function buildScreenshotAttachment(
 
 async function createScreenshotPage(context: BrowserContext, targetUrl: string) {
   await context.route("**/*", (route) => handleScreenshotRoute(route, targetUrl));
+  return createConfiguredScreenshotPage(context);
+}
+
+async function createConfiguredScreenshotPage(context: BrowserContext) {
   const page = await context.newPage();
   page.setDefaultTimeout(SCREENSHOT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(SCREENSHOT_TIMEOUT_MS);
@@ -292,7 +297,10 @@ async function captureUnavailableScreenshotAttachment(monitor: Monitor, captured
   try {
     const context = await browser.newContext({ viewport: SCREENSHOT_VIEWPORT });
     const page = await context.newPage();
-    await page.setContent(renderUnavailableTargetPage(monitor), { waitUntil: "domcontentloaded" });
+    await page.setContent(
+      renderUnavailableTargetPage(monitor, "The worker could not resolve this hostname, so no remote page was loaded."),
+      { waitUntil: "domcontentloaded" }
+    );
     const content = await capturePageScreenshot(monitor, page);
     return content ? buildScreenshotAttachment(monitor, capturedAt, content) : null;
   } finally {
@@ -389,12 +397,12 @@ function isUnresolvedHostnameError(error: unknown) {
   return code === "ENOTFOUND" || code === "EAI_AGAIN";
 }
 
-function renderUnavailableTargetPage(monitor: Monitor) {
+function renderUnavailableTargetPage(monitor: Monitor, detail: string) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body{margin:0;background:#f8fafc;color:#0f172a;font-family:"IBM Plex Sans",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     main{margin:72px auto;max-width:760px;border-top:4px solid #b91c1c;background:#fff;padding:40px}
     h1{margin:0 0 12px;font-size:26px}.target{color:#475569;overflow-wrap:anywhere}
     .status{margin:28px 0 16px;color:#991b1b;font-size:13px;font-weight:700;letter-spacing:.06em}
     p{font-size:16px;line-height:1.6}
-  </style></head><body><main><div class="status">SCREENSHOT UNAVAILABLE</div><h1>${escapeHtml(monitor.name)}</h1><p class="target">${escapeHtml(monitor.url)}</p><p>The worker could not resolve this hostname, so no remote page was loaded.</p></main></body></html>`;
+  </style></head><body><main><div class="status">SCREENSHOT UNAVAILABLE</div><h1>${escapeHtml(monitor.name)}</h1><p class="target">${escapeHtml(sanitizeMonitorUrlForDisplay(monitor.url))}</p><p>${escapeHtml(detail)}</p></main></body></html>`;
 }
