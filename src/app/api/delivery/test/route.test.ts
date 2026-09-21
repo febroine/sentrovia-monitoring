@@ -60,4 +60,15 @@ describe("delivery test route", () => {
     expect(response.status).toBe(502);
     expect(body.delivery).toMatchObject({ id: "delivery-1", status: "failed" });
   });
+
+  it("rejects an invalid email destination before recording a delivery", async () => {
+    const response = await POST(new Request("http://localhost/api/delivery/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel: "email", destination: "bad-email" }),
+    }) as never);
+
+    expect(response.status).toBe(400);
+    expect(mocks.sendDeliveryTest).not.toHaveBeenCalled();
+  });
 });

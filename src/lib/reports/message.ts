@@ -1,5 +1,7 @@
 import type Mail from "nodemailer/lib/mailer";
 import { escapeHtml } from "@/lib/html";
+import { formatReportComparison } from "@/lib/reports/comparison";
+import { formatReportCheckCoverage } from "@/lib/monitors/check-coverage";
 import { buildReportSnapshotRows } from "@/lib/reports/presentation";
 import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/export";
 import {
@@ -22,6 +24,8 @@ export type ReportDeliveryOptions = {
 };
 
 export function buildReportMessage(report: GeneratedReport, options: ReportDeliveryOptions) {
+  const comparisonValues = report.comparison ? formatReportComparison(report.comparison) : null;
+  const coverageValues = report.checkCoverage ? formatReportCheckCoverage(report.checkCoverage) : null;
   const subjectPrefix =
     report.template === "executive"
       ? `[${report.workspaceName} Executive Report]`
@@ -55,6 +59,14 @@ export function buildReportMessage(report: GeneratedReport, options: ReportDeliv
     `Failure events: ${report.summary.failureEvents}`,
     `Failure rate: ${formatReportFailureRate(report.summary)}`,
     `Impacted URLs: ${report.summary.impactedMonitors}`,
+    ...(report.comparison && comparisonValues ? [
+      `Previous period: ${formatReportTimestamp(report.comparison.previousPeriodStartedAt, report.timeZone)} - ${formatReportTimestamp(report.comparison.previousPeriodEndedAt, report.timeZone)} ${report.timeZone} (${report.comparison.previousCompletedChecks} completed checks in the same monitor scope)`,
+      `Previous uptime: ${comparisonValues.uptime}`,
+      `Previous P95 latency: ${comparisonValues.latency}`,
+      `${comparisonValues.referenceLabel} reference budget: ${comparisonValues.budget}`,
+      comparisonValues.budgetDetail,
+    ] : []),
+    ...(coverageValues ? [`Current period check coverage: ${coverageValues.value} · ${coverageValues.detail}`] : []),
     "",
     "What needs attention:",
     ...report.recommendations.map((item) => `- ${item}`),
@@ -86,6 +98,7 @@ function buildReportEmailHtml(report: GeneratedReport, introLine: string, option
     renderEmailReportingWindow(periodStartedAt, periodEndedAt, report.timeZone),
     renderEmailHealthBanner(report, healthTheme),
     renderEmailMetricsTable(report, healthTheme),
+    renderEmailComparison(report),
     renderEmailSnapshotSection(report),
     renderReportEmailDetailSections(report, options),
     renderEmailReportFooter(report, scopeLabel, generatedAt),
@@ -183,6 +196,21 @@ function renderEmailMetricsTable(report: GeneratedReport, healthTheme: ReturnTyp
         </table>
       </td>
     </tr>`;
+}
+
+function renderEmailComparison(report: GeneratedReport) {
+  if (!report.comparison) return "";
+  const values = formatReportComparison(report.comparison);
+  const coverage = report.checkCoverage ? formatReportCheckCoverage(report.checkCoverage) : null;
+  return `<tr><td style="padding:8px 24px 16px;font-size:13px;line-height:1.6;color:#334155;border-top:1px solid #e2e8f0;">
+    <strong>Compared with previous equal-length period</strong><br>
+    ${escapeHtml(formatReportTimestamp(report.comparison.previousPeriodStartedAt, report.timeZone))} - ${escapeHtml(formatReportTimestamp(report.comparison.previousPeriodEndedAt, report.timeZone))} ${escapeHtml(report.timeZone)} · ${report.comparison.previousCompletedChecks} completed checks in the same monitor scope<br>
+    Previous uptime: ${escapeHtml(values.uptime)}<br>
+    Previous P95 latency: ${escapeHtml(values.latency)}<br>
+    ${escapeHtml(values.referenceLabel)} reference budget: ${escapeHtml(values.budget)}<br>
+    ${escapeHtml(values.budgetDetail)}
+    ${coverage ? `<br>Current period check coverage: ${escapeHtml(coverage.value)} · ${escapeHtml(coverage.detail)}` : ""}
+  </td></tr>`;
 }
 
 function renderEmailReportFooter(report: GeneratedReport, scopeLabel: string, generatedAt: string) {

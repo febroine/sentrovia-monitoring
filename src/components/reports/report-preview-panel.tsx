@@ -5,6 +5,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ReportComparison } from "@/components/reports/report-comparison";
 import {
   formatMonitorAverageLatency,
   formatMonitorP95Latency,
@@ -72,6 +73,7 @@ function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; 
           <StateChip tone="amber" label="Pending now" value={String(report.summary.currentlyPending)} />
           <StateChip tone="slate" label="Paused now" value={String(report.summary.currentlyPaused)} />
         </dl>
+        <ReportComparison report={report} />
       </div>
     </section>
   );

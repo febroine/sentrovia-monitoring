@@ -13,7 +13,7 @@ interface MonitoringState {
   loading: boolean;
   saving: boolean;
   error: string | null;
-  loadMonitors: (query?: MonitorQuery) => Promise<void>;
+  loadMonitors: (query?: MonitorQuery, options?: { silent?: boolean }) => Promise<void>;
   createMonitor: (payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitor: (id: string, payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitorActiveState: (id: string, isActive: boolean) => Promise<MonitorRecord | null>;
@@ -78,10 +78,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
   loading: true,
   saving: false,
   error: null,
-  loadMonitors: async (query) => {
+  loadMonitors: async (query, options) => {
     const requestVersion = ++monitorLoadRequestVersion;
     activeMonitorLoadRequestVersion = requestVersion;
-    set({ loading: true });
+    if (!options?.silent) set({ loading: true });
 
     try {
       const queryString = query ? `?${buildMonitorQueryString(query)}` : "";

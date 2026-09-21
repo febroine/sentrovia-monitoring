@@ -120,6 +120,12 @@ export interface MonitorRecord {
   sslExpiryEmailBody: string | null;
   sslExpiryTelegramTemplate: string | null;
   sendOutageScreenshot: boolean;
+  lastDelivery?: {
+    status: string;
+    channel: string;
+    kind: string;
+    createdAt: string;
+  } | null;
 }
 
 export interface MonitorSummary {

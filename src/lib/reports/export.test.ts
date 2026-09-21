@@ -58,6 +58,30 @@ describe("report exports", () => {
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("PDF report");
   });
+
+  it("includes previous-period comparison and reference budget in printable output", () => {
+    const report = buildSampleReport();
+    report.comparison = {
+      previousPeriodStartedAt: "2026-04-21T08:00:00.000Z",
+      previousPeriodEndedAt: "2026-04-28T08:00:00.000Z",
+      previousCompletedChecks: 20,
+      previousUptimePct: 95,
+      uptimeChangePoints: -5,
+      previousP95LatencyMs: 400,
+      p95LatencyChangeMs: 240,
+      referenceUptimePct: 99.9,
+      budgetUsedPct: 10_000,
+      budgetRemainingPct: 0,
+    };
+    report.checkCoverage = { actualChecks: 22, expectedChecks: 24, eligibleMonitors: 1, excludedMonitors: 2 };
+
+    const html = buildPrintableReportHtml(report);
+    expect(html).toContain("Compared with previous period");
+    expect(html).toContain("95.00% previously");
+    expect(html).toContain("0.0% remaining");
+    expect(html).toContain("check-based 99.9% reference, not an SLA");
+    expect(html).toContain("22 / ~24 checks");
+  });
 });
 
 function buildSampleReport(): GeneratedReport {

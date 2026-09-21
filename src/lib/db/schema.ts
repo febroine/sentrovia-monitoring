@@ -605,6 +605,7 @@ export const deliveryEvents = pgTable("delivery_events", {
     table.createdAt
   ),
   index("delivery_events_user_created_at_idx").on(table.userId, table.createdAt),
+  index("delivery_events_monitor_created_idx").on(table.monitorId, table.createdAt, table.id),
   index("delivery_events_queue_due_idx").on(table.status, table.nextRetryAt, table.claimExpiresAt, table.createdAt),
 ]);
 

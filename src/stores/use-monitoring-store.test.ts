@@ -15,6 +15,19 @@ describe("monitoring store request ordering", () => {
     });
   });
 
+  it("refreshes monitor data without replacing the table with a loading state", async () => {
+    const pending = createPendingResponse();
+    const monitor = { id: "monitor-fresh", name: "Fresh result" } as MonitorRecord;
+    vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+    useMonitoringStore.setState({ loading: false });
+
+    const refresh = useMonitoringStore.getState().loadMonitors({ page: 1, pageSize: 10 }, { silent: true });
+    expect(useMonitoringStore.getState().loading).toBe(false);
+    pending.resolve(monitorResponse(monitor, 1));
+    await refresh;
+    expect(useMonitoringStore.getState()).toMatchObject({ monitors: [monitor], loading: false });
+  });
+
   it("does not let an older query overwrite the latest monitor page", async () => {
     const olderRequest = createPendingResponse();
     const olderMonitor = { id: "monitor-old", name: "Old result" } as MonitorRecord;

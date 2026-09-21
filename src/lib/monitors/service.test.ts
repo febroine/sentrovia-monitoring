@@ -12,6 +12,7 @@ import {
   hasMonitorTargetConflict,
   listReservedMonitorTargets,
   normalizeHeartbeatTokenInput,
+  queueMonitorRecheck,
   hasMonitorTargetChanged,
   resolveMonitorBatchSize,
   selectDueMonitorsForCycle,
@@ -85,6 +86,30 @@ describe("monitor due selection", () => {
     expect(resolveMonitorBatchSize({ monitoring_batch_size: 8 }, 99)).toBe(8);
     expect(resolveMonitorBatchSize({}, 99)).toBe(20);
     expect(resolveMonitorBatchSize(null, 9)).toBe(9);
+  });
+});
+
+describe("manual monitor recheck", () => {
+  it("queues only runnable monitors outside failure verification", async () => {
+    const conditions: SQL[] = [];
+    const where = vi.fn((condition: SQL) => {
+      conditions.push(condition);
+      return { returning: vi.fn().mockResolvedValue([{ id: "monitor-1" }]) };
+    });
+    const database = {
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where })) })),
+    } as unknown as NonNullable<Parameters<typeof queueMonitorRecheck>[3]>;
+
+    expect(await queueMonitorRecheck("user-1", "monitor-1", "workspace-1", database)).toBe(true);
+
+    const query = new PgDialect().sqlToQuery(conditions[0]!);
+    expect(query.sql).toContain('"monitors"."verification_mode" =');
+    expect(query.params).toContain(false);
+    expect(query.sql).toContain('"monitors"."is_active" =');
+    expect(query.sql).toContain('"monitors"."workspace_id" =');
+    expect(query.sql).toContain('"monitors"."lease_expires_at"');
+    expect(query.sql).toContain('"monitors"."next_check_at"');
+    expect(query.sql).not.toContain('"monitors"."next_check_at" is null');
   });
 });
 

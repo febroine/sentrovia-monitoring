@@ -1,4 +1,4 @@
-import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Play, Power, RadioTower, Send, Settings2, Square, Star, XCircle } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Play, Power, RadioTower, RefreshCw, Send, Settings2, Square, Star, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,9 @@ import { getMonitorTargetDisplay, getMonitorTypeLabel } from "@/lib/monitors/tar
 import type { MonitorRecord, NotificationPref, SiteStatus } from "@/lib/monitors/types";
 import { formatLastChecked, formatLatency } from "@/components/monitoring/utils";
 import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
+import { getCheckScheduleIssue } from "@/lib/monitors/check-coverage";
 import { formatPanelDateTime } from "@/lib/time";
+import type { MonitorOptionalColumn } from "@/components/monitoring/monitor-table-columns";
 
 function StatusBadge({
   status,
@@ -86,12 +88,14 @@ function NotificationBadge({ pref }: { pref: NotificationPref }) {
 
 export function MonitorTable({
   monitors,
+  visibleColumns,
   readOnly = false,
   loading,
   selectedIds,
   activeTogglePendingId,
   pausePendingId,
   flagPendingId,
+  recheckPendingId,
   allPageSelected,
   somePageSelected,
   onToggleAll,
@@ -100,17 +104,20 @@ export function MonitorTable({
   onPause,
   onResumePause,
   onToggleFlag,
+  onRecheck,
   onEdit,
   onOpenTimeline,
   emptyState,
 }: {
   monitors: MonitorRecord[];
+  visibleColumns: MonitorOptionalColumn[];
   readOnly?: boolean;
   loading: boolean;
   selectedIds: Set<string>;
   activeTogglePendingId: string | null;
   pausePendingId: string | null;
   flagPendingId: string | null;
+  recheckPendingId: string | null;
   allPageSelected: boolean;
   somePageSelected: boolean;
   onToggleAll: () => void;
@@ -119,6 +126,7 @@ export function MonitorTable({
   onPause: (monitor: MonitorRecord) => void;
   onResumePause: (monitor: MonitorRecord) => void;
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
+  onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
   emptyState?: { title: string; description?: string; action?: ReactNode };
@@ -129,13 +137,14 @@ export function MonitorTable({
       <Table className="min-w-0 table-fixed text-xs">
         <colgroup>
           <col className="w-[3%]" />
-          <col className="w-[16%]" />
-          <col className="w-[18%]" />
           <col className="w-[14%]" />
-          <col className="w-[7%]" />
-          <col className="w-[5%]" />
-          <col className="w-[10%]" />
-          <col className="w-[10%]" />
+          {visibleColumns.includes("target") ? <col className="w-[16%]" /> : null}
+          <col className="w-[14%]" />
+          {visibleColumns.includes("state") ? <col className="w-[7%]" /> : null}
+          {visibleColumns.includes("notify") ? <col className="w-[5%]" /> : null}
+          {visibleColumns.includes("company") ? <col className="w-[9%]" /> : null}
+          {visibleColumns.includes("observed") ? <col className="w-[8%]" /> : null}
+          {visibleColumns.includes("delivery") ? <col className="w-[7%]" /> : null}
           <col className="w-[17%]" />
         </colgroup>
         <TableHeader>
@@ -146,23 +155,24 @@ export function MonitorTable({
               </button>
             </TableHead>
             <TableHead className="px-1.5">Monitor</TableHead>
-            <TableHead className="px-1">Target</TableHead>
+            {visibleColumns.includes("target") ? <TableHead className="px-1">Target</TableHead> : null}
             <TableHead className="px-1">Health</TableHead>
-            <TableHead className="px-1">State</TableHead>
-            <TableHead className="px-1">Notify</TableHead>
-            <TableHead className="px-1.5">Company</TableHead>
-            <TableHead className="px-1">Observed</TableHead>
+            {visibleColumns.includes("state") ? <TableHead className="px-1">State</TableHead> : null}
+            {visibleColumns.includes("notify") ? <TableHead className="px-1">Notify</TableHead> : null}
+            {visibleColumns.includes("company") ? <TableHead className="px-1.5">Company</TableHead> : null}
+            {visibleColumns.includes("observed") ? <TableHead className="px-1">Observed</TableHead> : null}
+            {visibleColumns.includes("delivery") ? <TableHead className="px-1">Last delivery</TableHead> : null}
             <TableHead className="pr-2 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">Loading monitors…</TableCell>
+              <TableCell colSpan={4 + visibleColumns.length} className="py-8 text-center text-sm text-muted-foreground">Loading monitors…</TableCell>
             </TableRow>
           ) : monitors.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9}>
+              <TableCell colSpan={4 + visibleColumns.length}>
                 <EmptyState
                   title={emptyState?.title ?? "No monitors in this view"}
                   description={emptyState?.description}
@@ -196,12 +206,12 @@ export function MonitorTable({
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="overflow-hidden px-1.5">
+                {visibleColumns.includes("target") ? <TableCell className="overflow-hidden px-1.5">
                   <div className="flex min-w-0 items-center gap-1 text-muted-foreground" title={getMonitorTargetDisplay(monitor)}>
                     <Globe className="size-3 shrink-0" />
                     <span className="min-w-0 truncate font-mono">{getMonitorTargetDisplay(monitor)}</span>
                   </div>
-                </TableCell>
+                </TableCell> : null}
                 <TableCell className="overflow-hidden px-1">
                   <div className="min-w-0" title={getStatusDescription(monitor)}>
                     <StatusBadge
@@ -214,12 +224,13 @@ export function MonitorTable({
                       threshold={Math.max(1, monitor.retries)}
                       slow={isSlowMonitor(monitor)}
                     />
+                    <CheckScheduleIssue monitor={monitor} />
                     <p className="mt-1 truncate text-[10px] tabular-nums text-muted-foreground" title={`HTTP ${monitor.statusCode ?? "--"} · ${formatLatency(monitor.latencyMs)}`}>
                       HTTP {monitor.statusCode ?? "--"} · {formatLatency(monitor.latencyMs)}
                     </p>
                   </div>
                 </TableCell>
-                <TableCell className="px-1">
+                {visibleColumns.includes("state") ? <TableCell className="px-1">
                   <div className="flex items-center">
                     <Button
                       variant="ghost"
@@ -246,25 +257,36 @@ export function MonitorTable({
                       </Button>
                     ) : null}
                   </div>
-                </TableCell>
-                <TableCell className="px-1.5"><NotificationBadge pref={monitor.notificationPref} /></TableCell>
-                <TableCell className="overflow-hidden px-1.5"><span className="block truncate" title={monitor.company ?? undefined}>{monitor.company ?? "--"}</span></TableCell>
-                <TableCell className="overflow-hidden px-1.5 tabular-nums">
+                </TableCell> : null}
+                {visibleColumns.includes("notify") ? <TableCell className="px-1.5"><NotificationBadge pref={monitor.notificationPref} /></TableCell> : null}
+                {visibleColumns.includes("company") ? <TableCell className="overflow-hidden px-1.5"><span className="block truncate" title={monitor.company ?? undefined}>{monitor.company ?? "--"}</span></TableCell> : null}
+                {visibleColumns.includes("observed") ? <TableCell className="overflow-hidden px-1.5 tabular-nums">
                   <span className="block truncate text-muted-foreground" title={formatLastChecked(monitor.lastCheckedAt)}>{formatLastChecked(monitor.lastCheckedAt)}</span>
                   <span className="mt-1 block truncate text-[10px] text-muted-foreground" title={`${monitor.uptime} uptime`}>{monitor.uptime} uptime</span>
-                </TableCell>
+                </TableCell> : null}
+                {visibleColumns.includes("delivery") ? <TableCell className="overflow-hidden px-1.5">
+                  <LastDelivery monitor={monitor} />
+                </TableCell> : null}
                 <TableCell className="px-1 pr-2">
                   <div className="flex items-center justify-end gap-0.5">
+                    {!readOnly && monitor.monitorType !== "heartbeat" ? <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      disabled={getRecheckUnavailableReason(monitor) !== null || recheckPendingId !== null}
+                      aria-label={`Check ${monitor.name} now`}
+                      title={getRecheckUnavailableReason(monitor) ?? (recheckPendingId !== null ? "Queueing a check" : "Queue check now")}
+                      onClick={() => onRecheck(monitor)}
+                    ><RefreshCw className="size-3.5 text-muted-foreground" /></Button> : null}
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 gap-1 px-1.5"
+                      className="h-7 w-7 p-0"
                       aria-label={`View timeline for ${monitor.name}`}
                       title="View timeline"
                       onClick={() => onOpenTimeline(monitor)}
                     >
                       <Clock className="size-3.5 text-muted-foreground" />
-                      <span className="text-[10px]">Timeline</span>
                     </Button>
                     <Button
                       variant="ghost"
@@ -326,6 +348,7 @@ export function MonitorTable({
       activeTogglePendingId={activeTogglePendingId}
       pausePendingId={pausePendingId}
       flagPendingId={flagPendingId}
+      recheckPendingId={recheckPendingId}
       allPageSelected={allPageSelected}
       somePageSelected={somePageSelected}
       onToggleAll={onToggleAll}
@@ -334,6 +357,7 @@ export function MonitorTable({
       onPause={onPause}
       onResumePause={onResumePause}
       onToggleFlag={onToggleFlag}
+      onRecheck={onRecheck}
       onEdit={onEdit}
       onOpenTimeline={onOpenTimeline}
       emptyState={emptyState}
@@ -350,6 +374,7 @@ function MobileMonitorList({
   activeTogglePendingId,
   pausePendingId,
   flagPendingId,
+  recheckPendingId,
   allPageSelected,
   somePageSelected,
   onToggleAll,
@@ -358,6 +383,7 @@ function MobileMonitorList({
   onPause,
   onResumePause,
   onToggleFlag,
+  onRecheck,
   onEdit,
   onOpenTimeline,
   emptyState,
@@ -369,6 +395,7 @@ function MobileMonitorList({
   activeTogglePendingId: string | null;
   pausePendingId: string | null;
   flagPendingId: string | null;
+  recheckPendingId: string | null;
   allPageSelected: boolean;
   somePageSelected: boolean;
   onToggleAll: () => void;
@@ -377,6 +404,7 @@ function MobileMonitorList({
   onPause: (monitor: MonitorRecord) => void;
   onResumePause: (monitor: MonitorRecord) => void;
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
+  onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
   emptyState?: { title: string; description?: string; action?: ReactNode };
@@ -415,11 +443,13 @@ function MobileMonitorList({
           activePending={activeTogglePendingId === monitor.id}
           pausePending={pausePendingId === monitor.id}
           flagPending={flagPendingId === monitor.id}
+          recheckPending={recheckPendingId !== null}
           onToggleOne={onToggleOne}
           onToggleActive={onToggleActive}
           onPause={onPause}
           onResumePause={onResumePause}
           onToggleFlag={onToggleFlag}
+          onRecheck={onRecheck}
           onEdit={onEdit}
           onOpenTimeline={onOpenTimeline}
         />
@@ -435,11 +465,13 @@ function MobileMonitorCard({
   activePending,
   pausePending,
   flagPending,
+  recheckPending,
   onToggleOne,
   onToggleActive,
   onPause,
   onResumePause,
   onToggleFlag,
+  onRecheck,
   onEdit,
   onOpenTimeline,
 }: {
@@ -449,11 +481,13 @@ function MobileMonitorCard({
   activePending: boolean;
   pausePending: boolean;
   flagPending: boolean;
+  recheckPending: boolean;
   onToggleOne: (id: string) => void;
   onToggleActive: (monitor: MonitorRecord) => void;
   onPause: (monitor: MonitorRecord) => void;
   onResumePause: (monitor: MonitorRecord) => void;
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
+  onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
@@ -477,6 +511,7 @@ function MobileMonitorCard({
             threshold={Math.max(1, monitor.retries)}
             slow={isSlowMonitor(monitor)}
           />
+          <CheckScheduleIssue monitor={monitor} />
         </div>
       </div>
       <p className="mt-3 break-all text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
@@ -485,17 +520,21 @@ function MobileMonitorCard({
         <MobileMetric label="Latency" value={formatLatency(monitor.latencyMs)} />
         <MobileMetric label="Uptime" value={monitor.uptime} />
       </div>
+      <div className="mt-2 text-xs text-muted-foreground">Last delivery: <LastDelivery monitor={monitor} /></div>
       <div className="mt-3">
         <Button variant="outline" size="sm" onClick={() => onOpenTimeline(monitor)}>
           View timeline
         </Button>
       </div>
-      {!readOnly ? <div className="mt-3 flex items-center justify-between gap-2">
+      {!readOnly ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <button type="button" onClick={() => onToggleOne(monitor.id)} aria-label={selected ? `Deselect ${monitor.name}` : `Select ${monitor.name}`} className="inline-flex min-h-11 items-center gap-2 rounded-sm text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
           {selected ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
           Select
         </button>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {monitor.monitorType !== "heartbeat" ? <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={getRecheckUnavailableReason(monitor) !== null || recheckPending} aria-label={`Check ${monitor.name} now`} title={getRecheckUnavailableReason(monitor) ?? (recheckPending ? "Queueing a check" : "Queue check now")} onClick={() => onRecheck(monitor)}>
+            <RefreshCw className="size-4 text-muted-foreground" />
+          </Button> : null}
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={activePending} aria-label={monitor.isActive ? `Disable ${monitor.name}` : `Enable ${monitor.name}`} onClick={() => onToggleActive(monitor)}>
             <Power className={`size-4 ${monitor.isActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
           </Button>
@@ -529,6 +568,39 @@ function MobileMetric({ label, value }: { label: string; value: string }) {
       <p className="mt-1 font-medium">{value}</p>
     </div>
   );
+}
+
+function LastDelivery({ monitor }: { monitor: MonitorRecord }) {
+  const delivery = monitor.lastDelivery;
+  if (!delivery) return <span className="text-muted-foreground">No delivery</span>;
+
+  const label = delivery.status === "delivered" ? "Delivered"
+    : delivery.status === "failed" ? "Failed"
+    : delivery.status === "pending" || delivery.status === "retrying" || delivery.status === "processing" ? "Pending"
+    : delivery.status;
+  const tone = delivery.status === "failed" ? "text-destructive"
+    : delivery.status === "delivered" ? "text-emerald-600 dark:text-emerald-400"
+    : "text-muted-foreground";
+  return <span className="block" title={`${delivery.kind} · ${delivery.channel} · ${formatPanelDateTime(delivery.createdAt, { dateStyle: "medium", timeStyle: "short" })}`}>
+    <span className={`block truncate ${tone}`}>{label}</span>
+    <span className="block truncate text-[10px] text-muted-foreground">{delivery.channel}</span>
+  </span>;
+}
+
+function CheckScheduleIssue({ monitor }: { monitor: MonitorRecord }) {
+  const issue = getCheckScheduleIssue(monitor);
+  if (!issue) return null;
+  return <p className="mt-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+    {issue === "missing" ? "Check schedule missing" : "Check overdue"}
+  </p>;
+}
+
+function getRecheckUnavailableReason(monitor: MonitorRecord): string | null {
+  if (!monitor.isActive) return "Enable monitor before checking";
+  if (isMonitorTemporarilyPaused(monitor.pausedUntil)) return "Resume monitor before checking";
+  if (monitor.verificationMode) return "Wait for failure verification";
+  if (!monitor.nextCheckAt || Date.parse(monitor.nextCheckAt) <= Date.now()) return "Check already scheduled";
+  return null;
 }
 
 function isSlowMonitor(monitor: MonitorRecord) {

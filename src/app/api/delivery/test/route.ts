@@ -14,7 +14,10 @@ const testSchema = z.object({
   botToken: z.string().trim().max(255).optional(),
   chatId: z.string().trim().max(255).optional(),
   message: z.string().trim().max(4000).optional(),
-});
+}).refine(
+  (value) => value.channel !== "email" || !value.destination || z.email().safeParse(value.destination).success,
+  { message: "Invalid email address.", path: ["destination"] }
+);
 
 export async function POST(request: NextRequest) {
   try {

@@ -94,6 +94,44 @@ export type MonitorListQuery = {
   direction: "asc" | "desc";
 };
 
+async function getLastDeliveryByMonitorId(
+  monitorIds: string[],
+  database: DatabaseExecutor,
+  workspaceId?: string
+) {
+  if (monitorIds.length === 0) {
+    return new Map<string, { status: string; channel: string; kind: string; createdAt: string }>();
+  }
+
+  const rows = await database
+    .select({
+      monitorId: deliveryEvents.monitorId,
+      status: deliveryEvents.status,
+      channel: deliveryEvents.channel,
+      kind: deliveryEvents.kind,
+      createdAt: deliveryEvents.createdAt,
+    })
+    .from(deliveryEvents)
+    .where(and(
+      inArray(deliveryEvents.monitorId, monitorIds),
+      workspaceId ? eq(deliveryEvents.workspaceId, workspaceId) : undefined,
+      sql<boolean>`${deliveryEvents.id} = (
+        select latest.id from delivery_events latest
+        where latest.monitor_id = ${deliveryEvents.monitorId}
+        order by latest.created_at desc, latest.id desc
+        limit 1
+      )`
+    ))
+    .orderBy(deliveryEvents.monitorId);
+
+  return new Map(rows.filter((row) => row.monitorId !== null).map((row) => [row.monitorId!, {
+    status: row.status,
+    channel: row.channel,
+    kind: row.kind,
+    createdAt: row.createdAt.toISOString(),
+  }]));
+}
+
 export async function listMonitors(
   userId: string,
   database: DatabaseExecutor = db,
@@ -200,11 +238,17 @@ export async function listMonitorsPage(
     database,
     workspaceId
   );
+  const lastDeliveryByMonitorId = await getLastDeliveryByMonitorId(
+    monitorRows.map((monitor) => monitor.id),
+    database,
+    workspaceId
+  );
 
   return {
     monitors: monitorRows.map((monitor) => ({
       ...monitor,
       uptime: uptimeByMonitorId.get(monitor.id) ?? NO_MONITOR_UPTIME_DATA,
+      lastDelivery: lastDeliveryByMonitorId.get(monitor.id) ?? null,
     })),
     pagination: {
       page: query.page,
@@ -652,6 +696,32 @@ export async function bulkUpdateMonitors(
 
     return updated;
   });
+}
+
+export async function queueMonitorRecheck(
+  userId: string,
+  monitorId: string,
+  workspaceId: string,
+  database: DatabaseExecutor = db
+) {
+  const now = new Date();
+  const [monitor] = await database
+    .update(monitors)
+    .set({ nextCheckAt: now, updatedAt: now })
+    .where(and(
+      eq(monitors.id, monitorId),
+      monitorOwnershipCondition(userId, workspaceId),
+      isNull(monitors.deletedAt),
+      eq(monitors.isActive, true),
+      eq(monitors.verificationMode, false),
+      or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now)),
+      or(isNull(monitors.leaseExpiresAt), lte(monitors.leaseExpiresAt, now)),
+      gt(monitors.nextCheckAt, now),
+      sql`${monitors.monitorType} <> 'heartbeat'`
+    ))
+    .returning({ id: monitors.id });
+
+  return monitor !== undefined;
 }
 
 export async function bulkMoveMonitorsToCompany(

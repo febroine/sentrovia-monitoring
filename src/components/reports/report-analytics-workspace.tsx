@@ -22,6 +22,7 @@ import {
   formatReportUptime,
 } from "@/lib/reports/metrics";
 import type { GeneratedReport, ReportPeriodRange } from "@/lib/reports/types";
+import { ReportComparison } from "@/components/reports/report-comparison";
 
 type MonitorOption = {
   id: string;
@@ -571,6 +572,7 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
       <span className="sr-only" role="status">{exportingPdf ? "Generating PDF report" : ""}</span>
 
       <SummaryStrip report={report} />
+      <ReportComparison report={report} />
 
       {!hasChecks ? (
         <section className="rounded-lg bg-card/45 p-8">

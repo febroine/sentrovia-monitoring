@@ -2,9 +2,11 @@ import crypto from "node:crypto";
 import { and, asc, desc, eq, exists, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
+import { buildReportComparison, previousReportPeriod } from "@/lib/reports/comparison";
 import { db } from "@/lib/db";
 import { companies, monitorChecks, monitorEvents, monitors, reportSchedules } from "@/lib/db/schema";
 import { sendEmailDelivery } from "@/lib/delivery/service";
+import { estimateReportCheckCoverage } from "@/lib/monitors/check-coverage";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import {
   buildReportAttachments,
@@ -333,6 +335,8 @@ export async function generateReportPreview(
     p95LatencyMs,
     currentlyDown: currentStates.currentlyDown,
   });
+  const comparison = buildReportComparison(period, scoped.checkSummary, scoped.previousCheckSummary);
+  const checkCoverage = estimateReportCheckCoverage(period, now, scoped.monitorRows, checksByMonitor);
   const impactedMonitors = failingMonitors.length;
   const currentlyDown = currentStates.currentlyDown;
   const recentFailures = buildRecentFailures(scoped.recentFailureEvents, scoped.monitorRows);
@@ -383,6 +387,8 @@ export async function generateReportPreview(
       healthScore: reportMetrics.healthScore,
       healthStatus: reportMetrics.healthStatus,
     },
+    comparison,
+    checkCoverage,
     recommendations,
     statusCodes: scoped.statusCodes,
     dailyMetrics: completeDailyMetrics(scoped.dailyMetrics, period).map((metric) => ({
@@ -578,8 +584,13 @@ async function loadScopedReportData(
       companyName: companies.name,
       tags: monitors.tags,
       lastCheckedAt: monitors.lastCheckedAt,
+      nextCheckAt: monitors.nextCheckAt,
       lastErrorMessage: monitors.lastErrorMessage,
       pausedUntil: monitors.pausedUntil,
+      createdAt: monitors.createdAt,
+      intervalValue: monitors.intervalValue,
+      intervalUnit: monitors.intervalUnit,
+      monitorType: monitors.monitorType,
     })
     .from(monitors)
     .leftJoin(companies, eq(monitors.companyId, companies.id))
@@ -627,17 +638,48 @@ async function loadScopedReportData(
     : undefined;
   const monitorIds = scopedMonitorRows.map((monitor) => monitor.id);
 
-  const reportMetrics = monitorIds.length === 0
-    ? emptyReportMetrics()
-    : await loadReportMetrics(userId, monitorIds, period, workspaceId);
+  const [reportMetrics, previousCheckSummary] = monitorIds.length === 0
+    ? [emptyReportMetrics(), emptyCheckSummary()]
+    : await Promise.all([
+        loadReportMetrics(userId, monitorIds, period, workspaceId),
+        loadCheckSummaryForPeriod(userId, monitorIds, previousReportPeriod(period), workspaceId),
+      ]);
 
   return {
     companyId: company?.id ?? null,
     companyName: company?.name ?? null,
     selectedMonitor: selectedMonitor ?? null,
     monitorRows: scopedMonitorRows,
+    previousCheckSummary,
     ...reportMetrics,
   };
+}
+
+function reportCheckSummarySelection() {
+  return {
+    totalChecks: sql<number>`count(*) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
+    upChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'up')::integer`,
+    downChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'down')::integer`,
+    pendingChecks: sql<number>`count(*) filter (where ${monitorChecks.status} not in ('up', 'down'))::integer`,
+    latencySamples: sql<number>`count(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
+    averageLatencyMs: sql<number>`coalesce(round(avg(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
+    p95LatencyMs: sql<number>`coalesce(round(percentile_cont(0.95) within group (order by ${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
+  };
+}
+
+async function loadCheckSummaryForPeriod(
+  userId: string,
+  monitorIds: string[],
+  period: { startedAt: Date; endedAt: Date },
+  workspaceId?: string
+) {
+  const [row] = await db.select(reportCheckSummarySelection()).from(monitorChecks).where(and(
+    checkOwnershipCondition(userId, workspaceId),
+    inArray(monitorChecks.monitorId, monitorIds),
+    gte(monitorChecks.createdAt, period.startedAt),
+    lt(monitorChecks.createdAt, period.endedAt)
+  ));
+  return row ? toCheckSummary(row) : emptyCheckSummary();
 }
 
 export function isReportMonitorExcluded(
@@ -692,15 +734,7 @@ async function loadReportMetrics(
         .where(checkWhere)
         .groupBy(monitorChecks.monitorId),
       db
-        .select({
-          totalChecks: sql<number>`count(*) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
-          upChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'up')::integer`,
-          downChecks: sql<number>`count(*) filter (where ${monitorChecks.status} = 'down')::integer`,
-          pendingChecks: sql<number>`count(*) filter (where ${monitorChecks.status} not in ('up', 'down'))::integer`,
-          latencySamples: sql<number>`count(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))::integer`,
-          averageLatencyMs: sql<number>`coalesce(round(avg(${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
-          p95LatencyMs: sql<number>`coalesce(round(percentile_cont(0.95) within group (order by ${monitorChecks.latencyMs}) filter (where ${monitorChecks.status} in ('up', 'down'))), 0)::integer`,
-        })
+        .select(reportCheckSummarySelection())
         .from(monitorChecks)
         .where(checkWhere),
       db

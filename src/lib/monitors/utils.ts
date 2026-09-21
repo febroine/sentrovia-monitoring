@@ -1,6 +1,6 @@
-import type { IntervalUnit } from "@/lib/monitors/types";
 import { stripHttpUrlCredentials } from "@/lib/monitors/targets";
 import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
+export { intervalToMs } from "@/lib/monitors/interval";
 
 export {
   buildOutageConfirmationSummary,
@@ -81,17 +81,6 @@ export function parseIntervalSetting(value: string) {
   return { intervalValue: amount, intervalUnit: "dk" as const };
 }
 
-export function intervalToMs(intervalValue: number, intervalUnit: IntervalUnit | string) {
-  if (intervalUnit === "sn") {
-    return intervalValue * 1_000;
-  }
-
-  if (intervalUnit === "sa") {
-    return intervalValue * 60 * 60 * 1_000;
-  }
-
-  return intervalValue * 60 * 1_000;
-}
 
 function serializeDate(value: unknown) {
   return value instanceof Date ? value.toISOString() : null;

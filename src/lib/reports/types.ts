@@ -96,6 +96,24 @@ export interface GeneratedReport {
     healthScore: number;
     healthStatus: string;
   };
+  comparison?: {
+    previousPeriodStartedAt: string;
+    previousPeriodEndedAt: string;
+    previousCompletedChecks: number;
+    previousUptimePct: number | null;
+    uptimeChangePoints: number | null;
+    previousP95LatencyMs: number | null;
+    p95LatencyChangeMs: number | null;
+    referenceUptimePct: number;
+    budgetUsedPct: number | null;
+    budgetRemainingPct: number | null;
+  };
+  checkCoverage?: {
+    actualChecks: number;
+    expectedChecks: number;
+    eligibleMonitors: number;
+    excludedMonitors: number;
+  };
   recommendations: string[];
   statusCodes: Array<{
     statusCode: number;

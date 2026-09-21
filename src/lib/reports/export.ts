@@ -1,5 +1,7 @@
 import type { GeneratedReport } from "@/lib/reports/types";
 import { escapeHtml } from "@/lib/html";
+import { formatReportComparison } from "@/lib/reports/comparison";
+import { formatReportCheckCoverage } from "@/lib/monitors/check-coverage";
 import { buildReportSnapshotRows } from "@/lib/reports/presentation";
 import { AVAILABILITY_REFERENCE_PCT, getExecutiveInsights, getMonitorRiskPoints } from "@/lib/reports/analytics-insights";
 import {
@@ -178,6 +180,7 @@ export function buildPrintableReportHtml(
     renderPrintableDocumentStart(report, options.autoPrint === true),
     renderPrintableHero(report),
     renderPrintableStats(report),
+    renderPrintableComparison(report),
     renderExecutiveBrief(report),
     renderTrendCharts(report),
     renderPrintableSnapshot(snapshotRows),
@@ -238,6 +241,22 @@ function renderPrintableStats(report: GeneratedReport) {
     ["P95 latency", formatReportP95Latency(summary), summary.hasLatencySamples ? "Tail response time" : "No latency samples in this period"],
   ] as const;
   return `<section class="stats">${stats.map(renderPrintableStat).join("")}</section>`;
+}
+
+function renderPrintableComparison(report: GeneratedReport) {
+  if (!report.comparison) return "";
+  const comparison = report.comparison;
+  const values = formatReportComparison(comparison);
+  const coverage = report.checkCoverage ? formatReportCheckCoverage(report.checkCoverage) : null;
+  return `<section class="brief"><h2>Compared with previous period</h2>
+    <p class="muted">${escapeHtml(formatReportDateTime(comparison.previousPeriodStartedAt, report.timeZone))} - ${escapeHtml(formatReportDateTime(comparison.previousPeriodEndedAt, report.timeZone))} · ${comparison.previousCompletedChecks} completed checks in the same monitor scope</p>
+    <dl class="brief-grid">
+      <div class="brief-item"><dt>Uptime change</dt><dd>${escapeHtml(values.uptime)}</dd></div>
+      <div class="brief-item"><dt>P95 latency change</dt><dd>${escapeHtml(values.latency)}</dd></div>
+      <div class="brief-item"><dt>${escapeHtml(values.referenceLabel)} reference budget</dt><dd>${escapeHtml(values.budget)}</dd><p>${escapeHtml(values.budgetDetail)}</p></div>
+    </dl>
+    ${coverage ? `<p class="muted">Current period check coverage: ${escapeHtml(coverage.value)} · ${escapeHtml(coverage.detail)}</p>` : ""}
+  </section>`;
 }
 
 function renderExecutiveBrief(report: GeneratedReport) {

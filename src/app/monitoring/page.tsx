@@ -26,6 +26,7 @@ import { MonitorImportDialog } from "@/components/monitoring/monitor-import-dial
 import { MonitorPauseDialog } from "@/components/monitoring/monitor-pause-dialog";
 import { MonitorStats } from "@/components/monitoring/monitor-stats";
 import { MonitorTable } from "@/components/monitoring/monitor-table";
+import { DEFAULT_MONITOR_COLUMNS, MONITOR_OPTIONAL_COLUMNS, parseMonitorTablePreferences, type MonitorOptionalColumn } from "@/components/monitoring/monitor-table-columns";
 import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { MonitorTextImportDialog } from "@/components/monitoring/monitor-text-import-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
@@ -100,6 +101,8 @@ export default function MonitoringPage() {
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
+  const [visibleColumns, setVisibleColumns] = useState<MonitorOptionalColumn[]>(DEFAULT_MONITOR_COLUMNS);
+  const [preferencesLoadedFor, setPreferencesLoadedFor] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -127,6 +130,7 @@ export default function MonitoringPage() {
   const [pausePendingId, setPausePendingId] = useState<string | null>(null);
   const [pauseTargetIds, setPauseTargetIds] = useState<string[]>([]);
   const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
+  const [recheckPendingId, setRecheckPendingId] = useState<string | null>(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [resetTargetIds, setResetTargetIds] = useState<string[]>([]);
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
@@ -137,6 +141,41 @@ export default function MonitoringPage() {
   const canManageMonitors = workspaceSettings
     ? hasPermission(workspaceSettings.profile.role, "monitors.manage")
     : false;
+  const preferenceKey = workspaceSettings?.profile.email
+    ? `sentrovia:monitor-table:${workspaceSettings.profile.email.toLowerCase()}`
+    : null;
+
+  useEffect(() => {
+    if (!preferenceKey || preferencesLoadedFor === preferenceKey) return;
+    try {
+      const preferences = parseMonitorTablePreferences(window.localStorage.getItem(preferenceKey));
+      if (preferences) {
+        setVisibleColumns(preferences.columns);
+        setPageSize(preferences.pageSize as (typeof PAGE_SIZE_OPTIONS)[number]);
+        setSort(preferences.sort);
+        setDirection(preferences.direction);
+      } else {
+        setVisibleColumns(DEFAULT_MONITOR_COLUMNS);
+        setPageSize(10);
+        setSort("createdAt");
+        setDirection("desc");
+      }
+    } catch {
+      // Browser storage can be unavailable; the table remains usable with defaults.
+    }
+    setPreferencesLoadedFor(preferenceKey);
+  }, [preferenceKey, preferencesLoadedFor]);
+
+  useEffect(() => {
+    if (!preferenceKey || preferencesLoadedFor !== preferenceKey) return;
+    try {
+      window.localStorage.setItem(preferenceKey, JSON.stringify({
+        columns: visibleColumns, pageSize, sort, direction,
+      }));
+    } catch {
+      // Preferences are optional when browser storage is unavailable.
+    }
+  }, [direction, pageSize, preferenceKey, preferencesLoadedFor, sort, visibleColumns]);
 
   const problematicCount = useMemo(
     () => monitors.filter((monitor) => monitor.isActive && !isMonitorTemporarilyPaused(monitor.pausedUntil) && (monitor.status === "down" || monitor.verificationMode)).length,
@@ -229,7 +268,7 @@ export default function MonitoringPage() {
     return snapshot?.points ?? null;
   }, []);
 
-  const loadMonitorPage = useCallback(() => loadMonitors({
+  const loadMonitorPage = useCallback((options?: { silent?: boolean }) => loadMonitors({
     page,
     pageSize,
     search,
@@ -237,7 +276,7 @@ export default function MonitoringPage() {
     status: statusFilter === "all" ? undefined : statusFilter,
     sort,
     direction,
-  }), [companyFilter, direction, loadMonitors, page, pageSize, search, sort, statusFilter]);
+  }, options), [companyFilter, direction, loadMonitors, page, pageSize, search, sort, statusFilter]);
 
   const refreshMonitoring = useCallback(async () => {
     await Promise.all([loadMonitorPage(), loadSupportingData()]);
@@ -246,6 +285,13 @@ export default function MonitoringPage() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => void loadMonitorPage(), 250);
     return () => window.clearTimeout(timeoutId);
+  }, [loadMonitorPage]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadMonitorPage({ silent: true });
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
   }, [loadMonitorPage]);
 
   useEffect(() => {
@@ -447,6 +493,21 @@ export default function MonitoringPage() {
       await updateMonitorFlags(monitor.id, flags);
     } finally {
       setFlagPendingId(null);
+    }
+  }
+
+  async function handleRecheckMonitor(monitor: MonitorRecord) {
+    setRecheckPendingId(monitor.id);
+    try {
+      const response = await fetch(`/api/monitors/${monitor.id}/recheck`, { method: "POST" });
+      const result = await readJsonOrNull<{ message?: string }>(response);
+      if (!response.ok) throw new Error(result?.message ?? "Unable to queue monitor check.");
+      showToast(`${monitor.name} queued for the next worker cycle.`, "success");
+      await loadMonitorPage();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to queue monitor check.", "error");
+    } finally {
+      setRecheckPendingId(null);
     }
   }
 
@@ -723,6 +784,28 @@ export default function MonitoringPage() {
             ))}
           </SelectContent>
         </Select>
+        <details className="relative hidden xl:block">
+          <summary className="flex h-9 cursor-pointer list-none items-center rounded-md border border-input px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
+            Columns
+          </summary>
+          <div className="absolute right-0 z-20 mt-1 w-48 rounded-md border border-border bg-popover p-2">
+            {MONITOR_OPTIONAL_COLUMNS.map((column) => (
+              <label key={column.id} className="flex min-h-9 cursor-pointer items-center gap-2 px-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={visibleColumns.includes(column.id)}
+                  onChange={(event) => setVisibleColumns((current) => event.target.checked
+                    ? [...current, column.id]
+                    : current.filter((id) => id !== column.id))}
+                />
+                {column.label}
+              </label>
+            ))}
+            <button type="button" className="mt-1 px-2 text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setVisibleColumns(DEFAULT_MONITOR_COLUMNS)}>
+              Reset columns
+            </button>
+          </div>
+        </details>
       </div>
 
       {canManageMonitors && selectedIds.size > 0 ? (
@@ -771,12 +854,14 @@ export default function MonitoringPage() {
 
       <MonitorTable
         monitors={paginated}
+        visibleColumns={visibleColumns}
         readOnly={!canManageMonitors}
         loading={loading}
         selectedIds={selectedIds}
         activeTogglePendingId={activeTogglePendingId}
         pausePendingId={pausePendingId}
         flagPendingId={flagPendingId}
+        recheckPendingId={recheckPendingId}
         allPageSelected={allPageSelected}
         somePageSelected={somePageSelected}
         onToggleAll={toggleAll}
@@ -785,6 +870,7 @@ export default function MonitoringPage() {
         onPause={(monitor) => openPauseDialog([monitor.id])}
         onResumePause={(monitor) => void handleResumePaused([monitor.id], monitor.id)}
         onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
+        onRecheck={(monitor) => void handleRecheckMonitor(monitor)}
         onEdit={setEditingMonitor}
         onOpenTimeline={(monitor) => void handleOpenTimeline(monitor)}
         emptyState={search.trim() || companyFilter !== "all" || statusFilter !== "all" ? {

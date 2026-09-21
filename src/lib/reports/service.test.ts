@@ -242,6 +242,37 @@ describe("report schedule company availability", () => {
 });
 
 describe("report email branding", () => {
+  it("includes comparison and check-based budget in text and HTML emails", () => {
+    const report = buildReport();
+    report.comparison = {
+      previousPeriodStartedAt: "2026-08-06T08:00:00.000Z",
+      previousPeriodEndedAt: "2026-08-13T08:00:00.000Z",
+      previousCompletedChecks: 1_000,
+      previousUptimePct: 100,
+      uptimeChangePoints: -0.05,
+      previousP95LatencyMs: 200,
+      p95LatencyChangeMs: 40,
+      referenceUptimePct: 99.9,
+      budgetUsedPct: 50,
+      budgetRemainingPct: 50,
+    };
+    report.checkCoverage = { actualChecks: 22, expectedChecks: 24, eligibleMonitors: 1, excludedMonitors: 2 };
+    const message = buildReportMessage(report, {
+      deliveryDetailLevel: "summary",
+      includeOutageSummary: false,
+      includeMonitorBreakdown: false,
+      emailSubjectTemplate: null,
+      emailIntroTemplate: null,
+    });
+
+    expect(message.textBody).toContain("Previous period:");
+    expect(message.textBody).toContain("50.0% remaining");
+    expect(message.htmlBody).toContain("Compared with previous equal-length period");
+    expect(message.htmlBody).toContain("check-based 99.9% reference, not an SLA");
+    expect(message.textBody).toContain("22 / ~24 checks");
+    expect(message.htmlBody).toContain("22 / ~24 checks");
+  });
+
   it("uses the report-panel brand in the default subject and email design", () => {
     const message = buildReportMessage(buildReport(), {
       deliveryDetailLevel: "standard",
