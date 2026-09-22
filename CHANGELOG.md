@@ -4,6 +4,27 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-22
+
+### Added
+
+- Added permission-aware global search and quick actions for monitors, companies, members, logs, and reports.
+- Added report KPI drilldowns so summary values can be inspected down to the contributing monitors.
+- Added CSV import history with row-level correction, downloadable error files, and safe undo for the latest completed import.
+
+### Changed
+
+- Added URL-backed search state to monitoring, company, member, log, and report views so search results can open directly in the relevant context.
+- Recorded monitor import runs and their created monitor IDs for auditable recovery, with cleanup during backup restoration.
+
+### Fixed
+
+- Allowed CSV rows with missing trailing cells to be corrected during import preview by padding them to the header width.
+
+### Validation
+
+- Completed targeted tests, type checking, focused linting, a production Docker build, and browser verification of the affected user flows.
+
 ## [0.1.3] - 2026-09-17
 
 ### Added
@@ -75,7 +96,8 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - Release CI completed tests, lint, type checking, scale benchmark smoke testing, and a production build before publishing the source archive and Docker image.
 
-[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.2...v0.1.3
 [0.1.1]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/febroine/sentrovia-monitoring/releases/tag/v0.1.0
