@@ -4,6 +4,8 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-09-22
+
 ### Changed
 
 - Kept monitor, company, member, and log table rows visible while refreshed data loads, with a clear updating state and disabled stale-row interactions.
@@ -134,5 +136,6 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - Release CI completed tests, lint, type checking, scale benchmark smoke testing, and a production build before publishing the source archive and Docker image.
 
-[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/febroine/sentrovia-monitoring/releases/tag/v0.1.7
 [0.1.6]: https://github.com/febroine/sentrovia-monitoring/releases/tag/v0.1.6
