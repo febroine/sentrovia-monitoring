@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
+  ChevronsLeft,
+  ChevronsRight,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -72,6 +75,9 @@ interface PendingMonitorRestore {
 }
 
 export default function MonitoringPage() {
+  const searchParams = useSearchParams();
+  const requestedSearch = searchParams.get("search")?.trim() ?? "";
+  const requestedCreate = searchParams.get("create") === "1";
   const {
     monitors,
     pagination,
@@ -183,7 +189,7 @@ export default function MonitoringPage() {
   );
 
   const totalPages = pagination.totalPages;
-  const currentPage = Math.min(page, totalPages);
+  const currentPage = Math.min(pagination.page, totalPages);
   const visiblePages = buildVisiblePages(currentPage, totalPages, PAGE_NUMBER_WINDOW);
   const paginated = monitors;
   const allPageSelected = paginated.length > 0 && paginated.every((monitor) => selectedIds.has(monitor.id));
@@ -282,10 +288,25 @@ export default function MonitoringPage() {
     await Promise.all([loadMonitorPage(), loadSupportingData()]);
   }, [loadMonitorPage, loadSupportingData]);
 
+  function goToPage(nextPage: number) {
+    if (nextPage === page) {
+      if (!loading && nextPage !== pagination.page) void loadMonitorPage();
+      return;
+    }
+    setPage(nextPage);
+  }
+
+  const previousSearchRef = useRef(search);
   useEffect(() => {
+    const searchChanged = previousSearchRef.current !== search;
+    previousSearchRef.current = search;
+    if (!searchChanged) {
+      void loadMonitorPage();
+      return;
+    }
     const timeoutId = window.setTimeout(() => void loadMonitorPage(), 250);
     return () => window.clearTimeout(timeoutId);
-  }, [loadMonitorPage]);
+  }, [loadMonitorPage, search]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -356,15 +377,13 @@ export default function MonitoringPage() {
   }, [pendingRestores.length]);
 
   useEffect(() => {
-    const search = typeof window === "undefined" ? "" : window.location.search;
-    const params = new URLSearchParams(search);
-    const requestedSearch = params.get("search")?.trim();
     const frameId = window.requestAnimationFrame(() => {
-      if (requestedSearch) setSearch(requestedSearch);
-      if (params.get("create") === "1") setCreateOpen(true);
+      setSearch(requestedSearch);
+      setPage(1);
+      if (requestedCreate) setCreateOpen(true);
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, []);
+  }, [requestedSearch, requestedCreate]);
 
   async function handleCreate(payload: MonitorPayload) {
     const created = await createMonitor(payload);
@@ -784,7 +803,7 @@ export default function MonitoringPage() {
           </SelectContent>
         </Select>
         <details className="relative hidden xl:block">
-          <summary className="flex h-9 cursor-pointer list-none items-center rounded-md border border-input px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
+          <summary className="flex h-8 cursor-pointer list-none items-center rounded-md border border-input px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
             Columns
           </summary>
           <div className="absolute right-0 z-20 mt-1 w-48 rounded-md border border-border bg-popover p-2">
@@ -893,25 +912,36 @@ export default function MonitoringPage() {
 
       {totalPages > 1 ? (
         <div className="flex flex-col gap-3 rounded-md bg-muted/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
-          <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages} · {pageSize} rows</p>
+          <p className="text-xs text-muted-foreground">Page {pagination.page} of {totalPages} · {pagination.pageSize} rows{loading && page !== pagination.page ? ` · Loading page ${page}…` : ""}</p>
           <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              aria-label="First monitor page"
+              title="First page"
+              disabled={currentPage === 1}
+              onClick={() => goToPage(1)}
+            >
+              <ChevronsLeft aria-hidden="true" className="size-4" />
+            </Button>
             <Button
               variant="outline"
               size="sm"
               className="h-8 w-8 p-0"
               aria-label="Previous monitor page"
               disabled={currentPage === 1}
-              onClick={() => setPage((current) => current - 1)}
+              onClick={() => goToPage(currentPage - 1)}
             >
               <ChevronLeft className="size-4" />
             </Button>
             {visiblePages.map((pageNumber) => (
               <Button
                 key={pageNumber}
-                variant={pageNumber === currentPage ? "default" : "outline"}
+                variant={pageNumber === pagination.page ? "default" : "outline"}
                 size="sm"
                 className="h-8 min-w-8 px-2"
-                onClick={() => setPage(pageNumber)}
+                onClick={() => goToPage(pageNumber)}
               >
                 {pageNumber}
               </Button>
@@ -922,9 +952,20 @@ export default function MonitoringPage() {
               className="h-8 w-8 p-0"
               aria-label="Next monitor page"
               disabled={currentPage === totalPages}
-              onClick={() => setPage((current) => current + 1)}
+              onClick={() => goToPage(currentPage + 1)}
             >
               <ChevronRight className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              aria-label="Last monitor page"
+              title="Last page"
+              disabled={currentPage === totalPages}
+              onClick={() => goToPage(totalPages)}
+            >
+              <ChevronsRight aria-hidden="true" className="size-4" />
             </Button>
             <div className="flex items-center gap-2 md:pl-2">
               <span className="text-xs text-muted-foreground">Go to</span>
@@ -932,11 +973,25 @@ export default function MonitoringPage() {
                 type="number"
                 min={1}
                 max={totalPages}
-                value={currentPage}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  if (Number.isFinite(value)) {
-                    setPage(Math.max(1, Math.min(totalPages, value)));
+                key={currentPage}
+                aria-label="Go to monitor page"
+                defaultValue={currentPage}
+                onBlur={(event) => {
+                  const raw = event.currentTarget.value.trim();
+                  const value = Number(raw);
+                  if (raw && Number.isInteger(value)) {
+                    const next = Math.max(1, Math.min(totalPages, value));
+                    event.currentTarget.value = String(next);
+                    goToPage(next);
+                  } else {
+                    event.currentTarget.value = String(currentPage);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    event.currentTarget.value = String(currentPage);
+                    event.currentTarget.blur();
                   }
                 }}
                 className="h-8 w-20"

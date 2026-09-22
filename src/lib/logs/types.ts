@@ -18,7 +18,7 @@ export interface LogRecord {
   monitorName: string | null;
   detailTitle: string | null;
   detailSummary: string | null;
-  detailItems: Array<{ label: string; value: string }>;
+  detailItems: Array<{ label: string; value: string; format?: "datetime" }>;
 }
 
 export interface LogFilters {

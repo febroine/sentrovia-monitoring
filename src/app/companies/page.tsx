@@ -267,7 +267,9 @@ export default function CompaniesPage() {
       ) : null}
 
       <Card className="gap-0 overflow-hidden py-0">
-        <CardContent className="p-0">
+        <CardContent className="relative p-0">
+          {loading && filtered.length > 0 ? <p role="status" className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">Updating companies…</p> : null}
+          <div aria-busy={loading} inert={loading && filtered.length > 0}>
           <Table>
             <TableHeader>
               <TableRow className="bg-background">
@@ -289,7 +291,7 @@ export default function CompaniesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Loading companies…</TableCell></TableRow> : null}
+              {loading && filtered.length === 0 ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Loading companies…</TableCell></TableRow> : null}
               {!loading && filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6}>
@@ -305,7 +307,7 @@ export default function CompaniesPage() {
                   </TableCell>
                 </TableRow>
               ) : null}
-              {!loading ? filtered.map((company) => (
+              {filtered.length > 0 ? filtered.map((company) => (
                 <TableRow key={company.id} className={cn(selectedIds.has(company.id) && "bg-primary/5")}>
                   <TableCell className="pl-5">
                     <button
@@ -349,6 +351,7 @@ export default function CompaniesPage() {
               )) : null}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

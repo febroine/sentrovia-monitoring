@@ -2,9 +2,8 @@ import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, 
 import { db } from "@/lib/db";
 import { companies, monitorEvents, monitors } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
-import type { LogLevel } from "@/lib/logs/types";
+import type { LogLevel, LogRecord } from "@/lib/logs/types";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
-import { formatPanelDateTime } from "@/lib/time";
 import { toEnglishUppercase } from "@/lib/text/casing";
 
 const HIDDEN_NOTIFICATION_MARKER_EVENTS: string[] = [...NOTIFICATION_MARKER_EVENT_TYPES];
@@ -395,10 +394,12 @@ function buildUpSummaryRow(row: {
     monitorId: row.monitorId,
     monitorName: row.monitorName,
     detailTitle: "Latest healthy check",
-    detailSummary: `The latest successful check completed at ${formatPanelDateTime(latestSuccessfulCheck)}.`,
+    detailSummary: "The latest successful check and current monitor state are shown below.",
     detailItems: [
-      { label: "Latest successful check", value: formatPanelDateTime(latestSuccessfulCheck) },
-      { label: "Last check", value: row.lastCheckedAt ? formatPanelDateTime(row.lastCheckedAt) : "Never checked" },
+      { label: "Latest successful check", value: latestSuccessfulCheck.toISOString(), format: "datetime" as const },
+      row.lastCheckedAt
+        ? { label: "Last check", value: row.lastCheckedAt.toISOString(), format: "datetime" as const }
+        : { label: "Last check", value: "Never checked" },
       { label: "Current code", value: row.statusCode ? `HTTP ${row.statusCode}` : "No status code" },
       { label: "Latest latency", value: row.latencyMs !== null ? `${row.latencyMs}ms` : "No latency sample" },
       { label: "Target", value: row.url },
@@ -423,7 +424,7 @@ function mapLogRow(row: {
   monitorName: string | null;
   detailTitle?: string | null;
   detailSummary?: string | null;
-  detailItems?: Array<{ label: string; value: string }>;
+  detailItems?: LogRecord["detailItems"];
 }) {
   return {
     ...row,

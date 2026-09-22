@@ -132,7 +132,13 @@ export function MonitorTable({
   emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
   return (
-    <>
+    <div className="relative" aria-busy={loading}>
+      {loading && monitors.length > 0 ? (
+        <div role="status" className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
+          Updating monitors…
+        </div>
+      ) : null}
+      <div inert={loading && monitors.length > 0} className={loading && monitors.length > 0 ? "opacity-60" : undefined}>
       <div className="hidden min-w-0 max-w-full rounded-lg bg-card xl:block [&>[data-slot=table-container]]:overflow-x-hidden">
       <Table className="min-w-0 table-fixed text-xs">
         <colgroup>
@@ -166,7 +172,7 @@ export function MonitorTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {loading ? (
+          {loading && monitors.length === 0 ? (
             <TableRow>
               <TableCell colSpan={4 + visibleColumns.length} className="py-8 text-center text-sm text-muted-foreground">Loading monitors…</TableCell>
             </TableRow>
@@ -362,7 +368,8 @@ export function MonitorTable({
       onOpenTimeline={onOpenTimeline}
       emptyState={emptyState}
       />
-    </>
+      </div>
+    </div>
   );
 }
 
@@ -409,7 +416,7 @@ function MobileMonitorList({
   onOpenTimeline: (monitor: MonitorRecord) => void;
   emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
-  if (loading) {
+  if (loading && monitors.length === 0) {
     return <div className="rounded-md bg-muted/25 px-4 py-8 text-center text-sm text-muted-foreground xl:hidden">Loading monitors…</div>;
   }
 

@@ -12,7 +12,7 @@ vi.mock("@/lib/security/public-network-target", async (importOriginal) => ({
   assertMonitorNetworkTarget: async () => undefined,
 }));
 
-const input = () => monitorInputSchema.parse({
+const input = (databasePassword = "") => monitorInputSchema.parse({
   ...DEFAULT_MONITOR_FORM,
   name: "Database",
   monitorType: "postgres",
@@ -20,7 +20,7 @@ const input = () => monitorInputSchema.parse({
   databasePort: 5432,
   databaseName: "production",
   databaseUsername: "monitor",
-  databasePassword: "",
+  databasePassword,
   databasePasswordConfigured: true,
   databaseSsl: true,
   databaseTlsVerify: true,
@@ -28,6 +28,13 @@ const input = () => monitorInputSchema.parse({
 });
 
 describe("saved database credential destination", () => {
+  it("preserves password whitespace through validation and encryption", async () => {
+    const parsed = input(" replacement-secret ");
+    expect(parsed.databasePassword).toBe(" replacement-secret ");
+    const monitor = await buildMonitorForTest("operator-1", parsed, "monitor-1", "workspace-1");
+    expect(decryptValue(monitor.databasePasswordEncrypted)).toBe(" replacement-secret ");
+  });
+
   beforeEach(() => {
     state.monitor = {
       id: "monitor-1", workspaceId: "workspace-1", userId: "admin-1",

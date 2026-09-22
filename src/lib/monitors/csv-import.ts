@@ -135,10 +135,13 @@ export function toMonitorImportRecord(
   mapping: Map<string, string>
 ) {
   const values = new Map(
-    headers.map((header, index) => [normalizeHeader(header), row[index]?.trim() ?? ""])
+    headers.map((header, index) => [normalizeHeader(header), row[index] ?? ""])
   );
   const record: Record<string, unknown> = {};
-  const read = (target: string) => values.get(normalizeHeader(mapping.get(target) ?? target)) ?? "";
+  const read = (target: string) => {
+    const value = values.get(normalizeHeader(mapping.get(target) ?? target)) ?? "";
+    return target === "databasePassword" ? value : value.trim();
+  };
 
   for (const field of STRING_FIELDS) {
     const value = read(field);
@@ -229,7 +232,10 @@ function normalizeHeader(value: string) {
 }
 
 function parseBoolean(value: string) {
-  return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return value;
 }
 
 function parseNumber(value: string) {

@@ -1645,7 +1645,7 @@ function resolveDatabasePassword(
   existingMonitor: typeof monitors.$inferSelect | null
 ) {
   if (input.databasePassword.trim().length > 0) {
-    return encryptValue(input.databasePassword.trim());
+    return encryptValue(input.databasePassword);
   }
 
   if (existingMonitor?.databasePasswordEncrypted) {

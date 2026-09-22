@@ -4,6 +4,23 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+### Changed
+
+- Kept monitor, company, member, and log table rows visible while refreshed data loads, with a clear updating state and disabled stale-row interactions.
+- Added first-page and last-page navigation to the monitoring table and synchronized page controls with the server-confirmed page.
+- Preserved direct monitoring search links when the URL query changes without a full page reload.
+
+### Fixed
+
+- Prevented monitoring pagination from briefly showing an empty table or stale page numbers during background requests.
+- Aligned the monitoring column selector with adjacent table controls and made the page-jump field apply consistently on Enter or focus loss.
+- Formatted log timestamps from ISO values in the browser so detail rows use the same local timezone as the rest of the log table.
+- Preserved leading and trailing whitespace in database passwords during monitor creation and CSV import, and rejected invalid CSV boolean values instead of silently converting them to false.
+
+### Validation
+
+- Passed focused monitor, table-loading, log timestamp, and store tests; TypeScript checking; focused linting; a production Docker build; and browser verification of monitoring search and pagination behavior.
+
 ## [0.1.6] - 2026-09-22
 
 ### Changed

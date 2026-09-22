@@ -76,7 +76,9 @@ export function LogsTable({
         </div>
       </CardHeader>
 
-      <CardContent className="p-0">
+      <CardContent className="relative p-0">
+        {loading && logs.length > 0 ? <p role="status" className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">Updating logs…</p> : null}
+        <div aria-busy={loading} inert={loading && logs.length > 0}>
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-100/60 dark:bg-slate-900/40">
@@ -104,7 +106,7 @@ export function LogsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
+            {loading && logs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
                   Loading logs…
@@ -122,7 +124,7 @@ export function LogsTable({
                 </TableCell>
               </TableRow>
             ) : null}
-            {!loading
+            {logs.length > 0
               ? logs.map((log) => (
                   <ExpandedRow
                     key={log.id}
@@ -139,6 +141,7 @@ export function LogsTable({
               : null}
           </TableBody>
         </Table>
+        </div>
 
         <div className="flex flex-col gap-3 rounded-b-md bg-muted/20 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-muted-foreground">
@@ -280,7 +283,9 @@ function ExpandedRow({
                     <dt className="text-xs font-medium text-muted-foreground">
                       {item.label}
                     </dt>
-                    <dd className="mt-2 break-all text-sm font-medium">{item.value}</dd>
+                    <dd className="mt-2 break-all text-sm font-medium">
+                      {item.format === "datetime" ? formatPanelDateTime(item.value) : item.value}
+                    </dd>
                   </div>
                 ))}
               </dl>

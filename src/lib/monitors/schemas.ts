@@ -106,7 +106,7 @@ const monitorInputObjectSchema = z
     databasePort: z.coerce.number().int().min(1).max(65_535).default(5432),
     databaseName: optionalRequiredString(120),
     databaseUsername: optionalRequiredString(120),
-    databasePassword: optionalRequiredString(500),
+    databasePassword: z.string().max(500).default(""),
     databasePasswordConfigured: z.boolean().default(false),
     databaseSsl: z.boolean().default(true),
     databaseTlsVerify: z.boolean().default(true),

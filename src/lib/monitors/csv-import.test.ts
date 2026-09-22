@@ -8,6 +8,24 @@ const mapping = new Map([
 ]);
 
 describe("monitor CSV import", () => {
+  it.each(["true", "1", "yes", "on", " TRUE "])("accepts true boolean value %s", (value) => {
+    expect(toMonitorImportRecord(["isActive"], [value], mapping).isActive).toBe(true);
+  });
+
+  it.each(["false", "0", "no", "off", " FALSE "])("accepts false boolean value %s", (value) => {
+    expect(toMonitorImportRecord(["isActive"], [value], mapping).isActive).toBe(false);
+  });
+
+  it("preserves invalid boolean input for server validation instead of disabling a setting", () => {
+    expect(toMonitorImportRecord(["databaseTlsVerify"], ["treu"], mapping).databaseTlsVerify).toBe("treu");
+    expect(toMonitorImportRecord(["sendIncidentScreenshot"], ["invalid"], mapping).sendOutageScreenshot).toBe("invalid");
+  });
+
+  it("preserves whitespace in database passwords while trimming ordinary fields", () => {
+    expect(toMonitorImportRecord(["name", "databasePassword"], [" Database ", " secret "], mapping))
+      .toEqual({ name: "Database", databasePassword: " secret " });
+  });
+
   it("parses Excel-style semicolon CSV files with a BOM", () => {
     const rows = parseMonitorCsv("\uFEFFname;monitorType;url\r\nAPI;http;example.com/health");
 

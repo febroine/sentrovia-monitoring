@@ -370,7 +370,9 @@ export default function MembersPageClient() {
       ) : null}
 
       <Card className="gap-0 overflow-hidden py-0">
-        <CardContent className="p-0">
+        <CardContent className="relative p-0">
+          {loading && filtered.length > 0 ? <p role="status" className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">Updating members…</p> : null}
+          <div aria-busy={loading} inert={loading && filtered.length > 0}>
           <Table className="min-w-[820px]">
             <TableHeader>
               <TableRow className="bg-muted/20 hover:bg-muted/20">
@@ -395,7 +397,7 @@ export default function MembersPageClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
+              {loading && filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">Loading members...</TableCell>
                 </TableRow>
@@ -407,7 +409,7 @@ export default function MembersPageClient() {
                   </TableCell>
                 </TableRow>
               ) : null}
-              {!loading ? filtered.map((member) => (
+              {filtered.length > 0 ? filtered.map((member) => (
                 <TableRow key={member.id} className={selectedIds.has(member.id) ? "bg-sky-500/5" : "hover:bg-muted/10"}>
                   <TableCell className="pl-4 align-middle py-3.5">
                     <button
@@ -463,6 +465,7 @@ export default function MembersPageClient() {
               )) : null}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
