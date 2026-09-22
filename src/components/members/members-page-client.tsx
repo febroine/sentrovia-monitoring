@@ -72,6 +72,13 @@ export default function MembersPageClient() {
   const [createForm, setCreateForm] = useState<CreateMemberForm>(EMPTY_CREATE_FORM);
   const [createOpen, setCreateOpen] = useState(false);
 
+  useEffect(() => {
+    const requestedSearch = new URLSearchParams(window.location.search).get("search")?.trim();
+    if (!requestedSearch) return;
+    const frameId = window.requestAnimationFrame(() => setSearch(requestedSearch));
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
   const canManageMembers = hasPermission(currentUserRole, "members.manage");
 
   useEffect(() => {

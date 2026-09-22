@@ -18,6 +18,7 @@ import {
   companies,
   monitorChecks,
   monitorEvents,
+  monitorImportRuns,
   monitorOutages,
   monitors,
   publicStatusPages,
@@ -190,6 +191,7 @@ export async function restoreWorkspaceBackup(
     await tx.delete(monitorChecks).where(eq(monitorChecks.workspaceId, workspaceId));
     await tx.delete(monitorEvents).where(eq(monitorEvents.workspaceId, workspaceId));
     await tx.delete(monitorOutages).where(eq(monitorOutages.workspaceId, workspaceId));
+    await tx.delete(monitorImportRuns).where(eq(monitorImportRuns.workspaceId, workspaceId));
     await tx.delete(monitors).where(eq(monitors.workspaceId, workspaceId));
     await tx.delete(publicStatusPages).where(eq(publicStatusPages.workspaceId, workspaceId));
     await tx.delete(companies).where(eq(companies.workspaceId, workspaceId));

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -704,10 +705,12 @@ function MonitorRiskMatrix({ report }: { report: GeneratedReport }) {
 }
 
 function SummaryStrip({ report }: { report: GeneratedReport }) {
+  const [selectedMetric, setSelectedMetric] = useState<ReportMetric | null>(null);
   const metrics = [
-    { label: "Uptime", value: formatReportUptime(report.summary), detail: `${report.summary.upChecks.toLocaleString("en-GB")} successful checks`, tone: "text-emerald-500" },
-    { label: "Failed checks", value: report.summary.failureEvents.toLocaleString("en-GB"), detail: `${formatReportFailureRate(report.summary)} of completed checks`, tone: report.summary.failureEvents > 0 ? "text-rose-500" : "text-emerald-500" },
+    { id: "uptime" as const, label: "Uptime", value: formatReportUptime(report.summary), detail: `${report.summary.upChecks.toLocaleString("en-GB")} successful checks`, tone: "text-emerald-500" },
+    { id: "failures" as const, label: "Failed checks", value: report.summary.failureEvents.toLocaleString("en-GB"), detail: `${formatReportFailureRate(report.summary)} of completed checks`, tone: report.summary.failureEvents > 0 ? "text-rose-500" : "text-emerald-500" },
     {
+      id: "latency" as const,
       label: "P95 latency",
       value: formatReportP95Latency(report.summary),
       detail: report.summary.hasLatencySamples
@@ -715,18 +718,68 @@ function SummaryStrip({ report }: { report: GeneratedReport }) {
         : "No latency samples",
       tone: report.summary.hasLatencySamples ? "text-amber-500" : "text-foreground",
     },
-    { label: "Impacted monitors", value: report.summary.impactedMonitors.toLocaleString("en-GB"), detail: `${report.summary.monitorCount.toLocaleString("en-GB")} in scope · ${report.summary.currentlyPaused.toLocaleString("en-GB")} paused now`, tone: report.summary.impactedMonitors > 0 ? "text-rose-500" : "text-foreground" },
+    { id: "impacted" as const, label: "Impacted monitors", value: report.summary.impactedMonitors.toLocaleString("en-GB"), detail: `${report.summary.monitorCount.toLocaleString("en-GB")} in scope · ${report.summary.currentlyPaused.toLocaleString("en-GB")} paused now`, tone: report.summary.impactedMonitors > 0 ? "text-rose-500" : "text-foreground" },
   ];
   return (
-    <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-      {metrics.map((metric) => (
-        <div key={metric.label} className="rounded-md bg-card/55 px-3 py-3">
-          <dt className="text-xs font-medium text-muted-foreground">{metric.label}</dt>
-          <dd className={cn("mt-1 text-xl font-semibold tabular-nums", metric.tone)}>{metric.value}</dd>
-          <p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p>
+    <>
+      <section aria-label="Report summary" className="grid border-y border-border/70 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <button type="button" key={metric.id} onClick={() => setSelectedMetric(metric.id)} className="group min-h-28 border-b border-border/60 px-3 py-3 text-left hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:border-r xl:border-b-0 last:sm:border-r-0">
+            <span className="text-xs font-medium text-muted-foreground">{metric.label}</span>
+            <span className={cn("mt-1 block text-xl font-semibold tabular-nums", metric.tone)}>{metric.value}</span>
+            <span className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground"><span>{metric.detail}</span><ChevronRight aria-hidden="true" className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5" /></span>
+          </button>
+        ))}
+      </section>
+      <MetricDrilldownDialog report={report} metric={selectedMetric} onOpenChange={(open) => { if (!open) setSelectedMetric(null); }} />
+    </>
+  );
+}
+
+type ReportMetric = "uptime" | "failures" | "latency" | "impacted";
+type MonitorBreakdown = GeneratedReport["monitorBreakdown"][number];
+
+export function getMetricDrilldownRows(report: GeneratedReport, metric: ReportMetric): MonitorBreakdown[] {
+  const rows = [...report.monitorBreakdown];
+  if (metric === "failures") return rows.filter((item) => item.failures > 0).sort((a, b) => b.failures - a.failures || a.uptimePct - b.uptimePct);
+  if (metric === "latency") return rows.filter((item) => item.hasLatencySamples).sort((a, b) => b.p95LatencyMs - a.p95LatencyMs);
+  if (metric === "impacted") return rows.filter((item) => item.failures > 0 || item.status === "down").sort((a, b) => b.failures - a.failures || a.uptimePct - b.uptimePct);
+  return rows.sort((a, b) => Number(a.hasCompletedChecks) - Number(b.hasCompletedChecks) || a.uptimePct - b.uptimePct);
+}
+
+function MetricDrilldownDialog({ report, metric, onOpenChange }: { report: GeneratedReport; metric: ReportMetric | null; onOpenChange: (open: boolean) => void }) {
+  const labels: Record<ReportMetric, { title: string; description: string }> = {
+    uptime: { title: "Uptime by monitor", description: "Lowest availability and missing-check coverage appear first." },
+    failures: { title: "Failed checks by monitor", description: "Monitors that recorded confirmed failed checks in this period." },
+    latency: { title: "P95 latency by monitor", description: "Slowest tail latency appears first; monitors without latency samples are excluded." },
+    impacted: { title: "Impacted monitors", description: "Monitors with failed checks or a current down state." },
+  };
+  const rows = metric ? getMetricDrilldownRows(report, metric) : [];
+  const active = metric ? labels[metric] : null;
+  return (
+    <Dialog open={metric !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{active?.title ?? "Report details"}</DialogTitle>
+          <DialogDescription>{active?.description}</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-auto border-y border-border/70">
+          {rows.length === 0 ? <p className="px-3 py-8 text-center text-sm text-muted-foreground">No matching monitor data in this report.</p> : (
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="sticky top-0 bg-background"><tr className="border-b"><th className="px-3 py-2 font-medium">Monitor</th><th className="px-3 py-2 font-medium">Uptime</th><th className="px-3 py-2 font-medium">Failures</th><th className="px-3 py-2 font-medium">P95</th><th className="px-3 py-2 font-medium">Checks</th><th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th></tr></thead>
+              <tbody>{rows.map((row) => <tr key={row.monitorId} className="border-b border-border/50 last:border-0">
+                <td className="max-w-64 px-3 py-2"><span className="block truncate font-medium" title={row.name}>{row.name}</span><span className="block truncate text-xs text-muted-foreground" title={row.url}>{row.url}</span></td>
+                <td className="px-3 py-2 tabular-nums">{formatMonitorUptime(row)}</td>
+                <td className="px-3 py-2 tabular-nums">{row.failures}</td>
+                <td className="px-3 py-2 tabular-nums">{formatMonitorP95Latency(row)}</td>
+                <td className="px-3 py-2 tabular-nums">{row.totalChecks}</td>
+                <td className="px-3 py-2 text-right"><Link className="text-xs font-medium text-primary hover:underline" href={`/monitoring?search=${encodeURIComponent(row.name)}`}>Open monitor</Link>{row.failures > 0 ? <Link className="ml-3 text-xs font-medium text-primary hover:underline" href={`/logs?monitorQuery=${encodeURIComponent(row.name)}`}>Logs</Link> : null}</td>
+              </tr>)}</tbody>
+            </table>
+          )}
         </div>
-      ))}
-    </dl>
+      </DialogContent>
+    </Dialog>
   );
 }
 

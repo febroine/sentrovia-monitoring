@@ -358,12 +358,11 @@ export default function MonitoringPage() {
   useEffect(() => {
     const search = typeof window === "undefined" ? "" : window.location.search;
     const params = new URLSearchParams(search);
-
-    if (params.get("create") !== "1") {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => setCreateOpen(true));
+    const requestedSearch = params.get("search")?.trim();
+    const frameId = window.requestAnimationFrame(() => {
+      if (requestedSearch) setSearch(requestedSearch);
+      if (params.get("create") === "1") setCreateOpen(true);
+    });
     return () => window.cancelAnimationFrame(frameId);
   }, []);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMonitorCsv, toMonitorImportRecord } from "@/lib/monitors/csv-import";
+import { parseMonitorCsv, replaceMonitorCsvCell, toMonitorImportRecord } from "@/lib/monitors/csv-import";
 
 const mapping = new Map([
   ["name", "name"],
@@ -41,5 +41,14 @@ describe("monitor CSV import", () => {
     );
 
     expect(record).toEqual({ name: "Example", url: "example.com" });
+  });
+});
+
+describe("replaceMonitorCsvCell", () => {
+  it("adds a missing trailing cell so an invalid short row can be corrected", () => {
+    const rows = [["name", "url", "company"], ["API"]];
+    const updated = replaceMonitorCsvCell(rows, 2, 1, "https://api.example");
+    expect(updated).toEqual([["name", "url", "company"], ["API", "https://api.example", ""]]);
+    expect(rows[1]).toEqual(["API"]);
   });
 });

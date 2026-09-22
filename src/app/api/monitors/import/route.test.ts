@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   assertMonitorNetworkTargetAllowed: vi.fn(),
   getSession: vi.fn(),
   getSettings: vi.fn(),
+  importMonitorsWithHistory: vi.fn(),
 }));
 
 vi.mock("@/lib/security/network-policy", () => ({ canUserAccessPrivateTargets: vi.fn().mockResolvedValue(false) }));
@@ -21,6 +22,7 @@ vi.mock("@/lib/monitors/service", async (importOriginal) => ({
   assertMonitorNetworkTargetAllowed: mocks.assertMonitorNetworkTargetAllowed,
 }));
 vi.mock("@/lib/settings/service", () => ({ getSettings: mocks.getSettings }));
+vi.mock("@/lib/monitors/import-history", () => ({ importMonitorsWithHistory: mocks.importMonitorsWithHistory }));
 
 import { POST } from "@/app/api/monitors/import/route";
 
@@ -35,6 +37,7 @@ describe("monitor import route", () => {
     mocks.getSettings.mockResolvedValue(null);
     mocks.listReservedMonitorTargets.mockResolvedValue([]);
     mocks.assertMonitorNetworkTargetAllowed.mockResolvedValue(undefined);
+    mocks.importMonitorsWithHistory.mockResolvedValue({ created: [], run: { id: "run-1" } });
   });
 
   it("reports the original CSV row number when blank rows were skipped", async () => {
@@ -100,6 +103,21 @@ describe("monitor import route", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.preview).toMatchObject({ added: 0, skipped: 1, invalid: 0 });
+  });
+
+  it("records a validated CSV import with its file name", async () => {
+    const response = await POST(buildRequest({
+      monitors: [{ name: "API", url: "https://api.example/health" }],
+      fileName: "production.csv",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.importMonitorsWithHistory).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "user-1",
+      workspaceId: "workspace-1",
+      fileName: "production.csv",
+      source: "csv",
+    }));
   });
 });
 

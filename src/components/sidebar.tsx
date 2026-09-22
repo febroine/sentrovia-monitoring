@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, UserRound, UsersRound, BellRing, BarChart3 } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, Building2, ScrollText, CircleHelp, Info, UserRound, UsersRound, BellRing, BarChart3, Search } from 'lucide-react';
 import { SentroviaLogo } from '@/components/brand/sentrovia-logo';
 import LogoutButton from '@/components/logout-button';
 import { useWorkerStore } from '@/stores/use-worker-store';
@@ -40,6 +40,7 @@ type SidebarProps = React.HTMLAttributes<HTMLDivElement> & {
   initialAccent?: string;
   initialUser?: SidebarUser | null;
   showWorkerStatus?: boolean;
+  onOpenSearch?: () => void;
 };
 
 const accentClasses: Record<
@@ -132,6 +133,7 @@ export default function Sidebar({
   initialAccent,
   initialUser,
   showWorkerStatus = false,
+  onOpenSearch,
   ...props
 }: SidebarProps) {
   const pathname = usePathname();
@@ -181,6 +183,12 @@ export default function Sidebar({
             <h1><SentroviaLogo className="text-[1.65rem]" /></h1>
           </div>
         </div>
+
+        <button type="button" onClick={onOpenSearch} className="mb-4 flex min-h-10 w-full items-center gap-3 rounded-sm border border-border/70 px-2.5 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Search aria-hidden="true" className="size-4" />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="text-[10px] text-muted-foreground">Ctrl K</kbd>
+        </button>
 
         <nav className="flex flex-col gap-1.5">
           {navItems.map(({ href, label, icon: Icon }) => {

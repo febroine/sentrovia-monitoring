@@ -44,6 +44,16 @@ export default function CompaniesPage() {
   const [deleteRequest, setDeleteRequest] = useState<CompanyDeleteRequest | null>(null);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedSearch = params.get("search")?.trim();
+    const frameId = window.requestAnimationFrame(() => {
+      if (requestedSearch) setSearch(requestedSearch);
+      if (params.get("create") === "1") setCreateOpen(true);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     void loadCompanies();
     fetch("/api/monitors", { cache: "no-store" })

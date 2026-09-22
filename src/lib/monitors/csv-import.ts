@@ -181,6 +181,18 @@ export function toMonitorImportRecord(
   return record;
 }
 
+export function replaceMonitorCsvCell(rows: string[][], lineNumber: number, columnIndex: number, value: string) {
+  const rowIndex = lineNumber - 1;
+  if (rowIndex < 1 || rowIndex >= rows.length || columnIndex < 0) return rows;
+  return rows.map((row, index) => {
+    if (index !== rowIndex) return row;
+    const width = Math.max(rows[0]?.length ?? 0, row.length, columnIndex + 1);
+    const next = Array.from({ length: width }, (_, cellIndex) => row[cellIndex] ?? "");
+    next[columnIndex] = value;
+    return next;
+  });
+}
+
 function detectCsvDelimiter(input: string) {
   const counts = new Map<(typeof CSV_DELIMITERS)[number], number>(
     CSV_DELIMITERS.map((delimiter) => [delimiter, 0])

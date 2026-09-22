@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Menu,
   ScrollText,
+  Search,
   Settings,
   UserRound,
   UsersRound,
@@ -37,9 +38,9 @@ const moreItems = [
   { href: '/about', label: 'About', icon: Info },
 ];
 
-type BottomNavProps = React.HTMLAttributes<HTMLDivElement>;
+type BottomNavProps = React.HTMLAttributes<HTMLDivElement> & { onOpenSearch?: () => void };
 
-export default function BottomNav({ className, ...props }: BottomNavProps) {
+export default function BottomNav({ className, onOpenSearch, ...props }: BottomNavProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreActive = moreItems.some((item) => item.href === pathname);
@@ -85,6 +86,10 @@ export default function BottomNav({ className, ...props }: BottomNavProps) {
           <DialogHeader>
             <DialogTitle>More</DialogTitle>
           </DialogHeader>
+          <button type="button" onClick={() => { setMoreOpen(false); onOpenSearch?.(); }} className="flex min-h-11 w-full items-center gap-3 rounded-sm border border-border/70 px-3 text-sm font-medium hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Search aria-hidden="true" className="size-4" />
+            Search workspace
+          </button>
           <nav className="grid grid-cols-2 gap-1" aria-label="Additional navigation">
             {moreItems.map(({ href, label, icon: Icon }) => {
               const isActive = pathname === href;

@@ -5,12 +5,13 @@ import { assertPermission } from "@/lib/auth/permissions";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { assertRestorablePostgresMonitorPasswords } from "@/lib/monitors/secret-validation";
 import { assertMonitorNetworkTargetAllowed, createManyMonitors, getMonitorImportIdentityKey, listReservedMonitorTargets } from "@/lib/monitors/service";
+import { importMonitorsWithHistory } from "@/lib/monitors/import-history";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { applyImportDefaults } from "@/lib/monitors/import-defaults";
 import { getSettings } from "@/lib/settings/service";
 import { parseIntervalSetting, serializeMonitorRecord } from "@/lib/monitors/utils";
 import { MAX_MONITORS_PER_USER, MONITOR_CSV_IMPORT_LIMITS } from "@/lib/import-limits";
-import { readJsonBody } from "@/lib/http/json-body";
+import { assertSameOriginMutation, readJsonBody } from "@/lib/http/json-body";
 import { buildCanonicalMonitorTarget, buildMonitorIdentityKey } from "@/lib/monitors/targets";
 import type { MonitorType } from "@/lib/monitors/types";
 import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
@@ -23,6 +24,7 @@ function serializeMonitor(monitor: Awaited<ReturnType<typeof createManyMonitors>
 
 export async function POST(request: NextRequest) {
   try {
+    assertSameOriginMutation(request);
     const session = await getSession();
 
     if (!session) {
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest) {
       monitors?: unknown;
       source?: unknown;
       lineNumbers?: unknown;
+      fileName?: unknown;
     };
     const items: unknown[] = Array.isArray(body?.monitors) ? body.monitors : [];
     const preview = body && typeof body === "object" && "preview" in body && body.preview === true;
@@ -133,15 +136,20 @@ export async function POST(request: NextRequest) {
     const invalid = rows.find((row) => row.error);
     if (invalid) throw new Error(invalid.error!);
     const parsed = rows.map((row) => row.input!);
-    const created = await createManyMonitors(
-      session.id,
-      parsed,
-      undefined,
-      session.activeWorkspaceId!
-    );
+    const fileName = typeof body.fileName === "string" && body.fileName.trim()
+      ? body.fileName.trim()
+      : source === "txt" ? "Text import" : "CSV import";
+    const { created, run } = await importMonitorsWithHistory({
+      userId: session.id,
+      workspaceId: session.activeWorkspaceId!,
+      fileName,
+      source,
+      monitors: parsed,
+    });
 
     return NextResponse.json({
       monitors: created.map(serializeMonitor),
+      importRun: run,
     });
   } catch (error) {
     if (

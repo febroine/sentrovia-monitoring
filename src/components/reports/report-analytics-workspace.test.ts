@@ -4,6 +4,7 @@ import {
   changeMonitorSelection,
   changeExclusionSelection,
   getChartAvailability,
+  getMetricDrilldownRows,
   filterExclusionOptions,
   isExclusionSelected,
   isMonitorExcludedByFilters,
@@ -214,5 +215,27 @@ describe("analytics chart availability", () => {
       hasFailures: true,
       hasLatencySamples: true,
     });
+  });
+});
+
+describe("report metric drill-down", () => {
+  const monitor = (overrides: Partial<GeneratedReport["monitorBreakdown"][number]>) => ({
+    monitorId: "monitor-1", name: "API", url: "https://api.example", companyName: null,
+    status: "up", pausedUntil: null, currentStatusCode: 200, lastCheckedAt: null,
+    lastFailureAt: null, lastErrorMessage: null, hasCompletedChecks: true,
+    hasLatencySamples: true, uptimePct: 100, averageLatencyMs: 100, p95LatencyMs: 150,
+    totalChecks: 10, upChecks: 10, downChecks: 0, pendingChecks: 0, failures: 0,
+    ...overrides,
+  });
+  const report = { monitorBreakdown: [
+    monitor({ monitorId: "healthy", name: "Healthy" }),
+    monitor({ monitorId: "slow", name: "Slow", p95LatencyMs: 900 }),
+    monitor({ monitorId: "failed", name: "Failed", status: "down", failures: 3, uptimePct: 70 }),
+  ] } as GeneratedReport;
+
+  it("sorts latency by P95 and limits failures to affected monitors", () => {
+    expect(getMetricDrilldownRows(report, "latency").map((item) => item.monitorId)).toEqual(["slow", "healthy", "failed"]);
+    expect(getMetricDrilldownRows(report, "failures").map((item) => item.monitorId)).toEqual(["failed"]);
+    expect(getMetricDrilldownRows(report, "impacted").map((item) => item.monitorId)).toEqual(["failed"]);
   });
 });

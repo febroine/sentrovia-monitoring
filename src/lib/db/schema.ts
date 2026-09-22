@@ -444,6 +444,29 @@ export const monitors = pgTable("monitors", {
     uniqueIndex("monitors_heartbeat_token_hash_unique").on(table.heartbeatTokenHash),
 ]);
 
+export const monitorImportRuns = pgTable(
+  "monitor_import_runs",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    source: varchar("source", { length: 16 }).default("csv").notNull(),
+    addedCount: integer("added_count").default(0).notNull(),
+    skippedCount: integer("skipped_count").default(0).notNull(),
+    invalidCount: integer("invalid_count").default(0).notNull(),
+    createdMonitorIds: text("created_monitor_ids").array().notNull().default(sql`ARRAY[]::text[]`),
+    status: varchar("status", { length: 16 }).default("completed").notNull(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("monitor_import_runs_workspace_created_idx").on(table.workspaceId, table.createdAt),
+    index("monitor_import_runs_workspace_status_created_idx").on(table.workspaceId, table.status, table.createdAt),
+    check("monitor_import_runs_status_check", sql`${table.status} in ('completed', 'undone')`),
+  ]
+);
+
 export const monitorEvents = pgTable("monitor_events", {
   id: text("id")
     .primaryKey()

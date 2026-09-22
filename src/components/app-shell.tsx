@@ -9,6 +9,7 @@ import { APPEARANCE_SETTINGS_UPDATED_EVENT } from '@/stores/use-settings-store';
 import { accentThemes, normalizeSidebarAccent, type SidebarAccent } from '@/lib/settings/accent-theme';
 import { cn } from '@/lib/utils';
 import { buildLoginRedirectPath } from '@/lib/auth/redirect';
+import { GlobalCommandSearch } from '@/components/global-command-search';
 
 const AUTH_ROUTES = ['/login', '/onboarding'];
 const PUBLIC_ROUTES = ['/status'];
@@ -57,6 +58,19 @@ export default function AppShell({
     highContrastSurfaces: initialAppearance?.highContrastSurfaces ?? DEFAULT_APPEARANCE.highContrastSurfaces,
     sidebarAccent: normalizeSidebarAccent(initialAppearance?.sidebarAccent),
   }));
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (!initialAuthenticated) return;
+    function handleShortcut(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setSearchOpen((current) => !current);
+      }
+    }
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [initialAuthenticated]);
 
   useEffect(() => {
     if (!isProtectedRoute || initialAuthenticated) {
@@ -114,6 +128,7 @@ export default function AppShell({
         initialAccent={initialAppearance?.sidebarAccent}
         initialUser={initialUser}
         showWorkerStatus={initialUser?.role === 'admin'}
+        onOpenSearch={() => setSearchOpen(true)}
         className={cn(
           'hidden fixed inset-y-0 left-0 z-50 flex-col bg-surface-low md:flex',
           appearance.compactDensity ? 'w-56' : 'w-60'
@@ -136,8 +151,9 @@ export default function AppShell({
         >
           {children}
         </main>
-        <BottomNav className="fixed bottom-0 left-0 right-0 z-50 bg-surface-low shadow-[0_-14px_32px_rgba(0,0,0,0.32)] md:hidden" />
+        <BottomNav onOpenSearch={() => setSearchOpen(true)} className="fixed bottom-0 left-0 right-0 z-50 bg-surface-low shadow-[0_-14px_32px_rgba(0,0,0,0.32)] md:hidden" />
       </div>
+      {initialUser ? <GlobalCommandSearch open={searchOpen} onOpenChange={setSearchOpen} role={initialUser.role} /> : null}
     </div>
   );
 }

@@ -898,9 +898,9 @@ export async function updateMonitorTags(
   });
 }
 
-export async function deleteMonitors(userId: string, ids: string[], workspaceId?: string) {
+export async function deleteMonitors(userId: string, ids: string[], workspaceId?: string, database?: DatabaseExecutor) {
   const now = new Date();
-  return db.transaction(async (tx) => {
+  const execute = async (tx: DatabaseExecutor) => {
     const existing = await tx
       .select({ id: monitors.id, status: monitors.status, statusCode: monitors.statusCode })
       .from(monitors)
@@ -940,7 +940,8 @@ export async function deleteMonitors(userId: string, ids: string[], workspaceId?
     }
 
     return deleted;
-  });
+  };
+  return database ? execute(database) : db.transaction(execute);
 }
 
 export async function resetMonitorHistory(userId: string, ids: string[], workspaceId?: string) {

@@ -48,6 +48,15 @@ export default function LogsPage() {
   const previousIdsRef = useRef<string[]>([]);
   const latestLogsRequestRef = useRef(0);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const search = params.get("search")?.trim() ?? "";
+    const monitorQuery = params.get("monitorQuery")?.trim() ?? "";
+    if (!search && !monitorQuery) return;
+    const frameId = window.requestAnimationFrame(() => setFilters((current) => ({ ...current, search, monitorQuery })));
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
   const loadPresets = useCallback(async () => {
     try {
       setPresets(await loadLogPresets());
