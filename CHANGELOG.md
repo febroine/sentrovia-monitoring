@@ -4,7 +4,18 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
-## [0.1.5] - 2026-09-22
+## [0.1.6] - 2026-09-22
+
+### Changed
+
+- Normalized historical author and committer metadata to the public maintainer identity while preserving commit dates and source trees.
+- Consolidated the public release line on a new immutable tag after the history correction.
+
+### Validation
+
+- Confirmed that all 196 commits and the complete source tree are unchanged apart from identity metadata.
+
+## 0.1.5 - 2026-09-22
 
 ### Fixed
 
@@ -14,7 +25,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - The focused database-repair suite passed all 6 tests after the correction.
 
-## [0.1.4] - 2026-09-22
+## 0.1.4 - 2026-09-22
 
 ### Added
 
@@ -35,7 +46,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - Completed targeted tests, type checking, focused linting, a production Docker build, and browser verification of the affected user flows.
 
-## [0.1.3] - 2026-09-17
+## 0.1.3 - 2026-09-17
 
 ### Added
 
@@ -65,7 +76,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 - Enforced the `audit.read` permission for event-log reads and deletion so lower-privileged workspace roles cannot access restricted operational history.
 - Revoked existing session tokens during sign-out by advancing the account session version while still clearing the local cookie on failures.
 
-## [0.1.1] - 2026-09-13
+## 0.1.1 - 2026-09-13
 
 ### Fixed
 
@@ -76,7 +87,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 - Restructured the repository landing page and documentation for clearer installation, evaluation, and contribution paths.
 - Added a prominent native Windows NSSM quick start, refreshed the repository social preview, and improved community issue templates.
 
-## [0.1.0] - 2026-09-12
+## 0.1.0 - 2026-09-12
 
 ### Added
 
@@ -106,9 +117,5 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - Release CI completed tests, lint, type checking, scale benchmark smoke testing, and a production build before publishing the source archive and Docker image.
 
-[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.5...HEAD
-[0.1.5]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.4...v0.1.5
-[0.1.4]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.3...v0.1.4
-[0.1.3]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.2...v0.1.3
-[0.1.1]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/febroine/sentrovia-monitoring/releases/tag/v0.1.0
+[Unreleased]: https://github.com/febroine/sentrovia-monitoring/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/febroine/sentrovia-monitoring/releases/tag/v0.1.6
