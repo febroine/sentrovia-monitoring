@@ -2,8 +2,6 @@ import type Mail from "nodemailer/lib/mailer";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
-import { escapeHtml } from "@/lib/html";
-import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import {
   normalizeNetworkHostname,
   resolveMonitorNetworkTargetWithTimeout,
@@ -44,20 +42,15 @@ export async function buildFailureScreenshotAttachment(
 
   try {
     return await withScreenshotDeadline(async () => {
-      try {
-        const resolvedTarget = await resolveScreenshotTarget(monitor);
-        return withScreenshotSlot(() =>
-          captureScreenshotAttachment(monitor, capturedAt, resolvedTarget)
-        );
-      } catch (error) {
-        if (isUnresolvedHostnameError(error)) {
-          return withScreenshotSlot(() => captureUnavailableScreenshotAttachment(monitor, capturedAt));
-        }
-        throw error;
-      }
+      const resolvedTarget = await resolveScreenshotTarget(monitor);
+      return withScreenshotSlot(() =>
+        captureScreenshotAttachment(monitor, capturedAt, resolvedTarget)
+      );
     });
   } catch (error) {
-    const message = toScreenshotErrorMessage(error);
+    const message = isUnresolvedHostnameError(error)
+      ? "screenshot target hostname could not be resolved"
+      : toScreenshotErrorMessage(error);
     onSkipped?.(message);
     console.warn(
       `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${message}`
@@ -147,26 +140,13 @@ async function captureScreenshotAttachment(
       viewport: SCREENSHOT_VIEWPORT,
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
-    let page = await createScreenshotPage(context, screenshotUrl);
+    const page = await createScreenshotPage(context, screenshotUrl);
+    await page.goto(screenshotUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
+    });
 
-    try {
-      await page.goto(screenshotUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
-      });
-    } catch {
-      await page.close().catch(() => undefined);
-      page = await createConfiguredScreenshotPage(context);
-      await page.setContent(
-        renderUnavailableTargetPage(monitor, "The monitored page did not render before the screenshot deadline."),
-        {
-          waitUntil: "domcontentloaded",
-          timeout: SCREENSHOT_TIMEOUT_MS,
-        }
-      );
-    }
-
-    const content = await capturePageScreenshot(monitor, page);
+    const content = await capturePageScreenshot(page);
     if (!content) {
       return null;
     }
@@ -177,7 +157,7 @@ async function captureScreenshotAttachment(
   }
 }
 
-async function capturePageScreenshot(monitor: Monitor, page: Page) {
+async function capturePageScreenshot(page: Page) {
   const content = await page.screenshot({
     type: "jpeg",
     quality: SCREENSHOT_JPEG_QUALITY,
@@ -286,28 +266,6 @@ function resolvePrivateTargetAccess(monitor: Monitor) {
     && (monitor as Monitor & { allowPrivateTargets?: boolean }).allowPrivateTargets === true;
 }
 
-async function captureUnavailableScreenshotAttachment(monitor: Monitor, capturedAt: Date) {
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({
-    args: CHROMIUM_HEADLESS_ARGS,
-    headless: true,
-    timeout: SCREENSHOT_TIMEOUT_MS,
-  });
-
-  try {
-    const context = await browser.newContext({ viewport: SCREENSHOT_VIEWPORT });
-    const page = await context.newPage();
-    await page.setContent(
-      renderUnavailableTargetPage(monitor, "The worker could not resolve this hostname, so no remote page was loaded."),
-      { waitUntil: "domcontentloaded" }
-    );
-    const content = await capturePageScreenshot(monitor, page);
-    return content ? buildScreenshotAttachment(monitor, capturedAt, content) : null;
-  } finally {
-    await browser.close().catch(() => undefined);
-  }
-}
-
 function releaseScreenshotSlot() {
   activeScreenshots = Math.max(0, activeScreenshots - 1);
   const next = screenshotQueue.shift();
@@ -395,14 +353,4 @@ function toScreenshotErrorMessage(error: unknown) {
 function isUnresolvedHostnameError(error: unknown) {
   const code = error instanceof Error && "code" in error ? String(error.code) : "";
   return code === "ENOTFOUND" || code === "EAI_AGAIN";
-}
-
-function renderUnavailableTargetPage(monitor: Monitor, detail: string) {
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
-    body{margin:0;background:#f8fafc;color:#0f172a;font-family:"IBM Plex Sans",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    main{margin:72px auto;max-width:760px;border-top:4px solid #b91c1c;background:#fff;padding:40px}
-    h1{margin:0 0 12px;font-size:26px}.target{color:#475569;overflow-wrap:anywhere}
-    .status{margin:28px 0 16px;color:#991b1b;font-size:13px;font-weight:700;letter-spacing:.06em}
-    p{font-size:16px;line-height:1.6}
-  </style></head><body><main><div class="status">SCREENSHOT UNAVAILABLE</div><h1>${escapeHtml(monitor.name)}</h1><p class="target">${escapeHtml(sanitizeMonitorUrlForDisplay(monitor.url))}</p><p>${escapeHtml(detail)}</p></main></body></html>`;
 }

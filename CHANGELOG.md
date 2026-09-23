@@ -4,6 +4,10 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+### Fixed
+
+- Skipped screenshot attachments when a monitored page cannot load or its hostname cannot be resolved, instead of sending a generated unavailable image.
+
 ## [0.1.7] - 2026-09-22
 
 ### Changed

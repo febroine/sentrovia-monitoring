@@ -1,6 +1,7 @@
 import http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { resolveMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 
 vi.mock("@/lib/security/public-network-target", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/security/public-network-target")>();
@@ -40,11 +41,12 @@ describe("failure screenshot browser isolation", () => {
       response.end();
     });
 
-    await buildFailureScreenshotAttachment(buildMonitor({
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
       url: `http://fixture.test:${resolveServerPort(publicServer)}/redirect`,
     }));
 
     expect(privateRequests).toBe(0);
+    expect(attachment).toBeNull();
   }, 25_000);
 
   it("still captures an approved page", async () => {
@@ -60,14 +62,32 @@ describe("failure screenshot browser isolation", () => {
     expect(attachment?.content).toBeInstanceOf(Buffer);
   }, 25_000);
 
-  it("captures browser evidence when the approved target never responds", async () => {
+  it("skips the screenshot when the hostname cannot be resolved", async () => {
+    vi.mocked(resolveMonitorNetworkTargetWithTimeout).mockRejectedValueOnce(
+      Object.assign(new Error("hostname lookup failed"), { code: "ENOTFOUND" })
+    );
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(
+      buildMonitor({ url: "https://missing.fixture.test" }),
+      new Date("2026-05-15T08:00:00.000Z"),
+      onSkipped
+    );
+
+    expect(attachment).toBeNull();
+    expect(onSkipped).toHaveBeenCalledWith("screenshot target hostname could not be resolved");
+  });
+
+  it("skips the screenshot when the approved target never responds", async () => {
     const hangingServer = await createServer(() => undefined);
+    const onSkipped = vi.fn();
 
     const attachment = await buildFailureScreenshotAttachment(buildMonitor({
       url: `http://fixture.test:${resolveServerPort(hangingServer)}/timeout`,
-    }));
+    }), new Date("2026-05-15T08:00:00.000Z"), onSkipped);
 
-    expect(attachment?.content).toBeInstanceOf(Buffer);
+    expect(attachment).toBeNull();
+    expect(onSkipped).toHaveBeenCalledOnce();
   }, 25_000);
 
   it.each(["page", "worker"])("blocks private WebSocket handshakes from %s scripts", async (realm) => {
