@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
 import { monitorChecks, monitorDiagnostics, monitors, outageEvents } from "@/lib/db/schema";
 import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
+import { loadAvailabilityForWindows, type AvailabilityWindow } from "@/lib/outages/availability-service";
 
 const MAX_RECENT_ROWS_PER_MONITOR = 100;
 const COMPANY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -11,7 +12,8 @@ export async function listRecentMonitorChecks(
   userId: string,
   limitPerMonitor = 12,
   workspaceId?: string,
-  monitorId?: string
+  monitorId?: string,
+  around?: Date
 ) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedChecks = db
@@ -19,7 +21,9 @@ export async function listRecentMonitorChecks(
       ...getTableColumns(monitorChecks),
       monitorRowNumber: sql<number>`row_number() over (
         partition by ${monitorChecks.monitorId}
-        order by ${monitorChecks.createdAt} desc
+        order by ${around
+          ? sql`abs(extract(epoch from (${monitorChecks.createdAt} - ${around.toISOString()}::timestamptz)))`
+          : sql`${monitorChecks.createdAt} desc`}
       )`.as("monitor_row_number"),
     })
     .from(monitorChecks)
@@ -41,7 +45,8 @@ export async function listRecentMonitorDiagnostics(
   userId: string,
   limitPerMonitor = 3,
   workspaceId?: string,
-  monitorId?: string
+  monitorId?: string,
+  around?: Date
 ) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedDiagnostics = db
@@ -49,7 +54,9 @@ export async function listRecentMonitorDiagnostics(
       ...getTableColumns(monitorDiagnostics),
       monitorRowNumber: sql<number>`row_number() over (
         partition by ${monitorDiagnostics.monitorId}
-        order by ${monitorDiagnostics.createdAt} desc
+        order by ${around
+          ? sql`abs(extract(epoch from (${monitorDiagnostics.createdAt} - ${around.toISOString()}::timestamptz)))`
+          : sql`${monitorDiagnostics.createdAt} desc`}
       )`.as("monitor_row_number"),
     })
     .from(monitorDiagnostics)
@@ -75,7 +82,8 @@ export async function listRecentOutageEvents(
   userId: string,
   limitPerMonitor = 8,
   workspaceId?: string,
-  monitorId?: string
+  monitorId?: string,
+  around?: Date
 ) {
   const normalizedLimit = normalizePerMonitorLimit(limitPerMonitor);
   const rankedEvents = db
@@ -83,7 +91,9 @@ export async function listRecentOutageEvents(
       ...getTableColumns(outageEvents),
       monitorRowNumber: sql<number>`row_number() over (
         partition by ${outageEvents.monitorId}
-        order by ${outageEvents.createdAt} desc
+        order by ${around
+          ? sql`abs(extract(epoch from (${outageEvents.createdAt} - ${around.toISOString()}::timestamptz)))`
+          : sql`${outageEvents.createdAt} desc`}
       )`.as("monitor_row_number"),
     })
     .from(outageEvents)
@@ -176,19 +186,21 @@ export async function getCompanyMonthlyUptimeReport(
   }
 
   const since = resolveCompanyMonthlyReportStart(now);
-  const checks = await db
-    .select({ status: monitorChecks.status, createdAt: monitorChecks.createdAt })
-    .from(monitorChecks)
-    .where(and(
-      workspaceId
-        ? eq(monitorChecks.workspaceId, workspaceId)
-        : eq(monitorChecks.userId, userId),
-      inArray(monitorChecks.monitorId, monitorIds),
-      gte(monitorChecks.createdAt, since)
-    ))
-    .orderBy(asc(monitorChecks.createdAt));
-
-  return { companyId: company.id, companyName: company.name, months: buildMonthlyUptime(checks) };
+  const windows = buildMonthlyAvailabilityWindows(since, now);
+  const availability = await loadAvailabilityForWindows(userId, monitorIds, windows, db, workspaceId);
+  return {
+    companyId: company.id,
+    companyName: company.name,
+    months: windows.map((window) => {
+      const month = availability.get(window.key);
+      return {
+        label: window.key,
+        hasData: month?.hasData ?? false,
+        uptimePct: month?.hasData ? month.uptimePct : 0,
+        checks: month?.completedChecks ?? 0,
+      };
+    }),
+  };
 }
 
 export function resolveCompanyRecentChecksStart(now: Date) {
@@ -254,19 +266,18 @@ function isNumber(value: number | null): value is number {
   return typeof value === "number";
 }
 
-function buildMonthlyUptime(checks: Array<{ status: string; createdAt: Date }>) {
-  const buckets = new Map<string, { total: number; up: number }>();
-  for (const check of checks) {
-    if (check.status === "pending") continue;
-    const key = `${check.createdAt.getUTCFullYear()}-${String(check.createdAt.getUTCMonth() + 1).padStart(2, "0")}`;
-    const bucket = buckets.get(key) ?? { total: 0, up: 0 };
-    bucket.total += 1;
-    if (check.status === "up") bucket.up += 1;
-    buckets.set(key, bucket);
+export function buildMonthlyAvailabilityWindows(startedAt: Date, endedAt: Date): AvailabilityWindow[] {
+  const windows: AvailabilityWindow[] = [];
+  const cursor = new Date(startedAt);
+  while (cursor < endedAt) {
+    const next = new Date(cursor);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    windows.push({
+      key: `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`,
+      startedAt: new Date(cursor),
+      endedAt: new Date(Math.min(next.getTime(), endedAt.getTime())),
+    });
+    cursor.setTime(next.getTime());
   }
-  return Array.from(buckets, ([label, bucket]) => ({
-    label,
-    uptimePct: bucket.total > 0 ? (bucket.up / bucket.total) * 100 : 100,
-    checks: bucket.total,
-  })).slice(-6);
+  return windows;
 }

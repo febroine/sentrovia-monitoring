@@ -23,6 +23,19 @@ describe("dashboard service", () => {
     expect(activation.complete).toBe(false);
     expect(activation.steps.find((step) => step.id === "delivery")?.complete).toBe(false);
   });
+  it("explains why a running worker still needs connectivity verification", () => {
+    const activation = buildActivationChecklist({
+      hasMonitor: true,
+      workerRunning: true,
+      workerConnectivityStatus: "not_checked",
+      deliveredCount: 0,
+    });
+    expect(activation.steps.find((step) => step.id === "worker")).toMatchObject({
+      complete: false,
+      label: "Verify worker connectivity",
+    });
+    expect(activation.steps.find((step) => step.id === "worker")?.detail).toContain("Worker is running");
+  });
   it("calculates average monitor interval in minutes across mixed units", () => {
     const average = calculateAverageIntervalMinutes([
       { intervalValue: 30, intervalUnit: "sn" },

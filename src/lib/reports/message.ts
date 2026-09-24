@@ -8,10 +8,14 @@ import {
   formatMonitorP95Latency,
   formatMonitorUptime,
   formatReportAverageLatency,
+  formatOutageDuration,
+  formatReportDowntime,
+  formatReportOutageCount,
   formatReportFailureRate,
   formatReportHealthScore,
   formatReportP95Latency,
   formatReportUptime,
+  formatReportUptimeNote,
 } from "@/lib/reports/metrics";
 import type { GeneratedReport } from "@/lib/reports/types";
 
@@ -54,14 +58,15 @@ export function buildReportMessage(report: GeneratedReport, options: ReportDeliv
     `Currently pending: ${report.summary.currentlyPending}`,
     `Currently paused: ${report.summary.currentlyPaused}`,
     `Uptime: ${formatReportUptime(report.summary)}`,
+    `Uptime basis: ${formatReportUptimeNote(report.summary)}`,
     `Average latency: ${formatReportAverageLatency(report.summary)}`,
     `P95 latency: ${formatReportP95Latency(report.summary)}`,
-    `Failure events: ${report.summary.failureEvents}`,
-    `Failure rate: ${formatReportFailureRate(report.summary)}`,
+    `Outages: ${formatReportOutageCount(report.summary)}`,
+    `Total downtime: ${formatReportDowntime(report.summary)}`,
     `Impacted URLs: ${report.summary.impactedMonitors}`,
     ...(report.comparison && comparisonValues ? [
       `Previous period: ${formatReportTimestamp(report.comparison.previousPeriodStartedAt, report.timeZone)} - ${formatReportTimestamp(report.comparison.previousPeriodEndedAt, report.timeZone)} ${report.timeZone} (${report.comparison.previousCompletedChecks} completed checks in the same monitor scope)`,
-      `Previous uptime: ${comparisonValues.uptime}`,
+      `Previous check success: ${comparisonValues.uptime}`,
       `Previous P95 latency: ${comparisonValues.latency}`,
       `${comparisonValues.referenceLabel} reference budget: ${comparisonValues.budget}`,
       comparisonValues.budgetDetail,
@@ -185,13 +190,13 @@ function renderEmailMetricsTable(report: GeneratedReport, healthTheme: ReturnTyp
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           <tr>
             ${renderEmailMetric("Health score", formatReportHealthScore(report.summary), report.summary.healthStatus, healthTheme)}
-            ${renderEmailMetric("Uptime", formatReportUptime(report.summary), report.summary.hasCompletedChecks ? "Availability for this period" : "No completed checks in this period")}
+            ${renderEmailMetric("Uptime", formatReportUptime(report.summary), formatReportUptimeNote(report.summary))}
             ${renderEmailMetric("P95 latency", formatReportP95Latency(report.summary), report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} average` : "No latency samples in this period")}
           </tr>
           <tr>
             ${renderEmailMetric("Down now", String(report.summary.currentlyDown), `${report.summary.currentlyUp} up, ${report.summary.currentlyPending} pending, ${report.summary.currentlyPaused} paused`)}
-            ${renderEmailMetric("Failure events", String(report.summary.failureEvents), `${report.summary.impactedMonitors} impacted URLs`)}
-            ${renderEmailMetric("Failure rate", formatReportFailureRate(report.summary), report.summary.hasCompletedChecks ? "Share of completed checks that were down" : "No completed checks in this period")}
+            ${renderEmailMetric("Outages", formatReportOutageCount(report.summary), `${report.summary.impactedMonitors} impacted URLs`)}
+            ${renderEmailMetric("Total downtime", formatReportDowntime(report.summary), "Within report period")}
           </tr>
         </table>
       </td>
@@ -205,7 +210,7 @@ function renderEmailComparison(report: GeneratedReport) {
   return `<tr><td style="padding:8px 24px 16px;font-size:13px;line-height:1.6;color:#334155;border-top:1px solid #e2e8f0;">
     <strong>Compared with previous equal-length period</strong><br>
     ${escapeHtml(formatReportTimestamp(report.comparison.previousPeriodStartedAt, report.timeZone))} - ${escapeHtml(formatReportTimestamp(report.comparison.previousPeriodEndedAt, report.timeZone))} ${escapeHtml(report.timeZone)} · ${report.comparison.previousCompletedChecks} completed checks in the same monitor scope<br>
-    Previous uptime: ${escapeHtml(values.uptime)}<br>
+    Previous check success: ${escapeHtml(values.uptime)}<br>
     Previous P95 latency: ${escapeHtml(values.latency)}<br>
     ${escapeHtml(values.referenceLabel)} reference budget: ${escapeHtml(values.budget)}<br>
     ${escapeHtml(values.budgetDetail)}
@@ -256,10 +261,10 @@ function buildReportTextDetailLines(report: GeneratedReport, options: ReportDeli
       .slice(0, options.deliveryDetailLevel === "full" ? 8 : 5)
       .map((monitor) => `- ${monitor.url}: ${monitor.averageLatencyMs}ms average latency`),
     "",
-    "Top failing URLs:",
+    "URLs with outages:",
     ...report.failingMonitors
       .slice(0, options.deliveryDetailLevel === "full" ? 8 : 5)
-      .map((monitor) => `- ${monitor.url}: ${monitor.failures} failures`),
+      .map((monitor) => `- ${monitor.url}: ${monitor.incidentCount} outages, ${formatOutageDuration(monitor.downtimeMs)} down`),
   ];
 
   if (options.includeOutageSummary) {
@@ -284,12 +289,12 @@ function renderReportEmailDetailSections(report: GeneratedReport, options: Repor
   const sections = [
     renderEmailListSection("What needs attention", report.recommendations),
     renderEmailTableSection(
-      "Top failing URLs",
-      ["URL", "Failures", "Last failure"],
+      "URLs with outages",
+      ["URL", "Outages", "Downtime"],
       report.failingMonitors.slice(0, detailLimit).map((monitor) => [
         monitor.url,
-        String(monitor.failures),
-        monitor.lastFailureAt ? new Date(monitor.lastFailureAt).toLocaleString("en-GB", { timeZone: report.timeZone }) : "--",
+        String(monitor.incidentCount),
+        formatOutageDuration(monitor.downtimeMs),
       ])
     ),
     renderEmailTableSection(
@@ -407,8 +412,9 @@ function renderEmailMetric(
 }
 
 function renderEmailHealthBanner(report: GeneratedReport, theme: EmailHealthTheme) {
-  const message = !report.summary.hasCompletedChecks
-    ? "No completed checks were recorded in this report window. Health, uptime, and failure rate are unavailable."
+  const coverage = report.checkCoverage ? formatReportCheckCoverage(report.checkCoverage) : null;
+  const message = !report.summary.hasUptimeData
+    ? `${formatReportUptimeNote(report.summary)}. Health and uptime are unavailable.`
     : report.summary.currentlyDown > 0
     ? `${report.summary.currentlyDown} URL${report.summary.currentlyDown === 1 ? " is" : "s are"} currently down and requires attention.`
     : "All monitored URLs are currently responding; review the period metrics below for trends.";
@@ -421,6 +427,7 @@ function renderEmailHealthBanner(report: GeneratedReport, theme: EmailHealthThem
             <td style="padding:14px 16px;">
               <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${theme.foreground};">${escapeHtml(report.summary.healthStatus)} health</div>
               <div class="sentrovia-email-text" style="margin-top:4px;font-size:13px;line-height:1.55;color:#334155;">${escapeHtml(message)}</div>
+              ${coverage ? `<div class="sentrovia-email-muted" style="margin-top:6px;font-size:12px;line-height:1.5;color:#475569;">Check coverage: ${escapeHtml(coverage.value)}. Health reflects recorded outages; ${escapeHtml(coverage.detail)}.</div>` : ""}
             </td>
             <td align="right" style="padding:14px 16px;vertical-align:middle;">
               <span style="font-size:24px;font-weight:800;color:${theme.foreground};">${escapeHtml(formatReportHealthScore(report.summary))}</span>
@@ -522,7 +529,9 @@ function renderReportTemplate(template: string | null, report: GeneratedReport) 
     "{health_status}": report.summary.healthStatus,
     "{uptime}": formatReportUptime(report.summary),
     "{failure_rate}": formatReportFailureRate(report.summary),
-    "{failures}": String(report.summary.failureEvents),
+    "{failures}": String(report.summary.incidentCount),
+    "{outages}": formatReportOutageCount(report.summary),
+    "{downtime}": formatReportDowntime(report.summary),
     "{down_now}": String(report.summary.currentlyDown),
     "{p95_latency}": formatReportP95Latency(report.summary),
     "{generated_at}": new Date(report.generatedAt).toLocaleString("en-GB", { timeZone: report.timeZone }),

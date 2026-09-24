@@ -9,9 +9,9 @@ const baseReport = {
     { date: "2026-09-16", upChecks: 0, downChecks: 0, uptimePct: 0 },
   ],
   monitorBreakdown: [
-    { monitorId: "one", name: "API", failures: 3, hasCompletedChecks: true, hasLatencySamples: true, uptimePct: 98, p95LatencyMs: 500 },
-    { monitorId: "two", name: "Web", failures: 1, hasCompletedChecks: true, hasLatencySamples: true, uptimePct: 100, p95LatencyMs: 200 },
-    { monitorId: "three", name: "Pending", failures: 0, hasCompletedChecks: false, hasLatencySamples: false, uptimePct: 0, p95LatencyMs: 0 },
+    { monitorId: "one", name: "API", incidentCount: 3, hasCompletedChecks: true, hasUptimeData: true, hasLatencySamples: true, uptimePct: 98, p95LatencyMs: 500 },
+    { monitorId: "two", name: "Web", incidentCount: 1, hasCompletedChecks: true, hasUptimeData: true, hasLatencySamples: true, uptimePct: 100, p95LatencyMs: 200 },
+    { monitorId: "three", name: "Pending", incidentCount: 0, hasCompletedChecks: false, hasUptimeData: false, hasLatencySamples: false, uptimePct: 0, p95LatencyMs: 0 },
   ],
 } as GeneratedReport;
 
@@ -22,13 +22,13 @@ describe("executive analytics insights", () => {
       daysAtReference: 1,
       belowReference: 1,
       missingData: 1,
-      leadingFailure: { name: "API", failures: 3, sharePct: 75 },
+      leadingOutage: { name: "API", incidentCount: 3 },
     });
   });
 
   it("uses the fleet P95 median only when both uptime and latency are measured", () => {
     expect(getMonitorRiskPoints(baseReport)).toMatchObject({ medianLatencyMs: 350 });
     expect(getMonitorRiskPoints({ ...baseReport, monitorBreakdown: [] }).medianLatencyMs).toBeNull();
-    expect(getExecutiveInsights({ ...baseReport, dailyMetrics: [], monitorBreakdown: [] }).leadingFailure).toBeNull();
+    expect(getExecutiveInsights({ ...baseReport, dailyMetrics: [], monitorBreakdown: [] }).leadingOutage).toBeNull();
   });
 });

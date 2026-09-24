@@ -22,6 +22,10 @@ export type DraftReport = {
   cadence: ReportCadence;
   template: ReportTemplateVariant;
   companyId: string;
+  monitorIds: string[];
+  excludeMonitorIds: string[];
+  excludeTags: string[];
+  excludeCompanyIds: string[];
   recipients: string;
   deliveryDetailLevel: "summary" | "standard" | "full";
   includeOutageSummary: boolean;
@@ -57,6 +61,10 @@ export const EMPTY_REPORT_DRAFT: DraftReport = {
   cadence: "weekly",
   template: "operations",
   companyId: "",
+  monitorIds: [],
+  excludeMonitorIds: [],
+  excludeTags: [],
+  excludeCompanyIds: [],
   recipients: "",
   deliveryDetailLevel: "standard",
   includeOutageSummary: true,

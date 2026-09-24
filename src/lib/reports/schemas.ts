@@ -25,6 +25,10 @@ const reportPreviewShape = {
   template: reportTemplateSchema.default("operations"),
   companyId: companyIdSchema,
   monitorId: monitorIdSchema,
+  monitorIds: monitorIdsSchema,
+  excludeMonitorIds: exclusionIdsSchema,
+  excludeTags: exclusionTagsSchema,
+  excludeCompanyIds: exclusionIdsSchema,
   deliveryDetailLevel: deliveryDetailLevelSchema.default("standard"),
   includeOutageSummary: z.boolean().default(true),
   includeMonitorBreakdown: z.boolean().default(true),
@@ -59,7 +63,7 @@ export const reportScheduleSchema = z.object({
   recipientEmails: recipientEmailsSchema,
   isActive: z.boolean().default(true),
   nextRunAt: z.string().datetime().nullable().optional(),
-}).omit({ monitorId: true, periodRange: true, periodStartedAt: true, periodEndedAt: true, timeZone: true });
+}).omit({ monitorId: true, monitorIds: true, excludeMonitorIds: true, excludeTags: true, excludeCompanyIds: true, periodRange: true, periodStartedAt: true, periodEndedAt: true, timeZone: true });
 
 export const reportSchedulePatchSchema = z.object({
   id: z.string().trim().min(1).optional(),

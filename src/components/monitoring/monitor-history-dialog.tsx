@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type {
   MonitorDiagnosticRecord,
@@ -13,6 +14,8 @@ import { toEnglishUppercase } from "@/lib/text/casing";
 import { formatLatency } from "@/components/monitoring/utils";
 import { formatPanelDateTime } from "@/lib/time";
 
+const EVENT_CONTEXT_WINDOW_MS = 2 * 60 * 60 * 1000;
+
 export function MonitorHistoryDialog({
   open,
   monitor,
@@ -20,6 +23,7 @@ export function MonitorHistoryDialog({
   diagnostics,
   outageEvents,
   selectedPointId,
+  eventAt,
   onSelectPoint,
   onOpenChange,
 }: {
@@ -29,11 +33,18 @@ export function MonitorHistoryDialog({
   diagnostics: MonitorDiagnosticRecord[];
   outageEvents: MonitorOutageEventRecord[];
   selectedPointId: string | null;
+  eventAt: string | null;
   onSelectPoint: (pointId: string) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const selection = buildMonitorHistoryWindow(points, selectedPointId);
   const latestDiagnostic = diagnostics.length > 0 ? diagnostics[diagnostics.length - 1] : null;
+  const selectedDiagnostic = selection && selection.point.status !== "up"
+    ? diagnostics.find((item) => Math.abs(Date.parse(item.createdAt) - Date.parse(selection.point.createdAt)) < 60_000)
+    : null;
+  const visibleOutageEvents = eventAt
+    ? outageEvents.filter((event) => Math.abs(Date.parse(event.createdAt) - Date.parse(eventAt)) <= EVENT_CONTEXT_WINDOW_MS)
+    : outageEvents;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,6 +53,7 @@ export function MonitorHistoryDialog({
           <DialogTitle>Timeline details</DialogTitle>
           <DialogDescription>
             {monitor ? `${monitor.name} · ${monitor.url}` : "Review the selected monitor check window."}
+            {eventAt ? ` · Event at ${formatDateTime(eventAt)}` : ""}
           </DialogDescription>
         </DialogHeader>
 
@@ -86,7 +98,7 @@ export function MonitorHistoryDialog({
                   <DetailRow label="Latest completed check" value={formatDateTime(selection.latestWindowPoint.createdAt)} />
                   <DetailRow
                     label="Window state"
-                    value={formatWindowState(selection)}
+                    value={formatWindowState(selection, Boolean(eventAt))}
                   />
                   <DetailRow label="Completed checks" value={String(selection.windowPoints.length)} />
                   <DetailRow label="Current monitor status" value={getCurrentMonitorStatusLabel(monitor)} />
@@ -125,40 +137,45 @@ export function MonitorHistoryDialog({
                   {selection.nextPoint ? (
                     <DetailRow label="Next change" value={`${toEnglishUppercase(selection.nextPoint.status)} at ${formatDateTime(selection.nextPoint.createdAt)}`} />
                   ) : (
-                    <DetailRow label="Next change" value="No later state change in the current timeline window" />
+                    <DetailRow label="Next change" value={eventAt ? "No later state change in this event context" : "No later state change in the current timeline window"} />
                   )}
                 </div>
               </div>
             </div>
 
-            {latestDiagnostic ? (
+            {selectedDiagnostic ? (
               <div className="rounded-md bg-muted/20 p-4">
-                <p className="text-sm font-medium">Latest diagnostics</p>
-                <p className="mt-1 text-xs text-muted-foreground">{latestDiagnostic.summary}</p>
+                <p className="text-sm font-medium">Diagnostics recorded near selected check</p>
+                <p className="mt-1 text-xs text-muted-foreground">Recorded {formatDateTime(selectedDiagnostic.createdAt)} · {selectedDiagnostic.summary}</p>
                 <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
-                  <DiagnosticPill label="DNS" value={formatStepStatus(latestDiagnostic.dnsStatus)} />
-                  <DiagnosticPill label="TCP" value={formatStepStatus(latestDiagnostic.tcpStatus)} />
-                  <DiagnosticPill label="TLS" value={formatStepStatus(latestDiagnostic.tlsStatus)} />
+                  <DiagnosticPill label="DNS" value={formatStepStatus(selectedDiagnostic.dnsStatus)} />
+                  <DiagnosticPill label="TCP" value={formatStepStatus(selectedDiagnostic.tcpStatus)} />
+                  <DiagnosticPill label="TLS" value={formatStepStatus(selectedDiagnostic.tlsStatus)} />
                   <DiagnosticPill
                     label="HTTP"
-                    value={latestDiagnostic.httpStatusCode ? `HTTP ${latestDiagnostic.httpStatusCode}` : formatStepStatus(latestDiagnostic.httpStatus)}
+                    value={selectedDiagnostic.httpStatusCode ? `HTTP ${selectedDiagnostic.httpStatusCode}` : formatStepStatus(selectedDiagnostic.httpStatus)}
                   />
                 </div>
                 <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
-                  <span>Failed phase: {latestDiagnostic.failedPhase ?? "--"}</span>
-                  <span>Category: {latestDiagnostic.failureCategory ?? "--"}</span>
-                  <span>Timeout: {latestDiagnostic.timeoutMs}ms</span>
-                  <span className="md:col-span-3">Resolved IPs: {latestDiagnostic.resolvedIps.length > 0 ? latestDiagnostic.resolvedIps.join(", ") : "--"}</span>
-                  {latestDiagnostic.errorMessage ? <span className="md:col-span-3">Error: {latestDiagnostic.errorMessage}</span> : null}
+                  <span>Failed phase: {selectedDiagnostic.failedPhase ?? "--"}</span>
+                  <span>Category: {selectedDiagnostic.failureCategory ?? "--"}</span>
+                  <span>Timeout: {selectedDiagnostic.timeoutMs}ms</span>
+                  <span className="md:col-span-3">Resolved IPs: {selectedDiagnostic.resolvedIps.length > 0 ? selectedDiagnostic.resolvedIps.join(", ") : "--"}</span>
+                  {selectedDiagnostic.errorMessage ? <span className="md:col-span-3">Error: {selectedDiagnostic.errorMessage}</span> : null}
                 </div>
               </div>
+            ) : latestDiagnostic ? (
+              <p className="text-xs text-muted-foreground">No diagnostic was recorded near this check. The latest diagnostic was recorded {formatDateTime(latestDiagnostic.createdAt)}.</p>
             ) : null}
 
-            {outageEvents.length > 0 ? (
+            {visibleOutageEvents.length > 0 ? (
               <div className="rounded-md bg-muted/20 p-4">
-                <p className="text-sm font-medium">Outage timeline</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{eventAt ? "Verification events near this event" : "Verification events"}</p>
+                  <Link href={`/logs?monitorQuery=${encodeURIComponent(monitor.name)}`} className="text-xs font-medium text-primary underline-offset-4 hover:underline">Open monitor logs</Link>
+                </div>
                 <div className="mt-3 grid gap-2">
-                  {outageEvents.map((event) => (
+                  {visibleOutageEvents.map((event) => (
                     <div key={event.id} className="py-3">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-medium">{event.title}</p>
@@ -170,6 +187,11 @@ export function MonitorHistoryDialog({
                 </div>
               </div>
             ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3 text-xs">
+              <p className="text-muted-foreground">Latest delivery for this monitor: {monitor.lastDelivery ? `${monitor.lastDelivery.status} via ${monitor.lastDelivery.channel} · ${formatDateTime(monitor.lastDelivery.createdAt)}` : "No delivery recorded"}</p>
+              <Link href="/delivery#delivery-history" className="font-medium text-primary underline-offset-4 hover:underline">Delivery history</Link>
+            </div>
 
             <div className="rounded-md bg-muted/20 p-4">
               <p className="text-sm font-medium">Recent state flow</p>
@@ -337,10 +359,11 @@ function formatDateTime(value: string) {
 }
 
 function formatWindowState(
-  selection: NonNullable<ReturnType<typeof buildMonitorHistoryWindow>>
+  selection: NonNullable<ReturnType<typeof buildMonitorHistoryWindow>>,
+  historical: boolean,
 ) {
   if (selection.isOngoing || !selection.nextPoint) {
-    return "Ongoing (latest recorded state)";
+    return historical ? "Latest state in this event context" : "Ongoing (latest recorded state)";
   }
 
   return `Ended at ${formatDateTime(selection.nextPoint.createdAt)}`;

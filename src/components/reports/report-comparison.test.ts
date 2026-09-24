@@ -52,4 +52,28 @@ describe("report comparison presentation", () => {
     expect(html).toContain("No prior checks");
     expect(html).toContain("No completed checks");
   });
+
+  it("uses a compact analytics summary when the previous period has no checks", () => {
+    const report = {
+      timeZone: "UTC",
+      comparison: {
+        previousPeriodStartedAt: "2026-09-04T12:00:00.000Z",
+        previousPeriodEndedAt: "2026-09-11T12:00:00.000Z",
+        previousCompletedChecks: 0,
+        previousUptimePct: null,
+        uptimeChangePoints: null,
+        previousP95LatencyMs: null,
+        p95LatencyChangeMs: null,
+        referenceUptimePct: 99.9,
+        budgetUsedPct: 0,
+        budgetRemainingPct: 100,
+      },
+    } as GeneratedReport;
+    const html = renderToStaticMarkup(createElement(ReportComparison, { report, compactWhenNoPrior: true }));
+
+    expect(html).toContain("No previous checks to compare");
+    expect(html).toContain("100.0% remaining");
+    expect(html).not.toContain("Check success change");
+    expect(html).not.toContain("P95 latency change");
+  });
 });

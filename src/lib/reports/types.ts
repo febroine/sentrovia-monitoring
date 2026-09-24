@@ -86,11 +86,15 @@ export interface GeneratedReport {
     downChecks: number;
     pendingChecks: number;
     hasCompletedChecks: boolean;
+    hasUptimeData: boolean;
+    incompleteOutageHistory: boolean;
     hasLatencySamples: boolean;
     uptimePct: number;
     averageLatencyMs: number;
     p95LatencyMs: number;
     failureEvents: number;
+    incidentCount: number;
+    downtimeMs: number;
     impactedMonitors: number;
     failureRatePct: number;
     healthScore: number;
@@ -140,7 +144,8 @@ export interface GeneratedReport {
     monitorId: string;
     name: string;
     url: string;
-    failures: number;
+    incidentCount: number;
+    downtimeMs: number;
     lastFailureAt: string | null;
   }>;
   recentFailures: Array<{
@@ -165,6 +170,7 @@ export interface GeneratedReport {
     lastFailureAt: string | null;
     lastErrorMessage: string | null;
     hasCompletedChecks: boolean;
+    hasUptimeData: boolean;
     hasLatencySamples: boolean;
     uptimePct: number;
     averageLatencyMs: number;
@@ -173,6 +179,8 @@ export interface GeneratedReport {
     upChecks: number;
     downChecks: number;
     pendingChecks: number;
-    failures: number;
+    incidentCount: number;
+    downtimeMs: number;
+    observedMs: number;
   }>;
 }

@@ -178,7 +178,7 @@ function ServicePanel({
 
       <div className="grid grid-cols-2 gap-2 bg-background/20 p-2 sm:grid-cols-4">
         <ServiceDetail label="Health" value={`${service.healthScore} / ${service.healthLabel}`} />
-        <ServiceDetail label="Uptime" value={service.uptime} />
+        <ServiceDetail label="7d uptime" value={service.uptime} />
         <ServiceDetail label="Latency" value={formatLatency(service)} />
         <ServiceDetail
           label={service.hasOpenOutage ? "Outage since" : "Outage"}

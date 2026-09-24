@@ -148,7 +148,7 @@ export function NotificationTemplatePreviewPanel({ settings }: { settings: Setti
               title="Email template preview"
               sandbox=""
               srcDoc={preview.htmlBody}
-              className="h-[480px] w-full bg-[#eef2f7]"
+              className="h-[480px] w-full bg-[#f1f5f9] dark:bg-[#151a1c]"
             />
           ) : (
             <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">Preview will appear here.</div>

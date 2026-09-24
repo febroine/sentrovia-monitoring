@@ -243,7 +243,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What is included in a generated report?",
         answer:
-          "A report includes monitor count, current state mix, uptime percentage, average latency, failure count, affected URLs, latency watchlist, recent failure details, and a ranked monitor breakdown for the selected period. It uses monitor URLs instead of arbitrary monitor names so recipients can understand the affected service quickly.",
+          "A report includes monitor count, current state mix, duration-based uptime, distinct outage count, total downtime, latency, affected URLs, recent failure details, and a ranked monitor breakdown for the selected period. It uses monitor URLs instead of arbitrary monitor names so recipients can understand the affected service quickly.",
       },
       {
         question: "Which file formats are sent with reports?",

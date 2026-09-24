@@ -23,6 +23,19 @@ describe("report schemas", () => {
     expect(parsed.monitorId).toBe("monitor-42");
   });
 
+  it("keeps analytics selection and exclusions in a manual preview", () => {
+    const parsed = reportPreviewSchema.parse({
+      scope: "global",
+      cadence: "weekly",
+      monitorIds: ["monitor-1", "monitor-2"],
+      excludeMonitorIds: ["monitor-2"],
+      excludeTags: ["staging"],
+    });
+    expect(parsed.monitorIds).toEqual(["monitor-1", "monitor-2"]);
+    expect(parsed.excludeMonitorIds).toEqual(["monitor-2"]);
+    expect(parsed.excludeTags).toEqual(["staging"]);
+  });
+
   it("accepts bounded analytics exclusions", () => {
     const parsed = reportAnalyticsQuerySchema.parse({
       excludeMonitorIds: ["monitor-1"],

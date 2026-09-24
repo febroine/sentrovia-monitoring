@@ -121,9 +121,12 @@ export function buildActivationChecklist(input: {
     { id: "monitor", label: "Create the first monitor", href: "/monitoring", complete: input.hasMonitor },
     {
       id: "worker",
-      label: "Verify the monitoring worker",
+      label: "Verify worker connectivity",
       href: "/monitoring",
       complete: input.workerRunning && input.workerConnectivityStatus === "online",
+      detail: input.workerRunning
+        ? "Worker is running; its internet check has not reported online yet. Open Worker Pulse details."
+        : "Start the worker and check its connectivity in Worker Pulse.",
     },
     {
       id: "delivery",
@@ -341,6 +344,8 @@ async function queryRecentDashboardEvents(
   return db
     .select({
       id: monitorEvents.id,
+      monitorId: monitorEvents.monitorId,
+      monitorName: monitors.name,
       eventType: monitorEvents.eventType,
       message: monitorEvents.message,
       statusCode: monitorEvents.statusCode,

@@ -20,9 +20,9 @@ interface NotificationEmailInput {
 }
 
 const TONES = {
-  critical: { accent: "#b91c1c", soft: "#fef2f2", text: "#991b1b", darkAccent: "#ef4444", darkSoft: "#3b1518", darkText: "#fca5a5" },
-  healthy: { accent: "#047857", soft: "#ecfdf5", text: "#065f46", darkAccent: "#34d399", darkSoft: "#0f2922", darkText: "#6ee7b7" },
-  warning: { accent: "#a16207", soft: "#fefce8", text: "#854d0e", darkAccent: "#f59e0b", darkSoft: "#36260d", darkText: "#fcd34d" },
+  critical: { accent: "#b91c1c", text: "#991b1b", darkAccent: "#d98b8b", darkText: "#f0b0b0" },
+  healthy: { accent: "#047857", text: "#065f46", darkAccent: "#8ecdb9", darkText: "#9ad5c1" },
+  warning: { accent: "#a16207", text: "#854d0e", darkAccent: "#d9af70", darkText: "#f1c98e" },
 } as const;
 
 export function renderNotificationEmailHtml(input: NotificationEmailInput) {
@@ -33,41 +33,68 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
 <html lang="${input.language}">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light">
+  <meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
   <style>
-    @media only screen and (max-width:600px){
-      .email-header,.email-section,.email-footer{padding-left:20px!important;padding-right:20px!important}
-      .email-title{font-size:24px!important}
-      .summary-cell{display:block!important;width:auto!important;border-left:0!important;border-top:1px solid #e2e8f0}
+    @media (prefers-color-scheme:dark){
+      .email-canvas{background:#151a1c!important;color:#ecf4f0!important}
+      .email-surface,.email-section{background:#202729!important}
+      .email-surface{border-top-color:${tone.darkAccent}!important}
+      .email-brand{color:#d2e0dc!important}
+      .email-status,.email-status-value{color:${tone.darkText}!important}
+      .email-title{color:#f3f7f5!important}
+      .email-heading,.email-value{color:#ecf4f0!important}
+      .email-copy{color:#b9cbc5!important}
+      .email-target,.email-target-cell,.email-label,.email-muted{color:#a9bcb6!important}
+      .email-summary{border-color:#3a484a!important}
+      .summary-cell{border-left-color:#3a484a!important}
+      .email-detail-cell{border-bottom-color:#3a484a!important}
+      .email-footer{background:#1b2224!important;border-top-color:#3a484a!important;color:#9aafaa!important}
+      .email-button-shell,.email-button-cell,.email-button{background:#16433c!important}
+      .email-button-shell{border-color:#6eb7a1!important}
+      .email-button{color:#ecf4f0!important}
+      .email-link{color:#9ad5c1!important}
+    }
+    @media only screen and (max-width:520px){
+      .email-canvas-pad{padding:14px 10px!important}
+      .email-section,.email-footer{padding-left:22px!important;padding-right:22px!important}
+      .email-title{font-size:25px!important}
+      .email-action-cell,.email-target-cell{display:block!important;width:100%!important;text-align:left!important}
+      .email-target-cell{padding:14px 0 0!important}
+      .summary-cell{display:block!important;width:100%!important;box-sizing:border-box!important;padding:13px 0!important;border-left:0!important;border-top:1px solid #e2e8f0!important}
       .summary-cell:first-child{border-top:0!important}
+      .email-value,.email-status-value{margin-top:3px!important}
+    }
+    @media (prefers-color-scheme:dark) and (max-width:520px){
+      .summary-cell{border-top-color:#3a484a!important}
     }
   </style>
 </head>
-<body class="email-canvas" style="margin:0;background:#f1f5f9;color:#0f172a;font-family:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<body class="email-canvas" style="margin:0;padding:0;background:#f1f5f9;color:#0f172a;font-family:Arial,Helvetica,sans-serif;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(input.monitorTarget)} · ${escapeHtml(input.eventState)} · ${escapeHtml(input.status)}</div>
-  <table class="email-canvas" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f1f5f9" style="background:#f1f5f9;">
-    <tr><td align="center" style="padding:32px 12px;">
-      <table class="email-surface" role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #dbe3ec;border-top:4px solid ${tone.accent};">
-        <tr><td class="email-header" bgcolor="#ffffff" style="background:#ffffff;padding:24px 32px 28px;">
+  <table class="email-canvas" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f1f5f9" style="background:#f1f5f9;border-collapse:collapse;">
+    <tr><td class="email-canvas-pad" align="center" style="padding:34px 12px;">
+      <table class="email-surface" role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:640px;background:#ffffff;border-collapse:collapse;border-top:3px solid ${tone.accent};">
+        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:26px 32px 0;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
             <tr>
-              <td class="email-brand" style="font-size:16px;font-weight:700;color:#0f766e;letter-spacing:-.01em;">${escapeHtml(input.brandName)}</td>
-              <td align="right"><span class="email-status" style="display:inline-block;padding:7px 10px;background:${tone.soft};color:${tone.text};font-size:11px;font-weight:700;line-height:1;letter-spacing:.04em;">${escapeHtml(input.eventState)}</span></td>
+              <td class="email-brand" valign="top" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:.03em;color:#0f766e;word-break:break-word;">${escapeHtml(input.brandName)}</td>
+              <td align="right" valign="top"><span class="email-status" style="color:${tone.text};font-size:11px;font-weight:700;line-height:1.4;letter-spacing:.07em;white-space:nowrap;">${escapeHtml(input.eventState)}</span></td>
             </tr>
           </table>
-          <h1 class="email-title" style="margin:28px 0 6px;font-size:28px;line-height:1.25;letter-spacing:-.02em;color:#0f172a;">${escapeHtml(input.headline)}</h1>
-          <p class="email-muted" style="margin:0;font-size:14px;line-height:1.55;color:#64748b;word-break:break-word;">${escapeHtml(input.monitorTarget)}</p>
-          <p class="email-copy" style="margin:16px 0 0;font-size:15px;line-height:1.65;color:#334155;">${escapeHtml(input.lead)}</p>
-          ${renderPrimaryAction(input.primaryAction)}
         </td></tr>
-        <tr><td class="email-section email-border" bgcolor="#ffffff" style="border-top:1px solid #e2e8f0;background:#ffffff;padding:24px 32px;">
+        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:29px 32px 26px;">
+          <h1 class="email-title" style="margin:0;font-size:28px;line-height:1.2;font-weight:700;letter-spacing:-.015em;color:#0f172a;word-break:break-word;">${escapeHtml(input.headline)}</h1>
+          <p class="email-copy" style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#334155;">${escapeHtml(input.lead)}</p>
+          ${renderPrimaryAction(input.primaryAction, input.monitorTarget)}
+        </td></tr>
+        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:0 32px;">
           ${renderSummary(input.checkedAt, input.status, input.duration, input.durationKind, copy, tone.text)}
         </td></tr>
-        <tr><td class="email-section email-border" bgcolor="#ffffff" style="border-top:1px solid #e2e8f0;background:#ffffff;padding:26px 32px 24px;">
-          <h2 class="email-heading" style="margin:0 0 14px;font-size:18px;line-height:1.4;color:#0f172a;">${escapeHtml(input.contentTitle)}</h2>
+        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:27px 32px 31px;">
+          <h2 class="email-heading" style="margin:0 0 14px;font-size:15px;line-height:1.4;color:#0f172a;">${escapeHtml(input.contentTitle)}</h2>
           ${content}
         </td></tr>
-        <tr><td class="email-footer email-border" bgcolor="#f8fafc" style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:17px 32px;font-size:12px;line-height:1.5;color:#64748b;">
+        <tr><td class="email-footer" bgcolor="#f8fafc" style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:18px 32px 20px;font-size:11px;line-height:1.55;color:#64748b;word-break:break-word;">
           ${escapeHtml(input.footerText || copy.footer)}
         </td></tr>
       </table>
@@ -91,21 +118,25 @@ function renderSummary(
     [copy.checked, checkedAt, false],
   ];
 
-  return `<table class="email-summary" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f8fafc" style="border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;">
-    <tr>${items.map(([label, value, isStatus], index) => `<td class="summary-cell" width="33.33%" valign="top" style="padding:14px 14px;${index > 0 ? "border-left:1px solid #e2e8f0;" : ""}">
-      <div class="email-label" style="font-size:11px;font-weight:700;letter-spacing:.01em;color:#64748b;">${label}</div>
-      <div class="${isStatus ? "email-status-value" : "email-value"}" style="margin-top:6px;font-size:13px;font-weight:600;line-height:1.4;color:${isStatus ? statusColor : "#0f172a"};word-break:break-word;">${escapeHtml(value)}</div>
+  return `<table class="email-summary" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+    <tr>${items.map(([label, value, isStatus], index) => `<td class="summary-cell" width="${index === 0 ? "27%" : index === 1 ? "24%" : "49%"}" valign="top" style="padding:16px 12px;${index > 0 ? "border-left:1px solid #e2e8f0;" : ""}">
+      <div class="email-label" style="font-size:11px;line-height:1.4;color:#64748b;">${label}</div>
+      <div class="${isStatus ? "email-status-value" : "email-value"}" style="margin-top:6px;font-size:15px;font-weight:700;line-height:1.4;color:${isStatus ? statusColor : "#0f172a"};word-break:break-word;">${escapeHtml(value)}</div>
     </td>`).join("")}</tr>
   </table>`;
 }
 
-function renderPrimaryAction(action: NotificationEmailInput["primaryAction"]) {
-  if (!action) return "";
+function renderPrimaryAction(action: NotificationEmailInput["primaryAction"], monitorTarget: string) {
+  if (!action) {
+    return `<p class="email-target" style="margin:20px 0 0;font-size:12px;line-height:1.5;color:#64748b;word-break:break-all;">${escapeHtml(monitorTarget)}</p>`;
+  }
 
-  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:22px;">
-    <tr><td bgcolor="#0f766e" style="background:#0f766e;border-radius:5px;">
-      <a class="email-button" href="${escapeHtml(action.href)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#0f766e;color:#ffffff;padding:12px 20px;font-size:14px;font-weight:700;line-height:1;text-decoration:none;border-radius:5px;">${escapeHtml(action.label)}</a>
-    </td></tr>
+  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:22px;">
+    <tr><td class="email-action-cell" width="150" valign="middle" style="width:150px;">
+      <table class="email-button-shell" role="presentation" cellspacing="0" cellpadding="0" border="0" bgcolor="#0f766e" style="background:#0f766e;border:1px solid #0f766e;border-collapse:collapse;">
+        <tr><td class="email-button-cell" bgcolor="#0f766e" style="background:#0f766e;"><a class="email-button" href="${escapeHtml(action.href)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#0f766e;color:#ffffff;padding:11px 17px;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap;">${escapeHtml(action.label)}</a></td></tr>
+      </table>
+    </td><td class="email-target-cell" valign="middle" style="padding-left:16px;font-size:12px;line-height:1.5;color:#64748b;word-break:break-all;">${escapeHtml(monitorTarget)}</td></tr>
   </table>`;
 }
 
@@ -176,8 +207,8 @@ function renderTemplateContent(body: string, htmlFragments: Record<string, strin
 
 function renderDetailRow(label: string, value: string) {
   return `<tr>
-    <td class="email-detail-cell email-label" valign="top" width="142" style="padding:9px 14px 9px 0;border-bottom:1px solid #edf2f7;font-size:12px;font-weight:700;line-height:1.5;color:#64748b;">${applyInlineFormatting(label)}</td>
-    <td class="email-detail-cell email-copy" valign="top" style="padding:9px 0;border-bottom:1px solid #edf2f7;font-size:14px;line-height:1.55;color:#1e293b;word-break:break-word;">${applyInlineFormatting(value)}</td>
+    <td class="email-detail-cell email-label" valign="top" width="142" style="padding:9px 14px 9px 0;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:700;line-height:1.5;color:#64748b;">${applyInlineFormatting(label)}</td>
+    <td class="email-detail-cell email-copy" valign="top" style="padding:9px 0;border-bottom:1px solid #e2e8f0;font-size:14px;line-height:1.55;color:#334155;word-break:break-word;">${applyInlineFormatting(value)}</td>
   </tr>`;
 }
 

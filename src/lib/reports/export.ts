@@ -6,11 +6,16 @@ import { buildReportSnapshotRows } from "@/lib/reports/presentation";
 import { AVAILABILITY_REFERENCE_PCT, getExecutiveInsights, getMonitorRiskPoints } from "@/lib/reports/analytics-insights";
 import {
   formatMonitorAverageLatency,
+  formatMonitorDowntime,
+  formatMonitorOutageCount,
   formatMonitorP95Latency,
   formatMonitorUptime,
-  formatReportFailureRate,
+  formatOutageDuration,
+  formatReportDowntime,
+  formatReportOutageCount,
   formatReportP95Latency,
   formatReportUptime,
+  formatReportUptimeNote,
 } from "@/lib/reports/metrics";
 
 const EMPTY_REPORT_VALUE = "--";
@@ -152,6 +157,7 @@ const PRINTABLE_REPORT_STYLES = `
     .snapshot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .panel-body { overflow: visible; }
     table { display: table; overflow: visible; white-space: normal; table-layout: fixed; }
+    .breakdown-table th:first-child, .breakdown-table td:first-child { width: 27%; }
     th, td { padding: 7px 4px; font-size: 10px; }
     .panel-header { display: flex; }
     .hero-top { display: flex; }
@@ -189,9 +195,11 @@ export function buildPrintableReportHtml(
     renderReportTablePanel("Failure details", "Recent failures with readable network context.", ["URL", "Code", "Time", "Detail"], recentFailureRows),
     renderReportTablePanel(
       "URL breakdown",
-      "Ranked by failures first, then latency.",
-      ["URL", "Company", "Status", "Code", "Uptime", "Avg latency", "P95", "Failures", "Last failure"],
-      breakdownRows
+      "Ranked by distinct outages, then downtime.",
+      ["URL", "Company", "Status", "Code", "Uptime", "Avg latency", "P95", "Outages / downtime"],
+      breakdownRows,
+      "section",
+      "breakdown-table"
     ),
     `<div class="report-footer">${escapeHtml(report.workspaceName)} &middot; ${escapeHtml(report.periodLabel)} &middot; ${options.output === "pdf" ? "PDF" : "HTML"} report</div>`,
     renderPrintableDocumentEnd(),
@@ -234,37 +242,36 @@ function renderPrintableHero(report: GeneratedReport) {
 
 function renderPrintableStats(report: GeneratedReport) {
   const summary = report.summary;
+  const coverage = report.checkCoverage ? formatReportCheckCoverage(report.checkCoverage) : null;
   const stats = [
-    ["Uptime", formatReportUptime(summary), summary.hasCompletedChecks ? "Completed checks in this period" : "No completed checks in this period"],
-    ["Down now", String(summary.currentlyDown), `${summary.monitorCount} monitors in scope`],
-    ["Failed checks", String(summary.failureEvents), `${formatReportFailureRate(summary)} of completed checks`],
+    ["Uptime", formatReportUptime(summary), formatReportUptimeNote(summary)],
+    ["Outages", formatReportOutageCount(summary), "Distinct incidents in this period"],
+    ["Total downtime", formatReportDowntime(summary), "Across monitors in scope"],
     ["P95 latency", formatReportP95Latency(summary), summary.hasLatencySamples ? "Tail response time" : "No latency samples in this period"],
   ] as const;
-  return `<section class="stats">${stats.map(renderPrintableStat).join("")}</section>`;
+  return `<section class="stats">${stats.map(renderPrintableStat).join("")}</section>${coverage ? `<p class="muted">Check coverage: ${escapeHtml(coverage.value)} · ${escapeHtml(coverage.detail)}. Uptime reflects recorded outages.</p>` : ""}`;
 }
 
 function renderPrintableComparison(report: GeneratedReport) {
   if (!report.comparison) return "";
   const comparison = report.comparison;
   const values = formatReportComparison(comparison);
-  const coverage = report.checkCoverage ? formatReportCheckCoverage(report.checkCoverage) : null;
   return `<section class="brief"><h2>Compared with previous period</h2>
     <p class="muted">${escapeHtml(formatReportDateTime(comparison.previousPeriodStartedAt, report.timeZone))} - ${escapeHtml(formatReportDateTime(comparison.previousPeriodEndedAt, report.timeZone))} · ${comparison.previousCompletedChecks} completed checks in the same monitor scope</p>
     <dl class="brief-grid">
-      <div class="brief-item"><dt>Uptime change</dt><dd>${escapeHtml(values.uptime)}</dd></div>
+      <div class="brief-item"><dt>Check success change</dt><dd>${escapeHtml(values.uptime)}</dd></div>
       <div class="brief-item"><dt>P95 latency change</dt><dd>${escapeHtml(values.latency)}</dd></div>
       <div class="brief-item"><dt>${escapeHtml(values.referenceLabel)} reference budget</dt><dd>${escapeHtml(values.budget)}</dd><p>${escapeHtml(values.budgetDetail)}</p></div>
     </dl>
-    ${coverage ? `<p class="muted">Current period check coverage: ${escapeHtml(coverage.value)} · ${escapeHtml(coverage.detail)}</p>` : ""}
   </section>`;
 }
 
 function renderExecutiveBrief(report: GeneratedReport) {
   const insights = getExecutiveInsights(report);
   const items = [
-    ["Days at 99.9% reference", `${insights.daysAtReference} / ${insights.observedDays}`, "Observed days with completed checks"],
+    ["Check-success days at 99.9%", `${insights.daysAtReference} / ${insights.observedDays}`, "Observed days with completed checks"],
     ["Monitors below reference", String(insights.belowReference), `${insights.missingData} without completed checks`],
-    ["Largest failure contributor", insights.leadingFailure ? `${insights.leadingFailure.sharePct.toFixed(1)}%` : "None", insights.leadingFailure ? `${insights.leadingFailure.name} · ${insights.leadingFailure.failures} failed checks` : "No failed checks in scope"],
+    ["Most outages", report.summary.incompleteOutageHistory ? "No data" : insights.leadingOutage ? String(insights.leadingOutage.incidentCount) : "None", report.summary.incompleteOutageHistory ? "Outage history is incomplete" : insights.leadingOutage ? insights.leadingOutage.name : "No outages in scope"],
   ];
   return `<section class="brief"><h2>Executive brief</h2><dl class="brief-grid">${items.map(([label, value, detail]) => `<div class="brief-item"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd><p>${escapeHtml(detail)}</p></div>`).join("")}</dl><p class="muted">99.9% is a reference threshold, not a configured SLA.</p></section>`;
 }
@@ -273,23 +280,20 @@ function renderTrendCharts(report: GeneratedReport) {
   const observed = report.dailyMetrics.filter((day) => day.upChecks + day.downChecks > 0);
   const { monitors, medianLatencyMs } = getMonitorRiskPoints(report);
   const daily = observed.slice(-30);
-  const failureMax = Math.max(1, ...daily.map((day) => day.downChecks));
   const bars = daily.map((day, index) => {
     const x = 42 + index * 640 / Math.max(1, daily.length);
     const width = Math.max(3, 640 / Math.max(1, daily.length) - 3);
     const uptimeHeight = day.uptimePct / 100 * 125;
-    const failureHeight = day.downChecks / failureMax * 125;
-    const label = escapeHtml(`${day.date}: ${day.uptimePct.toFixed(2)}% availability, ${day.downChecks} failed checks`);
+    const label = escapeHtml(`${day.date}: ${day.uptimePct.toFixed(2)}% successful checks`);
     return {
       availability: `<rect x="${x}" y="${160 - uptimeHeight}" width="${width}" height="${uptimeHeight}" fill="${day.uptimePct < AVAILABILITY_REFERENCE_PCT ? "#dc2626" : "#059669"}"><title>${label}</title></rect>`,
-      failures: `<rect x="${x}" y="${160 - failureHeight}" width="${width}" height="${failureHeight}" fill="#dc2626"><title>${label}</title></rect>`,
     };
   });
   const first = daily[0]?.date ?? "No data";
   const last = daily.at(-1)?.date ?? "";
   const axis = `<line x1="42" y1="160" x2="690" y2="160" class="axis"/><text x="42" y="184" class="tick">${escapeHtml(first)}</text><text x="690" y="184" text-anchor="end" class="tick">${escapeHtml(last)}</text>`;
   const chart = (title: string, note: string, content: string, topLabel: string) => `<section class="chart-panel"><h2>${title}</h2><p>${note}</p>${daily.length ? `<svg viewBox="0 0 720 195" role="img" aria-label="${escapeHtml(title)} from ${escapeHtml(first)} to ${escapeHtml(last)}"><text x="36" y="36" text-anchor="end" class="tick">${topLabel}</text>${axis}${content}</svg>` : `<p>No completed checks in this period.</p>`}</section>`;
-  return `<div class="chart-pair">${chart("Availability trend", "Daily availability from completed checks. Red days are below the 99.9% reference.", bars.map((bar) => bar.availability).join(""), "100%")}${chart("Failed checks by day", "Daily count of confirmed failed checks.", bars.map((bar) => bar.failures).join(""), String(failureMax))}</div><p class="muted">${monitors.length} monitors have both availability and latency samples; fleet median P95: ${medianLatencyMs === null ? "No data" : `${Math.round(medianLatencyMs)}ms`}. Charts show the last ${daily.length} observed days.</p>`;
+  return `${chart("Check success trend", "Daily successful-check ratio; uptime uses outage duration.", bars.map((bar) => bar.availability).join(""), "100%")}<p class="muted">${monitors.length} monitor${monitors.length === 1 ? "" : "s"} have both check-success and latency samples; fleet median P95: ${medianLatencyMs === null ? "No data" : `${Math.round(medianLatencyMs)}ms`}. Chart shows the last ${daily.length} observed days.</p>`;
 }
 
 function renderPrintableStat([label, value, note]: readonly [string, string, string]) {
@@ -329,9 +333,9 @@ function renderPrintableWatchlists(failingRows: string, slowRows: string) {
   return `
     <section class="grid-two">
       ${renderReportTablePanel(
-        "Top failing URLs",
-        "The URLs that failed most often in this period.",
-        ["URL", "Failures", "Last failure"],
+        "URLs with outages",
+        "Distinct outages and downtime in this period.",
+        ["URL", "Outages", "Downtime"],
         failingRows,
         "article"
       )}
@@ -350,7 +354,8 @@ function renderReportTablePanel(
   note: string,
   headers: string[],
   rows: string,
-  element: "section" | "article" = "section"
+  element: "section" | "article" = "section",
+  tableClass = ""
 ) {
   const headerCells = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
   return `
@@ -362,7 +367,7 @@ function renderReportTablePanel(
         </div>
       </div>
       <div class="panel-body">
-        <table>
+        <table class="${tableClass}">
           <thead><tr>${headerCells}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -397,8 +402,7 @@ function renderMonitorBreakdownRow(
       <td>${escapeHtml(formatMonitorUptime(monitor))}</td>
       <td>${escapeHtml(formatMonitorAverageLatency(monitor))}</td>
       <td>${escapeHtml(formatMonitorP95Latency(monitor))}</td>
-      <td>${escapeHtml(String(monitor.failures))}</td>
-      <td>${escapeHtml(monitor.lastFailureAt ? formatReportDateTime(monitor.lastFailureAt, timeZone) : EMPTY_REPORT_VALUE)}</td>
+      <td>${escapeHtml(formatMonitorOutageCount(monitor))}<br><span class="muted">${escapeHtml(formatMonitorDowntime(monitor))}${monitor.hasUptimeData ? " down" : ""}</span></td>
     </tr>
   `;
 }
@@ -451,8 +455,8 @@ function buildFailingMonitorRows(report: GeneratedReport) {
 
   return report.failingMonitors.map((monitor) => [
     monitor.url,
-    String(monitor.failures),
-    monitor.lastFailureAt ? formatReportDateTime(monitor.lastFailureAt, report.timeZone) : EMPTY_REPORT_VALUE,
+    String(monitor.incidentCount),
+    formatOutageDuration(monitor.downtimeMs),
   ]);
 }
 

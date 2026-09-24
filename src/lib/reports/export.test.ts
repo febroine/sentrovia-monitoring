@@ -13,12 +13,13 @@ describe("report exports", () => {
     expect(html).toContain('<dl class="snapshot-grid">');
     expect(html).toContain("<dt>Reporting window</dt>");
     expect(html).toContain("Executive brief");
-    expect(html).toContain("Availability trend");
-    expect(html).toContain("Failed checks by day");
+    expect(html).toContain("Check success trend");
+    expect(html).toContain("Total downtime");
     expect(html).toContain("not a configured SLA");
     expect(html).toContain("What needs attention");
     expect(html).toContain("Failure details");
-    expect(html).toContain("Top failing URLs");
+    expect(html).toContain("URLs with outages");
+    expect(html).not.toContain("Failed checks by day");
     expect(html).toContain("Reporting window");
     expect(html).toContain("period-chip");
     expect(html).toContain("Sentrovia &middot; Last 7 days &middot; HTML report");
@@ -52,8 +53,8 @@ describe("report exports", () => {
     }];
 
     const html = buildPrintableReportHtml(report, { output: "pdf" });
-    expect(html).toContain('role="img" aria-label="Availability trend');
-    expect(html).toContain("80.00% availability, 2 failed checks");
+    expect(html).toContain('role="img" aria-label="Check success trend');
+    expect(html).toContain("80.00% successful checks");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("PDF report");
@@ -113,11 +114,15 @@ function buildSampleReport(): GeneratedReport {
       downChecks: 2,
       pendingChecks: 0,
       hasCompletedChecks: true,
+      hasUptimeData: true,
+      incompleteOutageHistory: false,
       hasLatencySamples: true,
       uptimePct: 90,
       averageLatencyMs: 210,
       p95LatencyMs: 640,
       failureEvents: 2,
+      incidentCount: 1,
+      downtimeMs: 3_600_000,
       impactedMonitors: 1,
       failureRatePct: 10,
       healthScore: 72,
@@ -131,7 +136,7 @@ function buildSampleReport(): GeneratedReport {
     dailyMetrics: [],
     slowMonitors: [{ monitorId: "m1", name: "API", url: "https://api.example.com", averageLatencyMs: 640, checks: 10 }],
     failingMonitors: [
-      { monitorId: "m1", name: "API", url: "https://api.example.com", failures: 2, lastFailureAt: "2026-05-05T07:30:00.000Z" },
+      { monitorId: "m1", name: "API", url: "https://api.example.com", incidentCount: 1, downtimeMs: 3_600_000, lastFailureAt: "2026-05-05T07:30:00.000Z" },
     ],
     recentFailures: [
       {
@@ -158,6 +163,7 @@ function buildSampleReport(): GeneratedReport {
         lastFailureAt: "2026-05-05T07:30:00.000Z",
         lastErrorMessage: "The service did not accept a TCP connection before the timeout.",
         hasCompletedChecks: true,
+        hasUptimeData: true,
         hasLatencySamples: true,
         uptimePct: 80,
         averageLatencyMs: 640,
@@ -166,7 +172,9 @@ function buildSampleReport(): GeneratedReport {
         upChecks: 8,
         downChecks: 2,
         pendingChecks: 0,
-        failures: 2,
+        incidentCount: 1,
+        downtimeMs: 3_600_000,
+        observedMs: 604_800_000,
       },
     ],
   };

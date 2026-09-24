@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CompanyRecord } from "@/lib/companies/types";
+import type { SettingsPayload } from "@/lib/settings/types";
 import type { MonitorPayload } from "@/lib/monitors/types";
 import { CheckMonitorSettings, GeneralMonitorSettings } from "@/components/monitoring/monitor-form-sections";
 import {
@@ -18,6 +19,7 @@ export function MonitorForm({
   initialValue,
   companies,
   savedEmails,
+  settings,
   submitting,
   submitLabel,
   mode = "single",
@@ -28,6 +30,7 @@ export function MonitorForm({
   initialValue: MonitorPayload;
   companies: CompanyRecord[];
   savedEmails: string[];
+  settings: SettingsPayload | null;
   submitting: boolean;
   submitLabel: string;
   mode?: MonitorFormMode;
@@ -128,7 +131,7 @@ export function MonitorForm({
         </TabsContent>
 
         <TabsContent value="notification" className="mt-0">
-          <NotificationMonitorSettings values={values} savedEmails={savedEmails} onFieldChange={setField} />
+          <NotificationMonitorSettings values={values} savedEmails={savedEmails} companies={companies} settings={settings} existingMonitor={Boolean(monitorId)} onFieldChange={setField} />
         </TabsContent>
 
         <TabsContent value="templates" className="mt-0">

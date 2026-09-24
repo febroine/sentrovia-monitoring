@@ -268,7 +268,7 @@ export function MonitorTable({
                 {visibleColumns.includes("company") ? <TableCell className="overflow-hidden px-1.5"><span className="block truncate" title={monitor.company ?? undefined}>{monitor.company ?? "--"}</span></TableCell> : null}
                 {visibleColumns.includes("observed") ? <TableCell className="overflow-hidden px-1.5 tabular-nums">
                   <span className="block truncate text-muted-foreground" title={formatLastChecked(monitor.lastCheckedAt)}>{formatLastChecked(monitor.lastCheckedAt)}</span>
-                  <span className="mt-1 block truncate text-[10px] text-muted-foreground" title={`${monitor.uptime} uptime`}>{monitor.uptime} uptime</span>
+                  <span className="mt-1 block truncate text-[10px] text-muted-foreground" title={`${monitor.uptime} uptime over 7 days from recorded outages; historical pauses may count as uptime`}>{monitor.uptime} uptime</span>
                 </TableCell> : null}
                 {visibleColumns.includes("delivery") ? <TableCell className="overflow-hidden px-1.5">
                   <LastDelivery monitor={monitor} />

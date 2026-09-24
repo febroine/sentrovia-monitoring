@@ -473,7 +473,7 @@ function ActivationProgressStrip({ activation }: { activation: DashboardData["ac
                 {completed} of {total} steps complete
               </span>
             </div>
-            <p className="truncate text-xs text-muted-foreground">Next: {nextStep.label}</p>
+            <p className="text-xs text-muted-foreground">Next: {nextStep.label}. {nextStep.detail}</p>
           </div>
         </div>
 
@@ -632,6 +632,9 @@ function PanelRecentEvents({
                     {event.statusCode !== null ? `HTTP ${event.statusCode}` : "No status code"}
                     {event.latencyMs !== null ? ` / ${event.latencyMs}ms` : ""}
                   </p>
+                  <Link href={`/monitoring?search=${encodeURIComponent(event.monitorName)}&timeline=${encodeURIComponent(event.monitorId)}&at=${encodeURIComponent(new Date(event.createdAt).toISOString())}`} className="mt-1 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline">
+                    Review {event.monitorName} timeline
+                  </Link>
                 </div>
               </div>
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground">

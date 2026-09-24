@@ -78,6 +78,8 @@ export default function MonitoringPage() {
   const searchParams = useSearchParams();
   const requestedSearch = searchParams.get("search")?.trim() ?? "";
   const requestedCreate = searchParams.get("create") === "1";
+  const requestedTimeline = searchParams.get("timeline")?.trim() ?? "";
+  const requestedTimelineAt = searchParams.get("at")?.trim() ?? "";
   const {
     monitors,
     pagination,
@@ -107,6 +109,7 @@ export default function MonitoringPage() {
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
+  const [mobileDisplayOpen, setMobileDisplayOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<MonitorOptionalColumn[]>(DEFAULT_MONITOR_COLUMNS);
   const [preferencesLoadedFor, setPreferencesLoadedFor] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -132,6 +135,7 @@ export default function MonitoringPage() {
   const [outageEventsByMonitor, setOutageEventsByMonitor] = useState<Record<string, MonitorOutageEventRecord[]>>({});
   const [timelineMonitor, setTimelineMonitor] = useState<MonitorRecord | null>(null);
   const [selectedTimelinePointId, setSelectedTimelinePointId] = useState<string | null>(null);
+  const [timelineEventAt, setTimelineEventAt] = useState<string | null>(null);
   const [activeTogglePendingId, setActiveTogglePendingId] = useState<string | null>(null);
   const [pausePendingId, setPausePendingId] = useState<string | null>(null);
   const [pauseTargetIds, setPauseTargetIds] = useState<string[]>([]);
@@ -142,6 +146,7 @@ export default function MonitoringPage() {
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
   const [pendingRestores, setPendingRestores] = useState<PendingMonitorRestore[]>([]);
   const latestTimelineRequestRef = useRef(0);
+  const openedTimelineLinkRef = useRef<string | null>(null);
   const historyRequestsRef = useRef(new LatestRequestCommitter());
   const supportingDataRequestsRef = useRef(new LatestRequestCommitter());
   const canManageMonitors = workspaceSettings
@@ -241,13 +246,13 @@ export default function MonitoringPage() {
     );
   }, []);
 
-  const loadMonitorHistory = useCallback(async (monitorId: string) => {
+  const loadMonitorHistory = useCallback(async (monitorId: string, at?: string) => {
     const snapshot = await historyRequestsRef.current.run(
       monitorId,
       async () => {
         try {
           const response = await fetch(
-            `/api/monitors/history?monitorId=${encodeURIComponent(monitorId)}`,
+            `/api/monitors/history?monitorId=${encodeURIComponent(monitorId)}${at ? `&at=${encodeURIComponent(at)}` : ""}`,
             { cache: "no-store" }
           );
           const data = await readJsonOrNull<{
@@ -677,8 +682,33 @@ export default function MonitoringPage() {
       return;
     }
     setTimelineMonitor(monitor);
+    setTimelineEventAt(null);
     setSelectedTimelinePointId(points.at(-1)?.id ?? null);
   }
+
+  useEffect(() => {
+    const linkKey = `${requestedTimeline}:${requestedTimelineAt}`;
+    if (!requestedTimeline || openedTimelineLinkRef.current === linkKey) return;
+    const monitor = monitors.find((item) => item.id === requestedTimeline);
+    if (!monitor) return;
+    openedTimelineLinkRef.current = linkKey;
+    const requestId = ++latestTimelineRequestRef.current;
+    void loadMonitorHistory(monitor.id, requestedTimelineAt).then((points) => {
+      if (points === null || requestId !== latestTimelineRequestRef.current) {
+        openedTimelineLinkRef.current = null;
+        return;
+      }
+      setTimelineMonitor(monitor);
+      setTimelineEventAt(requestedTimelineAt || null);
+      const eventTime = Date.parse(requestedTimelineAt);
+      const nearestPoint = Number.isFinite(eventTime)
+        ? points.reduce<MonitorHistoryPoint | null>((closest, point) =>
+            !closest || Math.abs(Date.parse(point.createdAt) - eventTime) < Math.abs(Date.parse(closest.createdAt) - eventTime)
+              ? point : closest, null)
+        : points.at(-1) ?? null;
+      setSelectedTimelinePointId(nearestPoint?.id ?? null);
+    });
+  }, [loadMonitorHistory, monitors, requestedTimeline, requestedTimelineAt]);
 
   return (
     <div className="min-w-0 space-y-5 animate-in fade-in duration-200">
@@ -741,8 +771,8 @@ export default function MonitoringPage() {
         }}
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        <div className="relative flex-1">
+      <div className="grid gap-3 sm:grid-cols-2 xl:flex xl:flex-wrap xl:items-center">
+        <div className="relative sm:col-span-2 xl:min-w-44 xl:flex-1">
           <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <Input
             value={search}
@@ -761,7 +791,7 @@ export default function MonitoringPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-full sm:w-56">
+          <SelectTrigger className="w-full xl:w-56">
             <SelectValue placeholder="Filter by company" />
           </SelectTrigger>
           <SelectContent>
@@ -771,37 +801,51 @@ export default function MonitoringPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={sort} onValueChange={(value) => { setSort(value as typeof sort); setPage(1); }}>
-          <SelectTrigger className="w-full sm:w-44" aria-label="Sort monitors"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="createdAt">Date added</SelectItem>
-            <SelectItem value="name">Name</SelectItem>
-            <SelectItem value="status">Status</SelectItem>
-            <SelectItem value="lastCheckedAt">Last checked</SelectItem>
-            <SelectItem value="latencyMs">Latency</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant="outline" aria-label={`Sort ${direction === "asc" ? "descending" : "ascending"}`} onClick={() => { setDirection((current) => current === "asc" ? "desc" : "asc"); setPage(1); }}>
-          {direction === "asc" ? "Ascending" : "Descending"}
-        </Button>
-        <Select
-          value={String(pageSize)}
-          onValueChange={(value) => {
-            setPageSize(Number(value) as (typeof PAGE_SIZE_OPTIONS)[number]);
-            setPage(1);
-          }}
+        <button
+          type="button"
+          className="rounded-md border border-input px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:hidden"
+          aria-expanded={mobileDisplayOpen}
+          aria-controls="monitor-display-controls"
+          onClick={() => setMobileDisplayOpen((open) => !open)}
         >
-          <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="Rows per page" />
-          </SelectTrigger>
-          <SelectContent>
-            {PAGE_SIZE_OPTIONS.map((option) => (
-              <SelectItem key={option} value={String(option)}>
-                {option === ALL_MONITORS_PAGE_SIZE ? "Show all" : `Show ${option}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <span className="block font-medium">Sort and display</span>
+          <span className="block text-xs text-muted-foreground">
+            {{ createdAt: "Date added", name: "Name", status: "Status", lastCheckedAt: "Last checked", latencyMs: "Latency" }[sort]} · {direction === "asc" ? "Ascending" : "Descending"} · {pageSize} rows
+          </span>
+        </button>
+        <div id="monitor-display-controls" className={`${mobileDisplayOpen ? "grid" : "hidden"} gap-3 sm:contents`}>
+          <Select value={sort} onValueChange={(value) => { setSort(value as typeof sort); setPage(1); }}>
+            <SelectTrigger className="w-full xl:w-44" aria-label="Sort monitors"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="createdAt">Date added</SelectItem>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
+              <SelectItem value="lastCheckedAt">Last checked</SelectItem>
+              <SelectItem value="latencyMs">Latency</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" className="w-full xl:w-auto" aria-label={`Sort ${direction === "asc" ? "descending" : "ascending"}`} onClick={() => { setDirection((current) => current === "asc" ? "desc" : "asc"); setPage(1); }}>
+            {direction === "asc" ? "Ascending" : "Descending"}
+          </Button>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(value) => {
+              setPageSize(Number(value) as (typeof PAGE_SIZE_OPTIONS)[number]);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full xl:w-40">
+              <SelectValue placeholder="Rows per page" />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <SelectItem key={option} value={String(option)}>
+                  {option === ALL_MONITORS_PAGE_SIZE ? "Show all" : `Show ${option}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <details className="relative hidden xl:block">
           <summary className="flex h-8 cursor-pointer list-none items-center rounded-md border border-input px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
             Columns
@@ -1074,6 +1118,7 @@ export default function MonitoringPage() {
             initialValue={defaultForm}
             companies={companies}
             savedEmails={savedEmails}
+            settings={workspaceSettings}
             submitting={saving}
             submitLabel="Save monitor"
             onCancel={() => setCreateOpen(false)}
@@ -1093,6 +1138,7 @@ export default function MonitoringPage() {
               initialValue={payloadFromMonitor(editingMonitor)}
               companies={companies}
               savedEmails={savedEmails}
+              settings={workspaceSettings}
               submitting={saving}
               monitorId={editingMonitor.id}
               submitLabel="Save changes"
@@ -1120,6 +1166,7 @@ export default function MonitoringPage() {
               initialValue={bulkEditTemplate}
               companies={companies}
               savedEmails={savedEmails}
+              settings={workspaceSettings}
               submitting={saving}
               submitLabel="Apply to selected monitors"
               mode="bulk"
@@ -1251,11 +1298,13 @@ export default function MonitoringPage() {
         diagnostics={timelineMonitor ? diagnosticsByMonitor[timelineMonitor.id] ?? [] : []}
         outageEvents={timelineMonitor ? outageEventsByMonitor[timelineMonitor.id] ?? [] : []}
         selectedPointId={selectedTimelinePointId}
+        eventAt={timelineEventAt}
         onSelectPoint={setSelectedTimelinePointId}
         onOpenChange={(open) => {
           if (!open) {
             setTimelineMonitor(null);
             setSelectedTimelinePointId(null);
+            setTimelineEventAt(null);
           }
         }}
       />

@@ -3,6 +3,7 @@ export interface DashboardActivationStep {
   label: string;
   href: string;
   complete: boolean;
+  detail?: string;
 }
 
 export interface DashboardActivation {

@@ -31,8 +31,8 @@ describe("PDF report rendering", () => {
       summary: {
         monitorCount: 0, currentlyUp: 0, currentlyDown: 0, currentlyPending: 0, currentlyPaused: 0,
         totalChecks: 0, upChecks: 0, downChecks: 0, pendingChecks: 0,
-        hasCompletedChecks: false, hasLatencySamples: false, uptimePct: 0, p95LatencyMs: 0,
-        averageLatencyMs: 0, failureEvents: 0, impactedMonitors: 0, failureRatePct: 0,
+        hasCompletedChecks: false, hasUptimeData: false, incompleteOutageHistory: false, hasLatencySamples: false, uptimePct: 0, p95LatencyMs: 0,
+        averageLatencyMs: 0, failureEvents: 0, incidentCount: 0, downtimeMs: 0, impactedMonitors: 0, failureRatePct: 0,
         healthScore: 0, healthStatus: "No data",
       },
     } satisfies GeneratedReport;

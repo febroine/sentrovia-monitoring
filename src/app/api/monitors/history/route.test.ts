@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -51,5 +52,24 @@ describe("monitor history route", () => {
     const response = await GET();
 
     expect(response.status).toBe(503);
+  });
+
+  it("loads history around a linked event instead of the latest checks", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/monitors/history?monitorId=monitor-1&at=2026-09-23T15%3A33%3A57.000Z"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.listRecentMonitorChecks).toHaveBeenCalledWith(
+      "user-1", 12, undefined, "monitor-1", new Date("2026-09-23T15:33:57.000Z")
+    );
+    expect(mocks.listRecentMonitorDiagnostics).toHaveBeenCalledWith(
+      "user-1", 3, undefined, "monitor-1", new Date("2026-09-23T15:33:57.000Z")
+    );
+  });
+
+  it("rejects an invalid linked event time", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/monitors/history?monitorId=monitor-1&at=invalid"));
+
+    expect(response.status).toBe(400);
+    expect(mocks.listRecentMonitorChecks).not.toHaveBeenCalled();
   });
 });

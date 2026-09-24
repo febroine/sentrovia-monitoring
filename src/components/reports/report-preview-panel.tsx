@@ -6,15 +6,21 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReportComparison } from "@/components/reports/report-comparison";
+import { formatReportCheckCoverage } from "@/lib/monitors/check-coverage";
 import {
   formatMonitorAverageLatency,
+  formatMonitorDowntime,
+  formatMonitorOutageCount,
   formatMonitorP95Latency,
   formatMonitorUptime,
+  formatOutageDuration,
+  formatReportDowntime,
+  formatReportOutageCount,
   formatReportAverageLatency,
-  formatReportFailureRate,
   formatReportHealthScore,
   formatReportP95Latency,
   formatReportUptime,
+  formatReportUptimeNote,
 } from "@/lib/reports/metrics";
 import type { GeneratedReport } from "@/lib/reports/types";
 import { formatPanelDateTime } from "@/lib/time";
@@ -39,6 +45,7 @@ export function ReportPreviewPanel({
 }
 
 function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; onExportHtml: () => void }) {
+  const coverage = report.checkCoverage ? formatReportCheckCoverage(report.checkCoverage) : null;
   return (
     <section className="rounded-lg bg-card/55 p-4 shadow-sm">
       <div className="rounded-md bg-muted/20 p-3">
@@ -59,21 +66,26 @@ function ReportSummaryCard({ report, onExportHtml }: { report: GeneratedReport; 
       </div>
       <div className="space-y-4 py-4">
         <dl className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} tone={report.summary.hasCompletedChecks ? healthScoreTone(report.summary.healthScore) : "text-muted-foreground"} />
+          <PreviewMetric label="Health" value={formatReportHealthScore(report.summary)} detail={report.summary.healthStatus} tone={report.summary.hasUptimeData ? healthScoreTone(report.summary.healthScore) : "text-muted-foreground"} />
           <PreviewMetric label="Monitors" value={String(report.summary.monitorCount)} tone="text-muted-foreground" />
-          <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={uptimeTone(report.summary.uptimePct, report.summary.hasCompletedChecks)} />
+          <PreviewMetric label="Uptime" value={formatReportUptime(report.summary)} detail={formatReportUptimeNote(report.summary)} tone={uptimeTone(report.summary.uptimePct, report.summary.hasUptimeData)} />
           <PreviewMetric label="P95 latency" value={formatReportP95Latency(report.summary)} detail={report.summary.hasLatencySamples ? `${formatReportAverageLatency(report.summary)} avg` : "no latency samples"} tone={report.summary.hasLatencySamples ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"} />
-          <PreviewMetric label="Failure events" value={String(report.summary.failureEvents)} detail="confirmed down checks" tone={riskCountTone(report.summary.failureEvents)} />
-          <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with failure events" tone={riskCountTone(report.summary.impactedMonitors)} />
-          <PreviewMetric label="Failure rate" value={formatReportFailureRate(report.summary)} detail={report.summary.hasCompletedChecks ? undefined : "no completed checks"} tone={failureRateTone(report.summary.failureRatePct, report.summary.hasCompletedChecks)} />
+          <PreviewMetric label="Outages" value={formatReportOutageCount(report.summary)} detail="distinct incidents" tone={riskCountTone(report.summary.incidentCount)} />
+          <PreviewMetric label="Total downtime" value={formatReportDowntime(report.summary)} detail="within report period" tone={riskCountTone(report.summary.downtimeMs)} />
+          <PreviewMetric label="Impacted" value={String(report.summary.impactedMonitors)} detail="monitors with outages" tone={riskCountTone(report.summary.impactedMonitors)} />
         </dl>
+        {coverage ? (
+          <p className="text-xs leading-5 text-muted-foreground">
+            Check coverage: <span className="font-medium tabular-nums text-foreground">{coverage.value}</span>. {coverage.detail}. Health reflects recorded outages, so review coverage before interpreting the score.
+          </p>
+        ) : null}
         <dl className="grid gap-2 md:grid-cols-4">
           <StateChip tone="emerald" label="Up now" value={String(report.summary.currentlyUp)} />
           <StateChip tone="rose" label="Down now" value={String(report.summary.currentlyDown)} />
           <StateChip tone="amber" label="Pending now" value={String(report.summary.currentlyPending)} />
           <StateChip tone="slate" label="Paused now" value={String(report.summary.currentlyPaused)} />
         </dl>
-        <ReportComparison report={report} />
+        <ReportComparison report={report} showCoverage={false} />
       </div>
     </section>
   );
@@ -97,7 +109,7 @@ function ReportFindings({ report }: { report: GeneratedReport }) {
 }
 
 function ReportWatchlists({ report }: { report: GeneratedReport }) {
-  const maxFailureCount = Math.max(1, ...report.failingMonitors.map((monitor) => monitor.failures));
+  const maxFailureCount = Math.max(1, ...report.failingMonitors.map((monitor) => monitor.incidentCount));
   return (
     <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
       <FailingMonitorsCard report={report} maxFailureCount={maxFailureCount} />
@@ -109,10 +121,10 @@ function ReportWatchlists({ report }: { report: GeneratedReport }) {
 function FailingMonitorsCard({ report, maxFailureCount }: { report: GeneratedReport; maxFailureCount: number }) {
   return (
     <section className="rounded-lg bg-card/45 p-4" aria-labelledby="failing-monitors-title">
-      <h3 id="failing-monitors-title" className="text-base font-medium">Top failing monitors</h3>
+      <h3 id="failing-monitors-title" className="text-base font-medium">Monitors with outages</h3>
       <div className="mt-3 grid gap-2">
         {report.failingMonitors.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No failures during the selected period.</p>
+          <p className="text-sm text-muted-foreground">{report.summary.incompleteOutageHistory ? "Outage history is incomplete for this period." : "No outages during the selected period."}</p>
         ) : report.failingMonitors.map((monitor) => (
           <div key={monitor.monitorId} className="rounded-md bg-muted/25 p-4">
             <div className="flex items-start justify-between gap-3">
@@ -122,10 +134,10 @@ function FailingMonitorsCard({ report, maxFailureCount }: { report: GeneratedRep
                   {monitor.lastFailureAt ? `Last failure ${formatReportDateTime(monitor.lastFailureAt, report.timeZone)}` : "No timestamp recorded"}
                 </p>
               </div>
-              <span className="text-xs font-medium text-muted-foreground">{monitor.failures} failures</span>
+              <span className="text-xs font-medium text-muted-foreground">{monitor.incidentCount} outages · {formatOutageDuration(monitor.downtimeMs)} down</span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-rose-500" style={{ width: getFailureBarWidth(monitor.failures, maxFailureCount) }} />
+              <div className="h-full rounded-full bg-rose-500" style={{ width: getFailureBarWidth(monitor.incidentCount, maxFailureCount) }} />
             </div>
           </div>
         ))}
@@ -196,7 +208,7 @@ function MonitorBreakdown({ report }: { report: GeneratedReport }) {
         <h3 className="flex items-center gap-2 text-base font-medium">
           <Activity className="size-4 text-emerald-600 dark:text-emerald-400" /> Monitor breakdown
         </h3>
-        <p className="text-sm text-muted-foreground">Ranked by failures, then average latency.</p>
+        <p className="text-sm text-muted-foreground">Ranked by outages, then downtime.</p>
       </div>
       <div className="grid gap-2 pt-3">
         {report.monitorBreakdown.map((monitor) => (
@@ -208,7 +220,7 @@ function MonitorBreakdown({ report }: { report: GeneratedReport }) {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {monitor.pausedUntil
                     ? `Paused until ${formatReportDateTime(monitor.pausedUntil, report.timeZone)}`
-                    : `Status ${monitor.status} / HTTP ${monitor.currentStatusCode ?? "N/A"}`} / {monitor.failures} failures
+                    : `Status ${monitor.status} / HTTP ${monitor.currentStatusCode ?? "N/A"}`} · Outages: {formatMonitorOutageCount(monitor)} · Downtime: {formatMonitorDowntime(monitor)}
                 </p>
                 {monitor.lastErrorMessage ? <p className="mt-2 text-xs leading-5 text-destructive">{monitor.lastErrorMessage}</p> : null}
               </div>
@@ -269,13 +281,6 @@ function riskCountTone(count: number) {
   return count > 0
     ? "text-rose-600 dark:text-rose-400"
     : "text-muted-foreground";
-}
-
-function failureRateTone(rate: number, hasCompletedChecks: boolean) {
-  if (!hasCompletedChecks) return "text-muted-foreground";
-  if (rate === 0) return "text-emerald-600 dark:text-emerald-400";
-  if (rate < 5) return "text-amber-600 dark:text-amber-400";
-  return "text-rose-600 dark:text-rose-400";
 }
 
 function StateChip({

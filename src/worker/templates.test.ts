@@ -18,11 +18,11 @@ describe("notification templates", () => {
     expect(rendered.htmlBody).not.toContain("Open monitoring");
     expect(rendered.htmlBody).not.toContain("https://sentrovia.example.com/monitoring");
     expect(rendered.htmlBody).toContain("API");
-    expect(rendered.htmlBody).toContain("font-family:'IBM Plex Sans'");
-    expect(rendered.htmlBody).toContain('content="light only"');
-    expect(rendered.htmlBody).not.toContain("prefers-color-scheme:dark");
-    expect(rendered.htmlBody).not.toContain("data-ogsc");
-    expect(rendered.htmlBody).not.toMatch(/Arial|Helvetica/);
+    expect(rendered.htmlBody).toContain("font-family:Arial,Helvetica,sans-serif");
+    expect(rendered.htmlBody).toContain('content="light dark"');
+    expect(rendered.htmlBody).toContain('bgcolor="#f1f5f9"');
+    expect(rendered.htmlBody).toContain('@media (prefers-color-scheme:dark)');
+    expect(rendered.htmlBody).toContain('.email-summary{border-color:#3a484a!important}');
   });
 
   it("does not let markdown formatting corrupt links containing underscores", () => {
@@ -80,12 +80,18 @@ describe("notification templates", () => {
           ...DEFAULT_SETTINGS.notifications,
           notificationEmailBrandName: "IHLAS HOLDING",
           notificationEmailFooterText: "İhlas altyapı izleme bildirimi",
+          defaultEmailSubjectTemplate: "Incident: {name}",
+          defaultEmailHeadlineTemplate: "Investigate {name}",
         },
       },
       "https://sentrovia.example.com"
     );
 
     expect(rendered.htmlBody).toContain(">IHLAS HOLDING</td>");
+    expect(rendered.subject).toBe("Incident: API");
+    expect(rendered.htmlBody).toContain("<h1 class=\"email-title\"");
+    expect(rendered.htmlBody).toContain("Investigate API</h1>");
+    expect(rendered.htmlBody).toContain(">Investigating</td>");
     expect(rendered.htmlBody).toContain("İhlas altyapı izleme bildirimi");
     expect(rendered.htmlBody).toContain("margin:16px 0 12px");
   });
@@ -256,8 +262,46 @@ describe("notification templates", () => {
       "https://sentrovia.example.com"
     );
 
-    expect(rendered.htmlBody).toContain("#047857");
+    expect(rendered.htmlBody).toContain("#8ecdb9");
     expect(rendered.htmlBody).toContain("UP");
+  });
+
+  it("does not color a successful status-code change as an outage", () => {
+    const context = buildContext();
+    const rendered = renderNotificationTemplates(
+      {
+        ...context,
+        kind: "status-change",
+        message: "Status code changed from 200 to 201.",
+        result: {
+          ...context.result,
+          ok: true,
+          status: "up",
+          statusCode: 201,
+          latencyMs: 120,
+          errorMessage: null,
+          failureReason: null,
+        },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).toContain(">UP</span>");
+    expect(rendered.htmlBody).toContain("border-top:3px solid #047857");
+    expect(rendered.htmlBody).not.toContain("border-top:3px solid #b91c1c");
+
+    const failedChange = renderNotificationTemplates(
+      {
+        ...context,
+        kind: "status-change",
+        message: "Status code changed from 500 to 502.",
+        result: { ...context.result, statusCode: 502 },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+    expect(failedChange.htmlBody).toContain("border-top:3px solid #b91c1c");
   });
 
   it("does not render non-http monitor URLs as clickable email links", () => {
@@ -384,7 +428,7 @@ describe("notification templates", () => {
     );
 
     expect(rendered.htmlBody).toContain("Check duration");
-    expect(rendered.htmlBody).toContain('content="light only"');
+    expect(rendered.htmlBody).toContain('content="light dark"');
     expect(rendered.htmlBody).not.toContain("text-transform:uppercase");
     expect(rendered.htmlBody).not.toContain("Response time");
     expect(rendered.htmlBody).toContain("19001 ms");

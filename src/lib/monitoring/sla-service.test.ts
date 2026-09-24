@@ -1,45 +1,31 @@
-import { describe, expect, it, vi } from "vitest";
-import { calculateSlaPeriod, loadOutageCountsOrFallback } from "@/lib/monitoring/sla-service";
+import { describe, expect, it } from "vitest";
+import { calculateSlaPeriod } from "@/lib/monitoring/sla-service";
 
 describe("SLA period calculations", () => {
-  it("calculates uptime from all settled checks", () => {
-    expect(calculateSlaPeriod("24h SLA", 90, 10, 100)).toEqual({
+  it("uses duration-based availability and keeps checks as context", () => {
+    expect(calculateSlaPeriod("24h SLA", { hasData: true, uptimePct: 95.83, incidentCount: 1, completedChecks: 100 })).toEqual({
       label: "24h SLA",
       hasData: true,
-      uptimePct: 90,
-      outages: 10,
+      uptimePct: 95.83,
+      outages: 1,
       totalChecks: 100,
     });
   });
 
   it("marks an empty period as unavailable instead of fully healthy", () => {
-    expect(calculateSlaPeriod("7d SLA", 0, 0, 0)).toMatchObject({
+    expect(calculateSlaPeriod("7d SLA")).toMatchObject({
       hasData: false,
       uptimePct: 0,
       totalChecks: 0,
     });
   });
 
-  it("bounds inconsistent check counts while preserving the independent outage count", () => {
-    expect(calculateSlaPeriod("24h SLA", 12, 14, 10)).toMatchObject({
-      uptimePct: 100,
-      outages: 14,
+  it("does not present incomplete outage history as healthy uptime", () => {
+    expect(calculateSlaPeriod("24h SLA", { hasData: false, uptimePct: 100, incidentCount: 0, completedChecks: 10 })).toMatchObject({
+      hasData: false,
+      uptimePct: 0,
+      outages: 0,
       totalChecks: 10,
     });
-  });
-
-  it("keeps SLA check history available when outage counts cannot be loaded", async () => {
-    const error = new Error("outage history unavailable");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    await expect(loadOutageCountsOrFallback(Promise.reject(error))).resolves.toEqual({
-      total24Hours: 0,
-      total7Days: 0,
-    });
-    expect(consoleError).toHaveBeenCalledWith(
-      "[sentrovia] Outage counts unavailable; SLA uptime will use monitor check history.",
-      error
-    );
-    consoleError.mockRestore();
   });
 });

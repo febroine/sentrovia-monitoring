@@ -1,13 +1,14 @@
 import crypto from "node:crypto";
-import { and, asc, desc, eq, exists, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { AuthError } from "@/lib/auth/errors";
 import { getCompanyById } from "@/lib/companies/service";
 import { buildReportComparison, previousReportPeriod } from "@/lib/reports/comparison";
 import { db } from "@/lib/db";
-import { companies, monitorChecks, monitorEvents, monitors, reportSchedules } from "@/lib/db/schema";
+import { companies, monitorChecks, monitorEvents, monitorOutages, monitors, reportSchedules } from "@/lib/db/schema";
 import { sendEmailDelivery } from "@/lib/delivery/service";
 import { estimateReportCheckCoverage } from "@/lib/monitors/check-coverage";
 import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
+import { calculateMonitorReportDurationMs, calculateTimeUptimePct, summarizeOutages, type OutageMetrics } from "@/lib/outages/metrics";
 import {
   buildReportAttachments,
   buildReportMessage,
@@ -57,6 +58,12 @@ function eventOwnershipCondition(userId: string, workspaceId?: string) {
   return workspaceId
     ? eq(monitorEvents.workspaceId, workspaceId)
     : eq(monitorEvents.userId, userId);
+}
+
+function outageOwnershipCondition(userId: string, workspaceId?: string) {
+  return workspaceId
+    ? eq(monitorOutages.workspaceId, workspaceId)
+    : eq(monitorOutages.userId, userId);
 }
 
 function companySubject(userId: string, workspaceId?: string) {
@@ -323,17 +330,31 @@ export async function generateReportPreview(
   const checksByMonitor = new Map(scoped.checkAggregates.map((item) => [item.monitorId, item]));
   const currentStates = summarizeCurrentMonitorStates(scoped.monitorRows);
   const slowMonitors = buildSlowMonitorSummary(scoped.monitorRows, checksByMonitor);
-  const failingMonitors = buildFailingMonitorSummary(scoped.monitorRows, checksByMonitor);
-  const monitorBreakdown = buildMonitorBreakdown(scoped.monitorRows, checksByMonitor);
+  const periodEnd = new Date(Math.min(period.endedAt.getTime(), now.getTime()));
+  const outagesByMonitor = summarizeOutages(scoped.outageRows, period.startedAt, periodEnd);
+  const monitorBreakdown = buildMonitorBreakdown(scoped.monitorRows, checksByMonitor, outagesByMonitor, period.startedAt, periodEnd);
+  const failingMonitors = buildFailingMonitorSummary(monitorBreakdown);
+  const observedMs = monitorBreakdown.reduce((total, monitor) => total + monitor.observedMs, 0);
+  const incompleteOutageHistory = monitorBreakdown.some(
+    (monitor) => monitor.downChecks > 0 && monitor.incidentCount === 0
+  );
+  const uptimeDowntimeMs = monitorBreakdown.reduce(
+    (total, monitor) => total + (monitor.hasUptimeData ? monitor.downtimeMs : 0),
+    0
+  );
+  const downtimeMs = monitorBreakdown.reduce((total, monitor) => total + monitor.downtimeMs, 0);
+  const incidentCount = monitorBreakdown.reduce((total, monitor) => total + monitor.incidentCount, 0);
   const { totalChecks, upChecks, downChecks, pendingChecks, latencySamples, averageLatencyMs, p95LatencyMs } = scoped.checkSummary;
   const reportMetrics = calculateReportSummaryMetrics({
     totalChecks,
-    upChecks,
     downChecks,
     latencySamples,
     averageLatencyMs,
     p95LatencyMs,
     currentlyDown: currentStates.currentlyDown,
+    observedMs,
+    downtimeMs: uptimeDowntimeMs,
+    incompleteOutageHistory,
   });
   const comparison = buildReportComparison(period, scoped.checkSummary, scoped.previousCheckSummary);
   const checkCoverage = estimateReportCheckCoverage(period, now, scoped.monitorRows, checksByMonitor);
@@ -343,10 +364,8 @@ export async function generateReportPreview(
   const recommendations = buildRecommendations({
     summary: {
       currentlyDown,
-      failureEvents: downChecks,
       impactedMonitors,
       p95LatencyMs: reportMetrics.p95LatencyMs,
-      failureRatePct: reportMetrics.failureRatePct,
     },
     failingMonitors,
     slowMonitors,
@@ -377,11 +396,15 @@ export async function generateReportPreview(
       downChecks,
       pendingChecks,
       hasCompletedChecks: reportMetrics.hasCompletedChecks,
+      hasUptimeData: reportMetrics.hasUptimeData,
+      incompleteOutageHistory,
       hasLatencySamples: reportMetrics.hasLatencySamples,
       uptimePct: reportMetrics.uptimePct,
       averageLatencyMs,
       p95LatencyMs,
       failureEvents: downChecks,
+      incidentCount,
+      downtimeMs,
       impactedMonitors,
       failureRatePct: reportMetrics.failureRatePct,
       healthScore: reportMetrics.healthScore,
@@ -638,11 +661,21 @@ async function loadScopedReportData(
     : undefined;
   const monitorIds = scopedMonitorRows.map((monitor) => monitor.id);
 
-  const [reportMetrics, previousCheckSummary] = monitorIds.length === 0
-    ? [emptyReportMetrics(), emptyCheckSummary()]
+  const [reportMetrics, previousCheckSummary, outageRows] = monitorIds.length === 0
+    ? [emptyReportMetrics(), emptyCheckSummary(), []]
     : await Promise.all([
         loadReportMetrics(userId, monitorIds, period, workspaceId),
         loadCheckSummaryForPeriod(userId, monitorIds, previousReportPeriod(period), workspaceId),
+        db.select({
+          monitorId: monitorOutages.monitorId,
+          startedAt: monitorOutages.startedAt,
+          resolvedAt: monitorOutages.resolvedAt,
+        }).from(monitorOutages).where(and(
+          outageOwnershipCondition(userId, workspaceId),
+          inArray(monitorOutages.monitorId, monitorIds),
+          lt(monitorOutages.startedAt, new Date(Math.min(period.endedAt.getTime(), now.getTime()))),
+          or(isNull(monitorOutages.resolvedAt), gt(monitorOutages.resolvedAt, period.startedAt))
+        )),
       ]);
 
   return {
@@ -651,6 +684,7 @@ async function loadScopedReportData(
     selectedMonitor: selectedMonitor ?? null,
     monitorRows: scopedMonitorRows,
     previousCheckSummary,
+    outageRows,
     ...reportMetrics,
   };
 }
@@ -947,27 +981,18 @@ function buildSlowMonitorSummary(
     .sort((left, right) => right.averageLatencyMs - left.averageLatencyMs);
 }
 
-function buildFailingMonitorSummary(
-  monitorRows: Array<{
-    id: string;
-    name: string;
-    url: string;
-  }>,
-  checksByMonitor: Map<string, ReportCheckAggregate>
-) {
+function buildFailingMonitorSummary(monitorRows: GeneratedReport["monitorBreakdown"]) {
   return monitorRows
-    .map((monitor) => {
-      const failure = resolveReportFailureStats(checksByMonitor.get(monitor.id));
-
-      return {
-        monitorId: monitor.id,
-        name: monitor.name,
-        url: sanitizeMonitorUrlForDisplay(monitor.url),
-        ...failure,
-      };
-    })
-    .filter((item) => item.failures > 0)
-    .sort((left, right) => right.failures - left.failures);
+    .filter((monitor) => monitor.incidentCount > 0)
+    .map((monitor) => ({
+      monitorId: monitor.monitorId,
+      name: monitor.name,
+      url: monitor.url,
+      incidentCount: monitor.incidentCount,
+      downtimeMs: monitor.downtimeMs,
+      lastFailureAt: monitor.lastFailureAt,
+    }))
+    .sort((left, right) => right.incidentCount - left.incidentCount || right.downtimeMs - left.downtimeMs);
 }
 
 export function summarizeCurrentMonitorStates(
@@ -995,17 +1020,27 @@ function buildMonitorBreakdown(
     lastErrorMessage: string | null;
     pausedUntil: Date | null;
     temporarilyPaused: boolean;
+    createdAt: Date;
   }>,
-  checksByMonitor: Map<string, ReportCheckAggregate>
+  checksByMonitor: Map<string, ReportCheckAggregate>,
+  outagesByMonitor: Map<string, OutageMetrics>,
+  periodStart: Date,
+  periodEnd: Date
 ) {
   return monitorRows
     .map((monitor) => {
       const checks = checksByMonitor.get(monitor.id);
-      const failure = resolveReportFailureStats(checks);
       const totalChecks = checks?.totalChecks ?? 0;
       const upChecks = checks?.upChecks ?? 0;
       const hasCompletedChecks = totalChecks > 0;
       const hasLatencySamples = (checks?.latencySamples ?? 0) > 0;
+      const outage = outagesByMonitor.get(monitor.id);
+      const downtimeMs = outage?.downtimeMs ?? 0;
+      const hasUptimeData = (hasCompletedChecks || (outage?.incidentCount ?? 0) > 0)
+        && !((checks?.downChecks ?? 0) > 0 && !outage?.incidentCount);
+      const observedMs = hasUptimeData
+        ? calculateMonitorReportDurationMs(periodStart, periodEnd, monitor.createdAt)
+        : 0;
 
       return {
         monitorId: monitor.id,
@@ -1016,7 +1051,7 @@ function buildMonitorBreakdown(
         pausedUntil: monitor.temporarilyPaused ? monitor.pausedUntil?.toISOString() ?? null : null,
         currentStatusCode: monitor.statusCode,
         lastCheckedAt: monitor.lastCheckedAt?.toISOString() ?? null,
-        lastFailureAt: failure.lastFailureAt,
+        lastFailureAt: checks?.lastFailureAt?.toISOString() ?? null,
         lastErrorMessage: monitor.lastErrorMessage
           ? formatFailureDetail({
               message: monitor.lastErrorMessage,
@@ -1025,33 +1060,26 @@ function buildMonitorBreakdown(
             })
           : null,
         hasCompletedChecks,
+        hasUptimeData: hasUptimeData && observedMs > 0,
         hasLatencySamples,
-        uptimePct: hasCompletedChecks ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 0,
+        uptimePct: calculateTimeUptimePct(observedMs, downtimeMs),
+        observedMs,
+        incidentCount: outage?.incidentCount ?? 0,
+        downtimeMs,
         averageLatencyMs: checks?.averageLatencyMs ?? 0,
         p95LatencyMs: checks?.p95LatencyMs ?? 0,
         totalChecks,
         upChecks,
         downChecks: checks?.downChecks ?? 0,
         pendingChecks: checks?.pendingChecks ?? 0,
-        failures: failure.failures,
       };
     })
     .sort((left, right) => {
-      if (right.failures !== left.failures) {
-        return right.failures - left.failures;
+      if (right.incidentCount !== left.incidentCount) {
+        return right.incidentCount - left.incidentCount;
       }
-
-      return right.averageLatencyMs - left.averageLatencyMs;
+      return right.downtimeMs - left.downtimeMs;
     });
-}
-
-export function resolveReportFailureStats(
-  aggregate: Pick<ReportCheckAggregate, "downChecks" | "lastFailureAt"> | undefined
-) {
-  return {
-    failures: aggregate?.downChecks ?? 0,
-    lastFailureAt: aggregate?.lastFailureAt?.toISOString() ?? null,
-  };
 }
 
 function buildRecentFailures(
@@ -1093,12 +1121,10 @@ function buildRecommendations({
 }: {
   summary: {
     currentlyDown: number;
-    failureEvents: number;
     impactedMonitors: number;
     p95LatencyMs: number;
-    failureRatePct: number;
   };
-  failingMonitors: Array<{ url: string; failures: number }>;
+  failingMonitors: Array<{ url: string; incidentCount: number }>;
   slowMonitors: Array<{ url: string; averageLatencyMs: number }>;
 }) {
   const recommendations: string[] = [];
@@ -1108,20 +1134,16 @@ function buildRecommendations({
   }
 
   if (summary.impactedMonitors > 0) {
-    recommendations.push(`${formatUrlCount(summary.impactedMonitors)} had at least one failure in this period. Review the failing URL list for repeated patterns.`);
+    recommendations.push(`${formatUrlCount(summary.impactedMonitors)} had at least one outage in this period. Review incident timing and duration.`);
   }
 
   if (summary.p95LatencyMs >= 1_500) {
     recommendations.push(`P95 latency is ${summary.p95LatencyMs}ms. Investigate slow endpoints and external dependencies before they become outages.`);
   }
 
-  if (summary.failureRatePct >= 5) {
-    recommendations.push(`Failure rate is ${summary.failureRatePct.toFixed(2)}%. Consider tightening alert routing for the most affected services.`);
-  }
-
   const topFailing = failingMonitors[0];
-  if (topFailing && topFailing.failures >= 3) {
-    recommendations.push(`${topFailing.url} is the most repeated failure source with ${topFailing.failures} events.`);
+  if (topFailing && topFailing.incidentCount >= 2) {
+    recommendations.push(`${topFailing.url} had ${topFailing.incidentCount} separate outages in this period.`);
   }
 
   const topSlow = slowMonitors[0];
@@ -1187,38 +1209,44 @@ function formatFailureDetail({
 
 export function calculateReportSummaryMetrics({
   totalChecks,
-  upChecks,
   downChecks,
   latencySamples,
   averageLatencyMs,
   p95LatencyMs,
   currentlyDown,
+  observedMs,
+  downtimeMs,
+  incompleteOutageHistory,
 }: {
   totalChecks: number;
-  upChecks: number;
   downChecks: number;
   latencySamples: number;
   averageLatencyMs: number;
   p95LatencyMs: number;
   currentlyDown: number;
+  observedMs: number;
+  downtimeMs: number;
+  incompleteOutageHistory: boolean;
 }) {
   const hasCompletedChecks = totalChecks > 0;
+  const hasUptimeData = observedMs > 0 && !incompleteOutageHistory;
   const hasLatencySamples = latencySamples > 0;
-  const resolvedUptimePct = hasCompletedChecks ? roundToTwoDecimals((upChecks / totalChecks) * 100) : 0;
+  const resolvedUptimePct = calculateTimeUptimePct(observedMs, downtimeMs);
   const failureRatePct = hasCompletedChecks ? roundToTwoDecimals((downChecks / totalChecks) * 100) : 0;
-  const healthScore = hasCompletedChecks
+  const healthScore = hasUptimeData
     ? buildHealthScore({ uptimePct: resolvedUptimePct, p95LatencyMs, currentlyDown })
     : 0;
 
   return {
     hasCompletedChecks,
+    hasUptimeData,
     hasLatencySamples,
     uptimePct: resolvedUptimePct,
     averageLatencyMs,
     p95LatencyMs,
     failureRatePct,
     healthScore,
-    healthStatus: buildHealthStatus(healthScore, hasCompletedChecks),
+    healthStatus: buildHealthStatus(healthScore, hasUptimeData),
   };
 }
 

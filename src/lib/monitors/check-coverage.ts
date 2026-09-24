@@ -79,12 +79,12 @@ export function formatReportCheckCoverage(coverage: ReportCheckCoverage) {
       value: coverage.excludedMonitors === 0 ? "No monitors in scope" : "Estimate unavailable",
       detail: coverage.excludedMonitors === 0
         ? "No scheduled checks to estimate"
-        : `${coverage.excludedMonitors} monitors excluded from the estimate`,
+        : `${coverage.excludedMonitors} monitor${coverage.excludedMonitors === 1 ? "" : "s"} excluded from the estimate`,
     };
   }
 
   return {
     value: `${coverage.actualChecks.toLocaleString("en-GB")} / ~${coverage.expectedChecks.toLocaleString("en-GB")} checks`,
-    detail: `${coverage.eligibleMonitors} scheduled monitors · ${coverage.excludedMonitors} excluded · current-interval estimate (past changes may differ); uptime uses observed checks only`,
+    detail: `${coverage.eligibleMonitors} scheduled monitor${coverage.eligibleMonitors === 1 ? "" : "s"} · ${coverage.excludedMonitors} excluded · current-interval estimate (past changes may differ); uptime uses recorded outage duration`,
   };
 }

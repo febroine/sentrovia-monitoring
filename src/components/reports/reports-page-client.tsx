@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TemplateEditor } from "@/components/settings/template-editor";
 import { ReportPreviewPanel } from "@/components/reports/report-preview-panel";
-import { ReportAnalyticsWorkspace } from "@/components/reports/report-analytics-workspace";
+import { ReportAnalyticsWorkspace, type AnalyticsFilters } from "@/components/reports/report-analytics-workspace";
 import { useReportsPageState } from "@/components/reports/use-reports-page-state";
 import {
   buildDraftReportTitle,
@@ -127,7 +127,23 @@ export default function ReportsPageClient() {
         </TabsList>
 
         <TabsContent value="analytics" className="space-y-4">
-          <ReportAnalyticsWorkspace />
+          <ReportAnalyticsWorkspace onUseInPreview={(filters: AnalyticsFilters) => {
+            pageState.setPreviewDraft((current) => ({
+              ...current,
+              scope: filters.companyId === "all" ? "global" : "company",
+              companyId: filters.companyId === "all" ? "" : filters.companyId,
+              monitorIds: filters.monitorIds,
+              excludeMonitorIds: filters.excludeMonitorIds,
+              excludeTags: filters.excludeTags,
+              excludeCompanyIds: filters.excludeCompanyIds,
+              periodRange: filters.periodRange,
+              cadence: filters.periodRange === "30d" ? "monthly" : "weekly",
+              periodStartedAt: filters.startedAt,
+              periodEndedAt: filters.endedAt,
+            }));
+            pageState.setPreview(null);
+            setActiveTab("preview");
+          }} />
         </TabsContent>
         <TabsContent value="preview" className="space-y-4">
           <ManualReportWorkspace state={pageState} />
@@ -240,6 +256,20 @@ function ManualReportWorkspace({
                 draft={previewDraft}
                 setDraft={setPreviewDraft}
               />
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3 text-xs">
+                <p className="text-muted-foreground">
+                  Report scope: {previewDraft.scope === "company" ? resolveDraftScopeLabel(previewDraft, companies) : "Workspace"} · {previewDraft.monitorIds.length ? `${previewDraft.monitorIds.length} selected monitor${previewDraft.monitorIds.length === 1 ? "" : "s"}` : "all monitors"}
+                  {previewDraft.excludeMonitorIds.length || previewDraft.excludeTags.length || previewDraft.excludeCompanyIds.length
+                    ? ` · Excluded: ${previewDraft.excludeMonitorIds.length} monitors, ${previewDraft.excludeTags.length} tags, ${previewDraft.excludeCompanyIds.length} companies`
+                    : ""}
+                </p>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => state.setActiveTab("analytics")}>Edit analytics scope</button>
+                  {previewDraft.monitorIds.length || previewDraft.excludeMonitorIds.length || previewDraft.excludeTags.length || previewDraft.excludeCompanyIds.length ? (
+                    <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => setPreviewDraft((current) => ({ ...current, monitorIds: [], excludeMonitorIds: [], excludeTags: [], excludeCompanyIds: [] }))}>Clear selection</button>
+                  ) : null}
+                </div>
+              </div>
 
               <ReportOptionsPanel
                 template={previewDraft.template}
@@ -300,6 +330,7 @@ function ManualReportFields({
           ...current,
           scope: value as ReportScope,
           companyId: value === "global" ? "" : current.companyId,
+          monitorIds: [], excludeMonitorIds: [], excludeTags: [], excludeCompanyIds: [],
         }))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -334,7 +365,7 @@ function ManualReportFields({
       ) : null}
       {draft.scope === "company" ? (
         <Field label="Company">
-          <Select value={draft.companyId} onValueChange={(value) => setDraft((current) => ({ ...current, companyId: String(value) }))}>
+          <Select value={draft.companyId} onValueChange={(value) => setDraft((current) => ({ ...current, companyId: String(value), monitorIds: [], excludeMonitorIds: [], excludeTags: [], excludeCompanyIds: [] }))}>
             <SelectTrigger><SelectValue placeholder="Select company" /></SelectTrigger>
             <SelectContent>
               {companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>)}
@@ -749,7 +780,7 @@ function ReportPackageOptions({
           </p>
         </div>
         <CompactToggle
-          label="Failures"
+          label="Failure details"
           checked={draft.includeOutageSummary}
           onChange={(includeOutageSummary) => onChange({ includeOutageSummary })}
         />
@@ -800,7 +831,7 @@ function ReportEmailOptions({
       </div>
       <TemplateEditor
         label="Email intro template"
-        hint="Tokens: {title}, {brand}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {failure_rate}, {failures}, {down_now}, {p95_latency}"
+        hint="Tokens: {title}, {brand}, {workspace}, {period}, {health_score}, {health_status}, {uptime}, {outages}, {downtime}, {down_now}, {p95_latency}"
         rows={4}
         value={draft.emailIntroTemplate}
         onChange={(emailIntroTemplate) => onChange({ emailIntroTemplate })}
@@ -830,6 +861,8 @@ function buildDraftSubjectPreview(
     "{uptime}": "99.95%",
     "{failure_rate}": "0.05%",
     "{failures}": "1",
+    "{outages}": "1",
+    "{downtime}": "5m",
     "{down_now}": "0",
     "{p95_latency}": "240ms",
   };
@@ -900,14 +933,14 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <p className="min-h-9 py-2 text-sm text-muted-foreground">{value}</p>
+      <p className="flex h-8 items-center text-sm text-muted-foreground">{value}</p>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <Label>{label}</Label>
       {children}
     </div>
@@ -946,7 +979,7 @@ function ScheduleCard({
   return (
     <div className="rounded-md bg-muted/20 p-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="space-y-3">
+        <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className="text-base font-medium">{schedule.name}</p>
             <StatusBadge schedule={schedule} />
@@ -955,7 +988,7 @@ function ScheduleCard({
             </span>
           </div>
 
-          <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          <dl className="grid gap-x-8 gap-y-3 border-t border-border/60 pt-3 sm:grid-cols-2">
             <DetailBlock label="Next run" value={formatPanelDateTime(schedule.nextRunAt)} />
             <DetailBlock label="Last delivery" value={schedule.lastDeliveredAt ? formatPanelDateTime(schedule.lastDeliveredAt) : "No delivery yet"} />
             <DetailBlock label="Delivery status" value={getScheduleDeliveryStatusLabel(schedule)} />
@@ -1016,7 +1049,7 @@ function StatusBadge({ schedule }: { schedule: ReportScheduleRecord }) {
 
 function DetailBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-background/30 px-3 py-3">
+    <div className="min-w-0">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-sm leading-5 [overflow-wrap:anywhere]">{value}</dd>
     </div>

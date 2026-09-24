@@ -82,6 +82,15 @@ describe("workspace retention policy cleanup", () => {
       "data_retention_days",
     ]));
 
+    const outageRetention = cleanupQueries.find(({ sql }) => sql.includes("delete from monitor_outages"));
+    expect(outageRetention?.sql).toContain("greatest(");
+    expect(outageRetention?.params).toEqual(expect.arrayContaining([
+      "eventRetentionDays",
+      "event_retention_days",
+      "dataRetentionDays",
+      "data_retention_days",
+    ]));
+
     const deliveryRetention = cleanupQueries.find(({ sql }) => sql.includes("delete from delivery_events"));
     expect(deliveryRetention?.params).toEqual(expect.arrayContaining([
       "deliveryRetentionDays",

@@ -256,14 +256,14 @@ export default function LogsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <header className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Event logs</h1>
           <p className="text-sm text-muted-foreground">
             Worker checks, delivery attempts, and system events.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 md:justify-end">
+        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
           <Select
             value={exportPreset}
             onValueChange={(value) => setExportPreset(value as (typeof EXPORT_PRESETS)[number]["id"])}

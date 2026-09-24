@@ -729,6 +729,7 @@ function normalizeHttpHref(value: string) {
 
 function resolveEmailTone(context: NotificationContext) {
   if (context.kind === "recovery") return "healthy" as const;
+  if (context.kind === "status-change" && context.result.ok) return "healthy" as const;
   if (context.kind === "latency" || context.kind === "ssl-expiry") return "warning" as const;
   return "critical" as const;
 }

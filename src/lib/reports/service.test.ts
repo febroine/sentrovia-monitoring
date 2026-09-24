@@ -8,7 +8,6 @@ import {
   normalizeReportStatus,
   normalizeReportScheduleStatus,
   normalizeReportScheduleCadence,
-  resolveReportFailureStats,
   resolveReportPeriod,
   resolveReportTitle,
   scheduleNextRunAfter,
@@ -155,32 +154,34 @@ describe("resolveReportTitle", () => {
 });
 
 describe("report summary metrics", () => {
-  it("does not penalize the same failed checks through uptime and failure rate", () => {
+  it("uses elapsed time and recorded outages for uptime regardless of repeated down checks", () => {
     const summary = calculateReportSummaryMetrics({
       totalChecks: 100,
-      upChecks: 99,
-      downChecks: 1,
+      downChecks: 50,
       latencySamples: 100,
       averageLatencyMs: 120,
       p95LatencyMs: 240,
       currentlyDown: 0,
+      observedMs: 24 * 60 * 60_000,
+      downtimeMs: 60 * 60_000,
+      incompleteOutageHistory: false,
     });
 
-    expect(summary.uptimePct).toBe(99);
-    expect(summary.failureRatePct).toBe(1);
-    expect(summary.healthScore).toBe(99);
-    expect(summary.healthStatus).toBe("Excellent");
+    expect(summary.uptimePct).toBe(95.83);
+    expect(summary.failureRatePct).toBe(50);
   });
 
   it("marks periods without completed checks as unavailable instead of healthy", () => {
     const summary = calculateReportSummaryMetrics({
       totalChecks: 0,
-      upChecks: 0,
       downChecks: 0,
       latencySamples: 0,
       averageLatencyMs: 0,
       p95LatencyMs: 0,
       currentlyDown: 0,
+      observedMs: 0,
+      downtimeMs: 0,
+      incompleteOutageHistory: false,
     });
 
     expect(summary).toMatchObject({
@@ -190,24 +191,6 @@ describe("report summary metrics", () => {
       healthStatus: "No data",
       uptimePct: 0,
       failureRatePct: 0,
-    });
-  });
-});
-
-describe("report failure statistics", () => {
-  it("uses confirmed down checks and their in-window timestamp", () => {
-    const lastFailureAt = new Date("2026-08-13T10:15:00.000Z");
-
-    expect(resolveReportFailureStats({ downChecks: 3, lastFailureAt })).toEqual({
-      failures: 3,
-      lastFailureAt: lastFailureAt.toISOString(),
-    });
-  });
-
-  it("returns an empty result when a monitor has no checks in the report window", () => {
-    expect(resolveReportFailureStats(undefined)).toEqual({
-      failures: 0,
-      lastFailureAt: null,
     });
   });
 });
@@ -295,6 +278,10 @@ describe("report email branding", () => {
     expect(message.htmlBody).toContain('bgcolor="#ffffff"');
     expect(message.htmlBody).toContain("font-family:'IBM Plex Sans'");
     expect(message.htmlBody).not.toMatch(/Arial|Helvetica/);
+    expect(message.textBody).toContain("Outages: 1");
+    expect(message.textBody).toContain("Total downtime: 1m");
+    expect(message.htmlBody).toContain("Total downtime");
+    expect(message.htmlBody).not.toContain("Failed checks");
   });
 
   it("replaces the complete email subject with the user's template", () => {
@@ -340,11 +327,15 @@ function buildReport(): GeneratedReport {
       downChecks: 1,
       pendingChecks: 0,
       hasCompletedChecks: true,
+      hasUptimeData: true,
+      incompleteOutageHistory: false,
       hasLatencySamples: true,
       uptimePct: 99.95,
       averageLatencyMs: 120,
       p95LatencyMs: 240,
       failureEvents: 1,
+      incidentCount: 1,
+      downtimeMs: 60_000,
       impactedMonitors: 1,
       failureRatePct: 0.05,
       healthScore: 98,

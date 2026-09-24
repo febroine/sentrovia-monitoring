@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildMonthlyAvailabilityWindows,
   normalizePerMonitorLimit,
   resolveCompanyMonthlyReportStart,
   resolveCompanyRecentChecksStart,
@@ -28,5 +29,14 @@ describe("company insight windows", () => {
     expect(resolveCompanyMonthlyReportStart(new Date("2026-07-31T18:45:00.000Z"))).toEqual(
       new Date("2026-02-01T00:00:00.000Z")
     );
+  });
+
+  it("builds historical months without counting time after the report ends", () => {
+    const windows = buildMonthlyAvailabilityWindows(
+      new Date("2026-02-01T00:00:00Z"),
+      new Date("2026-04-15T12:00:00Z")
+    );
+    expect(windows.map((window) => window.key)).toEqual(["2026-02", "2026-03", "2026-04"]);
+    expect(windows[2].endedAt).toEqual(new Date("2026-04-15T12:00:00Z"));
   });
 });

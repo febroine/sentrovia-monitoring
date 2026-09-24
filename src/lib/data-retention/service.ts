@@ -83,12 +83,20 @@ export async function runRetentionCleanup(now = new Date()) {
     await tx.execute(sql`
       delete from monitor_outages as record
       where record.status = 'resolved'
-        and coalesce(record.resolved_at, record.updated_at) < (${queryTimestamp})::timestamptz - make_interval(days => ${retentionDaysForRecord(
-          "eventRetentionDays",
-          "event_retention_days",
-          userSettings.eventRetentionDays,
-          DEFAULT_SETTINGS.data.eventRetentionDays
-        )})
+        and coalesce(record.resolved_at, record.updated_at) < (${queryTimestamp})::timestamptz - make_interval(days => greatest(
+          ${retentionDaysForRecord(
+            "eventRetentionDays",
+            "event_retention_days",
+            userSettings.eventRetentionDays,
+            DEFAULT_SETTINGS.data.eventRetentionDays
+          )},
+          ${retentionDaysForRecord(
+            "dataRetentionDays",
+            "data_retention_days",
+            userSettings.dataRetentionDays,
+            DEFAULT_SETTINGS.data.retentionDays
+          )}
+        ))
     `);
     await tx.execute(sql`
       delete from delivery_events as record

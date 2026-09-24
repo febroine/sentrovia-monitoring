@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Link from "next/link";
 import { Ban, CheckCircle2, Eye, LoaderCircle, Mail, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { MonitorNotificationLanguage, MonitorPayload, NotificationPref } from "@/lib/monitors/types";
+import type { CompanyRecord } from "@/lib/companies/types";
+import type { SettingsPayload } from "@/lib/settings/types";
+import { getMonitorNotificationReadiness } from "@/components/monitoring/monitor-notification-readiness";
 
 const MONITOR_TEMPLATE_TOKENS = [
   "{name}",
@@ -41,13 +45,20 @@ const EMAIL_RECIPIENT_SPLIT_PATTERN = /[,;\n]/;
 export function NotificationMonitorSettings({
   values,
   savedEmails,
+  companies,
+  settings,
+  existingMonitor = false,
   onFieldChange,
 }: {
   values: MonitorPayload;
   savedEmails: string[];
+  companies: CompanyRecord[];
+  settings: SettingsPayload | null;
+  existingMonitor?: boolean;
   onFieldChange: OnFieldChange;
 }) {
   const canAttachScreenshot = values.monitorType === "http" || values.monitorType === "keyword" || values.monitorType === "json";
+  const readiness = getMonitorNotificationReadiness(values, settings, companies.find((company) => company.id === values.companyId), existingMonitor);
 
   return (
     <div className="space-y-4">
@@ -64,6 +75,25 @@ export function NotificationMonitorSettings({
           </SelectContent>
         </Select>
       </Field>
+
+      {readiness.length > 0 ? (
+        <div className="space-y-1 border-t border-border/60 pt-3 text-xs" aria-label="Alert channel readiness">
+          {readiness.map((item) => (
+            <p key={item.channel} className={item.ready ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300"}>
+              <span className="font-medium">{item.channel}: {item.ready ? "Configured" : "Needs review"}.</span> {item.detail}
+            </p>
+          ))}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+            <Link href="/delivery#delivery-test" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline-offset-4 hover:underline">Send a test</Link>
+            {readiness.some((item) => item.channel === "Email") ? (
+              <Link href="/settings#smtp-delivery" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline-offset-4 hover:underline">Email settings</Link>
+            ) : null}
+            {readiness.some((item) => item.channel === "Telegram") ? (
+              <Link href="/settings#additional-notification-channels" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline-offset-4 hover:underline">Telegram settings</Link>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <Field label="Notification language">
         <Select
@@ -523,7 +553,7 @@ function appendEmailRecipient(currentValue: string, email: string) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <Label>{label}</Label>
       {children}
     </div>

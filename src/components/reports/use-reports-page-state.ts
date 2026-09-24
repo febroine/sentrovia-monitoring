@@ -157,11 +157,17 @@ export function useReportsPageState() {
   const catalog = useReportsCatalog(notice.setMessage);
   const activeTab = useReportsActiveTab();
   const schedule = useScheduleWorkspace(catalog.companies, catalog.schedules);
-  const [previewDraft, setPreviewDraft] = useState<DraftReport>(EMPTY_REPORT_DRAFT);
+  const [previewDraft, setPreviewDraftState] = useState<DraftReport>(EMPTY_REPORT_DRAFT);
   const [preview, setPreview] = useState<GeneratedReport | null>(null);
   const [lastDeliveryResult, setLastDeliveryResult] = useState<DeliveryResult | null>(null);
   const [saving, setSaving] = useState(false);
   const previewRequestVersion = useRef(0);
+  const setPreviewDraft: Setter<DraftReport> = (value) => {
+    previewRequestVersion.current += 1;
+    setPreview(null);
+    setLastDeliveryResult(null);
+    setPreviewDraftState(value);
+  };
   const generatePreview = () => {
     const requestVersion = ++previewRequestVersion.current;
     return generateReportPreview(previewDraft, {

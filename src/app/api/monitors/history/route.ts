@@ -11,6 +11,7 @@ import {
 export const runtime = "nodejs";
 
 const monitorIdSchema = z.string().trim().min(1).max(128);
+const historicalTimeSchema = z.string().datetime({ offset: true });
 
 export async function GET(request?: NextRequest) {
   try {
@@ -25,18 +26,30 @@ export async function GET(request?: NextRequest) {
       return NextResponse.json({ message: "Invalid monitor id." }, { status: 400 });
     }
     const monitorId = parsedMonitorId?.data;
+    const rawHistoricalTime = request?.nextUrl.searchParams.get("at") ?? null;
+    const parsedHistoricalTime = rawHistoricalTime ? historicalTimeSchema.safeParse(rawHistoricalTime) : null;
+    if (parsedHistoricalTime && !parsedHistoricalTime.success) {
+      return NextResponse.json({ message: "Invalid history time." }, { status: 400 });
+    }
+    if (parsedHistoricalTime && !monitorId) {
+      return NextResponse.json({ message: "A monitor id is required for event history." }, { status: 400 });
+    }
+    const around = parsedHistoricalTime?.data
+      ? new Date(parsedHistoricalTime.data)
+      : undefined;
     const history = await listRecentMonitorChecks(
       session.id,
       12,
       session.activeWorkspaceId!,
-      monitorId
+      monitorId,
+      around
     );
     const [diagnostics, outageEvents] = await Promise.all([
       loadOptionalHistorySection(() =>
-        listRecentMonitorDiagnostics(session.id, 3, session.activeWorkspaceId!, monitorId)
+        listRecentMonitorDiagnostics(session.id, 3, session.activeWorkspaceId!, monitorId, around)
       ),
       loadOptionalHistorySection(() =>
-        listRecentOutageEvents(session.id, 8, session.activeWorkspaceId!, monitorId)
+        listRecentOutageEvents(session.id, 8, session.activeWorkspaceId!, monitorId, around)
       ),
     ]);
 

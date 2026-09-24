@@ -1,6 +1,4 @@
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { monitorChecks, monitorOutages } from "@/lib/db/schema";
+import { loadAvailabilityForWindows, type AvailabilityResult } from "@/lib/outages/availability-service";
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -22,111 +20,29 @@ export async function getMonitorSlaPeriods(
     return [emptyPeriod("24h SLA"), emptyPeriod("7d SLA")];
   }
 
-  const since24Hours = new Date(now.getTime() - DAY_MS);
-  const since7Days = new Date(now.getTime() - 7 * DAY_MS);
-  const uniqueMonitorIds = Array.from(new Set(monitorIds));
-  const [[counts], outageCounts] = await Promise.all([
-    db
-      .select({
-        total24Hours: sql<number>`count(*) filter (where ${monitorChecks.createdAt} >= ${since24Hours} and ${monitorChecks.status} <> 'pending')::int`,
-        up24Hours: sql<number>`count(*) filter (where ${monitorChecks.createdAt} >= ${since24Hours} and ${monitorChecks.status} = 'up')::int`,
-        total7Days: sql<number>`count(*) filter (where ${monitorChecks.status} <> 'pending')::int`,
-        up7Days: sql<number>`count(*) filter (where ${monitorChecks.status} = 'up')::int`,
-      })
-      .from(monitorChecks)
-      .where(
-        and(
-          workspaceId
-            ? eq(monitorChecks.workspaceId, workspaceId)
-            : eq(monitorChecks.userId, userId),
-          inArray(monitorChecks.monitorId, uniqueMonitorIds),
-          gte(monitorChecks.createdAt, since7Days)
-        )
-      ),
-    getOutageCounts(userId, uniqueMonitorIds, since24Hours, since7Days, workspaceId),
-  ]);
-
+  const periods = await loadAvailabilityForWindows(userId, monitorIds, [
+    { key: "24h", startedAt: new Date(now.getTime() - DAY_MS), endedAt: now },
+    { key: "7d", startedAt: new Date(now.getTime() - 7 * DAY_MS), endedAt: now },
+  ], undefined, workspaceId);
   return [
-    calculateSlaPeriod(
-      "24h SLA",
-      counts?.up24Hours ?? 0,
-      outageCounts?.total24Hours ?? 0,
-      counts?.total24Hours ?? 0
-    ),
-    calculateSlaPeriod(
-      "7d SLA",
-      counts?.up7Days ?? 0,
-      outageCounts?.total7Days ?? 0,
-      counts?.total7Days ?? 0
-    ),
+    calculateSlaPeriod("24h SLA", periods.get("24h")),
+    calculateSlaPeriod("7d SLA", periods.get("7d")),
   ];
-}
-
-async function getOutageCounts(
-  userId: string,
-  monitorIds: string[],
-  since24Hours: Date,
-  since7Days: Date,
-  workspaceId?: string
-) {
-  const request = db
-      .select({
-        total24Hours: sql<number>`count(*) filter (where ${monitorOutages.startedAt} >= ${since24Hours})::int`,
-        total7Days: sql<number>`count(*)::int`,
-      })
-      .from(monitorOutages)
-      .where(
-        and(
-          workspaceId
-            ? eq(monitorOutages.workspaceId, workspaceId)
-            : eq(monitorOutages.userId, userId),
-          inArray(monitorOutages.monitorId, monitorIds),
-          gte(monitorOutages.startedAt, since7Days)
-        )
-      );
-
-  return loadOutageCountsOrFallback(request);
-}
-
-export async function loadOutageCountsOrFallback(
-  request: Promise<Array<{ total24Hours: number; total7Days: number }>>
-) {
-  try {
-    const [counts] = await request;
-    return counts ?? EMPTY_OUTAGE_COUNTS;
-  } catch (error) {
-    console.error(
-      "[sentrovia] Outage counts unavailable; SLA uptime will use monitor check history.",
-      error
-    );
-
-    return EMPTY_OUTAGE_COUNTS;
-  }
 }
 
 export function calculateSlaPeriod(
   label: SlaPeriodSummary["label"],
-  upChecks: number,
-  outageCount: number,
-  totalChecks: number
+  availability?: Pick<AvailabilityResult, "hasData" | "uptimePct" | "incidentCount" | "completedChecks">
 ): SlaPeriodSummary {
-  const normalizedTotal = Math.max(0, totalChecks);
-  const normalizedUp = Math.min(normalizedTotal, Math.max(0, upChecks));
-
   return {
     label,
-    hasData: normalizedTotal > 0,
-    uptimePct: normalizedTotal > 0 ? (normalizedUp / normalizedTotal) * 100 : 0,
-    outages: Math.max(0, outageCount),
-    totalChecks: normalizedTotal,
+    hasData: availability?.hasData ?? false,
+    uptimePct: availability?.hasData ? availability.uptimePct : 0,
+    outages: availability?.incidentCount ?? 0,
+    totalChecks: availability?.completedChecks ?? 0,
   };
 }
 
 function emptyPeriod(label: SlaPeriodSummary["label"]): SlaPeriodSummary {
-  return calculateSlaPeriod(label, 0, 0, 0);
+  return calculateSlaPeriod(label);
 }
-
-const EMPTY_OUTAGE_COUNTS = Object.freeze({
-  total24Hours: 0,
-  total7Days: 0,
-});

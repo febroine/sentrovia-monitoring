@@ -202,6 +202,7 @@ export interface CompanyMonthlyReport {
   companyName: string;
   months: Array<{
     label: string;
+    hasData: boolean;
     uptimePct: number;
     checks: number;
   }>;

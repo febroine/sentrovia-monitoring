@@ -115,7 +115,7 @@ export function MonitorConfigDialog({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-end">
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="monitor-config-format">Format</Label>
                 <Select value={format} onValueChange={(value) => {
                   setFormat(value as "json" | "yaml");

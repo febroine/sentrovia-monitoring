@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildFailureSegments,
+  buildOutageSegments,
   changeMonitorSelection,
   changeExclusionSelection,
   getChartAvailability,
@@ -154,20 +154,20 @@ describe("report analytics catalog reconciliation", () => {
   });
 });
 
-describe("failure concentration", () => {
+describe("outage concentration", () => {
   it("keeps the four largest contributors and combines the remainder", () => {
-    const monitors = [9, 7, 5, 3, 2, 1].map((failures, index) => ({
+    const monitors = [9, 7, 5, 3, 2, 1].map((incidentCount, index) => ({
       monitorId: `monitor-${index}`,
       name: `Monitor ${index}`,
-      failures,
+      incidentCount,
     })) as GeneratedReport["monitorBreakdown"];
 
-    expect(buildFailureSegments(monitors)).toEqual([
-      { id: "monitor-0", label: "Monitor 0", detail: undefined, failures: 9 },
-      { id: "monitor-1", label: "Monitor 1", detail: undefined, failures: 7 },
-      { id: "monitor-2", label: "Monitor 2", detail: undefined, failures: 5 },
-      { id: "monitor-3", label: "Monitor 3", detail: undefined, failures: 3 },
-      { id: "other", label: "Other monitors", detail: null, failures: 3 },
+    expect(buildOutageSegments(monitors)).toEqual([
+      { id: "monitor-0", label: "Monitor 0", detail: undefined, incidentCount: 9 },
+      { id: "monitor-1", label: "Monitor 1", detail: undefined, incidentCount: 7 },
+      { id: "monitor-2", label: "Monitor 2", detail: undefined, incidentCount: 5 },
+      { id: "monitor-3", label: "Monitor 3", detail: undefined, incidentCount: 3 },
+      { id: "other", label: "Other monitors", detail: null, incidentCount: 3 },
     ]);
   });
 });
@@ -222,20 +222,21 @@ describe("report metric drill-down", () => {
   const monitor = (overrides: Partial<GeneratedReport["monitorBreakdown"][number]>) => ({
     monitorId: "monitor-1", name: "API", url: "https://api.example", companyName: null,
     status: "up", pausedUntil: null, currentStatusCode: 200, lastCheckedAt: null,
-    lastFailureAt: null, lastErrorMessage: null, hasCompletedChecks: true,
+    lastFailureAt: null, lastErrorMessage: null, hasCompletedChecks: true, hasUptimeData: true,
     hasLatencySamples: true, uptimePct: 100, averageLatencyMs: 100, p95LatencyMs: 150,
-    totalChecks: 10, upChecks: 10, downChecks: 0, pendingChecks: 0, failures: 0,
+    totalChecks: 10, upChecks: 10, downChecks: 0, pendingChecks: 0, incidentCount: 0, downtimeMs: 0, observedMs: 604_800_000,
     ...overrides,
   });
   const report = { monitorBreakdown: [
     monitor({ monitorId: "healthy", name: "Healthy" }),
     monitor({ monitorId: "slow", name: "Slow", p95LatencyMs: 900 }),
-    monitor({ monitorId: "failed", name: "Failed", status: "down", failures: 3, uptimePct: 70 }),
+    monitor({ monitorId: "failed", name: "Failed", status: "down", incidentCount: 3, downtimeMs: 60_000, uptimePct: 70 }),
   ] } as GeneratedReport;
 
   it("sorts latency by P95 and limits failures to affected monitors", () => {
     expect(getMetricDrilldownRows(report, "latency").map((item) => item.monitorId)).toEqual(["slow", "healthy", "failed"]);
-    expect(getMetricDrilldownRows(report, "failures").map((item) => item.monitorId)).toEqual(["failed"]);
+    expect(getMetricDrilldownRows(report, "incidents").map((item) => item.monitorId)).toEqual(["failed"]);
+    expect(getMetricDrilldownRows(report, "downtime").map((item) => item.monitorId)).toEqual(["failed"]);
     expect(getMetricDrilldownRows(report, "impacted").map((item) => item.monitorId)).toEqual(["failed"]);
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Globe, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,44 +80,58 @@ export function CompanyMonitorsPanel({
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const dailyPeriod = report?.periods[0];
   const weeklyPeriod = report?.periods[1];
+  const monthsWithUptime = monthlyReport?.months.filter((month) => month.hasData) ?? [];
+  const monthsWithoutUptime = (monthlyReport?.months.length ?? 0) - monthsWithUptime.length;
 
   return (
     <div className="space-y-5">
       {report ? (
-        <dl className="grid gap-2 md:grid-cols-3">
-          <MetricItem
-            label="24h SLA"
-            value={formatSlaValue(dailyPeriod)}
-            sub={dailyPeriod?.hasData ? `${dailyPeriod.outages} confirmed outages` : "No completed checks"}
-            tone={dailyPeriod?.hasData ? "green" : "neutral"}
-          />
-          <MetricItem
-            label="7d SLA"
-            value={formatSlaValue(weeklyPeriod)}
-            sub={report.hasLatencySamples ? `${report.averageLatencyMs}ms recent avg latency` : "No latency samples"}
-            tone={weeklyPeriod?.hasData ? "amber" : "neutral"}
-          />
-          <MetricItem
-            label="Status spread"
-            value={report.statusCodes[0] ? `HTTP ${report.statusCodes[0].statusCode}` : "No HTTP data"}
-            sub={report.statusCodes[0] ? `${report.statusCodes[0].count} recent hits` : "No recent codes"}
-            tone="neutral"
-          />
-        </dl>
+        <>
+          <dl className="grid gap-2 md:grid-cols-3">
+            <MetricItem
+              label="24h uptime"
+              value={formatSlaValue(dailyPeriod)}
+              sub={dailyPeriod?.hasData ? `${dailyPeriod.outages} confirmed outages` : "No usable outage history"}
+              tone={dailyPeriod?.hasData ? "green" : "neutral"}
+            />
+            <MetricItem
+              label="7d uptime"
+              value={formatSlaValue(weeklyPeriod)}
+              sub={report.hasLatencySamples ? `${report.averageLatencyMs}ms recent avg latency` : "No latency samples"}
+              tone={weeklyPeriod?.hasData ? "amber" : "neutral"}
+            />
+            <MetricItem
+              label="Status spread"
+              value={report.statusCodes[0] ? `HTTP ${report.statusCodes[0].statusCode}` : "No HTTP data"}
+              sub={report.statusCodes[0] ? `${report.statusCodes[0].count} recent hits` : "No recent codes"}
+              tone="neutral"
+            />
+          </dl>
+          <p className="text-xs text-muted-foreground">Uptime uses recorded outage duration. Historical pauses may count as uptime.</p>
+        </>
       ) : null}
 
       {monthlyReport?.months.length ? (
-        <dl className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-          {monthlyReport.months.map((month) => (
-            <MetricItem
-              key={month.label}
-              label={month.label}
-              value={`${month.uptimePct.toFixed(1)}%`}
-              sub={`${month.checks} checks`}
-              tone={month.uptimePct < 98 ? "amber" : "green"}
-            />
-          ))}
-        </dl>
+        <section aria-label="Monthly uptime" className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            {monthsWithUptime.length > 0
+              ? `First month with usable uptime data: ${monthsWithUptime[0].label}.${monthsWithoutUptime > 0 ? ` ${monthsWithoutUptime} of the last ${monthlyReport.months.length} months have no usable uptime data.` : ""}`
+              : `No usable uptime data in the last ${monthlyReport.months.length} months.`}
+          </p>
+          {monthsWithUptime.length > 0 ? (
+            <dl className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+              {monthsWithUptime.map((month) => (
+                <MetricItem
+                  key={month.label}
+                  label={month.label}
+                  value={`${month.uptimePct.toFixed(1)}%`}
+                  sub={`${month.checks} checks`}
+                  tone={month.uptimePct < 98 ? "amber" : "green"}
+                />
+              ))}
+            </dl>
+          ) : null}
+        </section>
       ) : null}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -175,6 +190,12 @@ export function CompanyMonitorsPanel({
                     ? formatPanelDateTime(monitor.lastCheckedAt)
                     : "Never checked"}
                 </span>
+                <Link
+                  href={`/monitoring?search=${encodeURIComponent(monitor.name)}&timeline=${encodeURIComponent(monitor.id)}`}
+                  className="text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                >
+                  Open timeline
+                </Link>
               </div>
             </div>
           ))

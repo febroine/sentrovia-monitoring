@@ -16,11 +16,15 @@ import { buildPrintableReportHtml, buildReportFileSlug } from "@/lib/reports/exp
 import { AVAILABILITY_REFERENCE_PCT, getExecutiveInsights, getMonitorRiskPoints } from "@/lib/reports/analytics-insights";
 import {
   formatMonitorAverageLatency,
+  formatMonitorDowntime,
+  formatMonitorOutageCount,
   formatMonitorP95Latency,
   formatMonitorUptime,
-  formatReportFailureRate,
+  formatReportDowntime,
+  formatReportOutageCount,
   formatReportP95Latency,
   formatReportUptime,
+  formatReportUptimeNote,
 } from "@/lib/reports/metrics";
 import type { GeneratedReport, ReportPeriodRange } from "@/lib/reports/types";
 import { ReportComparison } from "@/components/reports/report-comparison";
@@ -34,7 +38,7 @@ type MonitorOption = {
   isActive: boolean;
 };
 type CompanyOption = { id: string; name: string };
-type AnalyticsFilters = {
+export type AnalyticsFilters = {
   periodRange: ReportPeriodRange;
   companyId: string;
   monitorIds: string[];
@@ -59,7 +63,7 @@ const MAX_EXCLUSIONS_PER_GROUP = 100;
 const MAX_VISIBLE_MONITOR_OPTIONS = 200;
 const SELECTION_RESET_NOTICE = "One or more selected monitors are no longer in the current analytics scope. Analytics were refreshed with the available selection.";
 
-export function ReportAnalyticsWorkspace() {
+export function ReportAnalyticsWorkspace({ onUseInPreview }: { onUseInPreview?: (filters: AnalyticsFilters) => void }) {
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(INITIAL_FILTERS);
   const [monitors, setMonitors] = useState<MonitorOption[]>([]);
@@ -179,7 +183,7 @@ export function ReportAnalyticsWorkspace() {
 
       {!report && loading ? <p role="status" className="rounded-md bg-muted/20 px-4 py-8 text-sm text-muted-foreground">Loading reliability analytics…</p> : null}
       {!loading && !error && !hasMonitors ? <NoMonitorsAnalytics /> : null}
-      {report && hasMonitors ? <AnalyticsReport report={report} filters={appliedFilters} refreshing={loading} /> : null}
+      {report && hasMonitors ? <AnalyticsReport report={report} filters={appliedFilters} previewFilters={filters} previewRangeInvalid={invalidRange} refreshing={loading} onUseInPreview={onUseInPreview} /> : null}
     </div>
   );
 }
@@ -203,6 +207,7 @@ function AnalyticsFilters({
   onApply: () => void;
   onReset: () => void;
 }) {
+  const [mobileAdvancedOpen, setMobileAdvancedOpen] = useState(false);
   const tags = Array.from(new Map(
     monitors.flatMap((monitor) => monitor.tags).map((tag) => [tag.toLowerCase(), tag] as const)
   ).values()).sort((left, right) => left.localeCompare(right));
@@ -246,7 +251,7 @@ function AnalyticsFilters({
   return (
     <section className="rounded-lg bg-surface-low px-3 py-4 shadow-sm sm:px-4" aria-label="Reliability analytics filters">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[180px_240px_minmax(280px,1fr)_auto]">
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <Label htmlFor="analytics-period">Period</Label>
           <Select value={filters.periodRange} onValueChange={(value) => onChange({ ...filters, periodRange: value as ReportPeriodRange })}>
             <SelectTrigger id="analytics-period"><SelectValue /></SelectTrigger>
@@ -257,7 +262,7 @@ function AnalyticsFilters({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <Label htmlFor="analytics-company">Company</Label>
           <Select value={filters.companyId} onValueChange={(value) => updateCompany(String(value))}>
             <SelectTrigger id="analytics-company"><SelectValue placeholder="All companies" /></SelectTrigger>
@@ -269,8 +274,8 @@ function AnalyticsFilters({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <p className="text-sm font-medium leading-none">Monitors</p>
+        <div id="analytics-monitor-filter" className={cn("flex flex-col gap-2", !mobileAdvancedOpen && "hidden sm:flex")}>
+          <p className="text-sm font-medium leading-5">Monitors</p>
           <MonitorSelectionPicker
             monitors={scopedMonitors}
             selected={filters.monitorIds}
@@ -292,7 +297,7 @@ function AnalyticsFilters({
             </div>
           </div>
         ) : null}
-        <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1 xl:justify-end">
+        <div className="flex items-end gap-2 sm:col-start-2 sm:row-start-2 sm:justify-end xl:col-start-4 xl:row-start-1">
           <Button className="min-w-28" onClick={onApply} disabled={loading || invalidRange}>
             <RefreshCw data-icon="inline-start" className={cn("size-4", loading && "animate-spin motion-reduce:animate-none")} />
             {loading ? "Refreshing" : "Refresh"}
@@ -301,7 +306,17 @@ function AnalyticsFilters({
         </div>
       </div>
       {invalidRange ? <p id="analytics-range-error" className="mt-2 text-xs text-destructive">Choose both dates, with the start on or before the end date.</p> : null}
-      <div className="mt-4 rounded-md bg-muted/20 p-3">
+      <button
+        type="button"
+        className="mt-3 w-full rounded-md border border-input px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:hidden"
+        aria-expanded={mobileAdvancedOpen}
+        aria-controls="analytics-monitor-filter analytics-exclusions"
+        onClick={() => setMobileAdvancedOpen((open) => !open)}
+      >
+        <span className="block font-medium">More filters</span>
+        <span className="block text-xs text-muted-foreground">{filters.monitorIds.length} selected {filters.monitorIds.length === 1 ? "monitor" : "monitors"} · {exclusionCount} {exclusionCount === 1 ? "exclusion" : "exclusions"}</span>
+      </button>
+      <div id="analytics-exclusions" className={cn("mt-4 rounded-md bg-muted/20 p-3", !mobileAdvancedOpen && "hidden sm:block")}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-md">
             <p className="text-sm font-medium">Exclude from analytics</p>
@@ -380,7 +395,7 @@ function MonitorSelectionPicker({
   return (
     <details className="group relative">
       <summary
-        className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+        className="flex h-8 cursor-pointer list-none items-center justify-between gap-3 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
         aria-label={`Monitors: ${summary}`}
       >
         <span className="truncate">{summary}</span>
@@ -518,11 +533,17 @@ function ExclusionPicker({
   );
 }
 
-function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedReport; filters: AnalyticsFilters; refreshing: boolean }) {
+function AnalyticsReport({ report, filters, previewFilters, previewRangeInvalid, refreshing, onUseInPreview }: { report: GeneratedReport; filters: AnalyticsFilters; previewFilters: AnalyticsFilters; previewRangeInvalid: boolean; refreshing: boolean; onUseInPreview?: (filters: AnalyticsFilters) => void }) {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const hasChecks = report.summary.hasCompletedChecks;
+  const hasChecks = report.summary.hasCompletedChecks || report.summary.incidentCount > 0;
   const exclusionCount = countExclusions(filters);
+  const hasCheckTrend = report.dailyMetrics.filter((day) => day.upChecks + day.downChecks > 0).length > 1;
+  const hasLatencyTrend = report.dailyMetrics.filter((day) => day.p95LatencyMs !== null).length > 1;
+  const hasRiskComparison = getMonitorRiskPoints(report).monitors.length > 1;
+  const hasOutageDistribution = report.monitorBreakdown.filter((monitor) => monitor.incidentCount > 0).length > 1;
+  const hasFleetComparison = report.monitorBreakdown.length > 1;
+  const hasResponseMix = report.statusCodes.length > 1;
   const scopeLabel = filters.monitorIds.length > 1
     ? `${filters.monitorIds.length} selected monitors`
     : report.monitorName ?? report.companyName ?? "All monitors";
@@ -566,6 +587,7 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
           </p>
           <Button size="sm" variant="outline" disabled={refreshing || exportingPdf} onClick={() => downloadFile(buildPrintableReportHtml(report), `${buildReportFileSlug(report)}.html`, "text/html;charset=utf-8")}>Export HTML</Button>
           <Button size="sm" variant="outline" disabled={refreshing || exportingPdf} onClick={() => void exportPdf()}>{exportingPdf ? "Generating PDF…" : "Generate PDF"}</Button>
+          {onUseInPreview ? <Button size="sm" variant="outline" disabled={refreshing || previewRangeInvalid} onClick={() => onUseInPreview(previewFilters)}>Use filters in preview</Button> : null}
         </div>
       </header>
       <p className="-mt-4 text-xs text-muted-foreground lg:text-right">HTML saves the displayed snapshot; PDF uses the latest checks for these filters.</p>
@@ -573,7 +595,7 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
       <span className="sr-only" role="status">{exportingPdf ? "Generating PDF report" : ""}</span>
 
       <SummaryStrip report={report} />
-      <ReportComparison report={report} />
+      <ReportComparison report={report} compactWhenNoPrior />
 
       {!hasChecks ? (
         <section className="rounded-lg bg-card/45 p-8">
@@ -585,20 +607,21 @@ function AnalyticsReport({ report, filters, refreshing }: { report: GeneratedRep
       ) : (
         <>
           <ExecutiveBrief report={report} />
-          <div className="grid gap-6 xl:grid-cols-2">
-            <AvailabilityChart data={report.dailyMetrics} />
-            <FailureChart data={report.dailyMetrics} />
-          </div>
-          <div className="grid gap-6 xl:grid-cols-2">
-            <LatencyChart data={report.dailyMetrics} />
-            <MonitorRiskMatrix report={report} />
-          </div>
-          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <FailureConcentration report={report} />
-            <FleetHealthDistribution monitors={report.monitorBreakdown} />
-          </div>
-          <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
-            <StatusCodeDistribution codes={report.statusCodes} />
+          {hasCheckTrend ? <AvailabilityChart data={report.dailyMetrics} /> : null}
+          {hasLatencyTrend || hasRiskComparison ? (
+            <div className={cn("grid gap-6", hasLatencyTrend && hasRiskComparison && "xl:grid-cols-2")}>
+              {hasLatencyTrend ? <LatencyChart data={report.dailyMetrics} /> : null}
+              {hasRiskComparison ? <MonitorRiskMatrix report={report} /> : null}
+            </div>
+          ) : null}
+          {hasOutageDistribution || hasFleetComparison ? (
+            <div className={cn("grid gap-6", hasOutageDistribution && hasFleetComparison && "xl:grid-cols-[0.9fr_1.1fr]")}>
+              {hasOutageDistribution ? <OutageConcentration report={report} /> : null}
+              {hasFleetComparison ? <FleetHealthDistribution monitors={report.monitorBreakdown} /> : null}
+            </div>
+          ) : null}
+          <div className={cn("grid gap-6", hasResponseMix && "xl:grid-cols-[0.72fr_1.28fr]")}>
+            {hasResponseMix ? <StatusCodeDistribution codes={report.statusCodes} /> : null}
             <MonitorRiskTable report={report} />
           </div>
         </>
@@ -611,7 +634,7 @@ function ExecutiveBrief({ report }: { report: GeneratedReport }) {
   const insights = getExecutiveInsights(report);
   const signals = [
     {
-      label: "Days at 99.9% reference",
+      label: "Check-success days at 99.9%",
       value: `${insights.daysAtReference} / ${insights.observedDays}`,
       detail: "Observed days with completed checks",
     },
@@ -621,9 +644,9 @@ function ExecutiveBrief({ report }: { report: GeneratedReport }) {
       detail: `${insights.missingData} without completed checks`,
     },
     {
-      label: "Largest failure contributor",
-      value: insights.leadingFailure ? `${insights.leadingFailure.sharePct.toFixed(1)}%` : "None",
-      detail: insights.leadingFailure ? `${insights.leadingFailure.name} · ${insights.leadingFailure.failures} failed checks` : "No failed checks in scope",
+      label: "Most outages",
+      value: report.summary.incompleteOutageHistory ? "No data" : insights.leadingOutage ? String(insights.leadingOutage.incidentCount) : "None",
+      detail: report.summary.incompleteOutageHistory ? "Outage history is incomplete" : insights.leadingOutage ? insights.leadingOutage.name : "No outages in scope",
     },
   ];
   return (
@@ -657,9 +680,9 @@ function AvailabilityChart({ data }: { data: GeneratedReport["dailyMetrics"] }) 
     };
   });
   const referenceY = 178 - AVAILABILITY_REFERENCE_PCT / 100 * 150;
-  return <ChartSection title="Availability trend" description={bucketSize === 1 ? "Daily availability from completed checks against a 99.9% reference." : "Completed-check-weighted availability by interval against a 99.9% reference."} legend="Availability" legendTone="bg-emerald-500">
+  return <ChartSection title="Check success trend" description={bucketSize === 1 ? "Daily successful-check ratio; uptime uses outage duration." : "Successful-check ratio by interval; uptime uses outage duration."} legend="Successful checks" legendTone="bg-emerald-500">
     {observed.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No completed checks to chart.</p> : <>
-      <svg viewBox="0 0 720 230" className="w-full" style={{ minWidth: chartMinWidth(buckets.length) }} role="img" aria-label="Availability percentage by period against a 99.9 percent reference" aria-describedby="availability-values">
+      <svg viewBox="0 0 720 230" className="w-full" style={{ minWidth: chartMinWidth(buckets.length) }} role="img" aria-label="Successful-check percentage by period against a 99.9 percent reference" aria-describedby="availability-values">
         <ChartAxis />
         <line x1="42" x2="700" y1={referenceY} y2={referenceY} className="stroke-amber-500" strokeDasharray="4 4" />
         <text x="36" y="31" textAnchor="end" className="fill-muted-foreground text-[10px]">100%</text>
@@ -707,8 +730,9 @@ function MonitorRiskMatrix({ report }: { report: GeneratedReport }) {
 function SummaryStrip({ report }: { report: GeneratedReport }) {
   const [selectedMetric, setSelectedMetric] = useState<ReportMetric | null>(null);
   const metrics = [
-    { id: "uptime" as const, label: "Uptime", value: formatReportUptime(report.summary), detail: `${report.summary.upChecks.toLocaleString("en-GB")} successful checks`, tone: "text-emerald-500" },
-    { id: "failures" as const, label: "Failed checks", value: report.summary.failureEvents.toLocaleString("en-GB"), detail: `${formatReportFailureRate(report.summary)} of completed checks`, tone: report.summary.failureEvents > 0 ? "text-rose-500" : "text-emerald-500" },
+    { id: "uptime" as const, label: "Uptime", value: formatReportUptime(report.summary), detail: formatReportUptimeNote(report.summary), tone: report.summary.hasUptimeData ? "text-emerald-500" : "text-foreground" },
+    { id: "incidents" as const, label: "Outages", value: formatReportOutageCount(report.summary), detail: "Distinct outages in this period", tone: report.summary.incompleteOutageHistory ? "text-foreground" : report.summary.incidentCount > 0 ? "text-rose-500" : "text-emerald-500" },
+    { id: "downtime" as const, label: "Total downtime", value: formatReportDowntime(report.summary), detail: "Across monitors in scope", tone: report.summary.incompleteOutageHistory ? "text-foreground" : report.summary.downtimeMs > 0 ? "text-rose-500" : "text-emerald-500" },
     {
       id: "latency" as const,
       label: "P95 latency",
@@ -722,7 +746,7 @@ function SummaryStrip({ report }: { report: GeneratedReport }) {
   ];
   return (
     <>
-      <section aria-label="Report summary" className="grid border-y border-border/70 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Report summary" className="grid border-y border-border/70 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => (
           <button type="button" key={metric.id} onClick={() => setSelectedMetric(metric.id)} className="group min-h-28 border-b border-border/60 px-3 py-3 text-left hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:border-r xl:border-b-0 last:sm:border-r-0">
             <span className="text-xs font-medium text-muted-foreground">{metric.label}</span>
@@ -736,23 +760,25 @@ function SummaryStrip({ report }: { report: GeneratedReport }) {
   );
 }
 
-type ReportMetric = "uptime" | "failures" | "latency" | "impacted";
+type ReportMetric = "uptime" | "incidents" | "downtime" | "latency" | "impacted";
 type MonitorBreakdown = GeneratedReport["monitorBreakdown"][number];
 
 export function getMetricDrilldownRows(report: GeneratedReport, metric: ReportMetric): MonitorBreakdown[] {
   const rows = [...report.monitorBreakdown];
-  if (metric === "failures") return rows.filter((item) => item.failures > 0).sort((a, b) => b.failures - a.failures || a.uptimePct - b.uptimePct);
+  if (metric === "incidents") return rows.filter((item) => item.incidentCount > 0).sort((a, b) => b.incidentCount - a.incidentCount || b.downtimeMs - a.downtimeMs);
+  if (metric === "downtime") return rows.filter((item) => item.downtimeMs > 0).sort((a, b) => b.downtimeMs - a.downtimeMs);
   if (metric === "latency") return rows.filter((item) => item.hasLatencySamples).sort((a, b) => b.p95LatencyMs - a.p95LatencyMs);
-  if (metric === "impacted") return rows.filter((item) => item.failures > 0 || item.status === "down").sort((a, b) => b.failures - a.failures || a.uptimePct - b.uptimePct);
-  return rows.sort((a, b) => Number(a.hasCompletedChecks) - Number(b.hasCompletedChecks) || a.uptimePct - b.uptimePct);
+  if (metric === "impacted") return rows.filter((item) => item.incidentCount > 0 || item.status === "down").sort((a, b) => b.downtimeMs - a.downtimeMs || b.incidentCount - a.incidentCount);
+  return rows.sort((a, b) => Number(a.hasUptimeData) - Number(b.hasUptimeData) || a.uptimePct - b.uptimePct);
 }
 
 function MetricDrilldownDialog({ report, metric, onOpenChange }: { report: GeneratedReport; metric: ReportMetric | null; onOpenChange: (open: boolean) => void }) {
   const labels: Record<ReportMetric, { title: string; description: string }> = {
-    uptime: { title: "Uptime by monitor", description: "Lowest availability and missing-check coverage appear first." },
-    failures: { title: "Failed checks by monitor", description: "Monitors that recorded confirmed failed checks in this period." },
+    uptime: { title: "Uptime by monitor", description: "Lowest recorded availability and missing outage history appear first." },
+    incidents: { title: "Outages by monitor", description: "Distinct outages overlapping this period." },
+    downtime: { title: "Downtime by monitor", description: "Outage duration within this period." },
     latency: { title: "P95 latency by monitor", description: "Slowest tail latency appears first; monitors without latency samples are excluded." },
-    impacted: { title: "Impacted monitors", description: "Monitors with failed checks or a current down state." },
+    impacted: { title: "Impacted monitors", description: "Monitors with outages in this period or a current down state." },
   };
   const rows = metric ? getMetricDrilldownRows(report, metric) : [];
   const active = metric ? labels[metric] : null;
@@ -766,51 +792,21 @@ function MetricDrilldownDialog({ report, metric, onOpenChange }: { report: Gener
         <div className="max-h-[60vh] overflow-auto border-y border-border/70">
           {rows.length === 0 ? <p className="px-3 py-8 text-center text-sm text-muted-foreground">No matching monitor data in this report.</p> : (
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="sticky top-0 bg-background"><tr className="border-b"><th className="px-3 py-2 font-medium">Monitor</th><th className="px-3 py-2 font-medium">Uptime</th><th className="px-3 py-2 font-medium">Failures</th><th className="px-3 py-2 font-medium">P95</th><th className="px-3 py-2 font-medium">Checks</th><th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th></tr></thead>
+              <thead className="sticky top-0 bg-background"><tr className="border-b"><th className="px-3 py-2 font-medium">Monitor</th><th className="px-3 py-2 font-medium">Uptime</th><th className="px-3 py-2 font-medium">Outages</th><th className="px-3 py-2 font-medium">Downtime</th><th className="px-3 py-2 font-medium">P95</th><th className="px-3 py-2 font-medium">Checks</th><th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{rows.map((row) => <tr key={row.monitorId} className="border-b border-border/50 last:border-0">
                 <td className="max-w-64 px-3 py-2"><span className="block truncate font-medium" title={row.name}>{row.name}</span><span className="block truncate text-xs text-muted-foreground" title={row.url}>{row.url}</span></td>
                 <td className="px-3 py-2 tabular-nums">{formatMonitorUptime(row)}</td>
-                <td className="px-3 py-2 tabular-nums">{row.failures}</td>
+                <td className="px-3 py-2 tabular-nums">{formatMonitorOutageCount(row)}</td>
+                <td className="px-3 py-2 tabular-nums">{formatMonitorDowntime(row)}</td>
                 <td className="px-3 py-2 tabular-nums">{formatMonitorP95Latency(row)}</td>
                 <td className="px-3 py-2 tabular-nums">{row.totalChecks}</td>
-                <td className="px-3 py-2 text-right"><Link className="text-xs font-medium text-primary hover:underline" href={`/monitoring?search=${encodeURIComponent(row.name)}`}>Open monitor</Link>{row.failures > 0 ? <Link className="ml-3 text-xs font-medium text-primary hover:underline" href={`/logs?monitorQuery=${encodeURIComponent(row.name)}`}>Logs</Link> : null}</td>
+                <td className="px-3 py-2 text-right"><Link className="text-xs font-medium text-primary hover:underline" href={`/monitoring?search=${encodeURIComponent(row.name)}`}>Open monitor</Link>{row.incidentCount > 0 ? <Link className="ml-3 text-xs font-medium text-primary hover:underline" href={`/logs?monitorQuery=${encodeURIComponent(row.name)}`}>Logs</Link> : null}</td>
               </tr>)}</tbody>
             </table>
           )}
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function FailureChart({ data }: { data: GeneratedReport["dailyMetrics"] }) {
-  const { points, bucketSize } = prepareChartData(data);
-  const { hasFailures } = getChartAvailability(data);
-  const max = Math.max(1, ...points.map((item) => item.downChecks));
-  const descriptionId = "daily-failure-values";
-  const intervalLabel = bucketSize === 1 ? "day" : `${bucketSize}-day interval`;
-  return (
-    <ChartSection title={`Failed checks by ${intervalLabel}`} description="Confirmed failed checks; use clusters to identify unstable periods." legend="Failed checks" legendTone="bg-rose-500">
-      {!hasFailures ? (
-        <p className="py-8 text-sm text-muted-foreground">No failed checks were recorded in this period.</p>
-      ) : <svg viewBox="0 0 720 230" className="w-full" style={{ minWidth: chartMinWidth(points.length) }} role="img" aria-label={`Failed check counts by ${intervalLabel}`} aria-describedby={descriptionId}>
-        <ChartAxis />
-        <text x="36" y="31" textAnchor="end" className="fill-muted-foreground text-[10px]">{max}</text>
-        <text x="36" y="181" textAnchor="end" className="fill-muted-foreground text-[10px]">0</text>
-        {points.map((item, index) => {
-          const x = chartX(index, points.length);
-          const height = (item.downChecks / max) * 150;
-          return (
-            <g key={item.date}>
-              <rect x={x - 7} y={178 - height} width="14" height={height} rx="2" className="fill-rose-500" />
-              {showDateLabel(index, points.length) ? <text x={x} y="207" textAnchor="middle" className="fill-muted-foreground text-[10px]">{item.label}</text> : null}
-              <title>{`${item.label}: ${item.downChecks} failed checks`}</title>
-            </g>
-          );
-        })}
-      </svg>}
-      {hasFailures ? <p id={descriptionId} className="sr-only">{points.map((item) => `${item.label}: ${item.downChecks} failed checks`).join("; ")}</p> : null}
-    </ChartSection>
   );
 }
 
@@ -868,7 +864,7 @@ function ChartAxis() {
   return <line x1="42" y1="178" x2="700" y2="178" className="stroke-border" strokeWidth="1" />;
 }
 
-const FAILURE_SEGMENT_TONES = [
+const OUTAGE_SEGMENT_TONES = [
   { stroke: "stroke-rose-500", swatch: "bg-rose-500" },
   { stroke: "stroke-amber-500", swatch: "bg-amber-500" },
   { stroke: "stroke-cyan-500", swatch: "bg-cyan-500" },
@@ -876,26 +872,26 @@ const FAILURE_SEGMENT_TONES = [
   { stroke: "stroke-slate-500", swatch: "bg-slate-500" },
 ] as const;
 
-function FailureConcentration({ report }: { report: GeneratedReport }) {
-  const segments = buildFailureSegments(report.monitorBreakdown);
-  const total = segments.reduce((sum, segment) => sum + segment.failures, 0);
+function OutageConcentration({ report }: { report: GeneratedReport }) {
+  const segments = buildOutageSegments(report.monitorBreakdown);
+  const total = segments.reduce((sum, segment) => sum + segment.incidentCount, 0);
 
   return (
     <section className="rounded-lg bg-card/45 p-4">
-      <h3 className="text-base font-medium">Failure concentration</h3>
-      <p className="mt-1 text-sm text-muted-foreground">Shows which monitors account for the selected period&apos;s failed checks.</p>
+      <h3 className="text-base font-medium">Outage concentration</h3>
+      <p className="mt-1 text-sm text-muted-foreground">{report.summary.incompleteOutageHistory ? "Known outages by monitor; older outage history is incomplete." : "Distinct outages by monitor in this period."}</p>
       {total === 0 ? (
-        <p className="mt-4 py-6 text-sm text-muted-foreground">No failed checks to distribute.</p>
+        <p className="mt-4 py-6 text-sm text-muted-foreground">{report.summary.incompleteOutageHistory ? "Outage history is incomplete for this period." : "No outages in this period."}</p>
       ) : (
         <div className="mt-4 grid items-center gap-5 sm:grid-cols-[180px_1fr]">
-          <svg viewBox="0 0 160 160" className="mx-auto size-44" role="img" aria-label={`${total} failed checks distributed across ${segments.length} monitor groups`}>
+          <svg viewBox="0 0 160 160" className="mx-auto size-44" role="img" aria-label={`${total} outages distributed across ${segments.length} monitor groups`}>
             <circle cx="80" cy="80" r="56" fill="none" className="stroke-muted" strokeWidth="22" />
             {segments.map((segment, index) => {
-              const percentage = (segment.failures / total) * 100;
-              const precedingFailures = segments
+              const percentage = (segment.incidentCount / total) * 100;
+              const precedingOutages = segments
                 .slice(0, index)
-                .reduce((sum, precedingSegment) => sum + precedingSegment.failures, 0);
-              const dashOffset = -(precedingFailures / total) * 100;
+                .reduce((sum, precedingSegment) => sum + precedingSegment.incidentCount, 0);
+              const dashOffset = -(precedingOutages / total) * 100;
               return (
                 <circle
                   key={segment.id}
@@ -908,24 +904,24 @@ function FailureConcentration({ report }: { report: GeneratedReport }) {
                   strokeDasharray={`${percentage} ${100 - percentage}`}
                   strokeDashoffset={dashOffset}
                   transform="rotate(-90 80 80)"
-                  className={FAILURE_SEGMENT_TONES[index].stroke}
+                  className={OUTAGE_SEGMENT_TONES[index].stroke}
                 >
-                  <title>{`${segment.label}: ${segment.failures} failed checks (${percentage.toFixed(1)}%)`}</title>
+                  <title>{`${segment.label}: ${segment.incidentCount} outages (${percentage.toFixed(1)}%)`}</title>
                 </circle>
               );
             })}
             <text x="80" y="76" textAnchor="middle" className="fill-foreground text-[24px] font-semibold tabular-nums">{total}</text>
-            <text x="80" y="96" textAnchor="middle" className="fill-muted-foreground text-[10px]">failed checks</text>
+            <text x="80" y="96" textAnchor="middle" className="fill-muted-foreground text-[10px]">outages</text>
           </svg>
           <ol className="grid gap-1">
             {segments.map((segment, index) => (
               <li key={segment.id} className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2 rounded-md bg-muted/20 px-2 py-2 text-sm">
-                <span className={cn("size-2", FAILURE_SEGMENT_TONES[index].swatch)} aria-hidden="true" />
+                <span className={cn("size-2", OUTAGE_SEGMENT_TONES[index].swatch)} aria-hidden="true" />
                 <span className="min-w-0">
                   <span className="block truncate" title={segment.label}>{segment.label}</span>
                   {segment.detail ? <span className="block truncate text-xs text-muted-foreground" title={segment.detail}>{segment.detail}</span> : null}
                 </span>
-                <span className="tabular-nums text-muted-foreground">{segment.failures.toLocaleString("en-GB")} · {((segment.failures / total) * 100).toFixed(1)}%</span>
+                <span className="tabular-nums text-muted-foreground">{segment.incidentCount.toLocaleString("en-GB")} · {((segment.incidentCount / total) * 100).toFixed(1)}%</span>
               </li>
             ))}
           </ol>
@@ -937,10 +933,10 @@ function FailureConcentration({ report }: { report: GeneratedReport }) {
 
 function FleetHealthDistribution({ monitors }: { monitors: GeneratedReport["monitorBreakdown"] }) {
   const bands = [
-    { label: "Healthy", detail: "99.9% and above", count: monitors.filter((monitor) => monitor.hasCompletedChecks && monitor.uptimePct >= 99.9).length, tone: "bg-emerald-500" },
-    { label: "Watch", detail: "At least 99.00%, below 99.90%", count: monitors.filter((monitor) => monitor.hasCompletedChecks && monitor.uptimePct >= 99 && monitor.uptimePct < 99.9).length, tone: "bg-amber-500" },
-    { label: "At risk", detail: "Below 99.0%", count: monitors.filter((monitor) => monitor.hasCompletedChecks && monitor.uptimePct < 99).length, tone: "bg-rose-500" },
-    { label: "No data", detail: "No completed checks", count: monitors.filter((monitor) => !monitor.hasCompletedChecks).length, tone: "bg-slate-500" },
+    { label: "Healthy", detail: "99.9% and above", count: monitors.filter((monitor) => monitor.hasUptimeData && monitor.uptimePct >= 99.9).length, tone: "bg-emerald-500" },
+    { label: "Watch", detail: "At least 99.00%, below 99.90%", count: monitors.filter((monitor) => monitor.hasUptimeData && monitor.uptimePct >= 99 && monitor.uptimePct < 99.9).length, tone: "bg-amber-500" },
+    { label: "At risk", detail: "Below 99.0%", count: monitors.filter((monitor) => monitor.hasUptimeData && monitor.uptimePct < 99).length, tone: "bg-rose-500" },
+    { label: "No data", detail: "No usable outage history", count: monitors.filter((monitor) => !monitor.hasUptimeData).length, tone: "bg-slate-500" },
   ];
   const total = monitors.length;
 
@@ -996,8 +992,8 @@ function MonitorRiskTable({ report }: { report: GeneratedReport }) {
   const isTruncated = report.monitorBreakdown.length > rows.length;
   return (
     <section className="rounded-lg bg-card/45 p-4">
-      <h3 className="text-base font-medium">Monitor failure ranking</h3>
-      <p className="mt-1 text-sm text-muted-foreground">Highest failed-check count first, then average latency.</p>
+      <h3 className="text-base font-medium">Monitor outage ranking</h3>
+      <p className="mt-1 text-sm text-muted-foreground">Most distinct outages first, then total downtime.</p>
       {isTruncated ? (
         <p className="mt-1 text-xs text-muted-foreground">
           Showing the 12 highest-risk monitors out of {report.monitorBreakdown.length} in scope.{" "}
@@ -1007,15 +1003,15 @@ function MonitorRiskTable({ report }: { report: GeneratedReport }) {
       <div className="mt-3 hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[680px] text-sm">
           <thead className="text-left text-xs text-muted-foreground">
-            <tr><th className="py-2 pr-4 font-medium">Monitor</th><th className="px-3 py-2 text-right font-medium">Failures</th><th className="px-3 py-2 text-right font-medium">Uptime</th><th className="px-3 py-2 text-right font-medium">Average</th><th className="py-2 pl-3 text-right font-medium">P95</th></tr>
+            <tr><th className="py-2 pr-4 font-medium">Monitor</th><th className="px-3 py-2 text-right font-medium">Outages</th><th className="px-3 py-2 text-right font-medium">Downtime</th><th className="px-3 py-2 text-right font-medium">Uptime</th><th className="py-2 pl-3 text-right font-medium">P95</th></tr>
           </thead>
           <tbody>
             {rows.map((monitor) => (
               <tr key={monitor.monitorId}>
                 <td className="max-w-[330px] py-3 pr-4"><p className="truncate font-medium" title={monitor.name}>{monitor.name}</p><p className="mt-0.5 truncate text-xs text-muted-foreground" title={monitor.url}>{monitor.url}</p></td>
-                <td className={cn("px-3 py-3 text-right tabular-nums", monitor.failures > 0 && "text-rose-500")}>{monitor.failures.toLocaleString("en-GB")}</td>
+                <td className={cn("px-3 py-3 text-right tabular-nums", monitor.incidentCount > 0 && "text-rose-500")}>{formatMonitorOutageCount(monitor)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{formatMonitorDowntime(monitor)}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{formatMonitorUptime(monitor)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatMonitorAverageLatency(monitor)}</td>
                 <td className="py-3 pl-3 text-right tabular-nums">{formatMonitorP95Latency(monitor)}</td>
               </tr>
             ))}
@@ -1028,7 +1024,8 @@ function MonitorRiskTable({ report }: { report: GeneratedReport }) {
             <p className="truncate text-sm font-medium" title={monitor.name}>{monitor.name}</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground" title={monitor.url}>{monitor.url}</p>
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              <MobileMetric label="Failures" value={monitor.failures.toLocaleString("en-GB")} tone={monitor.failures > 0 ? "text-rose-500" : undefined} />
+              <MobileMetric label="Outages" value={formatMonitorOutageCount(monitor)} tone={monitor.incidentCount > 0 ? "text-rose-500" : undefined} />
+              <MobileMetric label="Downtime" value={formatMonitorDowntime(monitor)} />
               <MobileMetric label="Uptime" value={formatMonitorUptime(monitor)} />
               <MobileMetric label="Average" value={formatMonitorAverageLatency(monitor)} />
               <MobileMetric label="P95" value={formatMonitorP95Latency(monitor)} />
@@ -1163,19 +1160,19 @@ function formatExclusionSummary(filters: AnalyticsFilters) {
   return `Excluding ${parts.join(", ")}`;
 }
 
-export function buildFailureSegments(monitors: GeneratedReport["monitorBreakdown"]) {
+export function buildOutageSegments(monitors: GeneratedReport["monitorBreakdown"]) {
   const failing = monitors
-    .filter((monitor) => monitor.failures > 0)
-    .toSorted((left, right) => right.failures - left.failures);
+    .filter((monitor) => monitor.incidentCount > 0)
+    .toSorted((left, right) => right.incidentCount - left.incidentCount);
   const leading = failing.slice(0, 4).map((monitor) => ({
     id: monitor.monitorId,
     label: monitor.name,
     detail: monitor.url,
-    failures: monitor.failures,
+    incidentCount: monitor.incidentCount,
   }));
-  const remainingFailures = failing.slice(4).reduce((total, monitor) => total + monitor.failures, 0);
-  return remainingFailures > 0
-    ? [...leading, { id: "other", label: "Other monitors", detail: null, failures: remainingFailures }]
+  const remainingOutages = failing.slice(4).reduce((total, monitor) => total + monitor.incidentCount, 0);
+  return remainingOutages > 0
+    ? [...leading, { id: "other", label: "Other monitors", detail: null, incidentCount: remainingOutages }]
     : leading;
 }
 
