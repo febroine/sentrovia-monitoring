@@ -49,14 +49,15 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
       .summary-cell{border-left-color:#3a484a!important}
       .email-detail-cell{border-bottom-color:#3a484a!important}
       .email-footer{background:#1b2224!important;border-top-color:#3a484a!important;color:#9aafaa!important}
-      .email-button-shell,.email-button-cell,.email-button{background:#16433c!important}
       .email-button-shell{border-color:#6eb7a1!important}
-      .email-button{color:#ecf4f0!important}
+      .email-button{color:#9ad5c1!important}
       .email-link{color:#9ad5c1!important}
     }
     @media only screen and (max-width:520px){
       .email-canvas-pad{padding:14px 10px!important}
       .email-section,.email-footer{padding-left:22px!important;padding-right:22px!important}
+      .email-brand-cell{padding-right:0!important}
+      .email-state-cell{padding-left:0!important}
       .email-title{font-size:25px!important}
       .summary-cell{display:block!important;width:100%!important;box-sizing:border-box!important;padding:13px 0!important;border-left:0!important;border-top:1px solid #e2e8f0!important}
       .summary-cell:first-child{border-top:0!important}
@@ -76,27 +77,23 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
   <table class="email-canvas" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f1f5f9" style="background:#f1f5f9;border-collapse:collapse;">
     <tr><td class="email-canvas-pad" align="center" style="padding:34px 12px;">
       <table class="email-surface" role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:640px;background:#ffffff;border-collapse:collapse;border-top:3px solid ${tone.accent};">
-        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:26px 32px 0;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-            <tr>
-              <td class="email-brand" valign="top" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:.03em;color:#0f766e;word-break:break-word;">${escapeHtml(input.brandName)}</td>
-              <td align="right" valign="top"><span class="email-status" style="color:${tone.text};font-size:11px;font-weight:700;line-height:1.4;letter-spacing:.07em;white-space:nowrap;">${escapeHtml(input.eventState)}</span></td>
-            </tr>
-          </table>
-        </td></tr>
-        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:29px 32px 26px;">
+        <tr>
+          <td class="email-section email-brand-cell email-brand" width="70%" valign="top" bgcolor="#ffffff" style="background:#ffffff;padding:26px 0 0 32px;font-size:12px;font-weight:700;line-height:1.4;letter-spacing:.03em;color:#0f766e;word-break:break-word;">${escapeHtml(input.brandName)}</td>
+          <td class="email-section email-state-cell" width="30%" align="right" valign="top" bgcolor="#ffffff" style="background:#ffffff;padding:26px 32px 0 0;text-align:right;"><span class="email-status" style="color:${tone.text};font-size:11px;font-weight:700;line-height:1.4;letter-spacing:.07em;white-space:nowrap;">${escapeHtml(input.eventState)}</span></td>
+        </tr>
+        <tr><td class="email-section" colspan="2" bgcolor="#ffffff" style="background:#ffffff;padding:29px 32px 26px;">
           <h1 class="email-title" style="margin:0;font-size:28px;line-height:1.2;font-weight:700;letter-spacing:-.015em;color:#0f172a;word-break:break-word;">${escapeHtml(input.headline)}</h1>
-          <p class="email-copy" style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#334155;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(input.lead)}</p>
+          <p class="email-copy" style="margin:16px 0 ${input.primaryAction ? "22px" : "0"};font-size:14px;line-height:1.6;color:#334155;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(input.lead)}</p>
           ${renderPrimaryAction(input.primaryAction, input.monitorTarget)}
         </td></tr>
-        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:0 32px;">
+        <tr><td class="email-section" colspan="2" bgcolor="#ffffff" style="background:#ffffff;padding:0 32px;">
           ${renderSummary(input.checkedAt, input.status, input.duration, input.durationKind, copy, tone.text)}
         </td></tr>
-        <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:27px 32px 31px;">
+        <tr><td class="email-section" colspan="2" bgcolor="#ffffff" style="background:#ffffff;padding:27px 32px 31px;">
           <h2 class="email-heading" style="margin:0 0 14px;font-size:15px;line-height:1.4;color:#0f172a;">${escapeHtml(input.contentTitle)}</h2>
           ${content}
         </td></tr>
-        <tr><td class="email-footer" bgcolor="#f8fafc" style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:18px 32px 20px;font-size:11px;line-height:1.55;color:#64748b;word-break:break-word;">
+        <tr><td class="email-footer" colspan="2" bgcolor="#f8fafc" style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:18px 32px 20px;font-size:11px;line-height:1.55;color:#64748b;word-break:break-word;">
           ${escapeHtml(input.footerText || copy.footer)}
         </td></tr>
       </table>
@@ -133,13 +130,8 @@ function renderPrimaryAction(action: NotificationEmailInput["primaryAction"], mo
     return `<p class="email-target" style="margin:20px 0 0;font-size:12px;line-height:1.5;color:#64748b;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(monitorTarget)}</p>`;
   }
 
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-    <tr><td height="22" style="height:22px;font-size:0;line-height:0;">&nbsp;</td></tr>
-    <tr><td>
-      <table class="email-button-shell" role="presentation" cellspacing="0" cellpadding="0" border="0" bgcolor="#0f766e" style="background:#0f766e;border:1px solid #0f766e;border-collapse:collapse;">
-        <tr><td class="email-button-cell" bgcolor="#0f766e" style="background:#0f766e;padding:11px 17px;text-align:center;"><a class="email-button" href="${escapeHtml(action.href)}" target="_blank" rel="noopener noreferrer" style="display:block;background:#0f766e;color:#ffffff;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap;">${escapeHtml(action.label)}</a></td></tr>
-      </table>
-    </td></tr>
+  return `<table class="email-button-shell" role="presentation" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #0f766e;border-collapse:collapse;">
+    <tr><td class="email-button-cell" style="padding:11px 17px;text-align:center;"><a class="email-button" href="${escapeHtml(action.href)}" target="_blank" rel="noopener noreferrer" style="display:block;color:#0f766e;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap;">${escapeHtml(action.label)}</a></td></tr>
   </table>`;
 }
 

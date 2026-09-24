@@ -14,8 +14,9 @@ describe("notification templates", () => {
 
     expect(rendered.htmlBody).toContain('href="https://api.example.com/health"');
     expect(rendered.htmlBody).toContain(">Check site</a>");
-    expect(rendered.htmlBody).toContain('height="22" style="height:22px;font-size:0;line-height:0;"');
-    expect(rendered.htmlBody).toContain('class="email-button-cell" bgcolor="#0f766e" style="background:#0f766e;padding:11px 17px;text-align:center;"');
+    expect(rendered.htmlBody).toContain('class="email-button-cell" style="padding:11px 17px;text-align:center;"');
+    expect(rendered.htmlBody).toContain('style="display:block;color:#0f766e;');
+    expect(rendered.htmlBody).not.toContain('height="22" style="height:22px;font-size:0;line-height:0;"');
     expect(rendered.htmlBody).not.toContain('class="email-target-cell"');
     expect(rendered.htmlBody).toContain("Sentrovia monitoring notification");
     expect(rendered.htmlBody).not.toContain("Open monitoring");
@@ -96,6 +97,7 @@ describe("notification templates", () => {
     expect(rendered.htmlBody).toContain("Investigate API</h1>");
     expect(rendered.htmlBody).toContain(">Investigating</td>");
     expect(rendered.htmlBody).toContain("İhlas altyapı izleme bildirimi");
+    expect(rendered.htmlBody).toContain('class="email-section email-state-cell" width="30%" align="right"');
     expect(rendered.htmlBody).toContain("margin:16px 0 12px");
   });
 
