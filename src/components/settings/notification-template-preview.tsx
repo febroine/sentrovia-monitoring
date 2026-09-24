@@ -105,8 +105,8 @@ export function NotificationTemplatePreviewPanel({ settings }: { settings: Setti
             Uses sample monitor data and updates after you edit a template. Nothing is sent automatically.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(180px,1fr)_auto] lg:min-w-[400px]">
-          <label className="space-y-1.5 text-xs font-medium">
+        <div className="grid gap-3 sm:grid-cols-[minmax(180px,1fr)_auto] sm:items-end lg:min-w-[400px]">
+          <label className="flex flex-col gap-1.5 text-xs font-medium">
             <span className="block">Event</span>
             <Select value={scenario} onValueChange={(value) => setScenario(value as PreviewScenario)}>
               <SelectTrigger aria-label="Preview event" className="w-full"><SelectValue /></SelectTrigger>
@@ -156,7 +156,7 @@ export function NotificationTemplatePreviewPanel({ settings }: { settings: Setti
         </div>
 
         <div className="grid gap-3 border-t border-border/70 pt-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <label className="space-y-1.5 text-xs font-medium">
+          <label className="flex flex-col gap-1.5 text-xs font-medium">
             <span className="block">Test email recipient</span>
             <Input
               type="email"

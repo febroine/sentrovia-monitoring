@@ -129,6 +129,7 @@ describe("delivery service", () => {
       expect.objectContaining({
         attachments: [attachment],
         to: "alerts@example.com",
+        html: "<p>Down</p>",
       })
     );
   });

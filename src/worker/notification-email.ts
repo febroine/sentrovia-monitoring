@@ -44,7 +44,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
       .email-title{color:#f3f7f5!important}
       .email-heading,.email-value{color:#ecf4f0!important}
       .email-copy{color:#b9cbc5!important}
-      .email-target,.email-target-cell,.email-label,.email-muted{color:#a9bcb6!important}
+      .email-target,.email-label,.email-muted{color:#a9bcb6!important}
       .email-summary{border-color:#3a484a!important}
       .summary-cell{border-left-color:#3a484a!important}
       .email-detail-cell{border-bottom-color:#3a484a!important}
@@ -58,14 +58,16 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
       .email-canvas-pad{padding:14px 10px!important}
       .email-section,.email-footer{padding-left:22px!important;padding-right:22px!important}
       .email-title{font-size:25px!important}
-      .email-action-cell,.email-target-cell{display:block!important;width:100%!important;text-align:left!important}
-      .email-target-cell{padding:14px 0 0!important}
       .summary-cell{display:block!important;width:100%!important;box-sizing:border-box!important;padding:13px 0!important;border-left:0!important;border-top:1px solid #e2e8f0!important}
       .summary-cell:first-child{border-top:0!important}
       .email-value,.email-status-value{margin-top:3px!important}
+      .email-detail-cell{display:block!important;width:100%!important;box-sizing:border-box!important;border-bottom:0!important}
+      .email-detail-cell:first-child{padding:12px 0 2px!important}
+      .email-detail-cell:last-child{padding:0 0 12px!important;border-bottom:1px solid #e2e8f0!important}
     }
     @media (prefers-color-scheme:dark) and (max-width:520px){
       .summary-cell{border-top-color:#3a484a!important}
+      .email-detail-cell:last-child{border-bottom-color:#3a484a!important}
     }
   </style>
 </head>
@@ -84,7 +86,7 @@ export function renderNotificationEmailHtml(input: NotificationEmailInput) {
         </td></tr>
         <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:29px 32px 26px;">
           <h1 class="email-title" style="margin:0;font-size:28px;line-height:1.2;font-weight:700;letter-spacing:-.015em;color:#0f172a;word-break:break-word;">${escapeHtml(input.headline)}</h1>
-          <p class="email-copy" style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#334155;">${escapeHtml(input.lead)}</p>
+          <p class="email-copy" style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#334155;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(input.lead)}</p>
           ${renderPrimaryAction(input.primaryAction, input.monitorTarget)}
         </td></tr>
         <tr><td class="email-section" bgcolor="#ffffff" style="background:#ffffff;padding:0 32px;">
@@ -128,15 +130,16 @@ function renderSummary(
 
 function renderPrimaryAction(action: NotificationEmailInput["primaryAction"], monitorTarget: string) {
   if (!action) {
-    return `<p class="email-target" style="margin:20px 0 0;font-size:12px;line-height:1.5;color:#64748b;word-break:break-all;">${escapeHtml(monitorTarget)}</p>`;
+    return `<p class="email-target" style="margin:20px 0 0;font-size:12px;line-height:1.5;color:#64748b;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(monitorTarget)}</p>`;
   }
 
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:22px;">
-    <tr><td class="email-action-cell" width="150" valign="middle" style="width:150px;">
+  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tr><td height="22" style="height:22px;font-size:0;line-height:0;">&nbsp;</td></tr>
+    <tr><td>
       <table class="email-button-shell" role="presentation" cellspacing="0" cellpadding="0" border="0" bgcolor="#0f766e" style="background:#0f766e;border:1px solid #0f766e;border-collapse:collapse;">
-        <tr><td class="email-button-cell" bgcolor="#0f766e" style="background:#0f766e;"><a class="email-button" href="${escapeHtml(action.href)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#0f766e;color:#ffffff;padding:11px 17px;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap;">${escapeHtml(action.label)}</a></td></tr>
+        <tr><td class="email-button-cell" bgcolor="#0f766e" style="background:#0f766e;padding:11px 17px;text-align:center;"><a class="email-button" href="${escapeHtml(action.href)}" target="_blank" rel="noopener noreferrer" style="display:block;background:#0f766e;color:#ffffff;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap;">${escapeHtml(action.label)}</a></td></tr>
       </table>
-    </td><td class="email-target-cell" valign="middle" style="padding-left:16px;font-size:12px;line-height:1.5;color:#64748b;word-break:break-all;">${escapeHtml(monitorTarget)}</td></tr>
+    </td></tr>
   </table>`;
 }
 

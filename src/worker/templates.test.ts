@@ -14,6 +14,9 @@ describe("notification templates", () => {
 
     expect(rendered.htmlBody).toContain('href="https://api.example.com/health"');
     expect(rendered.htmlBody).toContain(">Check site</a>");
+    expect(rendered.htmlBody).toContain('height="22" style="height:22px;font-size:0;line-height:0;"');
+    expect(rendered.htmlBody).toContain('class="email-button-cell" bgcolor="#0f766e" style="background:#0f766e;padding:11px 17px;text-align:center;"');
+    expect(rendered.htmlBody).not.toContain('class="email-target-cell"');
     expect(rendered.htmlBody).toContain("Sentrovia monitoring notification");
     expect(rendered.htmlBody).not.toContain("Open monitoring");
     expect(rendered.htmlBody).not.toContain("https://sentrovia.example.com/monitoring");

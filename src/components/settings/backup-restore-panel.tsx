@@ -98,7 +98,7 @@ export function BackupRestorePanel({
     <div className="space-y-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="flex flex-col gap-4 md:flex-row md:items-end">
-            <div className="w-40 space-y-2">
+            <div className="flex w-40 flex-col gap-2">
               <Label>Format</Label>
               <Select value={format} onValueChange={(value) => {
                 setFormat(value as "json" | "yaml");
