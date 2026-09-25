@@ -17,18 +17,18 @@ if errorlevel 1 (
 )
 
 echo ============================================================
-echo   Sentrovia NSSM Update
+echo   Sentrovia Release Update
 echo ============================================================
 echo.
-echo Existing environment settings and database records are kept.
+echo The latest stable GitHub release will be verified and installed.
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\update-windows-nssm.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\update-windows-release.ps1"
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
 if "%EXIT_CODE%"=="0" (
-  echo [SUCCESS] Sentrovia was updated and both services were started.
+  echo [SUCCESS] Sentrovia release is healthy and both services are running.
 ) else (
   echo [ERROR] Update failed. Review the message above and the latest file in .\logs.
 )

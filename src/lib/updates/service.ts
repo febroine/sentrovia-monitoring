@@ -4,7 +4,7 @@ const GITHUB_RELEASE_TIMEOUT_MS = 8_000;
 const GITHUB_REPOSITORY_PART_PATTERN = /^[A-Za-z0-9_.-]+$/;
 const RELEASE_TAG_PATTERN = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/i;
 const BACKUP_REMINDER =
-  "Before updating, export or verify a recent backup. The update commands keep .env files and PostgreSQL volumes in place, but backups protect you from operator mistakes and failed migrations.";
+  "The Windows NSSM updater creates and verifies an encrypted database backup before migration. Keep the backup and APP_ENCRYPTION_SECRET for manual database recovery if needed. Back up PostgreSQL separately before Docker updates.";
 
 type GitHubRelease = {
   tag_name?: string;
@@ -245,11 +245,7 @@ export function buildUpdateGuidance(targetTag: string | null) {
     `git checkout ${targetTag}`,
     "docker compose up -d --build",
   ];
-  const serviceCommands = [
-    "git fetch --tags origin",
-    `git checkout ${targetTag}`,
-    "UPDATE-SENTROVIA.bat",
-  ];
+  const serviceCommands = ["UPDATE-SENTROVIA.bat"];
 
   return {
     recommendedCommands: dockerCommands,

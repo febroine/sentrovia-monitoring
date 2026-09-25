@@ -23,6 +23,7 @@
 # production
 /build
 /release/
+/releases/
 /backups/
 *.sentrovia-backup
 /*.zip

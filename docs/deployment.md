@@ -112,7 +112,7 @@ npm run db:manual:baseline
 
 ## Updating Sentrovia
 
-Back up PostgreSQL before updating.
+For Docker, back up PostgreSQL before updating. The Windows NSSM release updater makes a verified encrypted backup before it applies database migrations.
 
 ### Docker update
 
@@ -133,16 +133,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --
 ### Windows NSSM update
 
 ```bat
-git fetch --tags origin
-git checkout vX.Y.Z
 UPDATE-SENTROVIA.bat
 ```
 
-If release files were copied manually, skip the Git commands and run `UPDATE-SENTROVIA.bat`. The updater validates dependencies and the build, applies migrations, restarts both services, removes known retired paths, and preserves `.env.local` and database records. It restores the previous dependencies and production build if the update fails. The full transcript is saved under `logs`.
+Run this from the original installation directory as Administrator. It installs the latest **published stable GitHub Release**, not every push. It downloads the release archive and checksum, verifies SHA-256, prepares dependencies, Chromium, and the build in a new `releases` directory, and makes a verified encrypted PostgreSQL backup. It then stops both NSSM services, synchronizes the database schema, points both services to the new directory, and checks that they stay running and that `/api/health` responds. `.env.local`, the browser cache, and automatic backups remain available across releases. The full transcript is saved under `logs`.
+
+If startup or health verification fails, the updater points both services back to their previous application directory and restarts them. **Database migrations are not reversed automatically.** Keep the pre-release `.sentrovia-backup` file and `APP_ENCRYPTION_SECRET`; restoring a database backup requires stopping the services and using `npm run backup:restore -- <backup-file> --restore --confirm=REPLACE_DATABASE` after investigating the failure. A failed update leaves the prepared release directory in place for diagnosis.
+
+The first switch from an older checkout that does not contain this updater is a one-time bootstrap: fetch and check out `v0.1.8` (or a newer release containing this script), then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows-nssm.ps1` as Administrator. Use `UPDATE-SENTROVIA.bat` for later releases. Keep that original installation directory because it contains the updater, logs, release directories, and original browser cache. Edit the active release's `.env.local` (find its directory with `nssm get sentrovia-web AppDirectory`) when changing runtime settings; the next release copies that file. For a selected stable release, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows-release.ps1 -Tag vX.Y.Z` from an elevated PowerShell session. The old in-place updater remains available for manual maintenance.
 
 ### Verify a release
 
-Release tags and artifacts are immutable. Verify the checksum and GitHub build-provenance attestation before installing a downloaded archive:
+Release tags and artifacts are immutable. The Windows updater verifies the release archive against its published SHA-256 manifest. For manual installation, verify the checksum and GitHub build-provenance attestation before installing a downloaded archive:
 
 ```bash
 sha256sum --check SHA256SUMS

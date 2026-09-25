@@ -101,11 +101,7 @@ describe("update service", () => {
       "git checkout v2.0.0",
       "docker compose up -d --build",
     ]);
-    expect(guidance.serviceCommands).toEqual([
-      "git fetch --tags origin",
-      "git checkout v2.0.0",
-      "UPDATE-SENTROVIA.bat",
-    ]);
+    expect(guidance.serviceCommands).toEqual(["UPDATE-SENTROVIA.bat"]);
   });
 
   it("does not generate executable commands without a valid release tag", () => {
