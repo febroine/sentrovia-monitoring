@@ -18,11 +18,12 @@ export function SuggestionField({
   onChange: (value: string) => void;
 }) {
   const listId = `${label.toLowerCase().replaceAll(" ", "-")}-list`;
+  const inputId = `${listId}-input`;
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium">{label}</p>
-      <Input list={listId} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+      <label htmlFor={inputId} className="block text-sm font-medium">{label}</label>
+      <Input id={inputId} list={listId} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
       <datalist id={listId}>
         {suggestions.map((item) => (
           <option key={item} value={item} />
@@ -41,10 +42,11 @@ export function DateField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const inputId = `log-${label.toLowerCase()}`;
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium">{label}</p>
-      <Input type="date" value={value} onChange={(event) => onChange(event.target.value)} />
+      <label htmlFor={inputId} className="block text-sm font-medium">{label}</label>
+      <Input id={inputId} type="date" value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
 }

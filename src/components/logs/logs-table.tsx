@@ -28,6 +28,7 @@ export function LogsTable({
   highlightIds,
   page,
   pageSize,
+  hasActiveFilters,
   onToggleSelect,
   onToggleAll,
   onPageChange,
@@ -41,6 +42,7 @@ export function LogsTable({
   highlightIds: Set<string>;
   page: number;
   pageSize: number;
+  hasActiveFilters: boolean;
   onToggleSelect: (id: string) => void;
   onToggleAll: (visibleIds: string[]) => void;
   onPageChange: (page: number) => void;
@@ -117,9 +119,11 @@ export function LogsTable({
               <TableRow>
                 <TableCell colSpan={8}>
                   <EmptyState
-                    title="No events match the current filters"
-                    description="Try a broader date range or clear the active filters."
-                    action={emptyAction}
+                    title={hasActiveFilters ? "No events match the current filters" : "No events yet"}
+                    description={hasActiveFilters
+                      ? "Try a broader date range or clear the active filters."
+                      : "Monitor and delivery events will appear here when recorded."}
+                    action={hasActiveFilters ? emptyAction : undefined}
                   />
                 </TableCell>
               </TableRow>

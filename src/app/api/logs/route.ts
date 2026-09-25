@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspacePermission } from "@/lib/auth/authorization";
 import { toAuthError } from "@/lib/auth/errors";
-import { clearLogs, getLogFilterOptions, listLogs } from "@/lib/logs/service";
+import { clearLogs, countClearableLogs, getLogFilterOptions, listLogs } from "@/lib/logs/service";
 import { assertSameOriginMutation } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const session = await requireWorkspacePermission("audit.read");
 
     const { searchParams } = new URL(request.url);
-    const logs = await listLogs(session.id, {
+    const filters = {
       search: searchParams.get("search") ?? "",
       level: searchParams.get("level") ?? "all",
       companyQuery: searchParams.get("companyQuery") ?? "",
@@ -32,14 +32,19 @@ export async function GET(request: NextRequest) {
       ),
       page: Number(searchParams.get("page") ?? "1"),
       pageSize: Number(searchParams.get("pageSize") ?? "10"),
-    }, session.activeWorkspaceId!);
-    const options = await getLogFilterOptions(session.id, session.activeWorkspaceId!);
+    };
+    const [logs, options, clearableTotal] = await Promise.all([
+      listLogs(session.id, filters, session.activeWorkspaceId!),
+      getLogFilterOptions(session.id, session.activeWorkspaceId!),
+      countClearableLogs(session.id, session.activeWorkspaceId!),
+    ]);
 
     return NextResponse.json({
       logs: logs.rows.map((log) => ({ ...log, createdAt: log.createdAt.toISOString() })),
       filters: options,
       pagination: {
         total: logs.total,
+        clearableTotal,
         page: logs.page,
         pageSize: logs.pageSize,
       },

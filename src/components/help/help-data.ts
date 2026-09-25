@@ -359,9 +359,9 @@ export const helpCategories: HelpCategory[] = [
           "Use Settings > Updates to find the latest GitHub Release tag, release notes, and copyable host-side commands. The app does not update itself from the browser. Docker installs usually fetch tags, check out the target release, then rebuild and restart with Docker Compose while keeping .env files and PostgreSQL volumes in place.",
       },
       {
-        question: "How should I update a Windows/NSSM or manual Node.js deployment?",
+        question: "How should I update a Windows/NSSM deployment?",
         answer:
-          "For first-time setup, run scripts\\install-windows-nssm.ps1 in an Administrator PowerShell session. For an existing NSSM server, place the new release files in the project directory and double-click UPDATE-SENTROVIA.bat. It preserves .env.local and database records, fills missing safe runtime defaults, validates a clean build, applies pending migrations under a database lock, restarts both services, and restores previous dependencies and build output when startup fails. A timestamped transcript is saved under logs.",
+          "From the original installation directory, open UPDATE-SENTROVIA.bat and approve Administrator access. Confirm the update in the window. It verifies the latest stable GitHub release, prepares it in a separate directory, takes a verified encrypted database backup, applies migrations, and checks both services and web health. If startup fails, it attempts to return the services to the previous version; database migrations are not automatically reversed. Update logs are saved under logs. Older installations may need a one-time launcher refresh as described in the deployment guide.",
       },
       {
         question: "What should I do after changing environment variables in Docker mode?",

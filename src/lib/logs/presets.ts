@@ -1,10 +1,10 @@
 import type { LogRecord } from "@/lib/logs/types";
 
 export const EXPORT_PRESETS = [
-  { id: "csv-filtered", label: "CSV - Filtered result" },
-  { id: "csv-selected", label: "CSV - Selected rows" },
-  { id: "json-filtered", label: "JSON - Filtered result" },
-  { id: "json-selected", label: "JSON - Selected rows" },
+  { id: "csv-filtered", label: "CSV - Current page" },
+  { id: "csv-selected", label: "CSV - Selected on page" },
+  { id: "json-filtered", label: "JSON - Current page" },
+  { id: "json-selected", label: "JSON - Selected on page" },
 ] as const;
 
 export function buildCsv(rows: LogRecord[]) {

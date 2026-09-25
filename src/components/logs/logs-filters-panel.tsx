@@ -15,9 +15,9 @@ export interface LogsFilterOptions {
 }
 
 const QUICK_DATE_PRESETS = [
-  { id: "today", label: "Today", days: 0 },
-  { id: "24h", label: "Last 24h", days: 1 },
-  { id: "7d", label: "Last 7d", days: 7 },
+  { id: "today", label: "Today", fromDaysAgo: 0, toDaysAgo: 0 },
+  { id: "yesterday", label: "Yesterday", fromDaysAgo: 1, toDaysAgo: 1 },
+  { id: "7d", label: "Last 7 days", fromDaysAgo: 6, toDaysAgo: 0 },
 ] as const;
 
 export function LogsFiltersPanel({
@@ -84,7 +84,7 @@ export function LogsFiltersPanel({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => applyQuickDateRange(preset.days, onUpdateFilter)}
+                    onClick={() => applyQuickDateRange(preset.fromDaysAgo, preset.toDaysAgo, onUpdateFilter)}
                   >
                     {preset.label}
                   </Button>
@@ -180,6 +180,7 @@ function ActiveFiltersRow({
             <button
               type="button"
               onClick={() => onRemove(chip.key)}
+              aria-label={`Remove ${chip.label} filter`}
               className="text-muted-foreground transition hover:text-foreground"
             >
               <X className="h-3 w-3" />
@@ -291,22 +292,17 @@ function getDefaultValue(key: keyof LogFilters) {
 }
 
 function applyQuickDateRange(
-  days: number,
+  fromDaysAgo: number,
+  toDaysAgo: number,
   onUpdateFilter: <K extends keyof LogFilters>(key: K, value: LogFilters[K]) => void
 ) {
   const now = new Date();
-  const to = formatDateInput(now);
-
-  if (days === 0) {
-    onUpdateFilter("from", to);
-    onUpdateFilter("to", to);
-    return;
-  }
-
   const fromDate = new Date(now);
-  fromDate.setDate(fromDate.getDate() - days);
+  const toDate = new Date(now);
+  fromDate.setDate(fromDate.getDate() - fromDaysAgo);
+  toDate.setDate(toDate.getDate() - toDaysAgo);
   onUpdateFilter("from", formatDateInput(fromDate));
-  onUpdateFilter("to", to);
+  onUpdateFilter("to", formatDateInput(toDate));
 }
 
 function formatDateInput(date: Date) {

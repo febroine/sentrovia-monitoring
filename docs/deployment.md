@@ -110,6 +110,8 @@ It detects whether the database is empty or initialized and orders the Drizzle s
 npm run db:manual:baseline
 ```
 
+For database check and repair on Windows, run `UPDATE-SENTROVIA.bat --repair` from the installation directory. The launcher detects a running Docker Compose database or uses the active NSSM release with local Node.js. The former `REPAIR-DATABASE.bat` entry point is no longer needed.
+
 ## Updating Sentrovia
 
 For Docker, back up PostgreSQL before updating. The Windows NSSM release updater makes a verified encrypted backup before it applies database migrations.
@@ -136,11 +138,24 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --
 UPDATE-SENTROVIA.bat
 ```
 
-Run this from the original installation directory as Administrator. It installs the latest **published stable GitHub Release**, not every push. It downloads the release archive and checksum, verifies SHA-256, prepares dependencies, Chromium, and the build in a new `releases` directory, and makes a verified encrypted PostgreSQL backup. It then stops both NSSM services, synchronizes the database schema, points both services to the new directory, and checks that they stay running and that `/api/health` responds. `.env.local`, the browser cache, and automatic backups remain available across releases. The full transcript is saved under `logs`.
+Run this from the original installation directory as Administrator. The Windows window shows the installed version, update stages, and live output. Choose **Install update** to install the latest **published stable GitHub Release**, not every push. It downloads the release archive and checksum, verifies SHA-256, prepares dependencies, Chromium, and the build in a new `releases` directory, and makes a verified encrypted PostgreSQL backup. It then stops both NSSM services, synchronizes the database schema, points both services to the new directory, and checks that they stay running and that `/api/health` responds. `.env.local`, the browser cache, and automatic backups remain available across releases. The update output and full transcript are saved under `logs`. Keep the window open until the update finishes.
 
 If startup or health verification fails, the updater points both services back to their previous application directory and restarts them. **Database migrations are not reversed automatically.** Keep the pre-release `.sentrovia-backup` file and `APP_ENCRYPTION_SECRET`; restoring a database backup requires stopping the services and using `npm run backup:restore -- <backup-file> --restore --confirm=REPLACE_DATABASE` after investigating the failure. A failed update leaves the prepared release directory in place for diagnosis.
 
-The first switch from an older checkout that does not contain this updater is a one-time bootstrap: fetch and check out `v0.1.8` (or a newer release containing this script), then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows-nssm.ps1` as Administrator. Use `UPDATE-SENTROVIA.bat` for later releases. Keep that original installation directory because it contains the updater, logs, release directories, and original browser cache. Edit the active release's `.env.local` (find its directory with `nssm get sentrovia-web AppDirectory`) when changing runtime settings; the next release copies that file. For a selected stable release, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows-release.ps1 -Tag vX.Y.Z` from an elevated PowerShell session. The old in-place updater remains available for manual maintenance.
+The first switch from an older checkout that does not contain this updater is a one-time bootstrap: fetch and check out `v0.1.8` (or a newer release containing this script), then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows-nssm.ps1` as Administrator. Keep that original installation directory because it contains the updater, logs, release directories, and original browser cache. Edit the active release's `.env.local` (find its directory with `nssm get sentrovia-web AppDirectory`) when changing runtime settings; the next release copies that file.
+
+An installation whose original directory still has the older command-line launcher needs to refresh that launcher once after updating to a release containing the GUI. From the original installation directory in an elevated PowerShell window:
+
+```powershell
+$WebService = if (Get-Service -Name sentrovia-web -ErrorAction SilentlyContinue) { "sentrovia-web" } else { "SentroviaWeb" }
+$ActiveRoot = (& nssm get $WebService AppDirectory | Out-String).Trim()
+Copy-Item -LiteralPath (Join-Path $ActiveRoot "UPDATE-SENTROVIA.bat") -Destination . -Force
+foreach ($Name in @("update-windows-gui.ps1", "update-windows-release.ps1", "environment-utils.ps1", "nssm-service.ps1")) {
+  Copy-Item -LiteralPath (Join-Path $ActiveRoot "scripts/$Name") -Destination .\scripts -Force
+}
+```
+
+Use `UPDATE-SENTROVIA.bat --cli` to keep the previous command-line update flow, or `UPDATE-SENTROVIA.bat --repair` for database maintenance. For a selected stable release, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows-release.ps1 -Tag vX.Y.Z` from an elevated PowerShell session. The old in-place updater remains available for manual maintenance.
 
 ### Verify a release
 

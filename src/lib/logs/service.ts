@@ -321,6 +321,18 @@ export async function clearLogs(userId: string, workspaceId?: string) {
     .returning({ id: monitorEvents.id });
 }
 
+export async function countClearableLogs(userId: string, workspaceId?: string) {
+  const [result] = await db
+    .select({ total: count() })
+    .from(monitorEvents)
+    .where(and(
+      workspaceId ? eq(monitorEvents.workspaceId, workspaceId) : eq(monitorEvents.userId, userId),
+      notInArray(monitorEvents.eventType, WORKER_NOTIFICATION_MARKER_EVENTS)
+    ));
+
+  return Number(result?.total ?? 0);
+}
+
 function appendLevelConditions(conditions: unknown[], level?: string) {
   if (!level || level === "all" || !LOG_LEVEL_FILTERS.has(level)) {
     return;

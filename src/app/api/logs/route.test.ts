@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   listLogs: vi.fn(),
   getLogFilterOptions: vi.fn(),
+  countClearableLogs: vi.fn(),
   clearLogs: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/auth/session", () => ({
 vi.mock("@/lib/logs/service", () => ({
   listLogs: mocks.listLogs,
   getLogFilterOptions: mocks.getLogFilterOptions,
+  countClearableLogs: mocks.countClearableLogs,
   clearLogs: mocks.clearLogs,
 }));
 
@@ -25,6 +27,7 @@ describe("event-log authorization", () => {
     vi.clearAllMocks();
     mocks.listLogs.mockResolvedValue({ rows: [], total: 0, page: 1, pageSize: 10 });
     mocks.getLogFilterOptions.mockResolvedValue({ companies: [], monitors: [] });
+    mocks.countClearableLogs.mockResolvedValue(2);
   });
 
   it.each(["viewer", "operator"] as const)("denies %s access without audit.read", async (role) => {
@@ -39,6 +42,7 @@ describe("event-log authorization", () => {
     expect(response.status).toBe(403);
     expect(mocks.listLogs).not.toHaveBeenCalled();
     expect(mocks.getLogFilterOptions).not.toHaveBeenCalled();
+    expect(mocks.countClearableLogs).not.toHaveBeenCalled();
   });
 
   it.each(["manager", "admin"] as const)("allows %s access with audit.read", async (role) => {
@@ -56,5 +60,6 @@ describe("event-log authorization", () => {
       expect.any(Object),
       "workspace-1"
     );
+    expect((await response.json()).pagination.clearableTotal).toBe(2);
   });
 });

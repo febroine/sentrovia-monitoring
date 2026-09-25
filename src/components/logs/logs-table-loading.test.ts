@@ -15,11 +15,25 @@ describe("log table refresh", () => {
     const noop = () => {};
     const html = renderToStaticMarkup(createElement(LogsTable, {
       logs: [log], total: 1, loading: true, selectedIds: new Set<string>(), highlightIds: new Set<string>(),
-      page: 1, pageSize: 10, onToggleSelect: noop, onToggleAll: noop, onPageChange: noop, onPageSizeChange: noop,
+      page: 1, pageSize: 10, hasActiveFilters: false, onToggleSelect: noop, onToggleAll: noop, onPageChange: noop, onPageSizeChange: noop,
     }));
     expect(html).toContain("Existing healthy result");
     expect(html).toContain("Updating logs");
     expect(html).toContain('inert=""');
     expect(html).not.toContain("Loading logs");
+  });
+
+  it("distinguishes an empty workspace from an empty filtered result", () => {
+    const noop = () => {};
+    const props = {
+      logs: [], total: 0, loading: false, selectedIds: new Set<string>(), highlightIds: new Set<string>(),
+      page: 1, pageSize: 10, onToggleSelect: noop, onToggleAll: noop, onPageChange: noop, onPageSizeChange: noop,
+    };
+    const unfiltered = renderToStaticMarkup(createElement(LogsTable, { ...props, hasActiveFilters: false }));
+    const filtered = renderToStaticMarkup(createElement(LogsTable, { ...props, hasActiveFilters: true }));
+
+    expect(unfiltered).toContain("No events yet");
+    expect(unfiltered).not.toContain("No events match the current filters");
+    expect(filtered).toContain("No events match the current filters");
   });
 });

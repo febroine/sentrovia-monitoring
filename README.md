@@ -176,13 +176,21 @@ Browse [GitHub Releases](https://github.com/febroine/sentrovia-monitoring/releas
 
 ### Updates
 
-Pushing to `main` does not update running installations. A version tag publishes a stable GitHub Release after CI passes. Windows NSSM installations can then update from their original installation directory with one command, run as Administrator:
+Pushing to `main` does not update running installations. A version tag publishes a stable GitHub Release after CI passes. For a Windows NSSM installation, open the updater from the **original installation directory**:
 
 ```bat
 UPDATE-SENTROVIA.bat
 ```
 
-The updater downloads and verifies the latest stable release, prepares it in a separate directory, creates and verifies an encrypted PostgreSQL backup, switches the web and worker services, and checks that both services are running and the web health endpoint responds. If the new application fails to start, it points both services back to their previous directories. Database migrations are **not** reversed automatically; keep the backup for manual recovery. Installations older than `v0.1.8` need a [one-time bootstrap](docs/deployment.md#windows-nssm-update) before this command is available. Docker updates use the separate [Docker update procedure](docs/deployment.md#docker-update).
+This is the only user-facing BAT file. It requests Administrator access, then opens a window with the installed version, progress stages, and live output. After you confirm, it verifies the latest stable release, prepares it alongside the running version, and creates a verified encrypted PostgreSQL backup. It then stops both services, applies database migrations, starts the new version, and checks service and web health. If the switch fails, it attempts to restart the previous application version. **Database migrations are not automatically reversed**; keep the backup for manual recovery.
+
+| Command | Purpose |
+| --- | --- |
+| `UPDATE-SENTROVIA.bat` | Graphical update |
+| `UPDATE-SENTROVIA.bat --cli` | Command-line update |
+| `UPDATE-SENTROVIA.bat --repair` | Database check and repair |
+
+The BAT uses PowerShell and application scripts included in the installation; it is not a standalone copy of the application. Existing installations with an older launcher must [refresh it once](docs/deployment.md#windows-nssm-update). Docker updates use the separate [Docker update procedure](docs/deployment.md#docker-update).
 
 Important configuration rules:
 

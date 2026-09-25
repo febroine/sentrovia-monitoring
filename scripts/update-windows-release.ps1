@@ -1,6 +1,7 @@
 param(
   [string]$Tag,
-  [string]$InstallRoot = (Resolve-Path (Join-Path $PSScriptRoot ".."))
+  [string]$InstallRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")),
+  [switch]$EmitStages
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,6 +20,11 @@ function Invoke-RequiredCommand {
   if ($LASTEXITCODE -ne 0) {
     throw "$Name failed with exit code $LASTEXITCODE."
   }
+}
+
+function Write-UpdateStage {
+  param([string]$Name)
+  if ($EmitStages) { Write-Output "SENTROVIA_UPDATE_STAGE:$Name" }
 }
 
 function Get-NssmDirectory {
@@ -85,6 +91,7 @@ $OriginalLocation = Get-Location
 $Stopped = $false
 $OldDirectories = @{}
 try {
+  Write-UpdateStage -Name "checks"
   foreach ($Command in @("node", "npm", "npx", "nssm")) {
     if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) { throw "$Command is required in PATH." }
   }
@@ -104,6 +111,7 @@ try {
     throw "PORT in .env.local must be a valid TCP port."
   }
 
+  Write-UpdateStage -Name "release"
   $ApiUrl = if ($Tag) {
     if ($Tag -notmatch '^v\d+\.\d+\.\d+$') { throw "Tag must be vMAJOR.MINOR.PATCH." }
     "https://api.github.com/repos/$Repository/releases/tags/$Tag"
@@ -128,6 +136,7 @@ try {
   }
   Assert-ReleaseAssetUrl -Url $ArchiveAsset[0].browser_download_url -Repository $Repository -ReleaseTag $Tag -FileName $ArchiveName
   Assert-ReleaseAssetUrl -Url $ChecksumAsset[0].browser_download_url -Repository $Repository -ReleaseTag $Tag -FileName "SHA256SUMS"
+  Write-UpdateStage -Name "download"
   $Stage = Join-Path $ReleasesRoot ("$Tag-" + [guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $Stage | Out-Null
   $ArchivePath = Join-Path $Stage $ArchiveName
@@ -148,6 +157,7 @@ try {
   $NewPackage = Get-Content -LiteralPath (Join-Path $NewRoot "package.json") -Raw | ConvertFrom-Json
   if ($NewPackage.version -ne $Tag.Substring(1)) { throw "Archive version differs from release tag $Tag." }
 
+  Write-UpdateStage -Name "prepare"
   Copy-Item -LiteralPath $ActiveEnv -Destination (Join-Path $NewRoot ".env.local")
   $BackupDirectory = $Settings["AUTOMATIC_BACKUP_DIRECTORY"]
   if (-not $BackupDirectory) { $BackupDirectory = "backups" }
@@ -158,25 +168,33 @@ try {
   $env:PLAYWRIGHT_BROWSERS_PATH = $BrowserPath
   New-Item -ItemType Directory -Force -Path $env:PLAYWRIGHT_BROWSERS_PATH | Out-Null
   Set-Location $NewRoot
+  Write-UpdateStage -Name "build"
   Invoke-RequiredCommand -Name "npm" -Arguments @("ci")
   Invoke-RequiredCommand -Name "npx" -Arguments @("playwright", "install", "chromium")
   Invoke-RequiredCommand -Name "npm" -Arguments @("run", "build")
 
   Set-Location $ActiveRoot
+  Write-UpdateStage -Name "backup"
   Invoke-RequiredCommand -Name "npx" -Arguments @("tsx", "scripts/backup-before-release.ts")
   $Stopped = $true
+  Write-UpdateStage -Name "stop"
   foreach ($Name in $Services) { Stop-NssmService -Name $Name }
   Set-Location $NewRoot
+  Write-UpdateStage -Name "database"
   Invoke-RequiredCommand -Name "npm" -Arguments @("run", "db:sync")
+  Write-UpdateStage -Name "start"
   foreach ($Name in $Services) { Set-NssmOption -Name $Name -Option "AppDirectory" -Value @($NewRoot) }
   foreach ($Name in $Services) { Start-NssmService -Name $Name }
   Confirm-NssmServicesStable -Names $Services
+  Write-UpdateStage -Name "health"
   Wait-ForHealth -Port $Port
+  Write-UpdateStage -Name "complete"
   Write-Host "Release $Tag is running. Previous application directory: $ActiveRoot" -ForegroundColor Green
   Write-Host "Backup directory: $BackupDirectory"
 } catch {
   $Failure = $_
   if ($Stopped) {
+    Write-UpdateStage -Name "rollback"
     Write-Host "Release failed. Restoring previous service directories..." -ForegroundColor Yellow
     foreach ($Name in $Services) { Stop-NssmServiceBestEffort -Name $Name }
     foreach ($Name in $Services) {
@@ -186,6 +204,7 @@ try {
     foreach ($Name in $Services) { Start-NssmServiceBestEffort -Name $Name }
     Write-Host "The database was not automatically rolled back. Verify compatibility before restoring its backup." -ForegroundColor Yellow
   }
+  Write-UpdateStage -Name "failed"
   Write-Host "Release update failed: $($Failure.Exception.Message)" -ForegroundColor Red
   throw $Failure
 } finally {

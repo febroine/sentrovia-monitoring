@@ -29,6 +29,7 @@ export default function LogsPage() {
   const [filters, setFilters] = useState<LogFilters>(DEFAULT_FILTERS);
   const [logs, setLogs] = useState<LogRecord[]>([]);
   const [total, setTotal] = useState(0);
+  const [clearableTotal, setClearableTotal] = useState(0);
   const [options, setOptions] = useState<LogsFilterOptions>({ companies: [], monitors: [] });
   const [presets, setPresets] = useState<LogPresetRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +95,7 @@ export default function LogsPage() {
         message?: string;
         logs?: LogRecord[];
         filters?: LogsFilterOptions;
-        pagination?: { total: number; page: number; pageSize: number };
+        pagination?: { total: number; clearableTotal: number; page: number; pageSize: number };
       };
 
       if (!response.ok) {
@@ -113,6 +114,7 @@ export default function LogsPage() {
       setLogs(nextLogs);
       setOptions(data.filters ?? { companies: [], monitors: [] });
       setTotal(data.pagination?.total ?? 0);
+      setClearableTotal(data.pagination?.clearableTotal ?? 0);
       setError(null);
 
       if (newIds.length > 0 && silent) {
@@ -153,7 +155,11 @@ export default function LogsPage() {
 
       setSelectedIds(new Set());
       setClearConfirmationOpen(false);
-      await loadLogs();
+      if (page === 1) {
+        await loadLogs();
+      } else {
+        setPage(1);
+      }
       showToast("Event logs cleared.", "success");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : "Unable to clear logs.";
@@ -198,16 +204,19 @@ export default function LogsPage() {
 
     setFilters(preset.filters);
     setSelectedPresetId(presetId);
+    setSelectedIds(new Set());
     setPage(1);
   }
 
   function updateFilter<K extends keyof LogFilters>(key: K, value: LogFilters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
+    setSelectedIds(new Set());
     setPage(1);
   }
 
   function resetFilters() {
     setFilters(DEFAULT_FILTERS);
+    setSelectedIds(new Set());
     setPage(1);
   }
 
@@ -249,7 +258,8 @@ export default function LogsPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${preset.replaceAll("-", "_")}.${preset.startsWith("json") ? "json" : "csv"}`;
+    const scope = preset.endsWith("selected") ? "selected_rows" : "current_page";
+    anchor.download = `logs_${scope}.${preset.startsWith("json") ? "json" : "csv"}`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -282,7 +292,9 @@ export default function LogsPage() {
           <Button
             variant="outline"
             onClick={() => exportLogs(exportPreset)}
-            disabled={exportPreset.endsWith("selected") ? selectedIds.size === 0 : logs.length === 0}
+            disabled={loading || (exportPreset.endsWith("selected")
+              ? !logs.some((log) => selectedIds.has(log.id))
+              : logs.length === 0)}
           >
             <Download data-icon="inline-start" className="h-4 w-4" />
             Export
@@ -290,7 +302,7 @@ export default function LogsPage() {
           <Button variant="outline" size="icon" aria-label="Refresh event logs" title="Refresh" onClick={() => void loadLogs()} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           </Button>
-          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={total === 0}>
+          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={clearableTotal === 0}>
             <Trash2 data-icon="inline-start" className="h-4 w-4" />
             Clear logs
           </Button>
@@ -306,6 +318,7 @@ export default function LogsPage() {
           value={filters.search}
           onChange={(event) => updateFilter("search", event.target.value)}
           placeholder="Search event logs"
+          aria-label="Search event logs"
           className="h-9 pl-9"
         />
       </div>
@@ -345,10 +358,15 @@ export default function LogsPage() {
         highlightIds={highlightIds}
         page={page}
         pageSize={pageSize}
+        hasActiveFilters={Object.values(filters).some((value) => Boolean(value) && value !== "all")}
         onToggleSelect={toggleSelect}
         onToggleAll={toggleVisibleSelection}
-        onPageChange={setPage}
+        onPageChange={(value) => {
+          setSelectedIds(new Set());
+          setPage(value);
+        }}
         onPageSizeChange={(value) => {
+          setSelectedIds(new Set());
           setPageSize(value);
           setPage(1);
         }}
@@ -364,7 +382,7 @@ export default function LogsPage() {
           <DialogHeader>
             <DialogTitle>Clear event logs?</DialogTitle>
             <DialogDescription>
-              This permanently removes {total.toLocaleString("en-GB")} event log records from this workspace.
+              This permanently removes {clearableTotal.toLocaleString("en-GB")} stored event log records from this workspace. Current healthy monitor summaries remain.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
