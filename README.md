@@ -174,6 +174,16 @@ docker pull ghcr.io/febroine/sentrovia-monitoring:latest
 
 Browse [GitHub Releases](https://github.com/febroine/sentrovia-monitoring/releases) for archives and checksums, or the [GitHub Container Registry package](https://github.com/febroine/sentrovia-monitoring/pkgs/container/sentrovia-monitoring) for published image tags.
 
+### Updates
+
+Pushing to `main` does not update running installations. A version tag publishes a stable GitHub Release after CI passes. Windows NSSM installations can then update from their original installation directory with one command, run as Administrator:
+
+```bat
+UPDATE-SENTROVIA.bat
+```
+
+The updater downloads and verifies the latest stable release, prepares it in a separate directory, creates and verifies an encrypted PostgreSQL backup, switches the web and worker services, and checks that both services are running and the web health endpoint responds. If the new application fails to start, it points both services back to their previous directories. Database migrations are **not** reversed automatically; keep the backup for manual recovery. Installations older than `v0.1.8` need a [one-time bootstrap](docs/deployment.md#windows-nssm-update) before this command is available. Docker updates use the separate [Docker update procedure](docs/deployment.md#docker-update).
+
 Important configuration rules:
 
 - Never commit `.env` or `.env.local`.
