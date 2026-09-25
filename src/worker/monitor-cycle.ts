@@ -608,7 +608,11 @@ async function recordConfigurationFailure(
     status: monitor.status === "down" ? "down" : "pending",
     statusCode: monitor.statusCode,
     lastCheckedAt: result.checkedAt,
-    nextCheckAt: calculateNextCheckAt(monitor, result.checkedAt, completedAt),
+    nextCheckAt: monitor.verificationMode
+      ? calculateVerificationCheckAt(result.checkedAt, completedAt)
+      : monitor.status === "down"
+        ? calculateOutageRecheckAt(monitor, result.checkedAt, completedAt)
+        : calculateNextCheckAt(monitor, result.checkedAt, completedAt),
     lastSuccessAt: monitor.lastSuccessAt,
     lastFailureAt: monitor.lastFailureAt,
     sslExpiresAt: monitor.sslExpiresAt,

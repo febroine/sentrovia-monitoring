@@ -121,6 +121,34 @@ describe("failure screenshot request isolation", () => {
     ).toBe(true);
   });
 
+  it("allows validated cross-host navigation redirects and assets from the loaded page", () => {
+    const approvedHosts = new Set(["status.example.com", "www.example.com"]);
+    expect(shouldAllowScreenshotRequest(
+      "https://status.example.com/down",
+      "https://www.example.com/down",
+      { isNavigationRequest: true, redirectedFromUrl: "https://status.example.com/down" },
+      approvedHosts
+    )).toBe(true);
+    expect(shouldAllowScreenshotRequest(
+      "https://status.example.com/down",
+      "https://www.example.com/script.js",
+      {},
+      approvedHosts
+    )).toBe(false);
+    expect(shouldAllowScreenshotRequest(
+      "https://status.example.com/down",
+      "https://www.example.com/script.js",
+      { frameUrl: "https://www.example.com/down" },
+      approvedHosts
+    )).toBe(true);
+    expect(shouldAllowScreenshotRequest(
+      "https://status.example.com/down",
+      "http://127.0.0.1:8080/admin",
+      { frameUrl: "https://www.example.com/down" },
+      approvedHosts
+    )).toBe(false);
+  });
+
   it("blocks cross-host navigation redirects", () => {
     expect(
       shouldAllowScreenshotRequest("https://status.example.com/down", "http://127.0.0.1:8080/admin", {

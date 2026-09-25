@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
-import { DEFAULT_SETTINGS } from "@/lib/settings/types";
+import { DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE, DEFAULT_SETTINGS } from "@/lib/settings/types";
 import { renderNotificationTemplates } from "@/worker/templates";
 import type { NotificationContext } from "@/worker/types";
 
@@ -500,6 +500,30 @@ describe("notification templates", () => {
     expect(rendered.subject).toContain("durumunda");
     expect(rendered.textBody).toContain("Durum:");
     expect(rendered.telegramBody).toContain("Kök neden:");
+  });
+
+  it("uses the selected language when a recovery monitor stores an old default template", () => {
+    const baseContext = buildContext({
+      recoveryEmailHeadline: "{name} yeniden erişilebilir",
+      recoveryEmailBody: "Monitör: {domain} ({url_link}) düzeldi\nZaman: {checked_at_local}\nDurum: {status_code} - {status_label}\nKök neden: {rca_summary}\nDetay: {message}\nOrganizasyon: {organization}",
+      recoveryTelegramTemplate: DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE.tr.recoveryTelegramTemplate,
+    });
+    const rendered = renderNotificationTemplates(
+      {
+        ...baseContext,
+        kind: "recovery",
+        message: "Service recovered and is responding again.",
+        result: { ...baseContext.result, ok: true, status: "up", statusCode: 200 },
+      },
+      DEFAULT_SETTINGS,
+      "https://sentrovia.example.com"
+    );
+
+    expect(rendered.htmlBody).toContain("API is back online");
+    expect(rendered.htmlBody).not.toContain("yeniden erişilebilir");
+    expect(rendered.textBody).toContain("Monitor:");
+    expect(rendered.textBody).not.toContain("Monitör:");
+    expect(rendered.telegramBody).toContain("Root cause:");
   });
 
   it("localizes timeout details in Turkish notifications", () => {

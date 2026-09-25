@@ -25,7 +25,11 @@ export async function runWorkerPhases(
 
   const outboundConnectivity = await ensureWorkerConnectivity();
   if (outboundConnectivity.available) {
-    await retryDeliveryQueueForAllUsers();
+    try {
+      await retryDeliveryQueueForAllUsers();
+    } catch (error) {
+      console.error("[sentrovia] Delivery retry failed; monitor checks will continue.", error);
+    }
   }
   if (!(await isRunRequested())) return { status: "stopped" };
 

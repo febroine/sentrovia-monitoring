@@ -1175,6 +1175,66 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
   });
 
+  it("keeps the one-minute verification schedule after a configuration failure", async () => {
+    mocks.checkResult = {
+      ok: false,
+      status: "down",
+      statusCode: null,
+      latencyMs: 4,
+      errorMessage: "Checker failed unexpectedly.",
+      failureReason: "configuration",
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [buildMonitor({
+      status: "pending",
+      intervalValue: 15,
+      retries: 3,
+      verificationMode: true,
+      verificationFailureCount: 1,
+    })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "pending",
+        nextCheckAt: new Date("2026-05-08T07:01:00.000Z"),
+        verificationMode: true,
+        verificationFailureCount: 1,
+      }),
+      "lease-1"
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+  });
+
+  it("keeps rechecking a confirmed outage after a configuration failure", async () => {
+    mocks.checkResult = {
+      ok: false,
+      status: "down",
+      statusCode: null,
+      latencyMs: 4,
+      errorMessage: "Checker failed unexpectedly.",
+      failureReason: "configuration",
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [buildMonitor({ status: "down", intervalValue: 15 })];
+
+    await runMonitoringCycle();
+
+    expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
+      "monitor-1",
+      expect.objectContaining({
+        status: "down",
+        nextCheckAt: new Date("2026-05-08T07:01:00.000Z"),
+      }),
+      "lease-1"
+    );
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+  });
+
   it("uses longer timeouts for verification rechecks", async () => {
     mocks.dueMonitors = [
       buildMonitor({

@@ -17,8 +17,7 @@ interface NotificationRoutingCandidates {
 
 export interface ResolvedNotificationRouting {
   emailRecipients: string | null;
-  telegramBotToken: string | null;
-  telegramChatId: string | null;
+  telegramTargets: Array<{ botToken: string; chatId: string }>;
 }
 
 type LegacyWorkspaceNotificationDefaults = {
@@ -117,15 +116,19 @@ export function resolveNotificationRouting(
     candidates.workspaceTelegramBotToken,
     candidates.workspaceTelegramChatId
   );
-  const telegram = monitorTelegram ?? companyTelegram ?? workspaceTelegram;
+  const telegramTargets = [monitorTelegram, companyTelegram].filter(
+    (target): target is NonNullable<typeof target> => target !== null
+  );
+  if (telegramTargets.length === 0 && workspaceTelegram) {
+    telegramTargets.push(workspaceTelegram);
+  }
 
   return {
-    emailRecipients:
-      cleanString(candidates.monitorEmail)
-      ?? joinCompanyEmails(candidates.companyEmails)
+    emailRecipients: joinRecipients(candidates.monitorEmail, candidates.companyEmails)
       ?? cleanString(candidates.workspaceEmail),
-    telegramBotToken: telegram?.botToken ?? null,
-    telegramChatId: telegram?.chatId ?? null,
+    telegramTargets: telegramTargets.filter(
+      (target, index) => telegramTargets.findIndex((candidate) => candidate.chatId === target.chatId) === index
+    ),
   };
 }
 
@@ -137,9 +140,19 @@ function completeTelegramTarget(botToken: string | null, chatId: string | null) 
     : null;
 }
 
-function joinCompanyEmails(recipients: string[] | null) {
-  const normalized = (recipients ?? []).map((recipient) => recipient.trim()).filter(Boolean);
-  return normalized.length > 0 ? normalized.join(", ") : null;
+function joinRecipients(monitorRecipients: string | null, companyRecipients: string[] | null) {
+  const recipients = [
+    ...(monitorRecipients ?? "").split(/[,;\n]/),
+    ...(companyRecipients ?? []),
+  ].map((recipient) => recipient.trim()).filter(Boolean);
+  const seen = new Set<string>();
+  const unique = recipients.filter((recipient) => {
+    const key = recipient.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return unique.length > 0 ? unique.join(", ") : null;
 }
 
 function cleanString(value: string | null) {

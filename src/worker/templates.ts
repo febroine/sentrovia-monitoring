@@ -249,7 +249,7 @@ function resolveEmailHeadlineTemplate(
   const monitorOverride = resolveMonitorEmailHeadline(context);
 
   return monitorOverride
-    ? resolveMonitorTemplate(monitorOverride, workspaceFallback, NO_LEGACY_TEMPLATES)
+    ? resolveMonitorTemplate(monitorOverride, workspaceFallback, NO_LEGACY_TEMPLATES, key)
     : workspaceFallback;
 }
 
@@ -276,7 +276,7 @@ function resolveSubjectTemplate(
       "sslExpiryEmailSubjectTemplate",
       language
     );
-    return resolveMonitorTemplate(context.monitor.sslExpiryEmailSubject, fallback, NO_LEGACY_TEMPLATES);
+    return resolveMonitorTemplate(context.monitor.sslExpiryEmailSubject, fallback, NO_LEGACY_TEMPLATES, "sslExpiryEmailSubjectTemplate");
   }
 
   return resolveEventTemplate(context, settings, language, {
@@ -303,7 +303,7 @@ function resolveEmailBodyTemplate(
       "sslExpiryEmailBodyTemplate",
       language
     );
-    return resolveMonitorTemplate(context.monitor.sslExpiryEmailBody, fallback, NO_LEGACY_TEMPLATES);
+    return resolveMonitorTemplate(context.monitor.sslExpiryEmailBody, fallback, NO_LEGACY_TEMPLATES, "sslExpiryEmailBodyTemplate");
   }
 
   return resolveEventTemplate(context, settings, language, {
@@ -330,7 +330,7 @@ function resolveTelegramTemplate(
       "sslExpiryTelegramTemplate",
       language
     );
-    return resolveMonitorTemplate(context.monitor.sslExpiryTelegramTemplate, fallback, NO_LEGACY_TEMPLATES);
+    return resolveMonitorTemplate(context.monitor.sslExpiryTelegramTemplate, fallback, NO_LEGACY_TEMPLATES, "sslExpiryTelegramTemplate");
   }
 
   return resolveEventTemplate(context, settings, language, {
@@ -358,7 +358,7 @@ function resolveEventTemplate(
       sources.latencyKey,
       language
     );
-    return resolveMonitorTemplate(sources.monitorLatency, fallback, NO_LEGACY_TEMPLATES);
+    return resolveMonitorTemplate(sources.monitorLatency, fallback, NO_LEGACY_TEMPLATES, sources.latencyKey);
   }
 
   if (context.kind === "downtime-reminder") {
@@ -367,7 +367,7 @@ function resolveEventTemplate(
       sources.reminderKey,
       language
     );
-    return resolveMonitorTemplate(sources.monitorReminder, fallback, NO_LEGACY_TEMPLATES);
+    return resolveMonitorTemplate(sources.monitorReminder, fallback, NO_LEGACY_TEMPLATES, sources.reminderKey);
   }
 
   const key = context.kind === "recovery" ? sources.recoveryKey : sources.defaultKey;
@@ -376,7 +376,8 @@ function resolveEventTemplate(
   return resolveMonitorTemplate(
     monitorTemplate,
     fallback,
-    context.kind === "recovery" ? NO_LEGACY_TEMPLATES : sources.defaultLegacy
+    context.kind === "recovery" ? NO_LEGACY_TEMPLATES : sources.defaultLegacy,
+    key
   );
 }
 
@@ -682,19 +683,29 @@ function resolveLanguageDefault(
   key: keyof typeof DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE.en,
   language: NotificationLanguage
 ) {
-  const normalized = normalizeForComparison(template);
-  const isDefaultTemplate = Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).some(
-    (templates) => normalizeForComparison(templates[key]) === normalized
-  ) || (HISTORICAL_EMAIL_DEFAULTS[key] ?? []).some(
-    (template) => normalizeForComparison(template) === normalized
-  );
-
-  return isDefaultTemplate ? getDefaultNotificationTemplates(language)[key] : template;
+  return isDefaultTemplate(template, key) ? getDefaultNotificationTemplates(language)[key] : template;
 }
 
-function resolveMonitorTemplate(template: string | null, fallback: string, legacyDefaults: Set<string>) {
+function isDefaultTemplate(
+  template: string,
+  key: keyof typeof DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE.en
+) {
   const normalized = normalizeForComparison(template);
-  if (!normalized || legacyDefaults.has(normalized)) {
+  return Object.values(DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE).some(
+    (templates) => normalizeForComparison(templates[key]) === normalized
+  ) || (HISTORICAL_EMAIL_DEFAULTS[key] ?? []).some(
+    (historical) => normalizeForComparison(historical) === normalized
+  );
+}
+
+function resolveMonitorTemplate(
+  template: string | null,
+  fallback: string,
+  legacyDefaults: Set<string>,
+  key: NotificationTemplateKey | undefined
+) {
+  const normalized = normalizeForComparison(template);
+  if (!normalized || legacyDefaults.has(normalized) || (key && isDefaultTemplate(template ?? "", key))) {
     return fallback;
   }
 

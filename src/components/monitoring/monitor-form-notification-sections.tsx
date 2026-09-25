@@ -58,7 +58,8 @@ export function NotificationMonitorSettings({
   onFieldChange: OnFieldChange;
 }) {
   const canAttachScreenshot = values.monitorType === "http" || values.monitorType === "keyword" || values.monitorType === "json";
-  const readiness = getMonitorNotificationReadiness(values, settings, companies.find((company) => company.id === values.companyId), existingMonitor);
+  const company = companies.find((item) => item.id === values.companyId);
+  const readiness = getMonitorNotificationReadiness(values, settings, company, existingMonitor);
 
   return (
     <div className="space-y-4">
@@ -76,8 +77,23 @@ export function NotificationMonitorSettings({
         </Select>
       </Field>
 
+      {company ? (
+        <div className="space-y-1 border-t border-border/60 pt-3 text-xs" aria-label="Company notification destinations">
+          <p className="font-medium">{company.name} notification destinations</p>
+          <p className="text-muted-foreground">Email: {company.notificationEmailRecipients.join(", ") || "Not configured"}</p>
+          <p className="text-muted-foreground">
+            Telegram: {company.telegramBotTokenConfigured && company.telegramChatId
+              ? `Chat ${company.telegramChatId}`
+              : "Not configured"}
+          </p>
+          <Link href="/companies" target="_blank" rel="noopener noreferrer" className="inline-block font-medium text-primary underline-offset-4 hover:underline">
+            Manage company destinations
+          </Link>
+        </div>
+      ) : null}
+
       {readiness.length > 0 ? (
-        <div className="space-y-1 border-t border-border/60 pt-3 text-xs" aria-label="Alert channel readiness">
+        <div className={`space-y-1 text-xs ${company ? "" : "border-t border-border/60 pt-3"}`} aria-label="Alert channel readiness">
           {readiness.map((item) => (
             <p key={item.channel} className={item.ready ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300"}>
               <span className="font-medium">{item.channel}: {item.ready ? "Configured" : "Needs review"}.</span> {item.detail}

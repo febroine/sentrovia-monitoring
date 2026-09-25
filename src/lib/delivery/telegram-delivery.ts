@@ -67,25 +67,7 @@ export async function resolveTelegramPhoto(input: {
   }
 }
 
-export async function sendTelegramPhotoWithoutBlockingMessage(
-  botToken: string,
-  chatId: string,
-  body: string,
-  photo: Mail.Attachment
-) {
-  try {
-    const response = await postTelegramPhoto(botToken, chatId, body, photo);
-    const responseBody = await readLimitedResponseText(response);
-    const failure = parseTelegramResponseFailure(responseBody, response.status, response.ok);
-    if (failure) {
-      console.warn(`[sentrovia] Telegram screenshot skipped: ${failure.message}`);
-    }
-  } catch (error) {
-    console.warn(`[sentrovia] Telegram screenshot skipped: ${toTelegramErrorMessage(error, botToken)}`);
-  }
-}
-
-function postTelegramPhoto(botToken: string, chatId: string, body: string, photo: Mail.Attachment) {
+export function postTelegramPhoto(botToken: string, chatId: string, body: string, photo: Mail.Attachment) {
   const content = getTelegramPhotoContent(photo);
   if (!content) {
     throw new Error("Telegram screenshot content is not available.");

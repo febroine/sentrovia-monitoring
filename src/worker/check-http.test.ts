@@ -70,6 +70,28 @@ describe("http monitor checks", () => {
     expect(result.statusCode).toBe(200);
   });
 
+  it("reports the final HTTP error after following a redirect", async () => {
+    const server = await createServer((request, response) => {
+      if (request.url === "/redirect") {
+        response.writeHead(302, { Location: "/unavailable" });
+        response.end();
+        return;
+      }
+
+      response.writeHead(503, { "Content-Type": "text/html" });
+      response.end("<h1>503 Service Unavailable</h1>");
+    });
+
+    const result = await checkHttpMonitor(buildHttpMonitor({
+      url: `http://127.0.0.1:${resolveServerPort(server)}/redirect`,
+      maxRedirects: 1,
+    }));
+
+    expect(result.status).toBe("down");
+    expect(result.statusCode).toBe(503);
+    expect(result.errorMessage).toBe("Service returned HTTP 503.");
+  });
+
   it("treats a malformed redirect location as a failed check", async () => {
     const server = await createServer((_, response) => {
       response.writeHead(302, { Location: "http://[::1" });

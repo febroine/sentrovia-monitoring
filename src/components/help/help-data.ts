@@ -175,7 +175,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Which delivery channels exist right now?",
         answer:
-          "Sentrovia supports email and Telegram monitor notifications with monitor, company, and workspace destination fallbacks, plus workspace-level Discord and generic webhook channels. Delivery attempts are recorded per channel so one failing destination does not hide the outcome of another.",
+          "Sentrovia supports email and Telegram monitor notifications for both monitor and assigned-company destinations, with workspace fallbacks when neither is configured. Workspace-level Discord and generic webhook channels are also available. Delivery attempts are recorded per channel so one failing destination does not hide the outcome of another.",
       },
       {
         question: "Can notifications be sent in Turkish?",
@@ -185,7 +185,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "Why did a notification go to a different recipient than expected?",
         answer:
-          "Email and Telegram destinations can come from monitor, company, or workspace settings. Check the monitor's destination first, then its company and workspace fallback. Discord and generic webhooks use workspace-level channels. Inspect the Delivery history for the event before changing a destination.",
+          "Email and Telegram alerts go to configured monitor and assigned-company destinations. Workspace destinations are used only when neither defines that channel. Discord and generic webhooks use workspace-level channels. Inspect the Delivery history for the event before changing a destination.",
       },
       {
         question: "Why is a monitor failing without sending an outage alert yet?",

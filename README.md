@@ -139,7 +139,7 @@ Before running checks, the worker tests its own internet connection against mult
 
 ## Alerts and Evidence
 
-Sentrovia uses a monitor's notification settings first, then its company's settings, then workspace defaults. The **Check site** link in an email opens the monitored target, not the private Sentrovia console.
+For enabled email and Telegram alerts, Sentrovia sends to both monitor and assigned-company destinations. It removes duplicate email addresses and Telegram chats. Workspace destinations are used when neither the monitor nor its company defines that channel. Configure company recipients in **Companies → Edit company**. The **Check site** link in an email opens the monitored target, not the private Sentrovia console.
 
 For confirmed HTTP, keyword, and JSON failures, Sentrovia tries to capture a screenshot. Alerts still go out if Chromium is unavailable. Test notifications use the configured channel and appear in delivery history, but do not count toward delivery health totals.
 

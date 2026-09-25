@@ -149,7 +149,7 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
           />
         }
       >
-        <Field label="Notification language" hint="Email and Telegram notification templates use this language unless a monitor has a custom override.">
+        <Field label="Notification language" hint="Default email and Telegram templates use this language. Custom workspace or monitor templates and footer text stay as written; a monitor can also override the language.">
           <Select
             value={settings.notifications.notificationLanguage}
             onValueChange={(value) => updateSetting("notifications.notificationLanguage", String(value))}

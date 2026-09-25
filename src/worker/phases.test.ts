@@ -126,4 +126,19 @@ describe("worker phase connectivity guard", () => {
     );
     consoleError.mockRestore();
   });
+
+  it("continues monitor checks when delivery retries fail", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(retryDeliveryQueueForAllUsers).mockRejectedValueOnce(new Error("delivery unavailable"));
+
+    await expect(runWorkerPhases(async () => true)).resolves.toEqual({ status: "completed" });
+
+    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(runDueReportSchedules).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledWith(
+      "[sentrovia] Delivery retry failed; monitor checks will continue.",
+      expect.any(Error)
+    );
+    consoleError.mockRestore();
+  });
 });

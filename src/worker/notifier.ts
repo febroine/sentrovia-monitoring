@@ -60,19 +60,23 @@ export async function sendMonitorNotifications(context: NotificationContext) {
   }
 
   if (context.monitor.notificationPref === "telegram" || context.monitor.notificationPref === "both") {
-    deliveryResults.push(
-      await sendTelegramDelivery({
+    const telegramTargets = routing?.telegramTargets ?? [{
+      botToken: context.monitor.telegramBotToken ?? "",
+      chatId: context.monitor.telegramChatId ?? "",
+    }];
+    for (const target of telegramTargets.length > 0 ? telegramTargets : [{ botToken: "", chatId: "" }]) {
+      deliveryResults.push(await sendTelegramDelivery({
         userId: context.monitor.userId,
         workspaceId: context.monitor.workspaceId,
         kind: context.kind,
         monitorId: context.monitor.id,
-        botToken: routing?.telegramBotToken ?? context.monitor.telegramBotToken ?? "",
-        chatId: routing?.telegramChatId ?? context.monitor.telegramChatId ?? "",
+        botToken: target.botToken,
+        chatId: target.chatId,
         body: rendered.telegramBody,
         photo: context.emailAttachments?.[0],
         buildPhoto: context.emailAttachments ? undefined : () => resolveFirstScreenshotAttachment(getScreenshotAttachments),
-      })
-    );
+      }));
+    }
   }
 
   if (settings.notifications.discordEnabled && settings.notifications.discordWebhookUrl) {

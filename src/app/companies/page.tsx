@@ -443,7 +443,7 @@ function CompanyDialog({
               <div>
                 <p className="text-sm font-medium">Notification recipients</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Used by monitors in this company when they do not define their own recipients.
+                  Assigned monitors send alerts here when the matching notification channel is enabled. Monitor recipients also receive alerts.
                 </p>
               </div>
               {form.telegramBotTokenConfigured ? (

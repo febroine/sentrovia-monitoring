@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   },
   getSettings: vi.fn(),
   postSafeWebhook: vi.fn(),
+  getMonitorNotificationRouting: vi.fn(),
 }));
 
 vi.mock("nodemailer", () => ({
@@ -52,6 +53,10 @@ vi.mock("@/lib/security/webhook-safety", () => ({
   assertSafeWebhookUrl: vi.fn(async (value: string) => value),
   isWebhookSafetyError: vi.fn(() => false),
   postSafeWebhook: mocks.postSafeWebhook,
+}));
+
+vi.mock("@/lib/notifications/routing", () => ({
+  getMonitorNotificationRouting: mocks.getMonitorNotificationRouting,
 }));
 
 import {
@@ -456,6 +461,80 @@ describe("delivery service", () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendPhoto");
   });
 
+  it("preserves a screenshot when a Telegram message needs retrying", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: false, error_code: 503 }), { status: 503 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.updateReturning.mockResolvedValue([{ id: "delivery-1", status: "retrying" }]);
+    const buildPhoto = vi.fn().mockResolvedValue({
+      filename: "sentrovia-api.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    });
+
+    const result = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      botToken: "123456:telegram-token",
+      chatId: "-1001234567890",
+      body: "Down",
+      buildPhoto,
+    });
+
+    expect(result?.status).toBe("retrying");
+    expect(buildPhoto).toHaveBeenCalledOnce();
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      payloadJson: JSON.stringify({
+        text: "Down",
+        photo: "sentrovia-api.jpg",
+        photoAttachment: {
+          filename: "sentrovia-api.jpg",
+          contentType: "image/jpeg",
+          contentDisposition: "attachment",
+          content: Buffer.from("image").toString("base64"),
+          encoding: "base64",
+        },
+      }),
+    }));
+  });
+
+  it("sends a preserved Telegram screenshot after the message retry succeeds", async () => {
+    const event = {
+      ...buildFailedEmailEvent(),
+      monitorId: "monitor-1",
+      channel: "telegram",
+      destination: "-1001234567890",
+      payloadJson: JSON.stringify({
+        text: "Down",
+        photo: "sentrovia-api.jpg",
+        photoAttachment: {
+          filename: "sentrovia-api.jpg",
+          contentType: "image/jpeg",
+          content: Buffer.from("image").toString("base64"),
+          encoding: "base64",
+        },
+      }),
+    };
+    const limit = vi.fn().mockResolvedValue([event]);
+    mocks.db.select.mockReturnValue({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit })) })) });
+    mocks.getMonitorNotificationRouting.mockResolvedValue({
+      telegramTargets: [{ botToken: "123456:telegram-token", chatId: event.destination }],
+    });
+    mocks.updateReturning
+      .mockResolvedValueOnce([{ ...event, status: "processing", attempts: 0, claimToken: "claim-1" }])
+      .mockResolvedValueOnce([{ ...event, status: "delivered", attempts: 1 }]);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await retryDeliveryEvent("user-1", event.id);
+
+    expect(result?.status).toBe("delivered");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendMessage");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendPhoto");
+  });
+
   it("sends outbound channel webhooks through the pinned safe transport", async () => {
     mocks.getSettings.mockResolvedValue({
       notifications: {
@@ -496,7 +575,67 @@ describe("delivery service", () => {
     expect(result?.status).toBe("delivered");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Telegram screenshot skipped"));
+    expect(mocks.insertValues).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(mocks.insertValues.mock.calls[1][0].payloadJson)).toMatchObject({ photoOnly: true });
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: "failed" }));
     warn.mockRestore();
+  });
+
+  it("retries a failed Telegram screenshot without resending the alert text", async () => {
+    const photo = {
+      filename: "sentrovia-api.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error_code: 503 }), { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.insertReturning
+      .mockResolvedValueOnce([{ id: "text-1" }])
+      .mockResolvedValueOnce([{ id: "photo-1" }]);
+    mocks.updateReturning
+      .mockResolvedValueOnce([{ id: "photo-1", status: "retrying" }])
+      .mockResolvedValueOnce([{ id: "text-1", status: "delivered" }]);
+
+    const sent = await sendTelegramDelivery({
+      userId: "user-1",
+      kind: "failure",
+      monitorId: "monitor-1",
+      botToken: "123456:telegram-token",
+      chatId: "-1001234567890",
+      body: "Down",
+      photo,
+    });
+
+    expect(sent?.status).toBe("delivered");
+    const photoPayload = JSON.parse(mocks.insertValues.mock.calls[1][0].payloadJson);
+    expect(photoPayload).toMatchObject({ photoOnly: true, text: "Down" });
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: "retrying" }));
+
+    const event = {
+      ...buildFailedEmailEvent(),
+      id: "photo-1",
+      monitorId: "monitor-1",
+      channel: "telegram",
+      destination: "-1001234567890",
+      payloadJson: JSON.stringify(photoPayload),
+    };
+    const limit = vi.fn().mockResolvedValue([event]);
+    mocks.db.select.mockReturnValue({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit })) })) });
+    mocks.getMonitorNotificationRouting.mockResolvedValue({
+      telegramTargets: [{ botToken: "123456:telegram-token", chatId: event.destination }],
+    });
+    mocks.updateReturning
+      .mockResolvedValueOnce([{ ...event, status: "processing", attempts: 0, claimToken: "claim-1" }])
+      .mockResolvedValueOnce([{ ...event, status: "delivered", attempts: 1 }]);
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    const retried = await retryDeliveryEvent("user-1", event.id);
+
+    expect(retried?.status).toBe("delivered");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/sendPhoto");
   });
 });
 

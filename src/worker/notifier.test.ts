@@ -70,8 +70,7 @@ describe("worker notifier", () => {
     mocks.isMonitorActive.mockResolvedValue(true);
     mocks.getMonitorNotificationRouting.mockResolvedValue({
       emailRecipients: "ops@example.com",
-      telegramBotToken: "123456:telegram-token",
-      telegramChatId: "-1001234567890",
+      telegramTargets: [{ botToken: "123456:telegram-token", chatId: "-1001234567890" }],
     });
     mocks.countMonitorEvents.mockResolvedValue(0);
     mocks.sendEmailDelivery.mockResolvedValue(buildDeliveryResult("delivered"));
@@ -127,6 +126,27 @@ describe("worker notifier", () => {
         chatId: "-1001234567890",
       })
     );
+  });
+
+  it("delivers to the company chat as well as a monitor chat", async () => {
+    mocks.getMonitorNotificationRouting.mockResolvedValue({
+      emailRecipients: "monitor@example.com, company@example.com",
+      telegramTargets: [
+        { botToken: "monitor-token", chatId: "monitor-chat" },
+        { botToken: "company-token", chatId: "company-chat" },
+      ],
+    });
+    const context = buildNotificationContext("recovery");
+    context.monitor = buildMonitor({ notificationPref: "both" });
+
+    await sendMonitorNotifications(context);
+
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      destinationOverride: "monitor@example.com, company@example.com",
+    }));
+    expect(mocks.sendTelegramDelivery).toHaveBeenCalledTimes(2);
+    expect(mocks.sendTelegramDelivery).toHaveBeenCalledWith(expect.objectContaining({ chatId: "monitor-chat" }));
+    expect(mocks.sendTelegramDelivery).toHaveBeenCalledWith(expect.objectContaining({ chatId: "company-chat" }));
   });
 
   it("still mirrors notifications to workspace channels when monitor email and Telegram are disabled", async () => {

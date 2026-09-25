@@ -1,8 +1,12 @@
 import type Mail from "nodemailer/lib/mailer";
+import http from "node:http";
+import https from "node:https";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import {
+  createPinnedLookup,
+  isMonitorNetworkHostnameLiteralAllowed,
   normalizeNetworkHostname,
   resolveMonitorNetworkTargetWithTimeout,
   selectResolvedAddress,
@@ -13,11 +17,15 @@ const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
 const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
 const SCREENSHOT_NAVIGATION_TIMEOUT_MS = 8_000;
-const SCREENSHOT_TOTAL_TIMEOUT_MS = 15_000;
+// DNS resolution, browser startup, navigation, and image capture each need part of this budget.
+const SCREENSHOT_TOTAL_TIMEOUT_MS = 30_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
 const MAX_CONCURRENT_SCREENSHOTS = 3;
 const SCREENSHOT_QUEUE_TIMEOUT_MS = 5_000;
+const SCREENSHOT_DEADLINE_ERROR = "screenshot capture timed out";
+const SCREENSHOT_REDIRECT_PROBE_TIMEOUT_MS = 3_000;
+const MAX_SCREENSHOT_REDIRECTS = 10;
 const CHROMIUM_HEADLESS_ARGS = ["--headless=new", "--disable-gpu"];
 const SCREENSHOT_PUBLIC_TARGET_ERROR = "screenshot target is not allowed by the current network safety policy";
 
@@ -41,10 +49,11 @@ export async function buildFailureScreenshotAttachment(
   }
 
   try {
-    return await withScreenshotDeadline(async () => {
+    return await withScreenshotDeadline(async (signal) => {
       const resolvedTarget = await resolveScreenshotTarget(monitor);
+      const approvedTargets = await resolveScreenshotRedirects(monitor, resolvedTarget, signal);
       return withScreenshotSlot(() =>
-        captureScreenshotAttachment(monitor, capturedAt, resolvedTarget)
+        captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal), signal
       );
     });
   } catch (error) {
@@ -91,17 +100,105 @@ async function resolveScreenshotTarget(monitor: Monitor) {
   }, SCREENSHOT_TIMEOUT_MS);
 }
 
-async function withScreenshotDeadline<T>(task: () => Promise<T>) {
+async function resolveScreenshotRedirects(
+  monitor: Monitor,
+  initialTarget: ResolvedNetworkTarget,
+  signal: AbortSignal
+) {
+  const approvedTargets = new Map([[initialTarget.hostname, initialTarget]]);
+  const redirectLimit = Math.min(MAX_SCREENSHOT_REDIRECTS, Math.max(0, monitor.maxRedirects ?? 0));
+  let currentUrl = resolveScreenshotUrl(monitor);
+
+  for (let redirectCount = 0; redirectCount < redirectLimit && !signal.aborted; redirectCount++) {
+    const currentHost = normalizeNetworkHostname(new URL(currentUrl).hostname);
+    const target = approvedTargets.get(currentHost);
+    if (!target) break;
+
+    let redirectUrl: string | null;
+    try {
+      redirectUrl = await inspectScreenshotRedirect(currentUrl, target, monitor.ignoreSslErrors, signal);
+    } catch {
+      break;
+    }
+    if (!redirectUrl) break;
+
+    const parsed = new URL(redirectUrl);
+    const hostname = normalizeNetworkHostname(parsed.hostname);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      || parsed.username
+      || parsed.password
+      || !isMonitorNetworkHostnameLiteralAllowed(hostname, resolvePrivateTargetAccess(monitor))
+    ) {
+      throw new Error(SCREENSHOT_PUBLIC_TARGET_ERROR);
+    }
+    if (!approvedTargets.has(hostname)) {
+      approvedTargets.set(hostname, await resolveMonitorNetworkTargetWithTimeout(hostname, {
+        allowPrivateTargets: resolvePrivateTargetAccess(monitor),
+        message: SCREENSHOT_PUBLIC_TARGET_ERROR,
+      }, SCREENSHOT_TIMEOUT_MS));
+    }
+    currentUrl = redirectUrl;
+  }
+
+  return [...approvedTargets.values()];
+}
+
+function inspectScreenshotRedirect(
+  url: string,
+  target: ResolvedNetworkTarget,
+  ignoreSslErrors: boolean,
+  signal: AbortSignal
+) {
+  return new Promise<string | null>((resolve, reject) => {
+    const parsed = new URL(url);
+    const transport = parsed.protocol === "https:" ? https : http;
+    let settled = false;
+    const request = transport.request(parsed, {
+      method: "GET",
+      lookup: createPinnedLookup(target),
+      rejectUnauthorized: parsed.protocol === "https:" ? !ignoreSslErrors : undefined,
+    }, (response) => {
+      const location = response.headers.location;
+      const status = response.statusCode ?? 0;
+      response.destroy();
+      try {
+        finish(null, location && [301, 302, 303, 307, 308].includes(status)
+          ? new URL(location, parsed).toString()
+          : null);
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error("Invalid screenshot redirect location."));
+      }
+    });
+    const timeout = setTimeout(() => request.destroy(new Error("Screenshot redirect probe timed out.")), SCREENSHOT_REDIRECT_PROBE_TIMEOUT_MS);
+    const onAbort = () => request.destroy(new Error(SCREENSHOT_DEADLINE_ERROR));
+    const finish = (error: Error | null, redirectUrl?: string | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      if (error) reject(error);
+      else resolve(redirectUrl ?? null);
+    };
+    request.on("error", (error) => finish(error));
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    else request.end();
+  });
+}
+
+async function withScreenshotDeadline<T>(task: (signal: AbortSignal) => Promise<T>) {
+  const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new Error("screenshot capture timed out")),
-      SCREENSHOT_TOTAL_TIMEOUT_MS
-    );
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error(SCREENSHOT_DEADLINE_ERROR));
+    }, SCREENSHOT_TOTAL_TIMEOUT_MS);
   });
 
   try {
-    return await Promise.race([task(), timeout]);
+    return await Promise.race([task(controller.signal), timeout]);
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);
@@ -121,55 +218,126 @@ function parseScreenshotHostname(value: string) {
 async function captureScreenshotAttachment(
   monitor: Monitor,
   capturedAt: Date,
-  resolvedTarget: ResolvedNetworkTarget
+  approvedTargets: ResolvedNetworkTarget[],
+  signal: AbortSignal
 ): Promise<Mail.Attachment | null> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
     args: [
       ...CHROMIUM_HEADLESS_ARGS,
-      buildHostResolverRule(resolvedTarget),
+      buildHostResolverRule(approvedTargets),
     ],
     headless: true,
     timeout: SCREENSHOT_TIMEOUT_MS,
   });
 
+  let closing: Promise<void> | null = null;
+  const closeBrowser = () => closing ??= browser.close().catch(() => undefined);
+  const closeOnAbort = () => { void closeBrowser(); };
+  signal.addEventListener("abort", closeOnAbort, { once: true });
   try {
+    if (signal.aborted) {
+      throw new Error(SCREENSHOT_DEADLINE_ERROR);
+    }
     const context = await browser.newContext({
       ignoreHTTPSErrors: monitor.ignoreSslErrors,
       serviceWorkers: "block",
       viewport: SCREENSHOT_VIEWPORT,
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
-    const page = await createScreenshotPage(context, screenshotUrl);
-    await page.goto(screenshotUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
-    });
+    const page = await createScreenshotPage(context, screenshotUrl, approvedTargets);
+    let navigationTimedOut = false;
+    try {
+      await page.goto(screenshotUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
+      });
+    } catch (error) {
+      if (
+        signal.aborted
+        || !/page\.goto: Timeout \d+ms exceeded/i.test(toScreenshotErrorMessage(error))
+        || !await hasVisibleScreenshotContent(page, approvedTargets)
+      ) {
+        throw error;
+      }
+      navigationTimedOut = true;
+    }
 
-    const content = await capturePageScreenshot(page);
+    const content = await capturePageScreenshot(page, navigationTimedOut, approvedTargets);
     if (!content) {
       return null;
     }
 
     return buildScreenshotAttachment(monitor, capturedAt, content);
   } finally {
-    await browser.close().catch(() => undefined);
+    signal.removeEventListener("abort", closeOnAbort);
+    await closeBrowser();
   }
 }
 
-async function capturePageScreenshot(page: Page) {
-  const content = await page.screenshot({
-    type: "jpeg",
-    quality: SCREENSHOT_JPEG_QUALITY,
-    fullPage: false,
-    timeout: SCREENSHOT_TIMEOUT_MS,
-  });
+async function hasVisibleScreenshotContent(page: Page, approvedTargets: ResolvedNetworkTarget[]) {
+  try {
+    const url = new URL(page.url());
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:")
+      || !approvedTargets.some((target) => target.hostname === normalizeNetworkHostname(url.hostname))
+    ) return false;
+
+    return await page.evaluate(() => {
+      const body = document.body;
+      if (!body) return false;
+      if (body.innerText.trim().length > 0) return true;
+      return [...body.querySelectorAll("img")].some((image) => image.complete && image.naturalWidth > 0);
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function capturePageScreenshot(
+  page: Page,
+  navigationTimedOut: boolean,
+  approvedTargets: ResolvedNetworkTarget[]
+) {
+  let content: Buffer;
+  if (navigationTimedOut) {
+    content = await captureCurrentBrowserFrame(page);
+  } else {
+    try {
+      content = await page.screenshot({
+        type: "jpeg",
+        quality: SCREENSHOT_JPEG_QUALITY,
+        fullPage: false,
+        timeout: SCREENSHOT_TIMEOUT_MS,
+      });
+    } catch (error) {
+      if (
+        !/page\.screenshot: Timeout \d+ms exceeded/i.test(toScreenshotErrorMessage(error))
+        || !await hasVisibleScreenshotContent(page, approvedTargets)
+      ) throw error;
+      content = await captureCurrentBrowserFrame(page);
+    }
+  }
 
   if (content.byteLength > SCREENSHOT_MAX_BYTES) {
     throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
   }
 
   return content;
+}
+
+async function captureCurrentBrowserFrame(page: Page) {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const { data } = await session.send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: SCREENSHOT_JPEG_QUALITY,
+      captureBeyondViewport: false,
+    });
+    return Buffer.from(data, "base64");
+  } finally {
+    await session.detach().catch(() => undefined);
+  }
 }
 
 function buildScreenshotAttachment(
@@ -184,8 +352,9 @@ function buildScreenshotAttachment(
   };
 }
 
-async function createScreenshotPage(context: BrowserContext, targetUrl: string) {
-  await context.route("**/*", (route) => handleScreenshotRoute(route, targetUrl));
+async function createScreenshotPage(context: BrowserContext, targetUrl: string, approvedTargets: ResolvedNetworkTarget[]) {
+  const approvedHosts = new Set(approvedTargets.map((target) => target.hostname));
+  await context.route("**/*", (route) => handleScreenshotRoute(route, targetUrl, approvedHosts));
   return createConfiguredScreenshotPage(context);
 }
 
@@ -196,12 +365,19 @@ async function createConfiguredScreenshotPage(context: BrowserContext) {
   return page;
 }
 
-function handleScreenshotRoute(route: Route, targetUrl: string) {
+function handleScreenshotRoute(route: Route, targetUrl: string, approvedHosts: ReadonlySet<string>) {
   const request = route.request();
+  let frameUrl: string | null = null;
+  try {
+    frameUrl = request.frame().url();
+  } catch {
+    // Navigation requests can be detached from a frame while redirects are in flight.
+  }
   if (shouldAllowScreenshotRequest(targetUrl, request.url(), {
     isNavigationRequest: request.isNavigationRequest(),
     redirectedFromUrl: request.redirectedFrom()?.url() ?? null,
-  })) {
+    frameUrl,
+  }, approvedHosts)) {
     return route.continue();
   }
 
@@ -211,7 +387,8 @@ function handleScreenshotRoute(route: Route, targetUrl: string) {
 export function shouldAllowScreenshotRequest(
   targetUrl: string,
   requestUrl: string,
-  requestContext: { isNavigationRequest?: boolean; redirectedFromUrl?: string | null } = {}
+  requestContext: { isNavigationRequest?: boolean; redirectedFromUrl?: string | null; frameUrl?: string | null } = {},
+  approvedHosts?: ReadonlySet<string>
 ) {
   if (isBrowserLocalUrl(requestUrl)) {
     return true;
@@ -221,44 +398,87 @@ export function shouldAllowScreenshotRequest(
     return true;
   }
 
-  return isSameHostNavigationRedirect(targetUrl, requestUrl, requestContext);
+  const hosts = approvedHosts ?? getInitialScreenshotHosts(targetUrl);
+  if (
+    requestContext.frameUrl
+    && isSameOrigin(requestContext.frameUrl, requestUrl)
+    && isApprovedScreenshotHost(requestUrl, hosts)
+  ) {
+    return true;
+  }
+  return isApprovedNavigationRedirect(requestUrl, requestContext, hosts);
 }
 
-async function withScreenshotSlot<T>(task: () => Promise<T>) {
-  await acquireScreenshotSlot();
+function isApprovedScreenshotHost(url: string, approvedHosts: ReadonlySet<string>) {
+  try {
+    const parsed = new URL(url);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:")
+      && approvedHosts.has(normalizeNetworkHostname(parsed.hostname));
+  } catch {
+    return false;
+  }
+}
+
+function getInitialScreenshotHosts(targetUrl: string) {
+  try {
+    return new Set([normalizeNetworkHostname(new URL(targetUrl).hostname)]);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+async function withScreenshotSlot<T>(task: () => Promise<T>, signal: AbortSignal) {
+  await acquireScreenshotSlot(signal);
 
   try {
+    if (signal.aborted) {
+      throw new Error(SCREENSHOT_DEADLINE_ERROR);
+    }
     return await task();
   } finally {
     releaseScreenshotSlot();
   }
 }
 
-function acquireScreenshotSlot() {
+function acquireScreenshotSlot(signal: AbortSignal) {
+  if (signal.aborted) {
+    return Promise.reject(new Error(SCREENSHOT_DEADLINE_ERROR));
+  }
   if (activeScreenshots < MAX_CONCURRENT_SCREENSHOTS) {
     activeScreenshots += 1;
     return Promise.resolve();
   }
 
   return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(entry.timeout);
+      removeScreenshotQueueEntry(entry);
+      reject(new Error(SCREENSHOT_DEADLINE_ERROR));
+    };
     const entry: ScreenshotQueueEntry = {
       resolve: () => {
+        signal.removeEventListener("abort", onAbort);
         activeScreenshots += 1;
         resolve();
       },
       timeout: setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
         removeScreenshotQueueEntry(entry);
         reject(new Error("screenshot queue timed out"));
       }, SCREENSHOT_QUEUE_TIMEOUT_MS),
     };
     screenshotQueue.push(entry);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
   });
 }
 
-function buildHostResolverRule(target: ResolvedNetworkTarget) {
-  const address = selectResolvedAddress(target);
-  const mappedAddress = address.includes(":") ? `[${address}]` : address;
-  return `--host-resolver-rules=MAP ${target.hostname} ${mappedAddress}, MAP * ~NOTFOUND`;
+function buildHostResolverRule(targets: ResolvedNetworkTarget[]) {
+  const rules = targets.map((target) => {
+    const address = selectResolvedAddress(target);
+    return `MAP ${target.hostname} ${address.includes(":") ? `[${address}]` : address}`;
+  });
+  return `--host-resolver-rules=${[...rules, "MAP * ~NOTFOUND"].join(", ")}`;
 }
 
 function resolvePrivateTargetAccess(monitor: Monitor) {
@@ -307,23 +527,22 @@ function isSameOrigin(left: string, right: string) {
   }
 }
 
-function isSameHostNavigationRedirect(
-  targetUrl: string,
+function isApprovedNavigationRedirect(
   requestUrl: string,
-  requestContext: { isNavigationRequest?: boolean; redirectedFromUrl?: string | null }
+  requestContext: { isNavigationRequest?: boolean; redirectedFromUrl?: string | null },
+  approvedHosts: ReadonlySet<string>
 ) {
   if (!requestContext.isNavigationRequest || !requestContext.redirectedFromUrl) {
     return false;
   }
 
   try {
-    const target = new URL(targetUrl);
     const request = new URL(requestUrl);
     const redirectedFrom = new URL(requestContext.redirectedFromUrl);
 
     return (
-      target.hostname === request.hostname &&
-      target.hostname === redirectedFrom.hostname &&
+      approvedHosts.has(normalizeNetworkHostname(request.hostname)) &&
+      approvedHosts.has(normalizeNetworkHostname(redirectedFrom.hostname)) &&
       (request.protocol === "http:" || request.protocol === "https:")
     );
   } catch {

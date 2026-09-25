@@ -120,6 +120,10 @@ export default function MonitoringPage() {
   const [textImportOpen, setTextImportOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [editingMonitor, setEditingMonitor] = useState<MonitorRecord | null>(null);
+  const editingMonitorInitialValue = useMemo(
+    () => editingMonitor ? payloadFromMonitor(editingMonitor) : null,
+    [editingMonitor]
+  );
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkCompanyOpen, setBulkCompanyOpen] = useState(false);
   const [bulkCompanyId, setBulkCompanyId] = useState("");
@@ -1133,9 +1137,9 @@ export default function MonitoringPage() {
             <DialogTitle>Monitor settings</DialogTitle>
             <DialogDescription>Change the target, check behavior, alerts, and templates.</DialogDescription>
           </DialogHeader>
-          {editingMonitor ? (
+          {editingMonitor && editingMonitorInitialValue ? (
             <MonitorForm
-              initialValue={payloadFromMonitor(editingMonitor)}
+              initialValue={editingMonitorInitialValue}
               companies={companies}
               savedEmails={savedEmails}
               settings={workspaceSettings}

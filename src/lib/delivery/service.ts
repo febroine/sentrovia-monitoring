@@ -43,9 +43,9 @@ import {
 import {
   normalizeTelegramMessage,
   postTelegramMessage,
+  postTelegramPhoto,
   readTelegramResponseFailure,
   resolveTelegramPhoto,
-  sendTelegramPhotoWithoutBlockingMessage,
   toTelegramErrorMessage,
 } from "@/lib/delivery/telegram-delivery";
 
@@ -493,6 +493,7 @@ export async function sendTelegramDelivery(input: {
   const event = await createDeliveryEvent(input.userId, "telegram", input.kind, destination, {
     text: body,
     photo: input.photo?.filename ?? null,
+    ...(input.photo ? { photoAttachment: serializeEmailAttachments([input.photo])?.[0] ?? null } : {}),
   }, input.monitorId, input.workspaceId);
 
   if (!botToken || !chatId) {
@@ -508,7 +509,11 @@ export async function sendTelegramDelivery(input: {
     const telegramFailure = await readTelegramResponseFailure(response);
 
     if (telegramFailure) {
-      return isRetryableHttpStatus(telegramFailure.status)
+      const retryable = isRetryableHttpStatus(telegramFailure.status);
+      if (retryable) {
+        await preserveTelegramPhotoForRetry(event.id, body, input);
+      }
+      return retryable
         ? markDeliveryRetryable(event.id, 1, telegramFailure.status, telegramFailure.message)
         : markDeliveryFailed(event.id, telegramFailure.status, telegramFailure.message);
     }
@@ -518,15 +523,107 @@ export async function sendTelegramDelivery(input: {
       buildPhoto: input.buildPhoto,
     });
     if (photo) {
-      await sendTelegramPhotoWithoutBlockingMessage(botToken, chatId, body, photo);
+      await queueTelegramPhotoDelivery({
+        userId: input.userId,
+        workspaceId: input.workspaceId,
+        kind: input.kind,
+        monitorId: input.monitorId,
+        botToken,
+        chatId,
+        body,
+        photo,
+      });
     }
 
     return markDeliveryDelivered(event.id, response.status);
   } catch (error) {
     const errorMessage = toTelegramErrorMessage(error, botToken);
-    return isRetryableDeliveryError(error)
+    const retryable = isRetryableDeliveryError(error);
+    if (retryable) {
+      await preserveTelegramPhotoForRetry(event.id, body, input);
+    }
+    return retryable
       ? markDeliveryRetryable(event.id, 1, null, errorMessage)
       : markDeliveryFailed(event.id, null, errorMessage);
+  }
+}
+
+async function queueTelegramPhotoDelivery(input: {
+  userId: string;
+  workspaceId?: string;
+  kind: DeliveryKind;
+  monitorId?: string | null;
+  botToken: string;
+  chatId: string;
+  body: string;
+  photo: Mail.Attachment;
+}) {
+  const photoAttachment = serializeEmailAttachments([input.photo])?.[0];
+  if (!photoAttachment) return;
+
+  try {
+    const event = await createDeliveryEvent(input.userId, "telegram", input.kind, input.chatId, {
+      text: input.body,
+      photoOnly: true,
+      photoAttachment,
+    }, input.monitorId, input.workspaceId);
+    await attemptTelegramPhotoDelivery(event, input.botToken, input.chatId, input.body, input.photo);
+  } catch (error) {
+    console.warn("[sentrovia] Telegram screenshot delivery could not be queued.", toTelegramErrorMessage(error, input.botToken));
+  }
+}
+
+async function attemptTelegramPhotoDelivery(
+  event: DeliveryEventRow,
+  botToken: string,
+  chatId: string,
+  body: string,
+  photo: Mail.Attachment
+) {
+  try {
+    const response = await postTelegramPhoto(botToken, chatId, body, photo);
+    const failure = await readTelegramResponseFailure(response);
+    if (!failure) {
+      return markDeliveryDelivered(event.id, response.status, event.attempts + 1, event.claimToken);
+    }
+
+    const retryable = isRetryableHttpStatus(failure.status);
+    const message = toTelegramErrorMessage(new Error(failure.message), botToken);
+    console.warn(`[sentrovia] Telegram screenshot ${retryable ? "queued for retry" : "skipped"}: ${message}`);
+    return retryable
+      ? markDeliveryRetryable(event.id, event.attempts + 1, failure.status, message, event.claimToken)
+      : markDeliveryFailed(event.id, failure.status, message, event.attempts + 1, event.claimToken);
+  } catch (error) {
+    const retryable = isRetryableDeliveryError(error);
+    const message = toTelegramErrorMessage(error, botToken);
+    console.warn(`[sentrovia] Telegram screenshot ${retryable ? "queued for retry" : "skipped"}: ${message}`);
+    return retryable
+      ? markDeliveryRetryable(event.id, event.attempts + 1, null, message, event.claimToken)
+      : markDeliveryFailed(event.id, null, message, event.attempts + 1, event.claimToken);
+  }
+}
+
+async function preserveTelegramPhotoForRetry(
+  eventId: string,
+  body: string,
+  input: {
+    botToken: string;
+    photo?: Mail.Attachment;
+    buildPhoto?: () => Promise<Mail.Attachment | null | undefined>;
+  }
+) {
+  if (!input.buildPhoto || input.photo) return;
+
+  try {
+    const photo = await resolveTelegramPhoto(input);
+    const photoAttachment = serializeEmailAttachments(photo ? [photo] : undefined)?.[0];
+    if (!photoAttachment) return;
+
+    await db.update(deliveryEvents)
+      .set({ payloadJson: JSON.stringify({ text: body, photo: photo?.filename ?? null, photoAttachment }) })
+      .where(eq(deliveryEvents.id, eventId));
+  } catch (error) {
+    console.warn("[sentrovia] Unable to preserve Telegram screenshot for retry.", toTelegramErrorMessage(error, input.botToken));
   }
 }
 
@@ -1061,7 +1158,8 @@ async function deliverClaimedTelegram(event: DeliveryEventRow) {
   const routing = event.monitorId
     ? await getMonitorNotificationRouting(event.userId, event.monitorId, event.workspaceId)
     : null;
-  if (!routing?.telegramBotToken || !routing.telegramChatId) {
+  const target = routing?.telegramTargets.find((candidate) => candidate.chatId === event.destination);
+  if (!target) {
     return markDeliveryFailed(
       event.id,
       null,
@@ -1071,7 +1169,8 @@ async function deliverClaimedTelegram(event: DeliveryEventRow) {
     );
   }
 
-  const body = normalizeTelegramMessage(readPayloadString(safeJsonParse(event.payloadJson), "text"));
+  const payload = safeJsonParse(event.payloadJson);
+  const body = normalizeTelegramMessage(readPayloadString(payload, "text"));
   if (!body.trim()) {
     return markDeliveryFailed(
       event.id,
@@ -1082,8 +1181,15 @@ async function deliverClaimedTelegram(event: DeliveryEventRow) {
     );
   }
 
+  const photo = deserializeEmailAttachments([payload.photoAttachment])?.[0];
+  if (payload.photoOnly === true) {
+    return photo
+      ? attemptTelegramPhotoDelivery(event, target.botToken, target.chatId, body, photo)
+      : markDeliveryFailed(event.id, null, "The original Telegram screenshot is unavailable.", event.attempts + 1, event.claimToken);
+  }
+
   try {
-    const response = await postTelegramMessage(routing.telegramBotToken, routing.telegramChatId, body);
+    const response = await postTelegramMessage(target.botToken, target.chatId, body);
     const telegramFailure = await readTelegramResponseFailure(response);
     if (telegramFailure) {
       return isRetryableHttpStatus(telegramFailure.status)
@@ -1091,9 +1197,22 @@ async function deliverClaimedTelegram(event: DeliveryEventRow) {
         : markDeliveryFailed(event.id, telegramFailure.status, telegramFailure.message, event.attempts + 1, event.claimToken);
     }
 
+    if (photo) {
+      await queueTelegramPhotoDelivery({
+        userId: event.userId,
+        workspaceId: event.workspaceId,
+        kind: event.kind as DeliveryKind,
+        monitorId: event.monitorId,
+        botToken: target.botToken,
+        chatId: target.chatId,
+        body,
+        photo,
+      });
+    }
+
     return markDeliveryDelivered(event.id, response.status, event.attempts + 1, event.claimToken);
   } catch (error) {
-    const errorMessage = toTelegramErrorMessage(error, routing.telegramBotToken);
+    const errorMessage = toTelegramErrorMessage(error, target.botToken);
     return isRetryableDeliveryError(error)
       ? markDeliveryRetryable(event.id, event.attempts + 1, null, errorMessage, event.claimToken)
       : markDeliveryFailed(event.id, null, errorMessage, event.attempts + 1, event.claimToken);

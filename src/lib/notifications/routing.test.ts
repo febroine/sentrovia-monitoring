@@ -17,19 +17,21 @@ const workspaceFallbacks = {
 };
 
 describe("resolveNotificationRouting", () => {
-  it("prefers complete monitor routing over company and workspace defaults", () => {
+  it("includes monitor and company recipients without duplicating addresses or chats", () => {
     expect(resolveNotificationRouting({
       ...workspaceFallbacks,
-      monitorEmail: "monitor@example.com",
+      monitorEmail: "monitor@example.com; COMPANY@example.com",
       monitorTelegramBotToken: "monitor-token",
       monitorTelegramChatId: "monitor-chat",
       companyEmails: ["company@example.com"],
       companyTelegramBotToken: "company-token",
       companyTelegramChatId: "company-chat",
     })).toEqual({
-      emailRecipients: "monitor@example.com",
-      telegramBotToken: "monitor-token",
-      telegramChatId: "monitor-chat",
+      emailRecipients: "monitor@example.com, COMPANY@example.com",
+      telegramTargets: [
+        { botToken: "monitor-token", chatId: "monitor-chat" },
+        { botToken: "company-token", chatId: "company-chat" },
+      ],
     });
   });
 
@@ -41,8 +43,7 @@ describe("resolveNotificationRouting", () => {
       companyTelegramChatId: "company-chat",
     })).toEqual({
       emailRecipients: "ops@example.com, noc@example.com",
-      telegramBotToken: "company-token",
-      telegramChatId: "company-chat",
+      telegramTargets: [{ botToken: "company-token", chatId: "company-chat" }],
     });
   });
 
@@ -53,9 +54,18 @@ describe("resolveNotificationRouting", () => {
       companyTelegramBotToken: "partial-company-token",
     })).toEqual({
       emailRecipients: "workspace@example.com",
-      telegramBotToken: "workspace-token",
-      telegramChatId: "workspace-chat",
+      telegramTargets: [{ botToken: "workspace-token", chatId: "workspace-chat" }],
     });
+  });
+
+  it("does not send a second Telegram message to the same chat", () => {
+    expect(resolveNotificationRouting({
+      ...workspaceFallbacks,
+      monitorTelegramBotToken: "monitor-token",
+      monitorTelegramChatId: "shared-chat",
+      companyTelegramBotToken: "company-token",
+      companyTelegramChatId: "shared-chat",
+    }).telegramTargets).toEqual([{ botToken: "monitor-token", chatId: "shared-chat" }]);
   });
 });
 
