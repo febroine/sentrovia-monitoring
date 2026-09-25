@@ -140,27 +140,6 @@ UPDATE-SENTROVIA.bat
 
 If release files were copied manually, skip the Git commands and run `UPDATE-SENTROVIA.bat`. The updater validates dependencies and the build, applies migrations, restarts both services, removes known retired paths, and preserves `.env.local` and database records. It restores the previous dependencies and production build if the update fails. The full transcript is saved under `logs`.
 
-### Automatic GitHub updates for Windows NSSM
-
-This option checks `main` every five minutes after a push. It installs only the latest commit whose **CI** workflow completed successfully. Use it only with a Git checkout of `https://github.com/febroine/sentrovia-monitoring.git`; copied release archives are not Git checkouts.
-
-On the server, make sure Git, Node.js, npm, NSSM, `pg_dump`, and `pg_restore` are available to the Windows **SYSTEM** account through the system `PATH`. The existing NSSM services and `.env.local` must already work. First back up PostgreSQL, fetch this version of `main`, and install it once with `UPDATE-SENTROVIA.bat` using the manual update procedure above. Verify both services before enabling the task: installation records the current Git commit as the version already running. Ensure the Git working tree is clean; ignored runtime files such as `.env.local`, `node_modules`, `.next`, screenshots, and backups stay in place. Then open Administrator PowerShell in the project directory and run once:
-
-```powershell
-.\scripts\auto-update-windows-nssm.ps1 -InstallTask
-Start-ScheduledTask -TaskName "Sentrovia GitHub Auto Update"
-```
-
-Check `logs/auto-update.log` and the task's last result in Task Scheduler. A successful check with no new commit says `Already running`; a pending or failed CI says `Waiting for successful CI`. GitHub's public API needs no token for this public repository. The server makes outbound HTTPS requests to GitHub; no inbound port or GitHub runner is needed. The task records the last deployed Git commit under `logs`; keep this directory across updates.
-
-Before switching commits, the task creates and verifies an encrypted PostgreSQL backup in `AUTOMATIC_BACKUP_DIRECTORY` (default `backups`). It never rotates these pre-update backups automatically; prune them according to your retention policy after confirming restore points. If the backup fails, deployment stops. The updater then builds, synchronizes schema, and restarts both NSSM services. If it fails, the task restores the previous Git commit and attempts to restart services, while retaining the backup for manual database recovery. It will not retry the same failed commit on every check; inspect the error and clear `logs/auto-update-failed-commit` only after fixing the cause. A newer commit is eligible automatically. If Git HEAD differs from `logs/auto-update-deployed-commit`, the task stops for manual recovery instead of assuming an interrupted update succeeded. Database migrations are not automatically reversed. Check `logs/auto-update.log` and the latest `logs/sentrovia-update-*.log` if a deployment fails.
-
-To disable automatic updates without changing the running version:
-
-```powershell
-Disable-ScheduledTask -TaskName "Sentrovia GitHub Auto Update"
-```
-
 ### Verify a release
 
 Release tags and artifacts are immutable. Verify the checksum and GitHub build-provenance attestation before installing a downloaded archive:

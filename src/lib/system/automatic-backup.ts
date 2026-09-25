@@ -99,11 +99,6 @@ export async function runAutomaticDatabaseBackup(now = new Date()) {
   }
 }
 
-export async function createDeploymentBackup(now = new Date()) {
-  const date = now.toISOString().slice(0, 10);
-  return createVerifiedBackup(date, null, now);
-}
-
 export function isAutomaticBackupDue(schedule: BackupSchedule, now: Date) {
   if (!schedule.enabled || !/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.window)) return false;
   const current = getZonedDateAndTime(now, schedule.timeZone);
@@ -239,7 +234,7 @@ async function claimBackupRun(workspaceId: string, userId: string, scheduledDate
   return retried ?? null;
 }
 
-async function createVerifiedBackup(scheduledDate: string, retentionCount: number | null, now: Date) {
+async function createVerifiedBackup(scheduledDate: string, retentionCount: number, now: Date) {
   const directory = path.resolve(env.automaticBackupDirectory);
   await fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
@@ -258,7 +253,7 @@ async function createVerifiedBackup(scheduledDate: string, retentionCount: numbe
       fs.promises.stat(backupPath),
       calculateFileSha256(backupPath),
     ]);
-    if (retentionCount !== null) await rotateBackups(directory, retentionCount);
+    await rotateBackups(directory, retentionCount);
     return { fileName, sizeBytes: stats.size, checksumSha256 };
   } catch (error) {
     await fs.promises.rm(backupPath, { force: true }).catch(() => undefined);
