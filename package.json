@@ -39,6 +39,7 @@
     "db:manual": "node scripts/apply-manual-migrations.mjs",
     "db:manual:baseline": "node scripts/apply-manual-migrations.mjs --baseline",
     "backup:restore": "tsx scripts/restore-database-backup.ts",
+    "backup:before-update": "tsx scripts/backup-before-update.ts",
     "release:artifacts": "node scripts/create-release-artifacts.mjs",
     "benchmark:scale": "node scripts/benchmark-scale.mjs"
   },
