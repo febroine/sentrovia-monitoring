@@ -6,7 +6,8 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ### Fixed
 
-- Skipped screenshot attachments when a monitored page cannot load or its hostname cannot be resolved, instead of sending a generated unavailable image.
+- Stopped sending a generated "unavailable" image when a monitored page cannot load.
+- Attached the browser's real error page (connection refused or reset, DNS failure, certificate error) to outage alerts, instead of sending no screenshot, by capturing with full headless Chromium, which renders network error pages. A target that never responds is still sent without a screenshot, because the browser shows only a blank page.
 
 ## [0.1.7] - 2026-09-22
 

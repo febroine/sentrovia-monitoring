@@ -28,6 +28,27 @@ const SCREENSHOT_REDIRECT_PROBE_TIMEOUT_MS = 3_000;
 const MAX_SCREENSHOT_REDIRECTS = 10;
 const CHROMIUM_HEADLESS_ARGS = ["--headless=new", "--disable-gpu"];
 const SCREENSHOT_PUBLIC_TARGET_ERROR = "screenshot target is not allowed by the current network safety policy";
+const SCREENSHOT_ERROR_PAGE_RENDER_TIMEOUT_MS = 2_000;
+// Only errors caused by the monitored site. Browser policy (ERR_UNSAFE_PORT), the request
+// filter (ERR_BLOCKED_BY_CLIENT), and the monitoring host's own network are never captured.
+const TARGET_FAILURE_NAVIGATION_ERRORS = new Set([
+  "ERR_ADDRESS_UNREACHABLE",
+  "ERR_CONNECTION_CLOSED",
+  "ERR_CONNECTION_FAILED",
+  "ERR_CONNECTION_REFUSED",
+  "ERR_CONNECTION_RESET",
+  "ERR_CONNECTION_TIMED_OUT",
+  "ERR_CONTENT_LENGTH_MISMATCH",
+  "ERR_EMPTY_RESPONSE",
+  "ERR_HTTP2_PROTOCOL_ERROR",
+  "ERR_INCOMPLETE_CHUNKED_ENCODING",
+  "ERR_INVALID_HTTP_RESPONSE",
+  "ERR_INVALID_RESPONSE",
+  "ERR_NAME_NOT_RESOLVED",
+  "ERR_RESPONSE_HEADERS_TRUNCATED",
+  "ERR_TIMED_OUT",
+  "ERR_TOO_MANY_REDIRECTS",
+]);
 
 let activeScreenshots = 0;
 const screenshotQueue: Array<ScreenshotQueueEntry> = [];
@@ -50,16 +71,13 @@ export async function buildFailureScreenshotAttachment(
 
   try {
     return await withScreenshotDeadline(async (signal) => {
-      const resolvedTarget = await resolveScreenshotTarget(monitor);
-      const approvedTargets = await resolveScreenshotRedirects(monitor, resolvedTarget, signal);
+      const approvedTargets = await resolveApprovedScreenshotTargets(monitor, signal);
       return withScreenshotSlot(() =>
         captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal), signal
       );
     });
   } catch (error) {
-    const message = isUnresolvedHostnameError(error)
-      ? "screenshot target hostname could not be resolved"
-      : toScreenshotErrorMessage(error);
+    const message = toScreenshotErrorMessage(error);
     onSkipped?.(message);
     console.warn(
       `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${message}`
@@ -86,6 +104,19 @@ function getScreenshotSkipReason(monitor: Monitor) {
   }
 
   return null;
+}
+
+async function resolveApprovedScreenshotTargets(monitor: Monitor, signal: AbortSignal) {
+  let resolvedTarget: ResolvedNetworkTarget;
+  try {
+    resolvedTarget = await resolveScreenshotTarget(monitor);
+  } catch (error) {
+    // No approved address: the browser resolves nothing and shows its own DNS error page.
+    if (isUnresolvedHostnameError(error)) return [];
+    throw error;
+  }
+
+  return resolveScreenshotRedirects(monitor, resolvedTarget, signal);
 }
 
 async function resolveScreenshotTarget(monitor: Monitor) {
@@ -223,6 +254,8 @@ async function captureScreenshotAttachment(
 ): Promise<Mail.Attachment | null> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
+    // Full Chromium in new headless mode; chrome-headless-shell renders network error pages blank.
+    channel: "chromium",
     args: [
       ...CHROMIUM_HEADLESS_ARGS,
       buildHostResolverRule(approvedTargets),
@@ -253,14 +286,15 @@ async function captureScreenshotAttachment(
         timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
       });
     } catch (error) {
-      if (
-        signal.aborted
-        || !/page\.goto: Timeout \d+ms exceeded/i.test(toScreenshotErrorMessage(error))
-        || !await hasVisibleScreenshotContent(page, approvedTargets)
-      ) {
+      if (signal.aborted) {
         throw error;
       }
-      navigationTimedOut = true;
+      const message = toScreenshotErrorMessage(error);
+      if (/page\.goto: Timeout \d+ms exceeded/i.test(message) && await hasVisibleScreenshotContent(page, approvedTargets)) {
+        navigationTimedOut = true;
+      } else if (!await isShowingTargetNetworkErrorPage(page, message, approvedTargets.length === 0)) {
+        throw error;
+      }
     }
 
     const content = await capturePageScreenshot(page, navigationTimedOut, approvedTargets);
@@ -289,6 +323,30 @@ async function hasVisibleScreenshotContent(page: Page, approvedTargets: Resolved
       if (body.innerText.trim().length > 0) return true;
       return [...body.querySelectorAll("img")].some((image) => image.complete && image.naturalWidth > 0);
     });
+  } catch {
+    return false;
+  }
+}
+
+// A failed navigation leaves Chromium on its own error page ("This site can't be reached",
+// certificate warning, ...). That page is what a visitor sees during the outage, so it is
+// captured as-is. Failures caused by this module's own isolation rules are never captured.
+async function isShowingTargetNetworkErrorPage(page: Page, message: string, hostnameUnresolved: boolean) {
+  const code = /net::(ERR_[A-Z0-9_]+)/.exec(message)?.[1];
+  if (!code || !(TARGET_FAILURE_NAVIGATION_ERRORS.has(code) || /^ERR_(CERT|SSL)_/.test(code))) {
+    return false;
+  }
+  if ((code === "ERR_NAME_NOT_RESOLVED") !== hostnameUnresolved) {
+    return false;
+  }
+
+  try {
+    // page.goto rejects before Chromium commits its error page, so wait for it to render.
+    await page.waitForURL(/^chrome-error:/, {
+      waitUntil: "load",
+      timeout: SCREENSHOT_ERROR_PAGE_RENDER_TIMEOUT_MS,
+    });
+    return await page.evaluate(() => (document.body?.innerText.trim().length ?? 0) > 0);
   } catch {
     return false;
   }

@@ -119,7 +119,7 @@ describe("failure screenshot browser isolation", () => {
     expect(attachment?.content).toBeInstanceOf(Buffer);
   }, 25_000);
 
-  it("does not attach an image when a redirected destination is unreachable", async () => {
+  it("captures the browser error page when a redirected destination is unreachable", async () => {
     const destinationServer = await createServer((_, response) => response.end());
     const destinationPort = resolveServerPort(destinationServer);
     await closeServer(destinationServer);
@@ -137,8 +137,8 @@ describe("failure screenshot browser isolation", () => {
       maxRedirects: 5,
     }), new Date(), onSkipped);
 
-    expect(attachment).toBeNull();
-    expect(onSkipped).toHaveBeenCalledOnce();
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
   }, 25_000);
 
   it("blocks a private redirect after a validated public redirect", async () => {
@@ -167,7 +167,7 @@ describe("failure screenshot browser isolation", () => {
     expect(privateRequests).toBe(0);
   }, 25_000);
 
-  it("skips the screenshot when the hostname cannot be resolved", async () => {
+  it("captures the browser DNS error page when the hostname cannot be resolved", async () => {
     vi.mocked(resolveMonitorNetworkTargetWithTimeout).mockRejectedValueOnce(
       Object.assign(new Error("hostname lookup failed"), { code: "ENOTFOUND" })
     );
@@ -179,11 +179,11 @@ describe("failure screenshot browser isolation", () => {
       onSkipped
     );
 
-    expect(attachment).toBeNull();
-    expect(onSkipped).toHaveBeenCalledWith("screenshot target hostname could not be resolved");
-  });
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 25_000);
 
-  it("does not attach an image when the connection is refused", async () => {
+  it("captures the browser error page when the connection is refused", async () => {
     const server = await createServer((_, response) => response.end());
     const port = resolveServerPort(server);
     await closeServer(server);
@@ -193,7 +193,57 @@ describe("failure screenshot browser isolation", () => {
       url: `http://fixture.test:${port}/offline`,
     }));
 
+    expectJpeg(attachment?.content);
+  }, 25_000);
+
+  it("captures the real page when the server responds with HTTP 404", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(404, { "Content-Type": "text/html" });
+      response.end("<h1>404 Not Found</h1>");
+    });
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/missing`,
+    }));
+
+    expectJpeg(attachment?.content);
+  }, 25_000);
+
+  it("captures the browser error page when the server closes the connection without a response", async () => {
+    const server = await createServer((request) => request.socket.destroy());
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/empty`,
+    }));
+
+    expectJpeg(attachment?.content);
+  }, 25_000);
+
+  it("captures the browser error page for a redirect loop", async () => {
+    let redirects = 0;
+    const server = await createServer((_, response) => {
+      redirects += 1;
+      response.writeHead(302, { Location: `/loop?${redirects}` });
+      response.end();
+    });
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/loop`,
+      maxRedirects: 5,
+    }));
+
+    expectJpeg(attachment?.content);
+  }, 25_000);
+
+  it("does not attach a browser policy error page that does not describe the site", async () => {
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: "http://fixture.test:6666/unsafe-port",
+    }), new Date(), onSkipped);
+
     expect(attachment).toBeNull();
+    expect(onSkipped).toHaveBeenCalledWith(expect.stringContaining("ERR_UNSAFE_PORT"));
   }, 25_000);
 
   it("skips the screenshot when the approved target never responds", async () => {
@@ -244,6 +294,11 @@ describe("failure screenshot browser isolation", () => {
     expect(privateRequests).toBe(0);
   }, 25_000);
 });
+
+function expectJpeg(content: unknown) {
+  expect(content).toBeInstanceOf(Buffer);
+  expect((content as Buffer).subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+}
 
 function createServer(handler: http.RequestListener) {
   const server = http.createServer(handler);
