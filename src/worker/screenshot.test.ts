@@ -34,13 +34,12 @@ describe("failure screenshot context banner", () => {
   });
 
   it("explains a page that never finished loading", () => {
-    const title = (rendered: "no-response" | "not-painted" | "blank" | "partial") =>
+    const title = (rendered: "no-response" | "blank" | "partial") =>
       describeScreenshotContext({ kind: "timed-out", timeoutMs: 60_000, rendered }, 4_250).title;
 
-    expect(title("no-response")).toBe("Page did not load within 60 s; the server sent nothing to display");
-    expect(title("not-painted")).toBe("Page was still loading after 60 s; nothing had been drawn yet");
-    expect(title("blank")).toBe("Page was still loading after 60 s; nothing visible had rendered yet");
-    expect(title("partial")).toBe("Page was still loading after 60 s; showing what had rendered");
+    expect(title("no-response")).toBe("Page did not load within 60 s; the server sent nothing, so the browser shows a blank page");
+    expect(title("blank")).toBe("Page was still loading after 60 s; nothing visible had arrived yet");
+    expect(title("partial")).toBe("Page was still loading after 60 s; showing what had arrived");
   });
 
   it("names the browser network error", () => {

@@ -258,7 +258,7 @@ describe("failure screenshot browser isolation", () => {
     expect(onSkipped).not.toHaveBeenCalled();
   }, 25_000);
 
-  it("captures a placeholder when a stylesheet that never loads blocks the first paint", async () => {
+  it("captures the real page content when a stylesheet that never loads blocks the first paint", async () => {
     const server = await createServer((request, response) => {
       if (request.url === "/blocking.css") return;
       response.writeHead(200, { "Content-Type": "text/html" });
@@ -274,7 +274,7 @@ describe("failure screenshot browser isolation", () => {
     expect(onSkipped).not.toHaveBeenCalled();
   }, 25_000);
 
-  it("captures a placeholder when page scripts keep the browser busy", async () => {
+  it("skips without a generated image when page scripts keep the browser from drawing", async () => {
     const server = await createServer((_, response) => {
       response.writeHead(200, { "Content-Type": "text/html" });
       response.write("<!doctype html><body><h1>Busy page</h1><script>while (true) {}</script>");
@@ -285,8 +285,8 @@ describe("failure screenshot browser isolation", () => {
       url: `http://fixture.test:${resolveServerPort(server)}/busy`,
     }), new Date(), onSkipped);
 
-    expectJpeg(attachment?.content);
-    expect(onSkipped).not.toHaveBeenCalled();
+    expect(attachment).toBeNull();
+    expect(onSkipped).toHaveBeenCalledWith("browser could not draw the page (its scripts may be keeping it busy)");
   }, 25_000);
 
   it("waits for a slow page as long as the monitor timeout allows", async () => {

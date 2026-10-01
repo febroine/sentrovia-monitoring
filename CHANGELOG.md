@@ -6,13 +6,13 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ### Fixed
 
-- Stopped sending a generic "unavailable" image with no details when a monitored page cannot load.
+- Stopped sending a generated "unavailable" image when a monitored page cannot load.
 - Attached the browser's real error page (connection refused or reset, DNS failure, certificate error) to outage alerts, instead of sending no screenshot, by capturing with full headless Chromium, which renders network error pages.
-- Outage screenshots now wait for the page as long as the monitor timeout (up to 60 seconds) instead of 8 seconds, so slow sites no longer lose their screenshot. A page that is still loading is captured as-is. When the browser has nothing to show (the server never responded, or the page was not drawn yet), the screenshot shows the blank browser view with a note explaining which of the two happened, instead of no screenshot.
+- Outage screenshots now wait for the page as long as the monitor timeout (up to 60 seconds) instead of 8 seconds, so slow sites no longer lose their screenshot. A page that is still loading is captured as-is: loading is stopped like pressing Esc, so the browser draws what the server actually sent (including a blank page when it sent nothing). No image is ever generated; when the browser cannot draw the page at all, the alert goes without a screenshot and the reason is logged.
 - Added a banner to outage screenshots showing how long the page took to load (or that it did not load) and how long after the failed check it was taken, so a slow page that eventually rendered is not mistaken for a working site.
 - Replaced raw browser errors in "Failure screenshot skipped" log entries with a short readable reason, without terminal color codes or Playwright call logs.
 - Extended the monitor lease to cover the outage screenshot, and reused one screenshot when a cycle sends more than one alert for the same check (e.g. a retried failure alert and a downtime reminder), so a long capture does not let another worker claim the monitor before the notification is sent.
-- Kept outage screenshots from stalling until the capture deadline when the page is not painted yet (e.g. a stylesheet that never loads) or page scripts keep the browser busy.
+- Kept outage screenshots from stalling until the capture deadline when a stylesheet that never loads blocks the first paint or page scripts keep the browser busy.
 
 ## [0.1.7] - 2026-09-22
 

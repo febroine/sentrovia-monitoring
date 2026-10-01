@@ -71,7 +71,7 @@ type ScreenshotQueueEntry = {
 };
 
 // What the browser had on screen when navigation ran out of time.
-export type ScreenshotTimedOutRender = "no-response" | "not-painted" | "blank" | "partial";
+export type ScreenshotTimedOutRender = "no-response" | "blank" | "partial";
 
 export type ScreenshotNavigationOutcome =
   | { kind: "loaded"; durationMs: number; monitorTimeoutMs: number }
@@ -312,6 +312,7 @@ async function captureScreenshotAttachment(
     );
     const navigationStartedAt = Date.now();
     let outcome: ScreenshotNavigationOutcome;
+    // Set only when the failed navigation path already captured the page.
     let screenshot: Buffer | null = null;
     try {
       await page.goto(screenshotUrl, {
@@ -341,14 +342,10 @@ async function captureScreenshotAttachment(
       }
     }
 
-    if (outcome.kind === "loaded") {
-      screenshot = await capturePageScreenshot(page, approvedTargets);
-    }
     const content = await addScreenshotContextBanner(
       context,
-      screenshot,
-      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime()),
-      outcome.kind === "timed-out" ? outcome.rendered : null
+      screenshot ?? await capturePageScreenshot(page, approvedTargets),
+      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime())
     );
     if (content.byteLength > SCREENSHOT_MAX_BYTES) {
       throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
@@ -419,17 +416,30 @@ async function isShowingTargetNetworkErrorPage(page: Page, message: string, host
 async function captureTimedOutPage(
   page: Page,
   approvedTargets: ResolvedNetworkTarget[]
-): Promise<{ screenshot: Buffer | null; rendered: ScreenshotTimedOutRender }> {
-  // Nothing has committed yet: the server has not answered, and Chromium has no frame to capture.
-  if (page.url() === "about:blank") {
-    return { screenshot: null, rendered: "no-response" };
-  }
+): Promise<{ screenshot: Buffer; rendered: ScreenshotTimedOutRender }> {
+  // Like pressing Esc in a browser: pending requests (e.g. a stylesheet that blocks the first paint)
+  // are cancelled, so Chromium draws what the server has actually sent. Nothing is generated.
+  await stopPageLoading(page);
+  const rendered = page.url() === "about:blank"
+    ? "no-response"
+    : await hasVisibleScreenshotContent(page, approvedTargets) ? "partial" : "blank";
+  return { screenshot: await captureCurrentBrowserFrame(page), rendered };
+}
 
-  const partial = await hasVisibleScreenshotContent(page, approvedTargets);
+async function stopPageLoading(page: Page) {
   try {
-    return { screenshot: await captureCurrentBrowserFrame(page), rendered: partial ? "partial" : "blank" };
+    const session = await withTimeout(
+      page.context().newCDPSession(page),
+      SCREENSHOT_PAGE_PROBE_TIMEOUT_MS,
+      "browser did not open a control session"
+    );
+    try {
+      await withTimeout(session.send("Page.stopLoading"), SCREENSHOT_PAGE_PROBE_TIMEOUT_MS, "browser did not stop loading");
+    } finally {
+      void session.detach().catch(() => undefined);
+    }
   } catch {
-    return { screenshot: null, rendered: "not-painted" };
+    // The frame capture below reports a page that cannot be drawn.
   }
 }
 
@@ -451,15 +461,9 @@ async function capturePageScreenshot(page: Page, approvedTargets: ResolvedNetwor
 }
 
 const TIMED_OUT_TITLES: Record<ScreenshotTimedOutRender, (limit: string) => string> = {
-  "no-response": (limit) => `Page did not load within ${limit}; the server sent nothing to display`,
-  "not-painted": (limit) => `Page was still loading after ${limit}; nothing had been drawn yet`,
-  blank: (limit) => `Page was still loading after ${limit}; nothing visible had rendered yet`,
-  partial: (limit) => `Page was still loading after ${limit}; showing what had rendered`,
-};
-
-const TIMED_OUT_PLACEHOLDERS: Partial<Record<ScreenshotTimedOutRender, string>> = {
-  "no-response": "The browser was still waiting for the server's first response.",
-  "not-painted": "The server had started responding, but the browser had not drawn the page yet.",
+  "no-response": (limit) => `Page did not load within ${limit}; the server sent nothing, so the browser shows a blank page`,
+  blank: (limit) => `Page was still loading after ${limit}; nothing visible had arrived yet`,
+  partial: (limit) => `Page was still loading after ${limit}; showing what had arrived`,
 };
 
 export function describeScreenshotContext(outcome: ScreenshotNavigationOutcome, sinceCheckMs: number) {
@@ -489,9 +493,8 @@ export function describeScreenshotContext(outcome: ScreenshotNavigationOutcome, 
 // The banner is composed in a separate page so the monitored page is never modified.
 async function addScreenshotContextBanner(
   context: BrowserContext,
-  image: Buffer | null,
-  banner: ReturnType<typeof describeScreenshotContext>,
-  rendered: ScreenshotTimedOutRender | null
+  image: Buffer,
+  banner: ReturnType<typeof describeScreenshotContext>
 ) {
   let page: Page | null = null;
   try {
@@ -500,7 +503,7 @@ async function addScreenshotContextBanner(
       width: SCREENSHOT_VIEWPORT.width,
       height: SCREENSHOT_VIEWPORT.height + SCREENSHOT_BANNER_HEIGHT,
     });
-    await page.setContent(buildScreenshotBannerHtml(image, banner, rendered), {
+    await page.setContent(buildScreenshotBannerHtml(image, banner), {
       waitUntil: "load",
       timeout: SCREENSHOT_BANNER_TIMEOUT_MS,
     });
@@ -511,7 +514,6 @@ async function addScreenshotContextBanner(
       timeout: SCREENSHOT_BANNER_TIMEOUT_MS,
     });
   } catch (error) {
-    if (!image) throw error;
     console.warn(`[sentrovia] Screenshot context banner skipped: ${describeScreenshotFailure(error)}`);
     return image;
   } finally {
@@ -519,12 +521,7 @@ async function addScreenshotContextBanner(
   }
 }
 
-function buildScreenshotBannerHtml(
-  image: Buffer | null,
-  banner: ReturnType<typeof describeScreenshotContext>,
-  rendered: ScreenshotTimedOutRender | null
-) {
-  const placeholder = (rendered && TIMED_OUT_PLACEHOLDERS[rendered]) ?? "The page could not be captured.";
+function buildScreenshotBannerHtml(image: Buffer, banner: ReturnType<typeof describeScreenshotContext>) {
   const accent = banner.tone === "critical" ? "#ef4444" : "#f59e0b";
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;padding:0;background:#111827;}
@@ -532,15 +529,10 @@ html,body{margin:0;padding:0;background:#111827;}
 font-family:Arial,Helvetica,sans-serif;color:#f9fafb;display:flex;flex-direction:column;justify-content:center;gap:4px;}
 .title{font-size:17px;font-weight:700;}
 .detail{font-size:13px;color:#d1d5db;}
-img,.empty{display:block;width:${SCREENSHOT_VIEWPORT.width}px;height:${SCREENSHOT_VIEWPORT.height}px;}
-.empty{background:#ffffff;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:20px;
-display:flex;align-items:center;justify-content:center;}
+img{display:block;width:${SCREENSHOT_VIEWPORT.width}px;height:${SCREENSHOT_VIEWPORT.height}px;}
 </style></head><body><div class="banner"><div class="title">${escapeHtml(banner.title)}</div>`
     + `<div class="detail">${escapeHtml(banner.detail)}</div></div>`
-    + (image
-      ? `<img alt="" src="data:image/jpeg;base64,${image.toString("base64")}">`
-      : `<div class="empty">${escapeHtml(placeholder)}</div>`)
-    + "</body></html>";
+    + `<img alt="" src="data:image/jpeg;base64,${image.toString("base64")}"></body></html>`;
 }
 
 function escapeHtml(value: string) {
@@ -567,7 +559,7 @@ async function captureCurrentBrowserFrame(page: Page) {
       format: "jpeg",
       quality: SCREENSHOT_JPEG_QUALITY,
       captureBeyondViewport: false,
-    }), SCREENSHOT_FRAME_CAPTURE_TIMEOUT_MS, "browser has not painted the page yet");
+    }), SCREENSHOT_FRAME_CAPTURE_TIMEOUT_MS, "browser could not draw the page (its scripts may be keeping it busy)");
     return Buffer.from(data, "base64");
   } finally {
     // A busy page never acknowledges the detach; closing the browser releases the session anyway.
