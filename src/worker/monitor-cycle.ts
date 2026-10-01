@@ -755,7 +755,26 @@ function shouldRunFinalConfirmationProbe(
     && verificationAttempt + 1 >= threshold;
 }
 
-async function buildAlertEmailAttachments(
+// A cycle can send more than one alert for the same check (e.g. a retried failure alert and a
+// downtime reminder); they share one screenshot, which also keeps the work inside the monitor lease.
+const alertAttachmentsByCheck = new WeakMap<
+  Awaited<ReturnType<typeof checkMonitor>>,
+  ReturnType<typeof captureAlertEmailAttachments>
+>();
+
+function buildAlertEmailAttachments(
+  monitor: Monitor,
+  result: Awaited<ReturnType<typeof checkMonitor>>
+) {
+  let attachments = alertAttachmentsByCheck.get(result);
+  if (!attachments) {
+    attachments = captureAlertEmailAttachments(monitor, result);
+    alertAttachmentsByCheck.set(result, attachments);
+  }
+  return attachments;
+}
+
+async function captureAlertEmailAttachments(
   monitor: Monitor,
   result: Awaited<ReturnType<typeof checkMonitor>>
 ) {

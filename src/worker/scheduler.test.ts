@@ -854,6 +854,30 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("captures one screenshot when a failed failure alert is followed by a downtime reminder", async () => {
+    const screenshot = {
+      filename: "sentrovia-api-outage.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    mocks.buildFailureScreenshotAttachment.mockResolvedValue(screenshot);
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+
+    await expect(getNotificationContext("failure").buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(getNotificationContext("downtime-reminder").buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledOnce();
+  });
+
   it("attaches a screenshot to status-change notifications when capture succeeds", async () => {
     const screenshot = {
       filename: "sentrovia-api-status-change.jpg",

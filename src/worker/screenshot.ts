@@ -34,6 +34,8 @@ const SCREENSHOT_BANNER_HEIGHT = 64;
 const SCREENSHOT_BANNER_TIMEOUT_MS = 5_000;
 // Chromium never answers a frame capture for a page it has not painted yet (e.g. a stylesheet still loading).
 const SCREENSHOT_FRAME_CAPTURE_TIMEOUT_MS = 5_000;
+// Page scripts can keep the renderer's main thread busy, which blocks evaluate() and CDP calls indefinitely.
+const SCREENSHOT_PAGE_PROBE_TIMEOUT_MS = 2_000;
 // Kept free after navigation for the error page, frame capture, and banner, so the deadline never discards a capture.
 const SCREENSHOT_POST_NAVIGATION_RESERVE_MS = 10_000;
 const SCREENSHOT_MIN_NAVIGATION_TIMEOUT_MS = 1_000;
@@ -379,12 +381,12 @@ async function hasVisibleScreenshotContent(page: Page, approvedTargets: Resolved
       || !approvedTargets.some((target) => target.hostname === normalizeNetworkHostname(url.hostname))
     ) return false;
 
-    return await page.evaluate(() => {
+    return await withTimeout(page.evaluate(() => {
       const body = document.body;
       if (!body) return false;
       if (body.innerText.trim().length > 0) return true;
       return [...body.querySelectorAll("img")].some((image) => image.complete && image.naturalWidth > 0);
-    });
+    }), SCREENSHOT_PAGE_PROBE_TIMEOUT_MS, "page did not answer the content check");
   } catch {
     return false;
   }
@@ -555,26 +557,35 @@ function formatSeconds(ms: number) {
 }
 
 async function captureCurrentBrowserFrame(page: Page) {
-  const session = await page.context().newCDPSession(page);
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const session = await withTimeout(
+    page.context().newCDPSession(page),
+    SCREENSHOT_PAGE_PROBE_TIMEOUT_MS,
+    "browser did not open a capture session"
+  );
   try {
-    const { data } = await Promise.race([
-      session.send("Page.captureScreenshot", {
-        format: "jpeg",
-        quality: SCREENSHOT_JPEG_QUALITY,
-        captureBeyondViewport: false,
-      }),
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error("browser has not painted the page yet")),
-          SCREENSHOT_FRAME_CAPTURE_TIMEOUT_MS
-        );
-      }),
-    ]);
+    const { data } = await withTimeout(session.send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: SCREENSHOT_JPEG_QUALITY,
+      captureBeyondViewport: false,
+    }), SCREENSHOT_FRAME_CAPTURE_TIMEOUT_MS, "browser has not painted the page yet");
     return Buffer.from(data, "base64");
   } finally {
+    // A busy page never acknowledges the detach; closing the browser releases the session anyway.
+    void session.detach().catch(() => undefined);
+  }
+}
+
+async function withTimeout<T>(task: Promise<T>, timeoutMs: number, message: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      task,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
     if (timeoutId) clearTimeout(timeoutId);
-    await session.detach().catch(() => undefined);
   }
 }
 
