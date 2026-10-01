@@ -1,10 +1,78 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { calculateScreenshotBudgetMs, calculateScreenshotNavigationTimeoutMs } from "@/lib/monitors/screenshot-timing";
 import {
   buildFailureScreenshotAttachment,
+  describeScreenshotContext,
+  describeScreenshotFailure,
   shouldAllowScreenshotRequest,
   shouldCaptureScreenshot,
 } from "@/worker/screenshot";
+
+describe("failure screenshot timing", () => {
+  it("waits as long as the monitor timeout within the screenshot bounds", () => {
+    expect(calculateScreenshotNavigationTimeoutMs(60_000)).toBe(60_000);
+    expect(calculateScreenshotNavigationTimeoutMs(25_000)).toBe(25_000);
+    expect(calculateScreenshotNavigationTimeoutMs(120_000)).toBe(60_000);
+    expect(calculateScreenshotNavigationTimeoutMs(3_000)).toBe(8_000);
+    expect(calculateScreenshotNavigationTimeoutMs(undefined)).toBe(8_000);
+  });
+
+  it("reserves setup and capture time on top of navigation", () => {
+    expect(calculateScreenshotBudgetMs(8_000)).toBe(30_000);
+    expect(calculateScreenshotBudgetMs(60_000)).toBe(82_000);
+  });
+});
+
+describe("failure screenshot context banner", () => {
+  it("shows how long a slow page took to load", () => {
+    expect(describeScreenshotContext({ kind: "loaded", durationMs: 41_200, monitorTimeoutMs: 60_000 }, 75_400)).toEqual({
+      tone: "warning",
+      title: "Page loaded in 41 s (monitor timeout 60 s)",
+      detail: "Screenshot taken 75 s after the failed check started",
+    });
+  });
+
+  it("explains a page that never finished loading", () => {
+    expect(describeScreenshotContext({ kind: "timed-out", timeoutMs: 60_000, partial: false }, 4_250).title)
+      .toBe("Page did not load within 60 s; the server sent nothing to display");
+    expect(describeScreenshotContext({ kind: "timed-out", timeoutMs: 60_000, partial: true }, 4_250).title)
+      .toBe("Page was still loading after 60 s; showing what had rendered");
+  });
+
+  it("names the browser network error", () => {
+    expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 9_500)).toMatchObject({
+      tone: "critical",
+      title: "Browser could not open the page (ERR_CONNECTION_REFUSED)",
+      detail: "Screenshot taken 9.5 s after the failed check started",
+    });
+  });
+});
+
+describe("failure screenshot log messages", () => {
+  it("removes Playwright colors and call logs from navigation timeouts", () => {
+    const error = new Error(
+      'page.goto: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - navigating to "https://example.com/", waiting until "domcontentloaded"\u001b[22m\n'
+    );
+
+    expect(describeScreenshotFailure(error)).toBe("page did not load within 8.0 s");
+  });
+
+  it("keeps the browser network error code", () => {
+    expect(describeScreenshotFailure(new Error("page.goto: net::ERR_UNSAFE_PORT at http://example.com:6666/")))
+      .toBe("browser could not open the page (ERR_UNSAFE_PORT)");
+  });
+
+  it("explains a full screenshot queue", () => {
+    expect(describeScreenshotFailure(new Error("screenshot queue timed out")))
+      .toBe("too many screenshots were already being captured (queue timed out)");
+  });
+
+  it("keeps other messages readable", () => {
+    expect(describeScreenshotFailure(new Error("screenshot target is not allowed by the current network safety policy")))
+      .toBe("screenshot target is not allowed by the current network safety policy");
+  });
+});
 
 describe("failure screenshot capture rules", () => {
   it("allows enabled HTTP monitors with email delivery", () => {

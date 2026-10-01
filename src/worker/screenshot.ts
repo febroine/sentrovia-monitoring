@@ -5,6 +5,10 @@ import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import {
+  calculateScreenshotBudgetMs,
+  calculateScreenshotNavigationTimeoutMs,
+} from "@/lib/monitors/screenshot-timing";
+import {
   createPinnedLookup,
   isMonitorNetworkHostnameLiteralAllowed,
   normalizeNetworkHostname,
@@ -16,9 +20,6 @@ import {
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
 const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
-const SCREENSHOT_NAVIGATION_TIMEOUT_MS = 8_000;
-// DNS resolution, browser startup, navigation, and image capture each need part of this budget.
-const SCREENSHOT_TOTAL_TIMEOUT_MS = 30_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
 const MAX_CONCURRENT_SCREENSHOTS = 3;
@@ -29,6 +30,10 @@ const MAX_SCREENSHOT_REDIRECTS = 10;
 const CHROMIUM_HEADLESS_ARGS = ["--headless=new", "--disable-gpu"];
 const SCREENSHOT_PUBLIC_TARGET_ERROR = "screenshot target is not allowed by the current network safety policy";
 const SCREENSHOT_ERROR_PAGE_RENDER_TIMEOUT_MS = 2_000;
+const SCREENSHOT_BANNER_HEIGHT = 64;
+const SCREENSHOT_BANNER_TIMEOUT_MS = 5_000;
+// Playwright decorates its messages with ANSI colors and a multi-line call log.
+const ANSI_ESCAPE_PATTERN = /\u001b\[[0-9;]*m/g;
 // Only errors caused by the monitored site. Browser policy (ERR_UNSAFE_PORT), the request
 // filter (ERR_BLOCKED_BY_CLIENT), and the monitoring host's own network are never captured.
 const TARGET_FAILURE_NAVIGATION_ERRORS = new Set([
@@ -58,6 +63,11 @@ type ScreenshotQueueEntry = {
   timeout: ReturnType<typeof setTimeout>;
 };
 
+export type ScreenshotNavigationOutcome =
+  | { kind: "loaded"; durationMs: number; monitorTimeoutMs: number }
+  | { kind: "timed-out"; timeoutMs: number; partial: boolean }
+  | { kind: "error-page"; code: string };
+
 export async function buildFailureScreenshotAttachment(
   monitor: Monitor,
   capturedAt = new Date(),
@@ -70,14 +80,14 @@ export async function buildFailureScreenshotAttachment(
   }
 
   try {
-    return await withScreenshotDeadline(async (signal) => {
+    return await withScreenshotDeadline(calculateScreenshotBudgetMs(monitor.timeout), async (signal) => {
       const approvedTargets = await resolveApprovedScreenshotTargets(monitor, signal);
       return withScreenshotSlot(() =>
         captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal), signal
       );
     });
   } catch (error) {
-    const message = toScreenshotErrorMessage(error);
+    const message = describeScreenshotFailure(error);
     onSkipped?.(message);
     console.warn(
       `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${message}`
@@ -218,14 +228,14 @@ function inspectScreenshotRedirect(
   });
 }
 
-async function withScreenshotDeadline<T>(task: (signal: AbortSignal) => Promise<T>) {
+async function withScreenshotDeadline<T>(timeoutMs: number, task: (signal: AbortSignal) => Promise<T>) {
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       controller.abort();
       reject(new Error(SCREENSHOT_DEADLINE_ERROR));
-    }, SCREENSHOT_TOTAL_TIMEOUT_MS);
+    }, timeoutMs);
   });
 
   try {
@@ -279,33 +289,67 @@ async function captureScreenshotAttachment(
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
     const page = await createScreenshotPage(context, screenshotUrl, approvedTargets);
-    let navigationTimedOut = false;
+    const navigationTimeoutMs = calculateScreenshotNavigationTimeoutMs(monitor.timeout);
+    const navigationStartedAt = Date.now();
+    let outcome: ScreenshotNavigationOutcome;
     try {
       await page.goto(screenshotUrl, {
         waitUntil: "domcontentloaded",
-        timeout: SCREENSHOT_NAVIGATION_TIMEOUT_MS,
+        timeout: navigationTimeoutMs,
       });
+      outcome = {
+        kind: "loaded",
+        durationMs: Date.now() - navigationStartedAt,
+        monitorTimeoutMs: monitor.timeout,
+      };
     } catch (error) {
       if (signal.aborted) {
         throw error;
       }
       const message = toScreenshotErrorMessage(error);
-      if (/page\.goto: Timeout \d+ms exceeded/i.test(message) && await hasVisibleScreenshotContent(page, approvedTargets)) {
-        navigationTimedOut = true;
-      } else if (!await isShowingTargetNetworkErrorPage(page, message, approvedTargets.length === 0)) {
+      if (/page\.goto: Timeout \d+ms exceeded/i.test(message) && isCapturableTimedOutPage(page, approvedTargets)) {
+        // A page that is still loading is the evidence of a slow outage, so it is captured as-is.
+        outcome = {
+          kind: "timed-out",
+          timeoutMs: navigationTimeoutMs,
+          partial: await hasVisibleScreenshotContent(page, approvedTargets),
+        };
+      } else if (await isShowingTargetNetworkErrorPage(page, message, approvedTargets.length === 0)) {
+        outcome = { kind: "error-page", code: extractNetworkErrorCode(message) ?? "ERR_FAILED" };
+      } else {
         throw error;
       }
     }
 
-    const content = await capturePageScreenshot(page, navigationTimedOut, approvedTargets);
-    if (!content) {
-      return null;
+    // Chromium never paints a frame for a navigation that has not committed, so there is nothing to capture.
+    const screenshot = outcome.kind === "timed-out" && page.url() === "about:blank"
+      ? null
+      : await capturePageScreenshot(page, outcome.kind === "timed-out", approvedTargets);
+    const content = await addScreenshotContextBanner(
+      context,
+      screenshot,
+      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime())
+    );
+    if (content.byteLength > SCREENSHOT_MAX_BYTES) {
+      throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
     }
 
     return buildScreenshotAttachment(monitor, capturedAt, content);
   } finally {
     signal.removeEventListener("abort", closeOnAbort);
     await closeBrowser();
+  }
+}
+
+function isCapturableTimedOutPage(page: Page, approvedTargets: ResolvedNetworkTarget[]) {
+  try {
+    const value = page.url();
+    if (value === "about:blank") return true;
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:")
+      && approvedTargets.some((target) => target.hostname === normalizeNetworkHostname(url.hostname));
+  } catch {
+    return false;
   }
 }
 
@@ -332,7 +376,7 @@ async function hasVisibleScreenshotContent(page: Page, approvedTargets: Resolved
 // certificate warning, ...). That page is what a visitor sees during the outage, so it is
 // captured as-is. Failures caused by this module's own isolation rules are never captured.
 async function isShowingTargetNetworkErrorPage(page: Page, message: string, hostnameUnresolved: boolean) {
-  const code = /net::(ERR_[A-Z0-9_]+)/.exec(message)?.[1];
+  const code = extractNetworkErrorCode(message);
   if (!code || !(TARGET_FAILURE_NAVIGATION_ERRORS.has(code) || /^ERR_(CERT|SSL)_/.test(code))) {
     return false;
   }
@@ -377,11 +421,96 @@ async function capturePageScreenshot(
     }
   }
 
-  if (content.byteLength > SCREENSHOT_MAX_BYTES) {
-    throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
-  }
-
   return content;
+}
+
+export function describeScreenshotContext(outcome: ScreenshotNavigationOutcome, sinceCheckMs: number) {
+  const capturedAfter = `Screenshot taken ${formatSeconds(Math.max(0, sinceCheckMs))} after the failed check started`;
+  if (outcome.kind === "loaded") {
+    return {
+      tone: "warning" as const,
+      title: `Page loaded in ${formatSeconds(outcome.durationMs)} (monitor timeout ${formatSeconds(outcome.monitorTimeoutMs)})`,
+      detail: capturedAfter,
+    };
+  }
+  if (outcome.kind === "timed-out") {
+    return {
+      tone: "critical" as const,
+      title: outcome.partial
+        ? `Page was still loading after ${formatSeconds(outcome.timeoutMs)}; showing what had rendered`
+        : `Page did not load within ${formatSeconds(outcome.timeoutMs)}; the server sent nothing to display`,
+      detail: capturedAfter,
+    };
+  }
+  return {
+    tone: "critical" as const,
+    title: `Browser could not open the page (${outcome.code})`,
+    detail: capturedAfter,
+  };
+}
+
+// The banner is composed in a separate page so the monitored page is never modified.
+async function addScreenshotContextBanner(
+  context: BrowserContext,
+  image: Buffer | null,
+  banner: ReturnType<typeof describeScreenshotContext>
+) {
+  let page: Page | null = null;
+  try {
+    page = await context.newPage();
+    await page.setViewportSize({
+      width: SCREENSHOT_VIEWPORT.width,
+      height: SCREENSHOT_VIEWPORT.height + SCREENSHOT_BANNER_HEIGHT,
+    });
+    await page.setContent(buildScreenshotBannerHtml(image, banner), {
+      waitUntil: "load",
+      timeout: SCREENSHOT_BANNER_TIMEOUT_MS,
+    });
+    return await page.screenshot({
+      type: "jpeg",
+      quality: SCREENSHOT_JPEG_QUALITY,
+      fullPage: false,
+      timeout: SCREENSHOT_BANNER_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (!image) throw error;
+    console.warn(`[sentrovia] Screenshot context banner skipped: ${describeScreenshotFailure(error)}`);
+    return image;
+  } finally {
+    await page?.close().catch(() => undefined);
+  }
+}
+
+function buildScreenshotBannerHtml(image: Buffer | null, banner: ReturnType<typeof describeScreenshotContext>) {
+  const accent = banner.tone === "critical" ? "#ef4444" : "#f59e0b";
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;padding:0;background:#111827;}
+.banner{box-sizing:border-box;height:${SCREENSHOT_BANNER_HEIGHT}px;padding:10px 16px;border-left:6px solid ${accent};
+font-family:Arial,Helvetica,sans-serif;color:#f9fafb;display:flex;flex-direction:column;justify-content:center;gap:4px;}
+.title{font-size:17px;font-weight:700;}
+.detail{font-size:13px;color:#d1d5db;}
+img,.empty{display:block;width:${SCREENSHOT_VIEWPORT.width}px;height:${SCREENSHOT_VIEWPORT.height}px;}
+.empty{background:#ffffff;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:20px;
+display:flex;align-items:center;justify-content:center;}
+</style></head><body><div class="banner"><div class="title">${escapeHtml(banner.title)}</div>`
+    + `<div class="detail">${escapeHtml(banner.detail)}</div></div>`
+    + (image
+      ? `<img alt="" src="data:image/jpeg;base64,${image.toString("base64")}">`
+      : `<div class="empty">The browser was still waiting for the server's first response.</div>`)
+    + "</body></html>";
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;");
+}
+
+function formatSeconds(ms: number) {
+  const seconds = ms / 1000;
+  return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
 }
 
 async function captureCurrentBrowserFrame(page: Page) {
@@ -625,6 +754,40 @@ function slugify(value: string) {
 
 function toScreenshotErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown screenshot error.";
+}
+
+function extractNetworkErrorCode(message: string) {
+  return /net::(ERR_[A-Z0-9_]+)/.exec(message)?.[1] ?? null;
+}
+
+// Turns raw Playwright errors into a single readable line for the monitor log.
+export function describeScreenshotFailure(error: unknown) {
+  const message = toScreenshotErrorMessage(error)
+    .replace(ANSI_ESCAPE_PATTERN, "")
+    .split(/\s*Call log:/i)[0]
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const timeout = /^(page\.goto|page\.screenshot|browserType\.launch)\b.*?Timeout (\d+)ms exceeded/i.exec(message);
+  if (timeout) {
+    const limit = formatSeconds(Number(timeout[2]));
+    if (timeout[1] === "page.goto") return `page did not load within ${limit}`;
+    if (timeout[1] === "page.screenshot") return `browser could not capture the page within ${limit}`;
+    return `browser did not start within ${limit}`;
+  }
+
+  const networkCode = extractNetworkErrorCode(message);
+  if (networkCode) {
+    return `browser could not open the page (${networkCode})`;
+  }
+  if (/^browserType\.launch/i.test(message)) {
+    return `browser could not be started: ${message.replace(/^browserType\.launch:\s*/i, "")}`;
+  }
+  if (message === "screenshot queue timed out") {
+    return "too many screenshots were already being captured (queue timed out)";
+  }
+
+  return message || "Unknown screenshot error.";
 }
 
 function isUnresolvedHostnameError(error: unknown) {

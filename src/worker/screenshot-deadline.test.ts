@@ -89,6 +89,7 @@ describe("screenshot deadline", () => {
           newPage: async () => ({
             setDefaultTimeout: vi.fn(),
             setDefaultNavigationTimeout: vi.fn(),
+            close: vi.fn().mockResolvedValue(undefined),
             goto: async () => { await new Promise((resolve) => setTimeout(resolve, 7_000)); },
             screenshot: async () => Buffer.from("image"),
           }),
@@ -125,6 +126,7 @@ describe("screenshot deadline", () => {
         newPage: async () => ({
           setDefaultTimeout: vi.fn(),
           setDefaultNavigationTimeout: vi.fn(),
+          close: vi.fn().mockResolvedValue(undefined),
           goto: async () => undefined,
           screenshot: mocks.screenshot,
           url: () => "https://example.com/",

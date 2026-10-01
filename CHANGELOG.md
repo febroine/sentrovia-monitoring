@@ -7,7 +7,11 @@ All notable changes to Sentrovia are documented here. Published release tags and
 ### Fixed
 
 - Stopped sending a generated "unavailable" image when a monitored page cannot load.
-- Attached the browser's real error page (connection refused or reset, DNS failure, certificate error) to outage alerts, instead of sending no screenshot, by capturing with full headless Chromium, which renders network error pages. A target that never responds is still sent without a screenshot, because the browser shows only a blank page.
+- Attached the browser's real error page (connection refused or reset, DNS failure, certificate error) to outage alerts, instead of sending no screenshot, by capturing with full headless Chromium, which renders network error pages.
+- Outage screenshots now wait for the page as long as the monitor timeout (up to 60 seconds) instead of 8 seconds, so slow sites no longer lose their screenshot. A page that is still loading is captured as-is, and a server that never responds is reported with a placeholder instead of no screenshot.
+- Added a banner to outage screenshots showing how long the page took to load (or that it did not load) and how long after the failed check it was taken, so a slow page that eventually rendered is not mistaken for a working site.
+- Replaced raw browser errors in "Failure screenshot skipped" log entries with a short readable reason, without terminal color codes or Playwright call logs.
+- Extended the monitor lease to cover the outage screenshot, so a long capture cannot let another worker claim the monitor before the notification is sent.
 
 ## [0.1.7] - 2026-09-22
 

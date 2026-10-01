@@ -5,6 +5,7 @@ import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, workspaceMembers, workspaceSettings, type Monitor } from "@/lib/db/schema";
 import { env, getDatabaseUrl } from "@/lib/env";
 import { encryptLegacyClaimedSecrets } from "@/lib/monitors/heartbeat-secrets";
+import { calculateScreenshotBudgetMs } from "@/lib/monitors/screenshot-timing";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
 import { getMonitorUptimeById, NO_MONITOR_UPTIME_DATA } from "@/lib/monitoring/uptime";
 import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
@@ -216,9 +217,10 @@ export function calculateMonitorLeaseMs(
   const maximumCheckBudgetMs = rows.reduce(
     (maximum, row) => {
       const timeoutMs = Math.max(0, row.timeout);
-      const checkBudgetMs = row.verificationMode
+      // A failed check may also wait for the outage screenshot before its notification is sent.
+      const checkBudgetMs = (row.verificationMode
         ? calculateVerificationLeaseBudgetMs(timeoutMs)
-        : timeoutMs;
+        : timeoutMs) + calculateScreenshotBudgetMs(timeoutMs);
       return Math.max(maximum, checkBudgetMs);
     },
     0

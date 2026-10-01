@@ -246,17 +246,35 @@ describe("failure screenshot browser isolation", () => {
     expect(onSkipped).toHaveBeenCalledWith(expect.stringContaining("ERR_UNSAFE_PORT"));
   }, 25_000);
 
-  it("skips the screenshot when the approved target never responds", async () => {
+  it("captures the still-loading page when the approved target never responds", async () => {
     const hangingServer = await createServer(() => undefined);
     const onSkipped = vi.fn();
 
     const attachment = await buildFailureScreenshotAttachment(buildMonitor({
       url: `http://fixture.test:${resolveServerPort(hangingServer)}/timeout`,
-    }), new Date("2026-05-15T08:00:00.000Z"), onSkipped);
+    }), new Date(), onSkipped);
 
-    expect(attachment).toBeNull();
-    expect(onSkipped).toHaveBeenCalledOnce();
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
   }, 25_000);
+
+  it("waits for a slow page as long as the monitor timeout allows", async () => {
+    const slowServer = await createServer((_, response) => {
+      setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end("<h1>Slow but alive</h1>");
+      }, 9_000);
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(slowServer)}/slow`,
+      timeout: 15_000,
+    }), new Date(), onSkipped);
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 40_000);
 
   it.each(["page", "worker"])("blocks private WebSocket handshakes from %s scripts", async (realm) => {
     let privateRequests = 0;
