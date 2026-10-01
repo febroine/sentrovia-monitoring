@@ -258,6 +258,22 @@ describe("failure screenshot browser isolation", () => {
     expect(onSkipped).not.toHaveBeenCalled();
   }, 25_000);
 
+  it("captures a placeholder when a stylesheet that never loads blocks the first paint", async () => {
+    const server = await createServer((request, response) => {
+      if (request.url === "/blocking.css") return;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.write("<!doctype html><html><head><link rel=stylesheet href=/blocking.css></head><body><h1>Loading</h1>");
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/blocked`,
+    }), new Date(), onSkipped);
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 25_000);
+
   it("waits for a slow page as long as the monitor timeout allows", async () => {
     const slowServer = await createServer((_, response) => {
       setTimeout(() => {

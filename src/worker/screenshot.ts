@@ -32,6 +32,11 @@ const SCREENSHOT_PUBLIC_TARGET_ERROR = "screenshot target is not allowed by the 
 const SCREENSHOT_ERROR_PAGE_RENDER_TIMEOUT_MS = 2_000;
 const SCREENSHOT_BANNER_HEIGHT = 64;
 const SCREENSHOT_BANNER_TIMEOUT_MS = 5_000;
+// Chromium never answers a frame capture for a page it has not painted yet (e.g. a stylesheet still loading).
+const SCREENSHOT_FRAME_CAPTURE_TIMEOUT_MS = 5_000;
+// Kept free after navigation for the error page, frame capture, and banner, so the deadline never discards a capture.
+const SCREENSHOT_POST_NAVIGATION_RESERVE_MS = 10_000;
+const SCREENSHOT_MIN_NAVIGATION_TIMEOUT_MS = 1_000;
 // Playwright decorates its messages with ANSI colors and a multi-line call log.
 const ANSI_ESCAPE_PATTERN = /\u001b\[[0-9;]*m/g;
 // Only errors caused by the monitored site. Browser policy (ERR_UNSAFE_PORT), the request
@@ -63,9 +68,12 @@ type ScreenshotQueueEntry = {
   timeout: ReturnType<typeof setTimeout>;
 };
 
+// What the browser had on screen when navigation ran out of time.
+export type ScreenshotTimedOutRender = "no-response" | "not-painted" | "blank" | "partial";
+
 export type ScreenshotNavigationOutcome =
   | { kind: "loaded"; durationMs: number; monitorTimeoutMs: number }
-  | { kind: "timed-out"; timeoutMs: number; partial: boolean }
+  | { kind: "timed-out"; timeoutMs: number; rendered: ScreenshotTimedOutRender }
   | { kind: "error-page"; code: string };
 
 export async function buildFailureScreenshotAttachment(
@@ -80,10 +88,12 @@ export async function buildFailureScreenshotAttachment(
   }
 
   try {
-    return await withScreenshotDeadline(calculateScreenshotBudgetMs(monitor.timeout), async (signal) => {
+    const budgetMs = calculateScreenshotBudgetMs(monitor.timeout);
+    const deadlineAt = Date.now() + budgetMs;
+    return await withScreenshotDeadline(budgetMs, async (signal) => {
       const approvedTargets = await resolveApprovedScreenshotTargets(monitor, signal);
       return withScreenshotSlot(() =>
-        captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal), signal
+        captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal, deadlineAt), signal
       );
     });
   } catch (error) {
@@ -260,7 +270,8 @@ async function captureScreenshotAttachment(
   monitor: Monitor,
   capturedAt: Date,
   approvedTargets: ResolvedNetworkTarget[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  deadlineAt: number
 ): Promise<Mail.Attachment | null> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
@@ -289,9 +300,17 @@ async function captureScreenshotAttachment(
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
     const page = await createScreenshotPage(context, screenshotUrl, approvedTargets);
-    const navigationTimeoutMs = calculateScreenshotNavigationTimeoutMs(monitor.timeout);
+    // Queueing and a slow browser start eat into the budget, so navigation gets only what is left of it.
+    const navigationTimeoutMs = Math.max(
+      SCREENSHOT_MIN_NAVIGATION_TIMEOUT_MS,
+      Math.min(
+        calculateScreenshotNavigationTimeoutMs(monitor.timeout),
+        deadlineAt - Date.now() - SCREENSHOT_POST_NAVIGATION_RESERVE_MS
+      )
+    );
     const navigationStartedAt = Date.now();
     let outcome: ScreenshotNavigationOutcome;
+    let screenshot: Buffer | null = null;
     try {
       await page.goto(screenshotUrl, {
         waitUntil: "domcontentloaded",
@@ -309,26 +328,25 @@ async function captureScreenshotAttachment(
       const message = toScreenshotErrorMessage(error);
       if (/page\.goto: Timeout \d+ms exceeded/i.test(message) && isCapturableTimedOutPage(page, approvedTargets)) {
         // A page that is still loading is the evidence of a slow outage, so it is captured as-is.
-        outcome = {
-          kind: "timed-out",
-          timeoutMs: navigationTimeoutMs,
-          partial: await hasVisibleScreenshotContent(page, approvedTargets),
-        };
+        const capture = await captureTimedOutPage(page, approvedTargets);
+        outcome = { kind: "timed-out", timeoutMs: navigationTimeoutMs, rendered: capture.rendered };
+        screenshot = capture.screenshot;
       } else if (await isShowingTargetNetworkErrorPage(page, message, approvedTargets.length === 0)) {
         outcome = { kind: "error-page", code: extractNetworkErrorCode(message) ?? "ERR_FAILED" };
+        screenshot = await capturePageScreenshot(page, approvedTargets);
       } else {
         throw error;
       }
     }
 
-    // Chromium never paints a frame for a navigation that has not committed, so there is nothing to capture.
-    const screenshot = outcome.kind === "timed-out" && page.url() === "about:blank"
-      ? null
-      : await capturePageScreenshot(page, outcome.kind === "timed-out", approvedTargets);
+    if (outcome.kind === "loaded") {
+      screenshot = await capturePageScreenshot(page, approvedTargets);
+    }
     const content = await addScreenshotContextBanner(
       context,
       screenshot,
-      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime())
+      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime()),
+      outcome.kind === "timed-out" ? outcome.rendered : null
     );
     if (content.byteLength > SCREENSHOT_MAX_BYTES) {
       throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
@@ -396,36 +414,55 @@ async function isShowingTargetNetworkErrorPage(page: Page, message: string, host
   }
 }
 
-async function capturePageScreenshot(
+async function captureTimedOutPage(
   page: Page,
-  navigationTimedOut: boolean,
   approvedTargets: ResolvedNetworkTarget[]
-) {
-  let content: Buffer;
-  if (navigationTimedOut) {
-    content = await captureCurrentBrowserFrame(page);
-  } else {
-    try {
-      content = await page.screenshot({
-        type: "jpeg",
-        quality: SCREENSHOT_JPEG_QUALITY,
-        fullPage: false,
-        timeout: SCREENSHOT_TIMEOUT_MS,
-      });
-    } catch (error) {
-      if (
-        !/page\.screenshot: Timeout \d+ms exceeded/i.test(toScreenshotErrorMessage(error))
-        || !await hasVisibleScreenshotContent(page, approvedTargets)
-      ) throw error;
-      content = await captureCurrentBrowserFrame(page);
-    }
+): Promise<{ screenshot: Buffer | null; rendered: ScreenshotTimedOutRender }> {
+  // Nothing has committed yet: the server has not answered, and Chromium has no frame to capture.
+  if (page.url() === "about:blank") {
+    return { screenshot: null, rendered: "no-response" };
   }
 
-  return content;
+  const partial = await hasVisibleScreenshotContent(page, approvedTargets);
+  try {
+    return { screenshot: await captureCurrentBrowserFrame(page), rendered: partial ? "partial" : "blank" };
+  } catch {
+    return { screenshot: null, rendered: "not-painted" };
+  }
 }
 
+async function capturePageScreenshot(page: Page, approvedTargets: ResolvedNetworkTarget[]) {
+  try {
+    return await page.screenshot({
+      type: "jpeg",
+      quality: SCREENSHOT_JPEG_QUALITY,
+      fullPage: false,
+      timeout: SCREENSHOT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (
+      !/page\.screenshot: Timeout \d+ms exceeded/i.test(toScreenshotErrorMessage(error))
+      || !await hasVisibleScreenshotContent(page, approvedTargets)
+    ) throw error;
+    return captureCurrentBrowserFrame(page);
+  }
+}
+
+const TIMED_OUT_TITLES: Record<ScreenshotTimedOutRender, (limit: string) => string> = {
+  "no-response": (limit) => `Page did not load within ${limit}; the server sent nothing to display`,
+  "not-painted": (limit) => `Page was still loading after ${limit}; nothing had been drawn yet`,
+  blank: (limit) => `Page was still loading after ${limit}; nothing visible had rendered yet`,
+  partial: (limit) => `Page was still loading after ${limit}; showing what had rendered`,
+};
+
+const TIMED_OUT_PLACEHOLDERS: Partial<Record<ScreenshotTimedOutRender, string>> = {
+  "no-response": "The browser was still waiting for the server's first response.",
+  "not-painted": "The server had started responding, but the browser had not drawn the page yet.",
+};
+
 export function describeScreenshotContext(outcome: ScreenshotNavigationOutcome, sinceCheckMs: number) {
-  const capturedAfter = `Screenshot taken ${formatSeconds(Math.max(0, sinceCheckMs))} after the failed check started`;
+  // Status-code-change alerts capture a page that is up, so the wording does not assume a failure.
+  const capturedAfter = `Screenshot taken ${formatSeconds(Math.max(0, sinceCheckMs))} after the check started`;
   if (outcome.kind === "loaded") {
     return {
       tone: "warning" as const,
@@ -436,9 +473,7 @@ export function describeScreenshotContext(outcome: ScreenshotNavigationOutcome, 
   if (outcome.kind === "timed-out") {
     return {
       tone: "critical" as const,
-      title: outcome.partial
-        ? `Page was still loading after ${formatSeconds(outcome.timeoutMs)}; showing what had rendered`
-        : `Page did not load within ${formatSeconds(outcome.timeoutMs)}; the server sent nothing to display`,
+      title: TIMED_OUT_TITLES[outcome.rendered](formatSeconds(outcome.timeoutMs)),
       detail: capturedAfter,
     };
   }
@@ -453,7 +488,8 @@ export function describeScreenshotContext(outcome: ScreenshotNavigationOutcome, 
 async function addScreenshotContextBanner(
   context: BrowserContext,
   image: Buffer | null,
-  banner: ReturnType<typeof describeScreenshotContext>
+  banner: ReturnType<typeof describeScreenshotContext>,
+  rendered: ScreenshotTimedOutRender | null
 ) {
   let page: Page | null = null;
   try {
@@ -462,7 +498,7 @@ async function addScreenshotContextBanner(
       width: SCREENSHOT_VIEWPORT.width,
       height: SCREENSHOT_VIEWPORT.height + SCREENSHOT_BANNER_HEIGHT,
     });
-    await page.setContent(buildScreenshotBannerHtml(image, banner), {
+    await page.setContent(buildScreenshotBannerHtml(image, banner, rendered), {
       waitUntil: "load",
       timeout: SCREENSHOT_BANNER_TIMEOUT_MS,
     });
@@ -481,7 +517,12 @@ async function addScreenshotContextBanner(
   }
 }
 
-function buildScreenshotBannerHtml(image: Buffer | null, banner: ReturnType<typeof describeScreenshotContext>) {
+function buildScreenshotBannerHtml(
+  image: Buffer | null,
+  banner: ReturnType<typeof describeScreenshotContext>,
+  rendered: ScreenshotTimedOutRender | null
+) {
+  const placeholder = (rendered && TIMED_OUT_PLACEHOLDERS[rendered]) ?? "The page could not be captured.";
   const accent = banner.tone === "critical" ? "#ef4444" : "#f59e0b";
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;padding:0;background:#111827;}
@@ -496,7 +537,7 @@ display:flex;align-items:center;justify-content:center;}
     + `<div class="detail">${escapeHtml(banner.detail)}</div></div>`
     + (image
       ? `<img alt="" src="data:image/jpeg;base64,${image.toString("base64")}">`
-      : `<div class="empty">The browser was still waiting for the server's first response.</div>`)
+      : `<div class="empty">${escapeHtml(placeholder)}</div>`)
     + "</body></html>";
 }
 
@@ -515,14 +556,24 @@ function formatSeconds(ms: number) {
 
 async function captureCurrentBrowserFrame(page: Page) {
   const session = await page.context().newCDPSession(page);
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
-    const { data } = await session.send("Page.captureScreenshot", {
-      format: "jpeg",
-      quality: SCREENSHOT_JPEG_QUALITY,
-      captureBeyondViewport: false,
-    });
+    const { data } = await Promise.race([
+      session.send("Page.captureScreenshot", {
+        format: "jpeg",
+        quality: SCREENSHOT_JPEG_QUALITY,
+        captureBeyondViewport: false,
+      }),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("browser has not painted the page yet")),
+          SCREENSHOT_FRAME_CAPTURE_TIMEOUT_MS
+        );
+      }),
+    ]);
     return Buffer.from(data, "base64");
   } finally {
+    if (timeoutId) clearTimeout(timeoutId);
     await session.detach().catch(() => undefined);
   }
 }
@@ -762,11 +813,13 @@ function extractNetworkErrorCode(message: string) {
 
 // Turns raw Playwright errors into a single readable line for the monitor log.
 export function describeScreenshotFailure(error: unknown) {
+  // The first line carries the reason; Playwright appends call logs and install banners below it.
   const message = toScreenshotErrorMessage(error)
     .replace(ANSI_ESCAPE_PATTERN, "")
     .split(/\s*Call log:/i)[0]
-    .replace(/\s+/g, " ")
-    .trim();
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0) ?? "";
 
   const timeout = /^(page\.goto|page\.screenshot|browserType\.launch)\b.*?Timeout (\d+)ms exceeded/i.exec(message);
   if (timeout) {

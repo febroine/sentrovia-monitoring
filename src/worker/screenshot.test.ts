@@ -29,22 +29,25 @@ describe("failure screenshot context banner", () => {
     expect(describeScreenshotContext({ kind: "loaded", durationMs: 41_200, monitorTimeoutMs: 60_000 }, 75_400)).toEqual({
       tone: "warning",
       title: "Page loaded in 41 s (monitor timeout 60 s)",
-      detail: "Screenshot taken 75 s after the failed check started",
+      detail: "Screenshot taken 75 s after the check started",
     });
   });
 
   it("explains a page that never finished loading", () => {
-    expect(describeScreenshotContext({ kind: "timed-out", timeoutMs: 60_000, partial: false }, 4_250).title)
-      .toBe("Page did not load within 60 s; the server sent nothing to display");
-    expect(describeScreenshotContext({ kind: "timed-out", timeoutMs: 60_000, partial: true }, 4_250).title)
-      .toBe("Page was still loading after 60 s; showing what had rendered");
+    const title = (rendered: "no-response" | "not-painted" | "blank" | "partial") =>
+      describeScreenshotContext({ kind: "timed-out", timeoutMs: 60_000, rendered }, 4_250).title;
+
+    expect(title("no-response")).toBe("Page did not load within 60 s; the server sent nothing to display");
+    expect(title("not-painted")).toBe("Page was still loading after 60 s; nothing had been drawn yet");
+    expect(title("blank")).toBe("Page was still loading after 60 s; nothing visible had rendered yet");
+    expect(title("partial")).toBe("Page was still loading after 60 s; showing what had rendered");
   });
 
   it("names the browser network error", () => {
     expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 9_500)).toMatchObject({
       tone: "critical",
       title: "Browser could not open the page (ERR_CONNECTION_REFUSED)",
-      detail: "Screenshot taken 9.5 s after the failed check started",
+      detail: "Screenshot taken 9.5 s after the check started",
     });
   });
 });
@@ -61,6 +64,14 @@ describe("failure screenshot log messages", () => {
   it("keeps the browser network error code", () => {
     expect(describeScreenshotFailure(new Error("page.goto: net::ERR_UNSAFE_PORT at http://example.com:6666/")))
       .toBe("browser could not open the page (ERR_UNSAFE_PORT)");
+  });
+
+  it("keeps only the first line of a browser launch failure", () => {
+    const error = new Error(
+      "browserType.launch: Executable doesn't exist at /opt/chrome\n╔════════╗\n║ Please run the following command ║\n╚════════╝"
+    );
+
+    expect(describeScreenshotFailure(error)).toBe("browser could not be started: Executable doesn't exist at /opt/chrome");
   });
 
   it("explains a full screenshot queue", () => {
