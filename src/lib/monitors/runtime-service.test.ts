@@ -21,6 +21,7 @@ import {
   hasPrivateTargetAccess,
   recordMonitorResult,
   renewMonitorLease,
+  selectClaimableMonitors,
 } from "@/lib/monitors/runtime-service";
 import { monitors } from "@/lib/db/schema";
 
@@ -79,3 +80,34 @@ function buildResultUpdate() {
     verificationFailureCount: 0,
   };
 }
+
+describe("claimable monitor selection", () => {
+  const row = (id: string, verificationMode = false) => ({ id, verificationMode });
+
+  it("takes monitors round-robin across workspaces up to the free slots", () => {
+    const selected = selectClaimableMonitors([
+      [row("a1"), row("a2"), row("a3"), row("a4")],
+      [row("b1")],
+      [row("c1"), row("c2")],
+    ], { limit: 5 });
+
+    expect(selected.map((item) => item.id)).toEqual(["a1", "b1", "c1", "a2", "c2"]);
+  });
+
+  it("leaves verification probes beyond their share due while regular checks still start", () => {
+    const selected = selectClaimableMonitors([
+      [row("a-verify-1", true), row("a-verify-2", true), row("a1")],
+      [row("b-verify-1", true), row("b1")],
+    ], { limit: 4, verificationLimit: 1 });
+
+    expect(selected.map((item) => item.id)).toEqual(["a-verify-1", "b1", "a1"]);
+  });
+
+  it("selects everything when no capacity is given", () => {
+    expect(selectClaimableMonitors([[row("a1"), row("a2", true)], [row("b1")]])).toHaveLength(3);
+  });
+
+  it("selects nothing when there is no free slot", () => {
+    expect(selectClaimableMonitors([[row("a1")]], { limit: 0 })).toEqual([]);
+  });
+});

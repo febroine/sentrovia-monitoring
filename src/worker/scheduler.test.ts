@@ -136,7 +136,7 @@ vi.mock("@/worker/screenshot", () => ({
   buildFailureScreenshotAttachment: mocks.buildFailureScreenshotAttachment,
 }));
 
-import { runMonitoringCycle } from "@/worker/scheduler";
+import { createMonitorDispatcher, runMonitoringCycle } from "@/worker/scheduler";
 
 describe("monitoring scheduler verification flow", () => {
   beforeEach(() => {
@@ -1457,6 +1457,169 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
   });
 
+
+  describe("independent monitor slots", () => {
+    const healthyResult: CheckResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 80,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+
+    // Monitors whose id starts with "slow" stay in their check until released.
+    function holdSlowChecks() {
+      const releases: Array<() => void> = [];
+      mocks.checkMonitor.mockImplementation((monitor: Monitor) => monitor.id.startsWith("slow")
+        ? new Promise<CheckResult>((resolve) => releases.push(() => resolve(healthyResult)))
+        : Promise.resolve(healthyResult));
+      return {
+        async releaseAll() {
+          await vi.waitFor(() => expect(releases.length).toBeGreaterThan(0));
+          for (const release of releases.splice(0)) release();
+        },
+        count: () => releases.length,
+      };
+    }
+
+    it("checks other monitors while a slow monitor is still running", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-site" })])
+        .mockResolvedValueOnce([buildMonitor({ id: "fast-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      const slowDispatch = await dispatcher.dispatch();
+      const fastDispatch = await dispatcher.dispatch();
+      await fastDispatch.completion;
+
+      expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("fast-site", "lease-1");
+      expect(mocks.releaseMonitorLease).not.toHaveBeenCalledWith("slow-site", "lease-1");
+      expect(dispatcher.getActiveCheckCount()).toBe(1);
+
+      await slowChecks.releaseAll();
+      await slowDispatch.completion;
+      expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("slow-site", "lease-1");
+      expect(dispatcher.getActiveCheckCount()).toBe(0);
+    });
+
+    it("claims only as many monitors as there are free slots", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-a" }), buildMonitor({ id: "slow-b" })])
+        .mockResolvedValueOnce([]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 3 });
+
+      await dispatcher.dispatch();
+      await dispatcher.dispatch();
+
+      expect(mocks.claimDueMonitors).toHaveBeenNthCalledWith(1, expect.any(Date), { limit: 3, verificationLimit: 1 });
+      expect(mocks.claimDueMonitors).toHaveBeenNthCalledWith(2, expect.any(Date), { limit: 1, verificationLimit: 1 });
+
+      dispatcher.stop();
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+    });
+
+    it("keeps half of the slots free of long verification probes", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([
+          buildMonitor({ id: "slow-verify-a", status: "pending", verificationMode: true, verificationFailureCount: 1 }),
+          buildMonitor({ id: "slow-verify-b", status: "pending", verificationMode: true, verificationFailureCount: 1 }),
+        ])
+        .mockResolvedValueOnce([]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await dispatcher.dispatch();
+      await dispatcher.dispatch();
+
+      expect(mocks.claimDueMonitors).toHaveBeenNthCalledWith(2, expect.any(Date), { limit: 2, verificationLimit: 0 });
+
+      dispatcher.stop();
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+    });
+
+    it("does not claim while every slot is busy and refills a slot as soon as it frees", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-site" })])
+        .mockResolvedValueOnce([buildMonitor({ id: "next-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+
+      await dispatcher.dispatch();
+      await expect(dispatcher.dispatch()).resolves.toMatchObject({ claimed: 0 });
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+
+      await slowChecks.releaseAll();
+      await vi.waitFor(() => expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("next-site", "lease-1"));
+      await dispatcher.drain();
+
+      // The refilled slot was full again, so it looks once more; nothing is due, and it settles there.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const claimsAfterSettling = mocks.claimDueMonitors.mock.calls.length;
+      expect(claimsAfterSettling).toBe(3);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(mocks.claimDueMonitors).toHaveBeenCalledTimes(claimsAfterSettling);
+    });
+
+    it("stops refilling and waits for running checks when stopped", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "slow-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+      await dispatcher.dispatch();
+
+      dispatcher.stop();
+      let drained = false;
+      const drain = dispatcher.drain().then(() => { drained = true; });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(drained).toBe(false);
+
+      await slowChecks.releaseAll();
+      await drain;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await expect(dispatcher.dispatch()).resolves.toMatchObject({ claimed: 0 });
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+    });
+
+    it("does not refill slots while the worker is paused", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "slow-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+      dispatcher.setDispatchGuard(async () => false);
+      await dispatcher.dispatch();
+
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+    });
+
+    it("records each finished batch without holding back later batches", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-site" })])
+        .mockResolvedValueOnce([buildMonitor({ id: "fast-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await dispatcher.dispatch();
+      await (await dispatcher.dispatch()).completion;
+
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledOnce();
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ claimedMonitors: 1, completedMonitors: 1, successCount: 1 })
+      );
+
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 describe("verification timeout escalation", () => {
@@ -1467,12 +1630,15 @@ describe("verification timeout escalation", () => {
   it("increases verification timeout and caps it", () => {
     expect(calculateVerificationTimeout(5000, 1)).toBe(7500);
     expect(calculateVerificationTimeout(5000, 2)).toBe(10000);
-    expect(calculateVerificationTimeout(100000, 2)).toBe(120000);
+    expect(calculateVerificationTimeout(100000, 2)).toBe(200000);
   });
 
-  it("gives monitors with a timeout up to 60 seconds the full doubled verification wait", () => {
+  it("gives even the longest monitor timeout twice its time during verification", () => {
     expect(calculateVerificationTimeout(60000, 1)).toBe(90000);
     expect(calculateVerificationTimeout(60000, 2)).toBe(120000);
+    expect(calculateVerificationTimeout(120000, 1)).toBe(180000);
+    expect(calculateVerificationTimeout(120000, 2)).toBe(240000);
+    expect(calculateVerificationTimeout(120000, 10)).toBe(240000);
   });
 });
 

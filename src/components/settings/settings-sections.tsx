@@ -665,7 +665,7 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
             </Field>
             <Field
               label="Worker batch size"
-              hint="Maximum number of due monitors the worker will claim in one scheduler cycle."
+              hint="Maximum number of this workspace's due monitors the worker claims at once. Free worker slots also limit each claim, and a slow check never holds back the others."
             >
               <Input
                 type="number"

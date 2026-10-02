@@ -2,7 +2,7 @@ import { runRetentionCleanup } from "@/lib/data-retention/service";
 import { retryDeliveryQueueForAllUsers } from "@/lib/delivery/service";
 import { runDueReportSchedules } from "@/lib/reports/service";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
-import { runMonitoringCycle } from "@/worker/scheduler";
+import { dispatchDueMonitors } from "@/worker/scheduler";
 import { triggerAutomaticDatabaseBackup } from "@/lib/system/automatic-backup";
 
 export type WorkerPhaseResult =
@@ -33,7 +33,9 @@ export async function runWorkerPhases(
   }
   if (!(await isRunRequested())) return { status: "stopped" };
 
-  await runMonitoringCycle();
+  // Starts due monitors in free slots; they finish in the background, so slow checks never hold back
+  // delivery retries, reports, or the next monitors.
+  await dispatchDueMonitors();
   if (!(await isRunRequested())) return { status: "stopped" };
 
   if (!outboundConnectivity.available) {

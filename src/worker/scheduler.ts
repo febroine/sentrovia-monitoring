@@ -13,44 +13,182 @@ import {
   type MonitorCycleResult,
 } from "@/worker/monitor-cycle";
 
-export async function runMonitoringCycle() {
-  const cycleStartedAt = new Date();
-  const backlogAtStart = await countDueMonitors(cycleStartedAt);
-  const dueMonitors = await claimDueMonitors(cycleStartedAt);
-  const cycleResults: MonitorCycleResult[] = [];
-  const cycleErrors: string[] = [];
+// Monitors run in independent slots instead of rounds: a round used to wait for its slowest monitor
+// (a timeout or verification probe can take minutes), holding back every other monitor's next check.
+// Now a freed slot is refilled from the due queue right away, so one slow site delays nothing else.
+const MONITOR_REFILL_DELAY_MS = 250;
 
-  await updateWorkerState({
-    lastCycleAt: cycleStartedAt,
-    heartbeatAt: cycleStartedAt,
-    statusMessage: dueMonitors.length > 0 ? `Processing ${dueMonitors.length} monitor(s).` : "Idle cycle completed.",
-  });
+type DispatchSource = "tick" | "refill";
 
-  await runWithConcurrency(dueMonitors, env.workerConcurrency, async (monitor) => {
-    try {
-      const result = await processMonitor(monitor);
-      if (result) {
-        cycleResults.push(result);
-      }
-    } catch (error) {
-      cycleErrors.push(error instanceof Error ? error.message : "A monitor check failed unexpectedly.");
-      await updateWorkerState({
-        heartbeatAt: new Date(),
-        statusMessage: error instanceof Error ? error.message : "A monitor check failed unexpectedly.",
-        lastErrorAt: new Date(),
-        lastErrorMessage: error instanceof Error ? error.message : "A monitor check failed unexpectedly.",
-      });
+export type MonitorDispatch = {
+  claimed: number;
+  // Settles when every monitor claimed by this dispatch is done and its metrics are recorded.
+  completion: Promise<void>;
+};
+
+type MonitorDispatcherOptions = {
+  concurrency: number;
+  refillDelayMs?: number;
+};
+
+export function createMonitorDispatcher({ concurrency, refillDelayMs = MONITOR_REFILL_DELAY_MS }: MonitorDispatcherOptions) {
+  const slotCount = Math.max(1, concurrency);
+  // Verification probes run with up to twice the monitor timeout. Capping them at half the slots keeps
+  // room for regular checks when many sites fail at once.
+  const verificationSlotCount = Math.max(1, Math.floor(slotCount / 2));
+  // Each claim queries every due workspace, so freed slots are refilled in groups rather than one by
+  // one; slots below the group size are picked up by the next regular dispatch.
+  const refillGroupSize = Math.max(1, Math.floor(slotCount / 4));
+  const pendingCompletions = new Set<Promise<void>>();
+  let activeChecks = 0;
+  let activeVerificationChecks = 0;
+  let claimQueue: Promise<unknown> = Promise.resolve();
+  let refillTimer: ReturnType<typeof setTimeout> | null = null;
+  let moreMayBeDue = false;
+  let stopped = false;
+  let canDispatch: () => Promise<boolean> = async () => true;
+
+  function dispatch(source: DispatchSource = "tick"): Promise<MonitorDispatch> {
+    // Claims run one at a time so two dispatches never count the same free slot.
+    const next = claimQueue.then(() => claimAndStart(source));
+    claimQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  async function claimAndStart(source: DispatchSource): Promise<MonitorDispatch> {
+    if (stopped || (source === "refill" && !(await canDispatch()))) {
+      return { claimed: 0, completion: Promise.resolve() };
     }
-  });
 
-  const cycleFinishedAt = new Date();
-  const latencyValues = cycleResults
+    const startedAt = new Date();
+    const freeSlots = slotCount - activeChecks;
+    if (freeSlots <= 0) {
+      moreMayBeDue = true;
+      if (source === "tick") {
+        await updateWorkerState({
+          heartbeatAt: startedAt,
+          statusMessage: `All ${slotCount} check slots are busy; due monitors start as slots free up.`,
+        });
+      }
+      return { claimed: 0, completion: Promise.resolve() };
+    }
+
+    const backlogAtStart = await countDueMonitors(startedAt);
+    const claimed = await claimDueMonitors(startedAt, {
+      limit: freeSlots,
+      verificationLimit: Math.max(0, verificationSlotCount - activeVerificationChecks),
+    });
+    moreMayBeDue = claimed.length >= freeSlots || backlogAtStart > claimed.length;
+    if (claimed.length === 0 && source === "refill") {
+      return { claimed: 0, completion: Promise.resolve() };
+    }
+
+    // Start the claimed monitors first: they hold leases, so nothing may stand between claim and start.
+    const completion = runClaimedMonitors(claimed, startedAt, backlogAtStart);
+    const tracked = completion.catch((error) => {
+      console.error("[sentrovia] Unable to record a finished monitor batch.", error);
+    });
+    pendingCompletions.add(tracked);
+    void tracked.finally(() => pendingCompletions.delete(tracked));
+
+    await updateWorkerState({
+      lastCycleAt: startedAt,
+      heartbeatAt: startedAt,
+      statusMessage: claimed.length > 0 ? `Processing ${claimed.length} monitor(s).` : "Idle cycle completed.",
+    }).catch((error) => {
+      console.error("[sentrovia] Unable to record the monitor dispatch.", error);
+    });
+    return { claimed: claimed.length, completion };
+  }
+
+  async function runClaimedMonitors(claimed: ClaimedMonitor[], startedAt: Date, backlogAtStart: number) {
+    const results: MonitorCycleResult[] = [];
+    const errors: string[] = [];
+
+    await Promise.all(claimed.map(async (monitor) => {
+      activeChecks += 1;
+      if (monitor.verificationMode) activeVerificationChecks += 1;
+      try {
+        const result = await processMonitor(monitor);
+        if (result) {
+          results.push(result);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "A monitor check failed unexpectedly.";
+        errors.push(message);
+        await updateWorkerState({
+          heartbeatAt: new Date(),
+          statusMessage: message,
+          lastErrorAt: new Date(),
+          lastErrorMessage: message,
+        }).catch((stateError) => {
+          console.error("[sentrovia] Unable to record a monitor check failure.", stateError);
+        });
+      } finally {
+        activeChecks -= 1;
+        if (monitor.verificationMode) activeVerificationChecks -= 1;
+        scheduleRefill();
+      }
+    }));
+
+    await recordFinishedBatch(claimed.length, results, errors, startedAt, backlogAtStart);
+  }
+
+  function scheduleRefill() {
+    if (stopped || !moreMayBeDue || refillTimer || slotCount - activeChecks < refillGroupSize) return;
+    // A short delay lets several finishing checks share one claim query.
+    refillTimer = setTimeout(() => {
+      refillTimer = null;
+      void dispatch("refill").catch((error) => {
+        console.error("[sentrovia] Unable to start due monitors.", error);
+      });
+    }, refillDelayMs);
+    refillTimer.unref?.();
+  }
+
+  return {
+    dispatch,
+    setDispatchGuard(guard: () => Promise<boolean>) {
+      canDispatch = guard;
+    },
+    stop() {
+      stopped = true;
+      if (refillTimer) {
+        clearTimeout(refillTimer);
+        refillTimer = null;
+      }
+    },
+    resume() {
+      stopped = false;
+    },
+    // Resolves once every started monitor has finished and been recorded.
+    async drain() {
+      await claimQueue;
+      while (pendingCompletions.size > 0) {
+        await Promise.all([...pendingCompletions]);
+      }
+    },
+    getActiveCheckCount() {
+      return activeChecks;
+    },
+  };
+}
+
+async function recordFinishedBatch(
+  claimedCount: number,
+  results: MonitorCycleResult[],
+  errors: string[],
+  startedAt: Date,
+  backlogAtStart: number
+) {
+  const finishedAt = new Date();
+  const latencyValues = results
     .map((item) => item.latencyMs)
     .filter((item): item is number => typeof item === "number");
-  const successCount = cycleResults.filter((item) => item.finalStatus === "up").length;
-  const failureCount = cycleResults.filter((item) => item.finalStatus === "down").length;
-  const pendingCount = cycleResults.filter((item) => item.finalStatus === "pending").length;
-  const durationMs = Math.max(0, cycleFinishedAt.getTime() - cycleStartedAt.getTime());
+  const successCount = results.filter((item) => item.finalStatus === "up").length;
+  const failureCount = results.filter((item) => item.finalStatus === "down").length;
+  const pendingCount = results.filter((item) => item.finalStatus === "pending").length;
+  const durationMs = Math.max(0, finishedAt.getTime() - startedAt.getTime());
   const averageLatencyMs =
     latencyValues.length > 0
       ? Math.round(latencyValues.reduce((sum, value) => sum + value, 0) / latencyValues.length)
@@ -58,36 +196,66 @@ export async function runMonitoringCycle() {
   const maxLatencyMs = latencyValues.length > 0 ? Math.max(...latencyValues) : null;
 
   await recordWorkerCycleMetric({
-    cycleStartedAt,
-    cycleFinishedAt,
+    cycleStartedAt: startedAt,
+    cycleFinishedAt: finishedAt,
     durationMs,
     backlogAtStart,
-    claimedMonitors: dueMonitors.length,
-    completedMonitors: cycleResults.length,
+    claimedMonitors: claimedCount,
+    completedMonitors: results.length,
     successCount,
     failureCount,
     pendingCount,
     averageLatencyMs,
     maxLatencyMs,
-    errorMessage: cycleErrors[0] ?? null,
+    errorMessage: errors[0] ?? null,
   });
 
   await updateWorkerState({
-    heartbeatAt: cycleFinishedAt,
-    lastCycleAt: cycleFinishedAt,
+    heartbeatAt: finishedAt,
+    lastCycleAt: finishedAt,
     lastCycleDurationMs: durationMs,
-    lastCycleMonitorCount: dueMonitors.length,
+    lastCycleMonitorCount: claimedCount,
     lastCycleSuccessCount: successCount,
     lastCycleFailureCount: failureCount,
     lastCyclePendingCount: pendingCount,
     lastCycleAverageLatencyMs: averageLatencyMs,
     lastCycleBacklog: backlogAtStart,
-    lastErrorAt: cycleErrors[0] ? cycleFinishedAt : null,
-    lastErrorMessage: cycleErrors[0] ?? null,
-    statusMessage: buildCycleStatusMessage(dueMonitors.length, cycleResults.length, cycleErrors.length),
+    lastErrorAt: errors[0] ? finishedAt : null,
+    lastErrorMessage: errors[0] ?? null,
+    statusMessage: buildCycleStatusMessage(claimedCount, results.length, errors.length),
   });
+}
 
-  return dueMonitors.length;
+const monitorDispatcher = createMonitorDispatcher({ concurrency: env.workerConcurrency });
+
+// Claims due monitors for the free slots and starts them without waiting for them to finish.
+export function dispatchDueMonitors() {
+  return monitorDispatcher.dispatch("tick");
+}
+
+// Claims due monitors and waits until those monitors are checked and recorded.
+export async function runMonitoringCycle() {
+  const dispatch = await dispatchDueMonitors();
+  await dispatch.completion;
+  return dispatch.claimed;
+}
+
+export function setMonitorDispatchGuard(guard: () => Promise<boolean>) {
+  monitorDispatcher.setDispatchGuard(guard);
+}
+
+export function resumeMonitorDispatch() {
+  monitorDispatcher.resume();
+}
+
+// Stops starting new monitors and waits for the running ones to finish.
+export async function stopMonitorDispatch() {
+  monitorDispatcher.stop();
+  await monitorDispatcher.drain();
+}
+
+export function getActiveMonitorCheckCount() {
+  return monitorDispatcher.getActiveCheckCount();
 }
 
 function buildCycleStatusMessage(claimedCount: number, completedCount: number, errorCount: number) {
@@ -128,26 +296,3 @@ async function processMonitor(monitor: ClaimedMonitor): Promise<MonitorCycleResu
     }
   }
 }
-
-async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<void>
-) {
-  const queue = [...items];
-  const concurrency = Math.max(1, limit);
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, queue.length || 1) }, async () => {
-      while (queue.length > 0) {
-        const item = queue.shift();
-        if (!item) {
-          return;
-        }
-
-        await worker(item);
-      }
-    })
-  );
-}
-

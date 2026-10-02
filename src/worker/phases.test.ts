@@ -4,14 +4,14 @@ import { retryDeliveryQueueForAllUsers } from "@/lib/delivery/service";
 import { runDueReportSchedules } from "@/lib/reports/service";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { runWorkerPhases } from "@/worker/phases";
-import { runMonitoringCycle } from "@/worker/scheduler";
+import { dispatchDueMonitors } from "@/worker/scheduler";
 import { triggerAutomaticDatabaseBackup } from "@/lib/system/automatic-backup";
 
 vi.mock("@/lib/data-retention/service", () => ({ runRetentionCleanup: vi.fn() }));
 vi.mock("@/lib/delivery/service", () => ({ retryDeliveryQueueForAllUsers: vi.fn() }));
 vi.mock("@/lib/reports/service", () => ({ runDueReportSchedules: vi.fn() }));
 vi.mock("@/worker/connectivity", () => ({ ensureWorkerConnectivity: vi.fn() }));
-vi.mock("@/worker/scheduler", () => ({ runMonitoringCycle: vi.fn() }));
+vi.mock("@/worker/scheduler", () => ({ dispatchDueMonitors: vi.fn() }));
 vi.mock("@/lib/system/automatic-backup", () => ({ triggerAutomaticDatabaseBackup: vi.fn() }));
 
 const online = {
@@ -45,7 +45,7 @@ describe("worker phase connectivity guard", () => {
     });
 
     expect(runRetentionCleanup).toHaveBeenCalledOnce();
-    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(dispatchDueMonitors).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
@@ -57,7 +57,7 @@ describe("worker phase connectivity guard", () => {
       status: "connectivity-paused",
     });
 
-    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(dispatchDueMonitors).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
@@ -66,7 +66,7 @@ describe("worker phase connectivity guard", () => {
     await expect(runWorkerPhases(async () => true)).resolves.toEqual({ status: "completed" });
 
     expect(runRetentionCleanup).toHaveBeenCalledOnce();
-    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(dispatchDueMonitors).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
     expect(triggerAutomaticDatabaseBackup).toHaveBeenCalledOnce();
@@ -78,7 +78,7 @@ describe("worker phase connectivity guard", () => {
     expect(triggerAutomaticDatabaseBackup).not.toHaveBeenCalled();
     expect(runRetentionCleanup).not.toHaveBeenCalled();
     expect(ensureWorkerConnectivity).not.toHaveBeenCalled();
-    expect(runMonitoringCycle).not.toHaveBeenCalled();
+    expect(dispatchDueMonitors).not.toHaveBeenCalled();
     expect(retryDeliveryQueueForAllUsers).not.toHaveBeenCalled();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
@@ -92,7 +92,7 @@ describe("worker phase connectivity guard", () => {
 
     await expect(runWorkerPhases(isRunRequested)).resolves.toEqual({ status: "stopped" });
 
-    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(dispatchDueMonitors).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
@@ -106,7 +106,7 @@ describe("worker phase connectivity guard", () => {
 
     await expect(runWorkerPhases(isRunRequested)).resolves.toEqual({ status: "stopped" });
 
-    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(dispatchDueMonitors).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).not.toHaveBeenCalled();
   });
@@ -117,7 +117,7 @@ describe("worker phase connectivity guard", () => {
 
     await expect(runWorkerPhases(async () => true)).resolves.toEqual({ status: "completed" });
 
-    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(dispatchDueMonitors).toHaveBeenCalledOnce();
     expect(retryDeliveryQueueForAllUsers).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
     expect(consoleError).toHaveBeenCalledWith(
@@ -133,7 +133,7 @@ describe("worker phase connectivity guard", () => {
 
     await expect(runWorkerPhases(async () => true)).resolves.toEqual({ status: "completed" });
 
-    expect(runMonitoringCycle).toHaveBeenCalledOnce();
+    expect(dispatchDueMonitors).toHaveBeenCalledOnce();
     expect(runDueReportSchedules).toHaveBeenCalledOnce();
     expect(consoleError).toHaveBeenCalledWith(
       "[sentrovia] Delivery retry failed; monitor checks will continue.",

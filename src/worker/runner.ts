@@ -2,6 +2,12 @@ import "@/worker/load-env";
 import { env } from "@/lib/env";
 import { getWorkerState, updateWorkerState } from "@/lib/monitors/service";
 import { runWorkerPhases } from "@/worker/phases";
+import {
+  getActiveMonitorCheckCount,
+  resumeMonitorDispatch,
+  setMonitorDispatchGuard,
+  stopMonitorDispatch,
+} from "@/worker/scheduler";
 import { shouldAutoStartWorker } from "@/worker/startup";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 import { acquireWorkerProcessLock } from "@/lib/worker/process-lock";
@@ -26,6 +32,8 @@ async function main() {
 
 async function runWorkerLoop() {
   void runHeartbeatLoop();
+  // Freed check slots are refilled between loop iterations; this keeps those refills paused too.
+  setMonitorDispatchGuard(isRunRequested);
   const currentState = await getWorkerState();
   const shouldAutoStart = shouldAutoStartWorker(
     currentState,
@@ -46,6 +54,7 @@ async function runWorkerLoop() {
     const state = await getWorkerState();
 
     if (state.desiredState === "running") {
+      resumeMonitorDispatch();
       if (!state.running) {
         await updateWorkerState({
           running: true,
@@ -65,12 +74,15 @@ async function runWorkerLoop() {
         });
         const phaseResult = await runWorkerPhases(isRunRequested);
         if (phaseResult.status === "completed") {
+          const activeChecks = getActiveMonitorCheckCount();
           await updateWorkerState({
             running: true,
             heartbeatAt: new Date(),
             lastCycleAt: new Date(),
             pid: process.pid,
-            statusMessage: "Worker is healthy and waiting for the next due monitor.",
+            statusMessage: activeChecks > 0
+              ? `Worker is running ${activeChecks} monitor check(s).`
+              : "Worker is healthy and waiting for the next due monitor.",
           });
         } else if (phaseResult.status === "connectivity-paused") {
           await updateWorkerState({
@@ -80,6 +92,7 @@ async function runWorkerLoop() {
             statusMessage: phaseResult.message,
           });
         } else {
+          await stopMonitorDispatch();
           await markWorkerStopped();
         }
       } catch (error) {
@@ -94,6 +107,7 @@ async function runWorkerLoop() {
         });
       }
     } else if (state.running) {
+      await stopMonitorDispatch();
       await markWorkerStopped();
     } else {
       await updateWorkerState({
@@ -107,6 +121,8 @@ async function runWorkerLoop() {
     await sleep(env.workerPollIntervalMs);
   }
 
+  // Checks already running finish and release their leases before the process lock is released.
+  await stopMonitorDispatch();
   await updateWorkerState({
     running: false,
     stoppedAt: new Date(),

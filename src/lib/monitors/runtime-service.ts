@@ -30,7 +30,14 @@ if (process.env.NODE_ENV !== "production") {
 
 export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };
 
-export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
+export type MonitorClaimCapacity = {
+  // Free worker slots; at most this many monitors are claimed.
+  limit?: number;
+  // How many more verification probes may start; they are the checks that can run for minutes.
+  verificationLimit?: number;
+};
+
+export async function claimDueMonitors(now: Date, capacity: MonitorClaimCapacity = {}): Promise<ClaimedMonitor[]> {
   const dueWorkspaces = await db
     .select({ workspaceId: monitors.workspaceId })
     .from(monitors)
@@ -86,7 +93,7 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
       legacyBatchSizeByWorkspace.get(workspaceId)
     ),
   ]));
-  const selectedRows = (await mapWithConcurrency(
+  const selectedRows = selectClaimableMonitors(await mapWithConcurrency(
     workspaceIds,
     DUE_WORKSPACE_QUERY_CONCURRENCY,
     (workspaceId) => db
@@ -95,7 +102,7 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
       .where(and(eq(monitors.workspaceId, workspaceId), buildDueMonitorPredicate(now)))
       .orderBy(desc(monitors.verificationMode), asc(monitors.nextCheckAt), asc(monitors.createdAt))
       .limit(batchSizeByWorkspace.get(workspaceId) ?? DEFAULT_SETTINGS.monitoring.batchSize)
-  )).flat();
+  ), capacity);
 
   if (selectedRows.length === 0) {
     return [];
@@ -139,6 +146,34 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
     telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
     allowPrivateTargets: env.monitorAllowPrivateTargets && hasPrivateTargetAccess(monitor, membershipRows),
   }));
+}
+
+// Takes monitors round-robin across workspaces (each list already ordered by priority), so a
+// workspace with many due monitors cannot fill every free slot while others wait.
+export function selectClaimableMonitors<T extends { verificationMode: boolean }>(
+  rowsByWorkspace: T[][],
+  capacity: MonitorClaimCapacity = {}
+) {
+  const limit = capacity.limit ?? Number.POSITIVE_INFINITY;
+  let verificationRemaining = capacity.verificationLimit ?? Number.POSITIVE_INFINITY;
+  const queues = rowsByWorkspace.map((rows) => [...rows]);
+  const selected: T[] = [];
+
+  while (selected.length < limit && queues.some((queue) => queue.length > 0)) {
+    for (const queue of queues) {
+      if (selected.length >= limit) break;
+      let row = queue.shift();
+      // Verification probes beyond their share stay due for a later claim.
+      while (row && row.verificationMode && verificationRemaining <= 0) {
+        row = queue.shift();
+      }
+      if (!row) continue;
+      if (row.verificationMode) verificationRemaining -= 1;
+      selected.push(row);
+    }
+  }
+
+  return selected;
 }
 
 export function resolveMonitorBatchSize(
