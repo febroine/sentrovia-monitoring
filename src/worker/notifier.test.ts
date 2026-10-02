@@ -638,6 +638,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     jsonPath: null,
     jsonExpectedValue: null,
     jsonMatchMode: "equals",
+    dnsExpectedValues: null,
+    dnsMatchMode: "includes",
     tags: [],
     renotifyCount: null,
     maxRedirects: 5,

@@ -50,6 +50,7 @@ It is built for small teams that care about two things: **not being woken up by 
 | Keyword | Text that must, or must not, appear in a response |
 | TCP port | Reachability of services such as SSH, SMTP, or your own applications |
 | ICMP ping | Whether a server or network device answers ping |
+| DNS record | A, AAAA, CNAME, MX, TXT, or NS records, optionally checked against expected values or a specific DNS server |
 | PostgreSQL | Database connectivity, with configurable TLS verification |
 | Cron and heartbeat | Jobs and services that must report in on schedule |
 
@@ -414,7 +415,7 @@ The console is in English. Notification emails, Telegram messages, and screensho
 
 ## Roadmap
 
-Sentrovia is usable today as a self-hosted website and API uptime monitoring console. Planned areas include multi-region workers, DNS-specific monitors, and a hosted read-only demo. These are roadmap items, not current features.
+Sentrovia is usable today as a self-hosted website and API uptime monitoring console. Planned areas include multi-region workers and a hosted read-only demo. These are roadmap items, not current features.
 
 Feature proposals are welcome through the [issue tracker](https://github.com/febroine/sentrovia-monitoring/issues). Please discuss large changes before implementing them.
 

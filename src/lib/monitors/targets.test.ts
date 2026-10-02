@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCanonicalMonitorTarget,
   buildMonitorIdentityKey,
   getMonitorTargetDisplay,
+  parseDnsMonitorTarget,
   sanitizeMonitorUrlForDisplay,
   stripHttpUrlCredentials,
+  toMonitorPayload,
 } from "@/lib/monitors/targets";
+import { DEFAULT_MONITOR_FORM, type MonitorRecord } from "@/lib/monitors/types";
 
 describe("sanitizeMonitorUrlForDisplay", () => {
   it("removes inline credentials, query strings, and fragments from HTTP URLs", () => {
@@ -81,3 +85,47 @@ function withUserInfo(protocol: "https" | null, host: string, suffix: string) {
   const userInfo = ["user", "credential"].join(":");
   return `${prefix}${userInfo}@${host}${suffix}`;
 }
+
+describe("DNS monitor targets", () => {
+  const base = { ...DEFAULT_MONITOR_FORM, monitorType: "dns" as const, portHost: "Example.COM.", dnsRecordType: "MX" as const };
+
+  it("stores the name, record type and DNS server in the target", () => {
+    expect(buildCanonicalMonitorTarget(base)).toBe("dns://example.com/MX");
+    expect(buildCanonicalMonitorTarget({ ...base, dnsServer: "1.1.1.1" })).toBe("dns://example.com/MX?server=1.1.1.1");
+    expect(buildCanonicalMonitorTarget({ ...base, portHost: "_dmarc.example.com", dnsRecordType: "TXT", dnsServer: "[2606:4700::1111]" }))
+      .toBe("dns://_dmarc.example.com/TXT?server=2606%3A4700%3A%3A1111");
+  });
+
+  it("reads the target back", () => {
+    expect(parseDnsMonitorTarget("dns://_dmarc.example.com/TXT?server=2606%3A4700%3A%3A1111")).toEqual({
+      host: "_dmarc.example.com",
+      recordType: "TXT",
+      server: "2606:4700::1111",
+    });
+    expect(parseDnsMonitorTarget("dns://example.com/BOGUS")).toEqual({ host: "example.com", recordType: "A", server: "" });
+  });
+
+  it("shows and identifies DNS monitors by name, type and server", () => {
+    expect(getMonitorTargetDisplay({ monitorType: "dns", url: "dns://example.com/MX?server=1.1.1.1" })).toBe("example.com MX @1.1.1.1");
+    expect(buildMonitorIdentityKey({ monitorType: "dns", url: "dns://example.com/MX" }))
+      .not.toBe(buildMonitorIdentityKey({ monitorType: "dns", url: "dns://example.com/A" }));
+  });
+
+  it("restores the form fields from a saved monitor", () => {
+    const payload = toMonitorPayload({
+      ...DEFAULT_MONITOR_FORM,
+      monitorType: "dns",
+      url: "dns://example.com/MX?server=1.1.1.1",
+      dnsExpectedValues: "10 mail.example.com",
+      dnsMatchMode: "exact",
+    } as unknown as MonitorRecord);
+    expect(payload).toMatchObject({
+      portHost: "example.com",
+      url: "",
+      dnsRecordType: "MX",
+      dnsServer: "1.1.1.1",
+      dnsExpectedValues: "10 mail.example.com",
+      dnsMatchMode: "exact",
+    });
+  });
+});

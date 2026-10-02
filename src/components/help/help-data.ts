@@ -39,7 +39,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What monitor types are available today?",
         answer:
-          "Sentrovia currently supports HTTP or HTTPS, keyword, JSON assertion, TCP or port, PostgreSQL, ping or ICMP, and cron or heartbeat monitors. They all share the same worker, verification, timeline, and delivery pipeline while using type-specific check logic.",
+          "Sentrovia currently supports HTTP or HTTPS, keyword, JSON assertion, TCP or port, PostgreSQL, ping or ICMP, DNS record, and cron or heartbeat monitors. They all share the same worker, verification, timeline, and delivery pipeline while using type-specific check logic.",
       },
       {
         question: "Which monitor type should I choose for a website or API?",
@@ -105,6 +105,11 @@ export const helpCategories: HelpCategory[] = [
         question: "How does ping monitoring differ from HTTP monitoring?",
         answer:
           "Ping monitors validate basic network reachability with ICMP. HTTP monitors validate the web response itself, including status, content, JSON assertions, redirects, SSL handling, and latency.",
+      },
+      {
+        question: "What does a DNS record monitor check?",
+        answer:
+          "It looks up one record type (A, AAAA, CNAME, MX, TXT, or NS) for a domain name, with the system resolver or a DNS server you choose. Without expected values it only requires that the record exists. With expected values it checks that the records include them, or are exactly them, so an expired domain, a changed mail server, or a missing SPF or verification record is reported like any other outage.",
       },
       {
         question: "Can two monitors be checked at the same time?",

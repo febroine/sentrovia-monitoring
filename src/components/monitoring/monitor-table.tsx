@@ -233,8 +233,8 @@ export function MonitorTable({
                       slow={isSlowMonitor(monitor)}
                     />
                     <CheckScheduleIssue monitor={monitor} />
-                    <p className="mt-1 truncate text-[10px] tabular-nums text-muted-foreground" title={`HTTP ${monitor.statusCode ?? "--"} · ${formatLatency(monitor.latencyMs)}`}>
-                      HTTP {monitor.statusCode ?? "--"} · {formatLatency(monitor.latencyMs)}
+                    <p className="mt-1 truncate text-[10px] tabular-nums text-muted-foreground" title={formatResponseSummary(monitor)}>
+                      {formatResponseSummary(monitor)}
                     </p>
                   </div>
                 </TableCell>
@@ -543,8 +543,8 @@ function MobileMonitorCard({
         </div>
       </div>
       <p className="mt-3 break-all text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
-      <div className="mt-3 grid grid-cols-3 gap-2 rounded-md bg-muted/25 p-3 text-xs">
-        <MobileMetric label="HTTP" value={monitor.statusCode ? String(monitor.statusCode) : "--"} />
+      <div className={`mt-3 grid gap-2 rounded-md bg-muted/25 p-3 text-xs ${usesHttpResponse(monitor) ? "grid-cols-3" : "grid-cols-2"}`}>
+        {usesHttpResponse(monitor) ? <MobileMetric label="HTTP" value={monitor.statusCode ? String(monitor.statusCode) : "--"} /> : null}
         <MobileMetric label="Latency" value={formatLatency(monitor.latencyMs)} />
         <MobileMetric label="Uptime" value={monitor.uptime} />
       </div>
@@ -657,4 +657,14 @@ function getStatusDescription(monitor: MonitorRecord) {
 
 function formatPauseUntil(value: string) {
   return formatPanelDateTime(value, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// Only HTTP-based monitors receive an HTTP status; the others show their latency alone.
+function usesHttpResponse(monitor: MonitorRecord) {
+  return monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json";
+}
+
+function formatResponseSummary(monitor: MonitorRecord) {
+  const latency = formatLatency(monitor.latencyMs);
+  return usesHttpResponse(monitor) ? `HTTP ${monitor.statusCode ?? "--"} · ${latency}` : latency;
 }

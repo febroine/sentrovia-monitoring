@@ -2,9 +2,11 @@ import { z } from "zod";
 import { getMonitorPauseDurationMs, MAX_MONITOR_PAUSE_MS } from "@/lib/monitors/pause";
 import { env } from "@/lib/env";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { findInvalidDnsExpectedValue, isDnsHostname, isDnsServerAddress, parseDnsExpectedValues } from "@/lib/monitors/dns";
+import { DNS_MATCH_MODES, DNS_RECORD_TYPES } from "@/lib/monitors/dns-records";
 import { isMonitorNetworkHostnameLiteralAllowed } from "@/lib/security/public-network-target";
 
-const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
+const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "dns", "heartbeat"]);
 const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
 const notificationLanguageSchema = z.enum(["default", "en", "tr"]);
 const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
@@ -115,6 +117,10 @@ const monitorInputObjectSchema = z
     jsonPath: optionalRequiredString(255),
     jsonExpectedValue: optionalRequiredString(500),
     jsonMatchMode: jsonMatchModeSchema.default("equals"),
+    dnsRecordType: z.enum(DNS_RECORD_TYPES).default("A"),
+    dnsServer: optionalRequiredString(64),
+    dnsExpectedValues: optionalRequiredString(2000),
+    dnsMatchMode: z.enum(DNS_MATCH_MODES).default("includes"),
     companyId: z
       .string()
       .trim()
@@ -284,6 +290,48 @@ const monitorInputObjectSchema = z
           code: z.ZodIssueCode.custom,
           path: ["portHost"],
           message: "Enter an allowed hostname or IP address for this monitor.",
+        });
+      }
+      return;
+    }
+
+    if (value.monitorType === "dns") {
+      if (!isDnsHostname(value.portHost)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["portHost"],
+          message: "Enter the domain name to look up, such as example.com or _dmarc.example.com.",
+        });
+      }
+
+      const server = value.dnsServer.trim();
+      if (server && !isDnsServerAddress(server)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsServer"],
+          message: "Enter the DNS server as an IP address, such as 1.1.1.1, or leave it empty to use the system resolver.",
+        });
+      } else if (server && !isAllowedMonitorHostnameLiteral(server)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsServer"],
+          message: "This DNS server address is not allowed by the network safety policy.",
+        });
+      }
+
+      const expected = parseDnsExpectedValues(value.dnsRecordType, value.dnsExpectedValues);
+      const invalid = findInvalidDnsExpectedValue(value.dnsRecordType, expected);
+      if (invalid) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsExpectedValues"],
+          message: `"${invalid}" is not a valid ${value.dnsRecordType} record value.`,
+        });
+      } else if (value.dnsMatchMode === "exact" && expected.length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsExpectedValues"],
+          message: "Enter the expected records, or match records that include them instead.",
         });
       }
       return;

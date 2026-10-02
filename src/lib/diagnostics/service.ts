@@ -165,7 +165,8 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
 }
 
 function resolveDiagnosticTarget(monitor: Monitor): DiagnosticTarget | null {
-  if (monitor.monitorType === "heartbeat") {
+  // A DNS monitor's own check is the lookup; there is no connection to diagnose.
+  if (monitor.monitorType === "heartbeat" || monitor.monitorType === "dns") {
     return null;
   }
 

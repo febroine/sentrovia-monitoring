@@ -407,6 +407,8 @@ export const monitors = pgTable("monitors", {
   jsonPath: varchar("json_path", { length: 255 }),
   jsonExpectedValue: text("json_expected_value"),
   jsonMatchMode: varchar("json_match_mode", { length: 16 }).default("equals").notNull(),
+  dnsExpectedValues: text("dns_expected_values"),
+  dnsMatchMode: varchar("dns_match_mode", { length: 16 }).default("includes").notNull(),
   tags: text("tags")
     .array()
     .notNull()

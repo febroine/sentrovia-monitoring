@@ -1,3 +1,4 @@
+import type { DnsMatchMode, DnsRecordType } from "@/lib/monitors/dns-records";
 import type { NotificationLanguage, SettingsPayload } from "@/lib/settings/types";
 
 export type SiteStatus = "up" | "down" | "pending";
@@ -6,7 +7,7 @@ export type MonitorNotificationLanguage = "default" | NotificationLanguage;
 export type IntervalUnit = "sn" | "dk" | "sa";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 export type IpFamily = "auto" | "ipv4" | "ipv6";
-export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres" | "ping" | "heartbeat";
+export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres" | "ping" | "dns" | "heartbeat";
 type JsonMatchMode = "equals" | "contains" | "exists";
 
 export interface MonitorConfigBundle {
@@ -95,6 +96,8 @@ export interface MonitorRecord {
   jsonPath: string | null;
   jsonExpectedValue: string | null;
   jsonMatchMode: JsonMatchMode;
+  dnsExpectedValues: string | null;
+  dnsMatchMode: DnsMatchMode;
   checkSslExpiry: boolean;
   ignoreSslErrors: boolean;
   cacheBuster: boolean;
@@ -318,6 +321,10 @@ export interface MonitorPayload {
   jsonPath: string;
   jsonExpectedValue: string;
   jsonMatchMode: JsonMatchMode;
+  dnsRecordType: DnsRecordType;
+  dnsServer: string;
+  dnsExpectedValues: string;
+  dnsMatchMode: DnsMatchMode;
   companyId: string;
   company: string;
   notificationPref: NotificationPref;
@@ -416,6 +423,10 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   jsonPath: "",
   jsonExpectedValue: "",
   jsonMatchMode: "equals",
+  dnsRecordType: "A",
+  dnsServer: "",
+  dnsExpectedValues: "",
+  dnsMatchMode: "includes",
   companyId: "",
   company: "",
   notificationPref: "both",

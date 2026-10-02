@@ -23,6 +23,7 @@ import {
   buildCanonicalMonitorTarget,
   buildHeartbeatMonitorTarget,
   buildMonitorIdentityKey,
+  parseDnsMonitorTarget,
   parsePingMonitorTarget,
   parsePortMonitorTarget,
   parsePostgresMonitorTarget,
@@ -806,7 +807,7 @@ function buildBulkEditableMonitorValues(
   input: MonitorInput
 ) {
   const supportsHttpOptions = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
-  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat";
+  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "dns" || monitorType === "heartbeat";
 
   return {
     workspaceId,
@@ -1442,7 +1443,7 @@ function buildTypeSpecificMonitorValues(
 ) {
   const { heartbeatToken, heartbeatTokenHash, monitorType } = identity;
   const supportsHttpOptions = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
-  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat";
+  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "dns" || monitorType === "heartbeat";
   return {
     heartbeatToken: heartbeatToken ? encryptValue(heartbeatToken) : null,
     heartbeatTokenHash,
@@ -1459,8 +1460,10 @@ function buildTypeSpecificMonitorValues(
     jsonPath: monitorType === "json" ? input.jsonPath.trim() : null,
     jsonExpectedValue: monitorType === "json" ? input.jsonExpectedValue.trim() : null,
     jsonMatchMode: monitorType === "json" ? input.jsonMatchMode : "equals",
+    dnsExpectedValues: monitorType === "dns" ? input.dnsExpectedValues.trim() || null : null,
+    dnsMatchMode: monitorType === "dns" ? input.dnsMatchMode : "includes",
     maxRedirects: usesSyntheticGet ? 0 : input.maxRedirects,
-    ipFamily: monitorType === "postgres" || monitorType === "heartbeat" ? "auto" : input.ipFamily,
+    ipFamily: monitorType === "postgres" || monitorType === "dns" || monitorType === "heartbeat" ? "auto" : input.ipFamily,
     checkSslExpiry: supportsHttpOptions ? input.checkSslExpiry : false,
     ignoreSslErrors: supportsHttpOptions ? input.ignoreSslErrors : false,
     cacheBuster: supportsHttpOptions ? input.cacheBuster : false,
@@ -1567,7 +1570,7 @@ function compareNullableDates(left: Date | null, right: Date | null) {
 }
 
 function normalizeMonitorType(value: string | null | undefined): MonitorInput["monitorType"] {
-  if (value === "port" || value === "postgres" || value === "keyword" || value === "json" || value === "ping" || value === "heartbeat") {
+  if (value === "port" || value === "postgres" || value === "keyword" || value === "json" || value === "ping" || value === "dns" || value === "heartbeat") {
     return value;
   }
 
@@ -1624,6 +1627,15 @@ export async function assertMonitorNetworkTargetAllowed(
   allowPrivateTargets = false
 ) {
   if (monitorType === "heartbeat") {
+    return;
+  }
+
+  if (monitorType === "dns") {
+    // The looked-up name is never connected to; only a chosen DNS server is.
+    const { server } = parseDnsMonitorTarget(url);
+    if (server) {
+      await assertMonitorNetworkTarget(server, { allowPrivateTargets, message: MONITOR_PUBLIC_TARGET_ERROR });
+    }
     return;
   }
 

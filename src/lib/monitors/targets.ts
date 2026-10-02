@@ -1,3 +1,4 @@
+import { isDnsRecordType, type DnsRecordType } from "@/lib/monitors/dns-records";
 import type { MonitorPayload, MonitorRecord, MonitorType } from "@/lib/monitors/types";
 
 const DEFAULT_PORT_MONITOR_PORT = 443;
@@ -16,7 +17,7 @@ type TargetShape = Pick<
   | "databaseUsername"
   | "keywordQuery"
   | "jsonPath"
->;
+> & Partial<Pick<MonitorPayload, "dnsRecordType" | "dnsServer">>;
 
 export function buildCanonicalMonitorTarget(input: TargetShape) {
   if (input.monitorType === "port") {
@@ -25,6 +26,10 @@ export function buildCanonicalMonitorTarget(input: TargetShape) {
 
   if (input.monitorType === "ping") {
     return buildPingMonitorTarget(input.portHost);
+  }
+
+  if (input.monitorType === "dns") {
+    return buildDnsMonitorTarget(input.portHost, input.dnsRecordType ?? "A", input.dnsServer ?? "");
   }
 
   if (input.monitorType === "heartbeat") {
@@ -81,6 +86,11 @@ export function getMonitorTargetDisplay(input: { monitorType: string; url: strin
     return target.host;
   }
 
+  if (input.monitorType === "dns") {
+    const target = parseDnsMonitorTarget(input.url);
+    return `${target.host} ${target.recordType}${target.server ? ` @${target.server}` : ""}`;
+  }
+
   if (input.monitorType === "heartbeat") {
     const target = parseHeartbeatMonitorTarget(input.url);
     return target.token ? `heartbeat:${target.token}` : "Heartbeat endpoint";
@@ -105,6 +115,10 @@ export function getMonitorTypeLabel(type: MonitorType | string) {
 
   if (type === "ping") {
     return "Ping / ICMP";
+  }
+
+  if (type === "dns") {
+    return "DNS record";
   }
 
   if (type === "port") {
@@ -176,6 +190,20 @@ export function parsePingMonitorTarget(url: string) {
   };
 }
 
+// dns://example.com/MX, or dns://example.com/MX?server=1.1.1.1 for a specific DNS server.
+export function parseDnsMonitorTarget(url: string): { host: string; recordType: DnsRecordType; server: string } {
+  const match = /^dns:\/\/([^/?#]*)\/?([^?#]*)(?:\?([^#]*))?/i.exec(url.trim());
+  if (!match) {
+    return { host: stripProtocol(url), recordType: "A", server: "" };
+  }
+  const recordType = match[2].toUpperCase();
+  return {
+    host: decodeURIComponent(match[1]),
+    recordType: isDnsRecordType(recordType) ? recordType : "A",
+    server: new URLSearchParams(match[3] ?? "").get("server") ?? "",
+  };
+}
+
 export function parseHeartbeatMonitorTarget(url: string) {
   return {
     token: decodeURIComponent(stripProtocol(url).replace(/^\/+/, "").trim()),
@@ -186,6 +214,7 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
   const portTarget = record.monitorType === "port" ? parsePortMonitorTarget(record.url) : null;
   const pingTarget = record.monitorType === "ping" ? parsePingMonitorTarget(record.url) : null;
   const heartbeatTarget = record.monitorType === "heartbeat" ? parseHeartbeatMonitorTarget(record.url) : null;
+  const dnsTarget = record.monitorType === "dns" ? parseDnsMonitorTarget(record.url) : null;
   const databaseTarget = record.monitorType === "postgres" ? parsePostgresMonitorTarget(record.url) : null;
   const baseUrl = record.monitorType === "http" || record.monitorType === "keyword" || record.monitorType === "json"
     ? record.url.split("#")[0]
@@ -195,7 +224,7 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     name: record.name,
     monitorType: record.monitorType,
     url: baseUrl,
-    portHost: portTarget?.host ?? pingTarget?.host ?? "",
+    portHost: portTarget?.host ?? pingTarget?.host ?? dnsTarget?.host ?? "",
     portNumber: portTarget?.port ?? DEFAULT_PORT_MONITOR_PORT,
     heartbeatToken: record.heartbeatToken ?? heartbeatTarget?.token ?? "",
     heartbeatLastReceivedAt: record.heartbeatLastReceivedAt,
@@ -212,6 +241,10 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
     jsonPath: record.jsonPath ?? "",
     jsonExpectedValue: record.jsonExpectedValue ?? "",
     jsonMatchMode: record.jsonMatchMode,
+    dnsRecordType: dnsTarget?.recordType ?? "A",
+    dnsServer: dnsTarget?.server ?? "",
+    dnsExpectedValues: record.dnsExpectedValues ?? "",
+    dnsMatchMode: record.dnsMatchMode ?? "includes",
     companyId: record.companyId ?? "",
     company: record.company ?? "",
     notificationPref: record.notificationPref,
@@ -307,6 +340,13 @@ function buildPortMonitorTarget(host: string, port: number) {
 function buildPingMonitorTarget(host: string) {
   const normalizedHost = normalizeHost(host);
   return `icmp://${normalizedHost}`;
+}
+
+function buildDnsMonitorTarget(host: string, recordType: DnsRecordType, server: string) {
+  const normalizedHost = stripProtocol(host).trim().toLowerCase().replace(/\.$/, "");
+  const normalizedServer = stripIpv6Brackets(server.trim().toLowerCase());
+  const query = normalizedServer ? `?server=${encodeURIComponent(normalizedServer)}` : "";
+  return `dns://${encodeURIComponent(normalizedHost)}/${recordType}${query}`;
 }
 
 export function buildHeartbeatMonitorTarget(token: string) {

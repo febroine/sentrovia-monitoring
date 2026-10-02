@@ -18,6 +18,7 @@ const DEFAULT_MAPPING = [
   "databaseUsername=databaseUsername", "databasePassword=databasePassword", "databaseSsl=databaseSsl",
   "databaseTlsVerify=databaseTlsVerify", "keywordQuery=keywordQuery", "keywordInvert=keywordInvert",
   "jsonPath=jsonPath", "jsonExpectedValue=jsonExpectedValue", "jsonMatchMode=jsonMatchMode",
+  "dnsRecordType=dnsRecordType", "dnsServer=dnsServer", "dnsExpectedValues=dnsExpectedValues", "dnsMatchMode=dnsMatchMode",
   "company=company", "intervalValue=intervalValue", "intervalUnit=intervalUnit", "timeout=timeout",
   "slowResponseThresholdMs=slowResponseThresholdMs", "slowResponseAlertsEnabled=slowResponseAlertsEnabled",
   "expectedStatusCodes=expectedStatusCodes", "retries=retries", "method=method", "tags=tags",

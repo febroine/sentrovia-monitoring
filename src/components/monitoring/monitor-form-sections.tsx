@@ -1,12 +1,14 @@
 "use client";
 
-import { Activity, Braces, Clock3, Copy, DatabaseZap, Globe, Network, Search } from "lucide-react";
+import { Activity, Braces, Clock3, Copy, DatabaseZap, Globe, Network, Search, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import type { CompanyRecord } from "@/lib/companies/types";
+import { DNS_RECORD_TYPES, type DnsMatchMode, type DnsRecordType } from "@/lib/monitors/dns-records";
 import { getMonitorTypeLabel } from "@/lib/monitors/targets";
 import {
   buildOutageConfirmationSummary,
@@ -49,6 +51,11 @@ const MONITOR_TYPE_OPTIONS: Array<{ value: MonitorType; icon: typeof Globe; desc
     description: "ICMP ping checks for host reachability and packet round-trip latency.",
   },
   {
+    value: "dns",
+    icon: Waypoints,
+    description: "DNS lookups that confirm a record exists and, optionally, still has the expected values.",
+  },
+  {
     value: "port",
     icon: Network,
     description: "TCP reachability checks for a host and port without waiting for an HTTP response.",
@@ -83,6 +90,7 @@ export function GeneralMonitorSettings({
   const isJsonMonitor = values.monitorType === "json";
   const isPortMonitor = values.monitorType === "port";
   const isPingMonitor = values.monitorType === "ping";
+  const isDnsMonitor = values.monitorType === "dns";
   const isHeartbeatMonitor = values.monitorType === "heartbeat";
   const isPostgresMonitor = values.monitorType === "postgres";
 
@@ -231,6 +239,8 @@ export function GeneralMonitorSettings({
               />
             </Field>
           ) : null}
+
+          {isDnsMonitor ? <DnsMonitorFields values={values} onFieldChange={onFieldChange} /> : null}
 
           {isPortMonitor ? (
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
@@ -638,6 +648,91 @@ export function CheckMonitorSettings({
                   : "HTTP monitors treat the configured success status codes as healthy responses."}
         </div>
       )}
+    </div>
+  );
+}
+
+const DNS_RECORD_HINTS: Record<DnsRecordType, { description: string; example: string }> = {
+  A: { description: "IPv4 address", example: "93.184.216.34" },
+  AAAA: { description: "IPv6 address", example: "2606:2800:21f:cb07:6820:80da:af6b:8b2c" },
+  CNAME: { description: "Alias to another name", example: "example.cdn-provider.net" },
+  MX: { description: "Mail servers", example: "10 mail.example.com" },
+  TXT: { description: "Text, such as SPF or verification", example: "v=spf1 include:_spf.example.com ~all" },
+  NS: { description: "Name servers", example: "ns1.example-dns.com" },
+};
+
+function DnsMonitorFields({ values, onFieldChange }: { values: MonitorPayload; onFieldChange: OnFieldChange }) {
+  const hint = DNS_RECORD_HINTS[values.dnsRecordType];
+  return (
+    <div className="space-y-4 rounded-md bg-muted/20 p-4">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+        <Field label="Domain name">
+          <Input
+            aria-label="Domain name"
+            value={values.portHost}
+            onChange={(event) => onFieldChange("portHost", event.target.value)}
+            placeholder="example.com"
+            required
+          />
+        </Field>
+        <Field label="Record type">
+          <Select value={values.dnsRecordType} onValueChange={(value) => onFieldChange("dnsRecordType", value as DnsRecordType)}>
+            <SelectTrigger aria-label="Record type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DNS_RECORD_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {`${type} · ${DNS_RECORD_HINTS[type].description}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+      <Field label="Expected values">
+        <Textarea
+          aria-label="Expected values"
+          rows={3}
+          value={values.dnsExpectedValues}
+          onChange={(event) => onFieldChange("dnsExpectedValues", event.target.value)}
+          placeholder={hint.example}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Optional, one per line. Leave empty to only require that the record exists.
+          {values.dnsRecordType === "MX" ? " A mail server without a priority matches at any priority." : ""}
+          {values.dnsRecordType === "TXT" ? " With \"Includes\", a value may be part of a longer record, such as v=spf1." : ""}
+        </p>
+      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Match">
+          <Select value={values.dnsMatchMode} onValueChange={(value) => onFieldChange("dnsMatchMode", value as DnsMatchMode)}>
+            <SelectTrigger aria-label="Match">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="includes">Includes every expected value</SelectItem>
+              <SelectItem value="exact">Exactly the expected values</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            {values.dnsMatchMode === "exact"
+              ? "Any added or missing record is reported, so unexpected changes are caught."
+              : "Other records may exist alongside the expected ones."}
+          </p>
+        </Field>
+        <Field label="DNS server">
+          <Input
+            aria-label="DNS server"
+            value={values.dnsServer}
+            onChange={(event) => onFieldChange("dnsServer", event.target.value)}
+            placeholder="System resolver"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Optional. An IP address such as 1.1.1.1, or your domain&apos;s own name server to see changes before caches expire.
+          </p>
+        </Field>
+      </div>
     </div>
   );
 }

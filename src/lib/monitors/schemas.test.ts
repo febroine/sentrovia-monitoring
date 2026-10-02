@@ -317,4 +317,24 @@ describe("monitor input schema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  describe("DNS monitors", () => {
+    const dns = { ...DEFAULT_MONITOR_FORM, name: "Mail DNS", monitorType: "dns" as const, portHost: "example.com", dnsRecordType: "MX" as const };
+
+    it("accepts a name with optional expected values and DNS server", () => {
+      expect(monitorInputSchema.safeParse(dns).success).toBe(true);
+      expect(monitorInputSchema.safeParse({ ...dns, dnsExpectedValues: "10 mail.example.com", dnsMatchMode: "exact", dnsServer: "1.1.1.1" }).success).toBe(true);
+    });
+
+    it("rejects a URL as the name, a host name as the DNS server, and values of the wrong kind", () => {
+      const issues = (input: object) => monitorInputSchema.safeParse({ ...dns, ...input }).error?.issues.map((issue) => issue.path.join("."));
+      expect(issues({ portHost: "https://example.com" })).toEqual(["portHost"]);
+      expect(issues({ dnsServer: "dns.google" })).toEqual(["dnsServer"]);
+      expect(issues({ dnsRecordType: "A", dnsExpectedValues: "mail.example.com" })).toEqual(["dnsExpectedValues"]);
+    });
+
+    it("needs expected values to match exactly", () => {
+      expect(monitorInputSchema.safeParse({ ...dns, dnsMatchMode: "exact" }).error?.issues[0].path).toEqual(["dnsExpectedValues"]);
+    });
+  });
 });
