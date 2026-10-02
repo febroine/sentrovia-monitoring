@@ -120,7 +120,7 @@ export default function MembersPageClient() {
 
     try {
       const response = await fetch("/api/members", { cache: "no-store" });
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         currentUserId?: string;
         currentUserRole?: MemberRole;
         members?: MemberRecord[];

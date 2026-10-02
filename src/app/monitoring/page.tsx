@@ -141,6 +141,8 @@ export default function MonitoringPage() {
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
   const [workspaceSettings, setWorkspaceSettings] = useState<SettingsPayload | null>(null);
+  // Whether the workspace settings (which decide what this user may change) have loaded.
+  const [settingsStatus, setSettingsStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [defaultForm, setDefaultForm] = useState(DEFAULT_MONITOR_FORM);
   // The monitor a new one is being copied from; the create form opens with its settings.
   const [duplicateSource, setDuplicateSource] = useState<MonitorRecord | null>(null);
@@ -258,6 +260,7 @@ export default function MonitoringPage() {
       ({ companies: nextCompanies, settings }) => {
         setCompanies(nextCompanies);
         setWorkspaceSettings(settings);
+        setSettingsStatus(settings ? "ready" : "failed");
         setSavedEmails(settings?.notifications.savedEmailRecipients ?? []);
         setDefaultForm(buildDefaultMonitorForm(settings));
       }
@@ -280,20 +283,27 @@ export default function MonitoringPage() {
           }>(response);
 
           return {
+            failed: !response.ok,
             points: response.ok ? data?.history?.[monitorId] ?? [] : [],
             diagnostics: response.ok ? data?.diagnostics?.[monitorId] ?? [] : [],
             outageEvents: response.ok ? data?.outageEvents?.[monitorId] ?? [] : [],
           };
         } catch {
-          return { points: [], diagnostics: [], outageEvents: [] };
+          return { failed: true, points: [], diagnostics: [], outageEvents: [] };
         }
       },
-      ({ points, diagnostics, outageEvents }) => {
+      ({ failed, points, diagnostics, outageEvents }) => {
+        // A failed request keeps what was loaded before instead of looking like an empty history.
+        if (failed) return;
         setHistoryByMonitor((current) => ({ ...current, [monitorId]: points }));
         setDiagnosticsByMonitor((current) => ({ ...current, [monitorId]: diagnostics }));
         setOutageEventsByMonitor((current) => ({ ...current, [monitorId]: outageEvents }));
       }
     );
+    if (snapshot?.failed) {
+      showToast("The timeline could not be loaded. Try again in a moment.", "error");
+      return null;
+    }
     return snapshot?.points ?? null;
   }, []);
 
@@ -752,7 +762,9 @@ export default function MonitoringPage() {
         <div className="space-y-1">
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Monitoring</h1>
           <p className="text-sm text-muted-foreground">
-            {pagination.totalItems} endpoints · {problematicCount} problematic on this page
+            {loading && monitors.length === 0
+              ? "Loading monitors…"
+              : `${pagination.totalItems} endpoint${pagination.totalItems === 1 ? "" : "s"} · ${problematicCount} problematic on this page`}
           </p>
         </div>
 
@@ -780,8 +792,20 @@ export default function MonitoringPage() {
       </section>
 
       {error ? (
-        <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+        <div role="alert" className="flex flex-col gap-2 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => { clearError(); void refreshMonitoring(); }} disabled={loading}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
+
+      {settingsStatus === "failed" ? (
+        <div role="alert" className="flex flex-col gap-2 rounded-md bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <span>Workspace settings could not be loaded, so adding and editing monitors is unavailable for now.</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => void loadSupportingData()}>
+            Try again
+          </Button>
         </div>
       ) : null}
 
@@ -980,11 +1004,20 @@ export default function MonitoringPage() {
               Clear filters
             </Button>
           ),
+        } : error ? {
+          // A failed load is not an empty workspace.
+          title: "Monitors could not be loaded",
+          description: "Check the connection and try again.",
+          action: (
+            <Button variant="outline" size="sm" onClick={() => { clearError(); void refreshMonitoring(); }}>Try again</Button>
+          ),
         } : {
           title: "No monitors yet",
-          description: canManageMonitors
-            ? "Add an endpoint to begin the first verification cycle."
-            : "A workspace administrator needs to add the first monitor.",
+          description: settingsStatus !== "ready"
+            ? "Monitors added to this workspace appear here."
+            : canManageMonitors
+              ? "Add an endpoint to begin the first verification cycle."
+              : "A workspace administrator needs to add the first monitor.",
           action: canManageMonitors ? (
             <Button size="sm" onClick={() => setCreateOpen(true)}>Add first monitor</Button>
           ) : undefined,

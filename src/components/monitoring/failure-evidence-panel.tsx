@@ -25,7 +25,7 @@ export function FailureEvidencePanel({ checkId }: { checkId: string }) {
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("Unable to load the check details.");
-        const data = (await response.json()) as { evidence?: FailureEvidence | null };
+        const data = (await response.json().catch(() => ({}))) as { evidence?: FailureEvidence | null };
         setState({ status: "ready", evidence: data.evidence ?? null });
       })
       .catch(() => {

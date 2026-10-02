@@ -53,8 +53,8 @@ function useReportsCatalog(setMessage: Setter<Notice>) {
         fetch("/api/reports", { cache: "no-store" }),
         fetch("/api/companies", { cache: "no-store" }),
       ]);
-      const reportsData = (await reportsResponse.json()) as ReportsResponse;
-      const companiesData = (await companiesResponse.json()) as { companies?: CompanyRecord[]; message?: string };
+      const reportsData = (await reportsResponse.json().catch(() => ({}))) as ReportsResponse;
+      const companiesData = (await companiesResponse.json().catch(() => ({}))) as { companies?: CompanyRecord[]; message?: string };
       if (!reportsResponse.ok) throw new Error(reportsData.message ?? "Unable to load report schedules.");
       if (!companiesResponse.ok) throw new Error(companiesData.message ?? "Unable to load companies.");
       setSchedules(reportsData.schedules ?? []);

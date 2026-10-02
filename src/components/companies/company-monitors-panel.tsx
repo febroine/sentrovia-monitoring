@@ -35,7 +35,7 @@ export function CompanyMonitorsPanel({
 
     fetch(`/api/companies/${companyId}/report`, { cache: "no-store" })
       .then(async (response) => {
-        const data = (await response.json()) as { report?: CompanySlaReport };
+        const data = (await response.json().catch(() => ({}))) as { report?: CompanySlaReport };
         if (active) {
           setReport(data.report ?? null);
         }
@@ -48,7 +48,7 @@ export function CompanyMonitorsPanel({
 
     fetch(`/api/companies/${companyId}/monthly-report`, { cache: "no-store" })
       .then(async (response) => {
-        const data = (await response.json()) as { report?: CompanyMonthlyReport };
+        const data = (await response.json().catch(() => ({}))) as { report?: CompanyMonthlyReport };
         if (active) {
           setMonthlyReport(data.report ?? null);
         }

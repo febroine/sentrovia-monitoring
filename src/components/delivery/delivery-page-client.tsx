@@ -61,6 +61,8 @@ type SettingsResponse = {
 export function DeliveryPageClient() {
   const [overview, setOverview] = useState<DeliveryOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
+  // Whether the overview has loaded once; before that, empty counts mean "not loaded", not "first run".
+  const [loaded, setLoaded] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<DeliveryNotificationSettings | null>(null);
   const [notificationSettingsLoading, setNotificationSettingsLoading] = useState(true);
   const [notificationSettingsError, setNotificationSettingsError] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export function DeliveryPageClient() {
     ],
     [overview.summary]
   );
-  const isFirstRun = isDeliveryFirstRun(overview);
+  const isFirstRun = loaded && isDeliveryFirstRun(overview);
   const failedHistoryIds = overview.history.filter((item) => item.status === "failed").map((item) => item.id);
 
   const loadOverview = useCallback(async (requestedPage = 1) => {
@@ -156,6 +158,7 @@ export function DeliveryPageClient() {
 
       const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
+      setLoaded(true);
       setHistoryPage(nextOverview.pagination.page);
       setSelectedDeliveryIds([]);
       setWebhookUrl(nextOverview.webhook?.url ?? "");
@@ -538,7 +541,13 @@ export function DeliveryPageClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {overview.history.length === 0 ? (
+              {overview.history.length === 0 && !loaded ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                    {loading ? "Loading deliveries…" : "Delivery history could not be loaded."}
+                  </TableCell>
+                </TableRow>
+              ) : overview.history.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8}>
                     <EmptyState

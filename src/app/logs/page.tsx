@@ -27,6 +27,8 @@ const AUTO_REFRESH_MS = 15000;
 
 export default function LogsPage() {
   const [filters, setFilters] = useState<LogFilters>(DEFAULT_FILTERS);
+  // Search text being typed; it becomes a filter after a short pause instead of on every keystroke.
+  const [searchDraft, setSearchDraft] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [clearableTotal, setClearableTotal] = useState(0);
@@ -92,7 +94,7 @@ export default function LogsPage() {
       }
 
       const response = await fetch(`/api/logs?${params.toString()}`, { cache: "no-store" });
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         message?: string;
         logs?: LogRecord[];
         filters?: LogsFilterOptions;
@@ -150,7 +152,7 @@ export default function LogsPage() {
 
     try {
       const response = await fetch("/api/logs", { method: "DELETE" });
-      const data = (await response.json()) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
 
       if (!response.ok) {
         throw new Error(data.message ?? "Unable to clear logs.");
@@ -210,6 +212,17 @@ export default function LogsPage() {
     setSelectedIds(new Set());
     setPage(1);
   }
+
+  useEffect(() => {
+    if (searchDraft === null) return;
+    const timer = window.setTimeout(() => {
+      setFilters((current) => ({ ...current, search: searchDraft }));
+      setSelectedIds(new Set());
+      setPage(1);
+      setSearchDraft(null);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchDraft]);
 
   function updateFilter<K extends keyof LogFilters>(key: K, value: LogFilters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -320,8 +333,8 @@ export default function LogsPage() {
       <div className="relative">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input
-          value={filters.search}
-          onChange={(event) => updateFilter("search", event.target.value)}
+          value={searchDraft ?? filters.search}
+          onChange={(event) => setSearchDraft(event.target.value)}
           placeholder="Search event logs"
           aria-label="Search event logs"
           className="h-9 pl-9"
@@ -359,6 +372,7 @@ export default function LogsPage() {
         logs={logs}
         total={total}
         loading={loading}
+        loadFailed={Boolean(error)}
         selectedIds={selectedIds}
         highlightIds={highlightIds}
         page={page}

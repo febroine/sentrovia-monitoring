@@ -77,7 +77,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draftPreferences),
       });
-      const body = (await response.json()) as { dashboard?: DashboardData; message?: string };
+      const body = (await response.json().catch(() => ({}))) as { dashboard?: DashboardData; message?: string };
       if (!response.ok || !body.dashboard) {
         throw new Error(body.message ?? "Unable to save dashboard preferences.");
       }
@@ -100,7 +100,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
       });
-      const body = (await response.json()) as { message?: string };
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
         throw new Error(body.message ?? "Unable to update monitor dashboard flags.");
       }

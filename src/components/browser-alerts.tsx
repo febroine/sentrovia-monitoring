@@ -139,7 +139,7 @@ async function loadSnapshot(signal: AbortSignal) {
   try {
     const response = await fetch("/api/monitors/alert-states", { cache: "no-store", signal });
     if (!response.ok) return null;
-    const body = (await response.json()) as { workspaceId?: string; monitors?: MonitorAlertSnapshot[] };
+    const body = (await response.json().catch(() => ({}))) as { workspaceId?: string; monitors?: MonitorAlertSnapshot[] };
     return Array.isArray(body.monitors) ? { workspaceId: body.workspaceId ?? null, monitors: body.monitors } : null;
   } catch {
     return null;

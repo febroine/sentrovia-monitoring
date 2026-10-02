@@ -142,7 +142,7 @@ export function MonitorTextImportDialog({
           lineNumbers: targets.map((target) => target.lineNumber),
         }),
       });
-      const data = (await response.json()) as { message?: string; monitors?: MonitorRecord[] };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; monitors?: MonitorRecord[] };
 
       if (!response.ok || !data.monitors) {
         throw new Error(data.message ?? "Unable to import TXT domain list.");

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -62,22 +63,18 @@ export default function CompaniesPage() {
     return () => window.cancelAnimationFrame(frameId);
   }, []);
 
+  const refreshMonitors = useCallback(async () => {
+    const all = await fetchAllMonitors();
+    // A failed load keeps the previous list rather than showing companies without monitors.
+    if (all) setMonitors(all);
+  }, []);
+
   useEffect(() => {
     let active = true;
     void loadCompanies();
-    fetch("/api/monitors", { cache: "no-store" })
-      .then(async (response) => {
-        const data = (await response.json()) as { monitors?: MonitorRecord[] };
-        if (active) {
-          setMonitors(data.monitors ?? []);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setMonitors([]);
-        }
-      });
-
+    void fetchAllMonitors().then((all) => {
+      if (active && all) setMonitors(all);
+    });
     return () => {
       active = false;
     };
@@ -212,6 +209,7 @@ export default function CompaniesPage() {
 
   function openEdit(company: CompanyRecord) {
     setDialogError(null);
+    void refreshMonitors();
     setEditing(company);
     const nextForm: CompanyPayload = {
       name: company.name,
@@ -273,7 +271,14 @@ export default function CompaniesPage() {
         </div>
       </header>
 
-      {error ? <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
+      {error ? (
+        <div role="alert" className="flex flex-col gap-2 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => { clearError(); void loadCompanies(); }} disabled={loading}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
 
       {pendingRestores.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-md bg-emerald-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
@@ -332,7 +337,14 @@ export default function CompaniesPage() {
             </TableHeader>
             <TableBody>
               {loading && filtered.length === 0 ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Loading companies…</TableCell></TableRow> : null}
-              {!loading && filtered.length === 0 ? (
+              {!loading && filtered.length === 0 && error && companies.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    Companies could not be loaded.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+              {!loading && filtered.length === 0 && !(error && companies.length === 0) ? (
                 <TableRow>
                   <TableCell colSpan={6}>
                     <EmptyState
@@ -597,4 +609,15 @@ function CompanyDialog({
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <div className="space-y-2"><Label>{label}</Label>{children}</div>;
+}
+
+// Every monitor of the workspace (the list endpoint returns all of them when no page is requested).
+async function fetchAllMonitors(): Promise<MonitorRecord[] | null> {
+  try {
+    const response = await fetch("/api/monitors", { cache: "no-store" });
+    const data = (await response.json().catch(() => null)) as { monitors?: MonitorRecord[] } | null;
+    return response.ok && data?.monitors ? data.monitors : null;
+  } catch {
+    return null;
+  }
 }

@@ -38,7 +38,7 @@ export function LoginForm({ notice = null }: { notice?: string | null }) {
           return;
         }
 
-        const data = (await response.json()) as { required?: boolean };
+        const data = (await response.json().catch(() => ({}))) as { required?: boolean };
         if (active && data.required) {
           router.replace("/onboarding");
         }

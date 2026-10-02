@@ -89,8 +89,8 @@ export function ReportAnalyticsWorkspace({ onUseInPreview }: { onUseInPreview?: 
         fetch("/api/monitors", { cache: "no-store" }),
         fetch("/api/companies", { cache: "no-store" }),
       ]);
-      const monitorsData = (await monitorsResponse.json()) as { monitors?: MonitorOption[]; message?: string };
-      const companiesData = (await companiesResponse.json()) as { companies?: CompanyOption[]; message?: string };
+      const monitorsData = (await monitorsResponse.json().catch(() => ({}))) as { monitors?: MonitorOption[]; message?: string };
+      const companiesData = (await companiesResponse.json().catch(() => ({}))) as { companies?: CompanyOption[]; message?: string };
       if (!monitorsResponse.ok) throw new Error(monitorsData.message ?? "Unable to load monitors.");
       if (!companiesResponse.ok) throw new Error(companiesData.message ?? "Unable to load companies.");
       if (requestId !== analyticsRequestRef.current) return;
@@ -560,7 +560,7 @@ function AnalyticsReport({ report, filters, previewFilters, previewRangeInvalid,
         body: JSON.stringify(buildAnalyticsRequestPayload(filters)),
       });
       if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
         throw new Error(data.message ?? "Unable to generate the PDF.");
       }
       const filename = response.headers.get("X-Report-Filename") ?? `${buildReportFileSlug(report)}.pdf`;
@@ -1049,7 +1049,7 @@ async function requestAnalyticsReport(filters: AnalyticsFilters) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(buildAnalyticsRequestPayload(filters)),
   });
-  const data = (await response.json()) as { report?: GeneratedReport; message?: string };
+  const data = (await response.json().catch(() => ({}))) as { report?: GeneratedReport; message?: string };
   return { response, data };
 }
 

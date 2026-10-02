@@ -29,6 +29,7 @@ export function LogsTable({
   page,
   pageSize,
   hasActiveFilters,
+  loadFailed = false,
   onToggleSelect,
   onToggleAll,
   onPageChange,
@@ -43,6 +44,8 @@ export function LogsTable({
   page: number;
   pageSize: number;
   hasActiveFilters: boolean;
+  // The last load failed; an empty list then is not an empty log.
+  loadFailed?: boolean;
   onToggleSelect: (id: string) => void;
   onToggleAll: (visibleIds: string[]) => void;
   onPageChange: (page: number) => void;
@@ -115,7 +118,14 @@ export function LogsTable({
                 </TableCell>
               </TableRow>
             ) : null}
-            {!loading && logs.length === 0 ? (
+            {!loading && logs.length === 0 && loadFailed ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                  Event logs could not be loaded.
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {!loading && logs.length === 0 && !loadFailed ? (
               <TableRow>
                 <TableCell colSpan={8}>
                   <EmptyState
