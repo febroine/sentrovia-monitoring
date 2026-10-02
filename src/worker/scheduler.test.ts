@@ -773,12 +773,12 @@ describe("monitoring scheduler verification flow", () => {
     expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
     expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
 
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:01.000Z"),
       expect.any(Function),
-      { checkStatusCode: 500, skipWhenSiteResponds: true }
+      { checkStatusCode: 500, skipWhenSiteResponds: true, language: "en" }
     );
   });
 
@@ -814,7 +814,7 @@ describe("monitoring scheduler verification flow", () => {
     await runMonitoringCycle();
 
     const notificationContext = getNotificationContext("failure");
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toBeUndefined();
+    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toBeUndefined();
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "screenshot-skipped",
@@ -847,12 +847,12 @@ describe("monitoring scheduler verification flow", () => {
     expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
     expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
 
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:00.000Z"),
       expect.any(Function),
-      { checkStatusCode: 500, skipWhenSiteResponds: true }
+      { checkStatusCode: 500, skipWhenSiteResponds: true, language: "en" }
     );
   });
 
@@ -875,9 +875,34 @@ describe("monitoring scheduler verification flow", () => {
 
     await runMonitoringCycle();
 
-    await expect(getNotificationContext("failure").buildEmailAttachments?.()).resolves.toEqual([screenshot]);
-    await expect(getNotificationContext("downtime-reminder").buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(getNotificationContext("failure").buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
+    await expect(getNotificationContext("downtime-reminder").buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledOnce();
+  });
+
+  it("captures the screenshot in each notification language it is requested in", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+    const context = getNotificationContext("failure");
+    await context.buildEmailAttachments?.("tr");
+    await context.buildEmailAttachments?.("tr");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledOnce();
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "monitor-1" }),
+      expect.any(Date),
+      expect.any(Function),
+      expect.objectContaining({ language: "tr" })
+    );
   });
 
   it("keeps the screenshot for keyword failures even when the page loads", async () => {
@@ -893,13 +918,13 @@ describe("monitoring scheduler verification flow", () => {
     ];
 
     await runMonitoringCycle();
-    await getNotificationContext("failure").buildEmailAttachments?.();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
 
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ monitorType: "keyword" }),
       expect.any(Date),
       expect.any(Function),
-      { checkStatusCode: 500, skipWhenSiteResponds: false }
+      { checkStatusCode: 500, skipWhenSiteResponds: false, language: "en" }
     );
   });
 
@@ -916,13 +941,13 @@ describe("monitoring scheduler verification flow", () => {
     ];
 
     await runMonitoringCycle();
-    await getNotificationContext("failure").buildEmailAttachments?.();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
 
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ method: "POST" }),
       expect.any(Date),
       expect.any(Function),
-      { checkStatusCode: 500, skipWhenSiteResponds: false }
+      { checkStatusCode: 500, skipWhenSiteResponds: false, language: "en" }
     );
   });
 
@@ -959,12 +984,12 @@ describe("monitoring scheduler verification flow", () => {
     expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
     expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
 
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:00.000Z"),
       expect.any(Function),
-      { checkStatusCode: 204, skipWhenSiteResponds: false }
+      { checkStatusCode: 204, skipWhenSiteResponds: false, language: "en" }
     );
   });
 

@@ -1,6 +1,7 @@
 import { getHttpStatusMeta } from "@/lib/http/status-codes";
 import { escapeHtml } from "@/lib/html";
 import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
+import { resolveNotificationLanguage } from "@/lib/notifications/language";
 import {
   DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE,
   getDefaultNotificationTemplates,
@@ -198,13 +199,6 @@ function buildTemplateReplacements(input: TemplateReplacementInput) {
     "{rca_details}": input.rcaDetails,
     "{organization}": input.organization,
   };
-}
-
-function resolveNotificationLanguage(
-  monitorLanguage: string | null | undefined,
-  workspaceLanguage: NotificationLanguage
-): NotificationLanguage {
-  return monitorLanguage === "en" || monitorLanguage === "tr" ? monitorLanguage : workspaceLanguage;
 }
 
 type NotificationTemplateKey =

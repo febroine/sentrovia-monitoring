@@ -7,8 +7,10 @@ import {
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
 import { countMonitorEvents, hasRecentMonitorEvent, isMonitorActive } from "@/lib/monitors/service";
+import { resolveNotificationLanguage } from "@/lib/notifications/language";
 import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
 import { getSettings } from "@/lib/settings/service";
+import type { NotificationLanguage } from "@/lib/settings/types";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
 
@@ -40,7 +42,10 @@ export async function sendMonitorNotifications(context: NotificationContext) {
 
   const rendered = renderNotificationTemplates(context, settings, env.appUrl);
   const deliveryResults: NotificationDeliveryResult[] = [];
-  const getScreenshotAttachments = createScreenshotAttachmentResolver(context);
+  const getScreenshotAttachments = createScreenshotAttachmentResolver(
+    context,
+    resolveNotificationLanguage(context.monitor.notificationLanguage, settings.notifications.notificationLanguage)
+  );
 
   if (context.monitor.notificationPref === "email" || context.monitor.notificationPref === "both") {
     deliveryResults.push(
@@ -123,7 +128,7 @@ function isAcceptedDelivery(result: NotificationDeliveryResult) {
   return result?.status === "delivered" || result?.status === "retrying";
 }
 
-function createScreenshotAttachmentResolver(context: NotificationContext) {
+function createScreenshotAttachmentResolver(context: NotificationContext, language: NotificationLanguage) {
   let cached: Promise<NotificationContext["emailAttachments"]> | null = null;
 
   return () => {
@@ -135,7 +140,7 @@ function createScreenshotAttachmentResolver(context: NotificationContext) {
       return Promise.resolve(undefined);
     }
 
-    cached ??= context.buildEmailAttachments();
+    cached ??= context.buildEmailAttachments(language);
     return cached;
   };
 }

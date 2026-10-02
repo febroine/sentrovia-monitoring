@@ -5,6 +5,7 @@ import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { hasExpectedStatusCodeOverride, isExpectedHttpStatusCode } from "@/lib/monitors/status-codes";
+import type { NotificationLanguage } from "@/lib/settings/types";
 import {
   calculateScreenshotBudgetMs,
   calculateScreenshotNavigationTimeoutMs,
@@ -85,6 +86,8 @@ export type FailureScreenshotOptions = {
   // Leave the screenshot out when the browser finds the site responding normally: the image
   // would show a working site next to an alert about a failure that has already passed.
   skipWhenSiteResponds?: boolean;
+  // Notification language of the alert, so the banner matches the email and Telegram text.
+  language?: NotificationLanguage;
 };
 
 // Thrown when the capture is deliberately left out; not a capture failure.
@@ -370,7 +373,7 @@ async function captureScreenshotAttachment(
     const content = await addScreenshotContextBanner(
       context,
       screenshot ?? await capturePageScreenshot(page, approvedTargets),
-      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime(), options.checkStatusCode)
+      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime(), options.checkStatusCode, options.language)
     );
     if (content.byteLength > SCREENSHOT_MAX_BYTES) {
       throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
@@ -485,12 +488,6 @@ async function capturePageScreenshot(page: Page, approvedTargets: ResolvedNetwor
   }
 }
 
-const TIMED_OUT_TITLES: Record<ScreenshotTimedOutRender, (limit: string) => string> = {
-  "no-response": (limit) => `Page did not load within ${limit}; the server sent nothing, so the browser shows a blank page`,
-  blank: (limit) => `Page was still loading after ${limit}; nothing visible had arrived yet`,
-  partial: (limit) => `Page was still loading after ${limit}; showing what had arrived`,
-};
-
 // Mirrors the HTTP check: custom expected codes when configured, otherwise a 2xx response.
 function isRespondingNormally(
   monitor: Monitor,
@@ -502,37 +499,72 @@ function isRespondingNormally(
     && (hasExpectedStatusCodeOverride(monitor.expectedStatusCodes) || (statusCode >= 200 && statusCode < 300));
 }
 
+type BannerDuration = (ms: number) => string;
+
+// Banner wording per notification language. Durations are formatted by the caller for that language.
+const BANNER_TEXT = {
+  en: {
+    loaded: (duration: string, status: number | null, timeout: string) =>
+      `Page loaded in ${duration}${status === null ? "" : ` with HTTP ${status}`} (monitor timeout ${timeout})`,
+    timedOut: {
+      "no-response": (limit: string) => `Page did not load within ${limit}; the server sent nothing, so the browser shows a blank page`,
+      blank: (limit: string) => `Page was still loading after ${limit}; nothing visible had arrived yet`,
+      partial: (limit: string) => `Page was still loading after ${limit}; showing what had arrived`,
+    },
+    errorPage: (code: string) => `Browser could not open the page (${code})`,
+    check: (status: number | null) => status === null ? "Check got no HTTP response" : `Check got HTTP ${status}`,
+    capturedAfter: (elapsed: string) => `Screenshot taken ${elapsed} after the check started`,
+  },
+  tr: {
+    loaded: (duration: string, status: number | null, timeout: string) =>
+      `Sayfa ${duration} içinde ${status === null ? "yüklendi" : `HTTP ${status} ile yüklendi`} (monitör zaman aşımı ${timeout})`,
+    timedOut: {
+      "no-response": (limit: string) => `Sayfa ${limit} içinde yüklenmedi; sunucu hiçbir şey göndermediği için tarayıcı boş sayfa gösteriyor`,
+      blank: (limit: string) => `Sayfa ${limit} sonunda hâlâ yükleniyordu; henüz görünür bir içerik gelmemişti`,
+      partial: (limit: string) => `Sayfa ${limit} sonunda hâlâ yükleniyordu; o ana kadar gelen içerik gösteriliyor`,
+    },
+    errorPage: (code: string) => `Tarayıcı sayfayı açamadı (${code})`,
+    check: (status: number | null) => status === null ? "Kontrol HTTP yanıtı alamadı" : `Kontrol HTTP ${status} aldı`,
+    capturedAfter: (elapsed: string) => `Ekran görüntüsü kontrol başladıktan ${elapsed} sonra alındı`,
+  },
+} satisfies Record<NotificationLanguage, unknown>;
+
+const BANNER_DURATION: Record<NotificationLanguage, BannerDuration> = {
+  en: formatSeconds,
+  tr: (ms) => formatSeconds(ms).replace(".", ",").replace(/ s$/, " sn"),
+};
+
 export function describeScreenshotContext(
   outcome: ScreenshotNavigationOutcome,
   sinceCheckMs: number,
-  checkStatusCode?: number | null
+  checkStatusCode?: number | null,
+  language: NotificationLanguage = "en"
 ) {
+  const text = BANNER_TEXT[language] ?? BANNER_TEXT.en;
+  const duration = BANNER_DURATION[language] ?? BANNER_DURATION.en;
   // Status-code-change alerts capture a page that is up, so the wording does not assume a failure.
-  const capturedAfter = [
-    checkStatusCode === undefined
-      ? null
-      : `Check got ${checkStatusCode === null ? "no HTTP response" : `HTTP ${checkStatusCode}`}`,
-    `Screenshot taken ${formatSeconds(Math.max(0, sinceCheckMs))} after the check started`,
+  const detail = [
+    checkStatusCode === undefined ? null : text.check(checkStatusCode),
+    text.capturedAfter(duration(Math.max(0, sinceCheckMs))),
   ].filter(Boolean).join(" · ");
   if (outcome.kind === "loaded") {
-    const status = outcome.statusCode === null ? "" : ` with HTTP ${outcome.statusCode}`;
     return {
       tone: outcome.statusCode !== null && outcome.statusCode >= 400 ? "critical" as const : "warning" as const,
-      title: `Page loaded in ${formatSeconds(outcome.durationMs)}${status} (monitor timeout ${formatSeconds(outcome.monitorTimeoutMs)})`,
-      detail: capturedAfter,
+      title: text.loaded(duration(outcome.durationMs), outcome.statusCode, duration(outcome.monitorTimeoutMs)),
+      detail,
     };
   }
   if (outcome.kind === "timed-out") {
     return {
       tone: "critical" as const,
-      title: TIMED_OUT_TITLES[outcome.rendered](formatSeconds(outcome.timeoutMs)),
-      detail: capturedAfter,
+      title: text.timedOut[outcome.rendered](duration(outcome.timeoutMs)),
+      detail,
     };
   }
   return {
     tone: "critical" as const,
-    title: `Browser could not open the page (${outcome.code})`,
-    detail: capturedAfter,
+    title: text.errorPage(outcome.code),
+    detail,
   };
 }
 

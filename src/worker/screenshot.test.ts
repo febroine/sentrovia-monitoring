@@ -58,6 +58,26 @@ describe("failure screenshot context banner", () => {
     expect(title("partial")).toBe("Page was still loading after 60 s; showing what had arrived");
   });
 
+  it("writes the banner in Turkish with Turkish number formatting", () => {
+    expect(describeScreenshotContext(
+      { kind: "loaded", durationMs: 1_250, monitorTimeoutMs: 60_000, statusCode: 500 },
+      14_000,
+      500,
+      "tr"
+    )).toEqual({
+      tone: "critical",
+      title: "Sayfa 1,3 sn içinde HTTP 500 ile yüklendi (monitör zaman aşımı 60 sn)",
+      detail: "Kontrol HTTP 500 aldı · Ekran görüntüsü kontrol başladıktan 14 sn sonra alındı",
+    });
+    expect(describeScreenshotContext({ kind: "timed-out", timeoutMs: 8_000, rendered: "no-response" }, 420, null, "tr")).toEqual({
+      tone: "critical",
+      title: "Sayfa 8,0 sn içinde yüklenmedi; sunucu hiçbir şey göndermediği için tarayıcı boş sayfa gösteriyor",
+      detail: "Kontrol HTTP yanıtı alamadı · Ekran görüntüsü kontrol başladıktan 420 ms sonra alındı",
+    });
+    expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 3_000, undefined, "tr").title)
+      .toBe("Tarayıcı sayfayı açamadı (ERR_CONNECTION_REFUSED)");
+  });
+
   it("names the browser network error", () => {
     expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 9_500)).toMatchObject({
       tone: "critical",

@@ -27,6 +27,7 @@ import {
 } from "@/worker/checker";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
 import { sendMonitorNotifications } from "@/worker/notifier";
+import type { NotificationLanguage } from "@/lib/settings/types";
 import { buildFailureScreenshotAttachment } from "@/worker/screenshot";
 
 const SSL_EXPIRY_WARNING_DAYS = 30;
@@ -465,7 +466,7 @@ async function handleFailedCheck(
     monitor,
     result,
     rca,
-    buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
+    buildEmailAttachments: (language) => buildAlertEmailAttachments(monitor, result, language),
   });
   if (sent && await isCurrentMonitorClaim(monitor)) {
     await appendDetailedEvent(monitor, result, "failure-notification", message, rca, "down");
@@ -515,7 +516,7 @@ async function sendDowntimeReminderIfNeeded(
     monitor,
     result,
     rca,
-    buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
+    buildEmailAttachments: (language) => buildAlertEmailAttachments(monitor, result, language),
   });
   if (sent && await isCurrentMonitorClaim(monitor)) {
     await appendDetailedEvent(monitor, result, "downtime-reminder", message, rca, "down");
@@ -570,7 +571,7 @@ async function handleStatusCodeChange(
     monitor,
     result,
     rca,
-    buildEmailAttachments: () => buildAlertEmailAttachments(monitor, result),
+    buildEmailAttachments: (language) => buildAlertEmailAttachments(monitor, result, language),
   });
   if (sent && await isCurrentMonitorClaim(monitor)) {
     await appendDetailedEvent(monitor, result, "status-change-notification", message, rca, transition.checkStatus);
@@ -727,7 +728,7 @@ async function retryTransitionNotification(
     result,
     rca,
     buildEmailAttachments: kind === "status-change"
-      ? () => buildAlertEmailAttachments(monitor, result)
+      ? (language: NotificationLanguage) => buildAlertEmailAttachments(monitor, result, language)
       : undefined,
   });
   if (notificationSent && await isCurrentMonitorClaim(monitor)) {
@@ -759,24 +760,31 @@ function shouldRunFinalConfirmationProbe(
 // downtime reminder); they share one screenshot, which also keeps the work inside the monitor lease.
 const alertAttachmentsByCheck = new WeakMap<
   Awaited<ReturnType<typeof checkMonitor>>,
-  ReturnType<typeof captureAlertEmailAttachments>
+  Map<NotificationLanguage, ReturnType<typeof captureAlertEmailAttachments>>
 >();
 
 function buildAlertEmailAttachments(
   monitor: Monitor,
-  result: Awaited<ReturnType<typeof checkMonitor>>
+  result: Awaited<ReturnType<typeof checkMonitor>>,
+  language: NotificationLanguage
 ) {
-  let attachments = alertAttachmentsByCheck.get(result);
+  let byLanguage = alertAttachmentsByCheck.get(result);
+  if (!byLanguage) {
+    byLanguage = new Map();
+    alertAttachmentsByCheck.set(result, byLanguage);
+  }
+  let attachments = byLanguage.get(language);
   if (!attachments) {
-    attachments = captureAlertEmailAttachments(monitor, result);
-    alertAttachmentsByCheck.set(result, attachments);
+    attachments = captureAlertEmailAttachments(monitor, result, language);
+    byLanguage.set(language, attachments);
   }
   return attachments;
 }
 
 async function captureAlertEmailAttachments(
   monitor: Monitor,
-  result: Awaited<ReturnType<typeof checkMonitor>>
+  result: Awaited<ReturnType<typeof checkMonitor>>,
+  language: NotificationLanguage
 ) {
   let skippedReason: string | null = null;
   const screenshot = await buildFailureScreenshotAttachment(monitor, result.checkedAt, (reason) => {
@@ -789,6 +797,7 @@ async function captureAlertEmailAttachments(
     skipWhenSiteResponds: !result.ok
       && monitor.monitorType === "http"
       && (monitor.method === "GET" || monitor.method === "HEAD"),
+    language,
   });
 
   if (skippedReason && await isCurrentMonitorClaim(monitor)) {

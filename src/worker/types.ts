@@ -1,5 +1,6 @@
 import type { Monitor } from "@/lib/db/schema";
 import type { RootCauseAnalysis } from "@/lib/monitoring/rca";
+import type { NotificationLanguage } from "@/lib/settings/types";
 import type Mail from "nodemailer/lib/mailer";
 
 export type CheckFailureReason =
@@ -32,5 +33,6 @@ export interface NotificationContext {
   result: CheckResult;
   rca: RootCauseAnalysis;
   emailAttachments?: Mail.Attachment[];
-  buildEmailAttachments?: () => Promise<Mail.Attachment[] | undefined>;
+  // Receives the alert's resolved notification language so a screenshot banner matches the message.
+  buildEmailAttachments?: (language: NotificationLanguage) => Promise<Mail.Attachment[] | undefined>;
 }
