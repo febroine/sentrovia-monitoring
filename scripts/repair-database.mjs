@@ -19,6 +19,7 @@ const EXPECTED_TABLES = new Set([
   "companies",
   "delivery_events",
   "log_filter_presets",
+  "monitor_check_evidence",
   "monitor_checks",
   "monitor_diagnostics",
   "monitor_events",

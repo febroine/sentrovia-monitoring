@@ -326,6 +326,8 @@ async function checkHttp(
         method: monitor.method,
         // Same identity as the HTTP check, so a bot filter cannot make the diagnosis disagree with it.
         headers: MONITOR_REQUEST_HEADERS,
+        // A fresh connection, like the check, so the diagnosis sees the connection step too.
+        agent: false,
         timeout: remainingTimeoutMs,
         lookup: createPinnedLookup(resolvedTarget),
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,

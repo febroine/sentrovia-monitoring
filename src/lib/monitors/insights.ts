@@ -1,7 +1,8 @@
 import { and, desc, eq, getTableColumns, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getCompanyById } from "@/lib/companies/service";
 import { db } from "@/lib/db";
-import { monitorChecks, monitorDiagnostics, monitors, outageEvents } from "@/lib/db/schema";
+import { monitorCheckEvidence, monitorChecks, monitorDiagnostics, monitors, outageEvents } from "@/lib/db/schema";
+import { parseFailureEvidence } from "@/lib/monitors/failure-evidence";
 import { getMonitorSlaPeriods } from "@/lib/monitoring/sla-service";
 import { loadAvailabilityForWindows, type AvailabilityWindow } from "@/lib/outages/availability-service";
 
@@ -39,6 +40,16 @@ export async function listRecentMonitorChecks(
     .orderBy(desc(rankedChecks.createdAt));
 
   return groupRecentRowsByMonitor(rows, normalizedLimit);
+}
+
+export async function getMonitorCheckEvidence(workspaceId: string, checkId: string) {
+  const [row] = await db
+    .select({ evidence: monitorCheckEvidence.evidence })
+    .from(monitorCheckEvidence)
+    .where(and(eq(monitorCheckEvidence.checkId, checkId), eq(monitorCheckEvidence.workspaceId, workspaceId)))
+    .limit(1);
+
+  return row ? parseFailureEvidence(row.evidence) : null;
 }
 
 export async function listRecentMonitorDiagnostics(

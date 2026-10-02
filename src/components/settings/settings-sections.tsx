@@ -59,6 +59,7 @@ const TEMPLATE_TOKENS = [
   "{downtime_hours}",
   "{rca_summary}",
   "{rca_details}",
+  "{check_details}",
   "{organization}",
 ];
 

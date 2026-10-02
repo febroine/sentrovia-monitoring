@@ -363,6 +363,9 @@ async function recordCycleCheck(monitor: ClaimedMonitor, probe: ProbeSequence, c
     statusCode: probe.result.statusCode,
     latencyMs: probe.result.latencyMs,
     createdAt: probe.result.checkedAt,
+    // A check that failed but was not counted as down (e.g. recovered in final confirmation) has
+    // nothing to explain.
+    evidence: checkStatus === "up" ? null : probe.result.evidence ?? null,
   });
   if (checkStatus !== "pending") {
     if (!(await isCurrentMonitorClaim(monitor))) return false;

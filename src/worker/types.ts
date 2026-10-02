@@ -1,4 +1,5 @@
 import type { Monitor } from "@/lib/db/schema";
+import type { FailureEvidence } from "@/lib/monitors/failure-evidence";
 import type { RootCauseAnalysis } from "@/lib/monitoring/rca";
 import type { NotificationLanguage } from "@/lib/settings/types";
 import type Mail from "nodemailer/lib/mailer";
@@ -24,6 +25,8 @@ export interface CheckResult {
   failureReason?: CheckFailureReason | null;
   checkedAt: Date;
   sslExpiresAt: Date | null;
+  // What a failed HTTP check saw; only set on failures.
+  evidence?: FailureEvidence | null;
 }
 
 export interface NotificationContext {

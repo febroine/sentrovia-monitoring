@@ -13,6 +13,7 @@ type CheckResult = {
   failureReason?: null | "timeout" | "http_status" | "dns" | "tls" | "connection" | "assertion" | "redirect" | "network" | "database" | "configuration";
   checkedAt: Date;
   sslExpiresAt: Date | null;
+  evidence?: unknown;
 };
 
 const mocks = vi.hoisted(() => ({
@@ -291,6 +292,34 @@ describe("monitoring scheduler verification flow", () => {
     );
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
     expect(mocks.refreshMonitorUptime).not.toHaveBeenCalled();
+  });
+
+  it("keeps what each failed check saw with the check", async () => {
+    const evidence = { version: 1 as const, phase: "first-byte" as const, hops: [], certificate: null, body: null, error: "timeout" };
+    mocks.checkResult = { ...mocks.checkResult, evidence } as CheckResult;
+    mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
+
+    await runCycleAndSendAlerts();
+
+    expect(mocks.appendMonitorCheck).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", evidence }));
+  });
+
+  it("keeps no failure evidence for a check counted as up", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 90,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [buildMonitor({ status: "up" })];
+
+    await runCycleAndSendAlerts();
+
+    expect(mocks.appendMonitorCheck).toHaveBeenCalledWith(expect.objectContaining({ status: "up", evidence: null }));
   });
 
   it("keeps checking every minute when verification confirms an outage", async () => {

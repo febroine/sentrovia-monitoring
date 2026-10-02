@@ -72,6 +72,7 @@ export {
   updateWorkerState,
 } from "@/lib/monitors/runtime-store";
 export {
+  getMonitorCheckEvidence,
   getCompanyMonthlyUptimeReport,
   getCompanySlaReport,
   listRecentMonitorChecks,

@@ -520,6 +520,24 @@ export const monitorChecks = pgTable("monitor_checks", {
   ),
 ]);
 
+// What a failed check saw (addresses, timings, response headers, a short body excerpt). Kept apart from
+// monitor_checks so the many queries over check history never load it; it goes with its check.
+export const monitorCheckEvidence = pgTable("monitor_check_evidence", {
+  checkId: text("check_id")
+    .primaryKey()
+    .references(() => monitorChecks.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  monitorId: text("monitor_id")
+    .notNull()
+    .references(() => monitors.id, { onDelete: "cascade" }),
+  evidence: jsonb("evidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("monitor_check_evidence_monitor_created_idx").on(table.monitorId, table.createdAt),
+]);
+
 export const monitorOutages = pgTable(
   "monitor_outages",
   {

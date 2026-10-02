@@ -11,6 +11,7 @@ import type {
 import { buildMonitorHistoryWindow } from "@/lib/monitors/history-window";
 import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 import { toEnglishUppercase } from "@/lib/text/casing";
+import { FailureEvidencePanel } from "@/components/monitoring/failure-evidence-panel";
 import { formatLatency } from "@/components/monitoring/utils";
 import { formatPanelDateTime } from "@/lib/time";
 
@@ -142,6 +143,10 @@ export function MonitorHistoryDialog({
                 </div>
               </div>
             </div>
+
+            {selection.point.status !== "up" ? (
+              <FailureEvidencePanel key={selection.point.id} checkId={selection.point.id} />
+            ) : null}
 
             {selectedDiagnostic ? (
               <div className="rounded-md bg-muted/20 p-4">

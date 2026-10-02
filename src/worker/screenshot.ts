@@ -234,6 +234,8 @@ function inspectScreenshotRedirect(
       method: "GET",
       // The browser sends this identity too, so a bot filter answers the probe the way it answers the page.
       headers: MONITOR_REQUEST_HEADERS,
+      // A fresh connection to the address approved for this capture, never a pooled one.
+      agent: false,
       family: toScreenshotAddressFamily(monitor.ipFamily) ?? undefined,
       lookup: createPinnedLookup(target),
       rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
