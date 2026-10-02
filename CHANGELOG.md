@@ -8,6 +8,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 - Monitors can be duplicated from the monitor list (copy icon) or from the edit dialog. The create form opens with every setting of the original and the name "<name> (copy)"; the target must be changed before saving, a heartbeat copy gets its own heartbeat URL, and a PostgreSQL copy asks for the database password again.
 - The monitor timeline shows a 90-day calendar of daily availability: one cell per day in the workspace time zone, colored by how much downtime the day had, with the day's uptime, downtime, incidents and checks on hover, tap or arrow keys, and a table of the days with downtime. It uses the same outage-time uptime as reports and SLA figures; days without checks show as no data. A new index on `monitor_checks (monitor_id, created_at)` keeps the per-monitor query fast in large workspaces.
+- Browser alerts: in **Profile → Alerts**, each browser can turn on desktop notifications, a short alert sound, and alerts for recoveries. While a console tab is open, a confirmed outage (not a failure still being verified) shows a notification and plays the sound; several monitors failing together share one notification, and clicking it opens the offline monitors. Only one open tab alerts, and another tab takes over when it is closed. The choice is saved in the browser; nothing changes for email and the other channels.
 
 ### Fixed
 

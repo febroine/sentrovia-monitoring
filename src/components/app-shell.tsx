@@ -10,6 +10,7 @@ import { accentThemes, normalizeSidebarAccent, type SidebarAccent } from '@/lib/
 import { cn } from '@/lib/utils';
 import { buildLoginRedirectPath } from '@/lib/auth/redirect';
 import { GlobalCommandSearch } from '@/components/global-command-search';
+import { BrowserAlerts } from '@/components/browser-alerts';
 
 const AUTH_ROUTES = ['/login', '/onboarding'];
 const PUBLIC_ROUTES = ['/status'];
@@ -154,6 +155,7 @@ export default function AppShell({
         <BottomNav onOpenSearch={() => setSearchOpen(true)} className="fixed bottom-0 left-0 right-0 z-50 bg-surface-low shadow-[0_-14px_32px_rgba(0,0,0,0.32)] md:hidden" />
       </div>
       {initialUser ? <GlobalCommandSearch open={searchOpen} onOpenChange={setSearchOpen} role={initialUser.role} /> : null}
+      {initialUser ? <BrowserAlerts /> : null}
     </div>
   );
 }

@@ -71,6 +71,7 @@ Sentrovia checks reachability and response health. It does not collect CPU, memo
 
 **Alerts that reach people**
 - Channels: email, Telegram, Discord, and webhooks.
+- Optional desktop notifications and an alert sound while the console is open (Profile → Alerts, per browser).
 - Per-monitor and per-company recipients, with duplicate addresses removed. A company address can be limited to selected monitors.
 - Editable templates in English or Turkish.
 - Delivery history with retries and resend.
