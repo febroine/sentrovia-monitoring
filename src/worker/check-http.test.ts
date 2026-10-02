@@ -41,8 +41,33 @@ describe("http monitor checks", () => {
 
     expect(result.ok).toBe(true);
     expect(headers["user-agent"]).toMatch(/^Mozilla\/5\.0 .* Chrome\/[\d.]+ Safari\/537\.36 Sentrovia-Monitor$/);
-    expect(headers.accept).toContain("text/html");
+    expect(headers.accept).toBe("*/*");
+    expect(headers["accept-language"]).toBeUndefined();
     expect(headers["accept-encoding"]).toBeUndefined();
+  });
+
+  it("keeps JSON monitors working against APIs that negotiate HTML for browsers", async () => {
+    const server = await createServer((request, response) => {
+      if (request.headers.accept?.startsWith("text/html")) {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end("<html>browsable API</html>");
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ status: "ok" }));
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({
+        monitorType: "json",
+        url: `http://127.0.0.1:${resolveServerPort(server)}/health`,
+        jsonPath: "status",
+        jsonExpectedValue: "ok",
+      })
+    );
+
+    expect(result.errorMessage).toBeNull();
+    expect(result.ok).toBe(true);
   });
 
   it("marks an unfollowed redirect as down when redirect limit is reached", async () => {
