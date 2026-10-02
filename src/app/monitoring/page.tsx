@@ -78,6 +78,8 @@ interface PendingMonitorRestore {
 export default function MonitoringPage() {
   const searchParams = useSearchParams();
   const requestedSearch = searchParams.get("search")?.trim() ?? "";
+  // Links such as the dashboard's offline alert open the list already filtered.
+  const requestedStatus = searchParams.get("status");
   const requestedCreate = searchParams.get("create") === "1";
   const requestedTimeline = searchParams.get("timeline")?.trim() ?? "";
   const requestedTimelineAt = searchParams.get("at")?.trim() ?? "";
@@ -390,11 +392,12 @@ export default function MonitoringPage() {
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       setSearch(requestedSearch);
+      if (requestedStatus === "up" || requestedStatus === "down") setStatusFilter(requestedStatus);
       setPage(1);
       if (requestedCreate) setCreateOpen(true);
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [requestedSearch, requestedCreate]);
+  }, [requestedSearch, requestedStatus, requestedCreate]);
 
   async function handleCreate(payload: MonitorPayload) {
     const created = await createMonitor(payload);

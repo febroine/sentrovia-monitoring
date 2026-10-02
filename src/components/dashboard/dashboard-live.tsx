@@ -236,7 +236,10 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
           className="flex items-center gap-3 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
           <p className="min-w-0 flex-1">
-            {data.summary.offline} monitor{data.summary.offline === 1 ? "" : "s"} currently offline. Verification and delivery history are available below.
+            {data.summary.offline} monitor{data.summary.offline === 1 ? "" : "s"} currently offline.{" "}
+            <Link href="/monitoring?status=down" className="font-medium underline underline-offset-4 hover:no-underline">
+              Show offline monitor{data.summary.offline === 1 ? "" : "s"}
+            </Link>
           </p>
           <Button
             type="button"

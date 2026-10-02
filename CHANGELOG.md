@@ -31,6 +31,9 @@ All notable changes to Sentrovia are documented here. Published release tags and
 - Limiting a company address to selected monitors is quicker: switching to *Selected monitors* starts with every monitor ticked (so the address does not go silent by accident), and the list shows "n of m selected", sorts by name, and offers Select all / Clear, search by name or URL, and *Show selected only*.
 - Icon-only buttons show their name as a tooltip on hover.
 - Fixed layouts that ran past the screen: dashboard cards on phones (the scrolling monitor focus strip widened every card), and on tablets and small laptops the dashboard activation strip, the companies header, the reports ranking section and the settings page, which now uses its section picker until the side navigation fits.
+- System Health on the dashboard now covers only the signed-in workspace. It counted due and delayed monitors across every workspace and listed the names and targets of other workspaces' delayed monitors to any workspace administrator, so an empty workspace reported "1 active monitor is more than one interval behind schedule". Temporarily paused monitors no longer count as due.
+- A monitor added in the console is scheduled for an immediate first check, like monitors added in bulk, instead of showing "Check schedule missing" until the worker reached it.
+- The dashboard's offline alert links to the monitor list filtered to offline monitors (`/monitoring?status=down`).
 
 ## [0.1.7] - 2026-09-22
 

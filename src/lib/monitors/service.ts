@@ -278,9 +278,11 @@ export async function createMonitor(userId: string, input: MonitorInput, workspa
       tx,
       resolvedWorkspaceId
     );
+    // Due right away, like monitors added in bulk; without a schedule the console reported a new
+    // monitor as "Check schedule missing" until its first check.
     const [monitor] = await tx
       .insert(monitors)
-      .values(values)
+      .values({ ...values, nextCheckAt: values.isActive ? new Date() : null })
       .returning();
 
     return monitor;

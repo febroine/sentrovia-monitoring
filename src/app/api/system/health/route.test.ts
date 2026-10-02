@@ -42,7 +42,8 @@ describe("system health route", () => {
       department: null,
       role: "admin",
       sessionVersion: 1,
-    });
+      activeWorkspaceId: "workspace-1",
+    } as Awaited<ReturnType<typeof requireAdminSession>>);
     vi.mocked(getSystemHealth).mockResolvedValueOnce({
       generatedAt: "2026-07-16T09:00:00.000Z",
       overallStatus: "healthy",
@@ -70,5 +71,7 @@ describe("system health route", () => {
 
     expect(response.status).toBe(200);
     expect(body.health.overallStatus).toBe("healthy");
+    // Only the admin's own workspace is reported.
+    expect(getSystemHealth).toHaveBeenCalledWith("workspace-1");
   });
 });
