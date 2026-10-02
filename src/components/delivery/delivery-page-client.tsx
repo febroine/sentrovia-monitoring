@@ -298,7 +298,7 @@ export function DeliveryPageClient() {
     setPendingAction(`retry-${eventId}`);
 
     try {
-      const response = await fetch(`/api/delivery/retry?eventId=${encodeURIComponent(eventId)}`, { method: "POST" });
+      const response = await fetch(`/api/delivery/retry?eventId=${encodeURIComponent(eventId)}&page=${historyPage}`, { method: "POST" });
       const data = await readJsonOrNull<{ delivery?: DeliveryHistoryRecord; overview?: DeliveryOverview; message?: string }>(response);
       if (!response.ok) {
         throw new Error(data?.message ?? "Unable to retry this delivery.");
@@ -309,7 +309,11 @@ export function DeliveryPageClient() {
       setHistoryPage(nextOverview.pagination.page);
       setSelectedDeliveryIds((ids) => ids.filter((id) => id !== eventId));
       setSelectedRow(data?.delivery ?? null);
-      setMessage({ text: "Delivery retry completed.", tone: "success" });
+      // The retry ran, but the delivery itself may have failed again.
+      const delivery = data?.delivery;
+      setMessage(delivery?.status === "delivered"
+        ? { text: "The delivery was sent.", tone: "success" }
+        : { text: `The retry did not go through${delivery?.errorMessage ? `: ${delivery.errorMessage}` : "."}`, tone: "error" });
     } catch (error) {
       setMessage({ text: toMessage(error, "Unable to retry this delivery."), tone: "error" });
     } finally {

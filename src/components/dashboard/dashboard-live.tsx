@@ -41,7 +41,10 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [customizationError, setCustomizationError] = useState<string | null>(null);
   const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
-  const [outageBannerDismissed, setOutageBannerDismissed] = useState(false);
+  // How many monitors were offline when the outage banner was dismissed; more offline shows it again.
+  const [dismissedOfflineCount, setDismissedOfflineCount] = useState<number | null>(null);
+  // The browser gave up reconnecting (for example after the session ended).
+  const [streamClosed, setStreamClosed] = useState(false);
 
   useEffect(() => {
     const stream = new EventSource("/api/dashboard/stream");
@@ -56,6 +59,11 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     };
 
     stream.onerror = () => {
+      if (stream.readyState === EventSource.CLOSED) {
+        setStreamClosed(true);
+        setStreamError("Live updates stopped. Reload the page to resume them; you may need to sign in again.");
+        return;
+      }
       setStreamError("Live dashboard disconnected. Reconnecting automatically.");
     };
 
@@ -182,12 +190,12 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
                   : "bg-primary/10 text-primary",
               )}
             >
-              {streamError ? (
+              {streamError && !streamClosed ? (
                 <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" />
               ) : (
                 <Radio className="size-3.5" aria-hidden="true" />
               )}
-              {streamError ? "Reconnecting" : "Live"}
+              {streamClosed ? "Offline" : streamError ? "Reconnecting" : "Live"}
             </span>
           </div>
           <Button variant="outline" size="sm" onClick={() => { setCustomizationError(null); setCustomizationOpen((open) => !open); }}>
@@ -219,18 +227,25 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       ) : null}
 
       {streamError ? (
-        <div className="rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-          {streamError}
+        <div className="flex flex-col gap-2 rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 sm:flex-row sm:items-center sm:justify-between dark:text-amber-300">
+          <span>{streamError}</span>
+          {streamClosed ? (
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
       {data.warnings.length > 0 ? (
         <div className="rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-          Some dashboard data is temporarily unavailable: {data.warnings.join(", ")}. Review the server log and database migration status.
+          {isAdmin
+            ? `Some dashboard data is temporarily unavailable: ${data.warnings.join(", ")}. Review the server log and database migration status.`
+            : "Some dashboard data is temporarily unavailable. The figures will fill in once it is back."}
         </div>
       ) : null}
 
-      {showOutageBanner && data.summary.offline > 0 && !outageBannerDismissed ? (
+      {showOutageBanner && data.summary.offline > 0 && (dismissedOfflineCount === null || data.summary.offline > dismissedOfflineCount) ? (
         <div
           role="alert"
           className="flex items-center gap-3 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
@@ -248,7 +263,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             aria-label="Dismiss offline monitor alert"
             title="Dismiss"
-            onClick={() => setOutageBannerDismissed(true)}
+            onClick={() => setDismissedOfflineCount(data.summary.offline)}
           >
             <X className="size-4" />
           </Button>

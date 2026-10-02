@@ -70,6 +70,19 @@ describe("workspace backup validation", () => {
     expect(restored[0].databasePassword).toBe("database-secret");
   });
 
+  it("names the item and field when a backup holds invalid data", () => {
+    const bundle = buildBackupBundle({
+      monitors: [
+        { ...DEFAULT_MONITOR_FORM, name: "Shop", url: "https://shop.example.com" },
+        { ...DEFAULT_MONITOR_FORM, name: "Checkout API", monitorType: "json", url: "https://api.example.com/health", jsonPath: "" },
+      ],
+    });
+
+    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
+      'The backup file has invalid data. monitor "Checkout API" (jsonPath): Enter a JSON path such as data.status or result.items[0].name.'
+    );
+  });
+
   it("rejects a redacted PostgreSQL password when no matching secret exists", () => {
     const bundle = buildBackupBundle({
       monitors: [{

@@ -300,9 +300,9 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
     throw new Error("The backup file version or source is not supported.");
   }
 
-  const settings = settingsSchema.parse(bundle.settings);
-  const companies = companyInputSchema.array().parse(bundle.companies);
-  const monitors = monitorInputSchema.array().parse(bundle.monitors);
+  const settings = parseBackupSection(settingsSchema, bundle.settings, () => "settings");
+  const companies = parseBackupSection(companyInputSchema.array(), bundle.companies, (index) => describeBackupItem("company", bundle.companies, index));
+  const monitors = parseBackupSection(monitorInputSchema.array(), bundle.monitors, (index) => describeBackupItem("monitor", bundle.monitors, index));
   const publicStatusCompanyName = normalizeBackupCompanyName(bundle.publicStatusCompanyName);
   const publicStatusPages = parseBackupPublicStatusPages(bundle, settings, publicStatusCompanyName);
 
@@ -314,6 +314,31 @@ export function validateWorkspaceBackupBundle(bundle: WorkspaceBackupBundle) {
   assertPublicStatusPageReferences(publicStatusPages, companies);
 
   return { settings, companies, monitors, publicStatusCompanyName, publicStatusPages };
+}
+
+// Validates one part of a backup and, when it is invalid, says which item and field in plain words
+// instead of passing on the validator's raw issue list.
+function parseBackupSection<T>(
+  schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false; error: { issues: Array<{ path: PropertyKey[]; message: string }> } } },
+  value: unknown,
+  describe: (index: number | null) => string
+): T {
+  const result = schema.safeParse(value);
+  if (result.success) return result.data;
+  const lines = result.error.issues.slice(0, 3).map((issue) => {
+    const [first, ...rest] = issue.path;
+    const index = typeof first === "number" ? first : null;
+    const field = (index === null ? issue.path : rest).filter((part) => typeof part === "string").join(".");
+    return `${describe(index)}${field ? ` (${field})` : ""}: ${issue.message}`;
+  });
+  const more = result.error.issues.length > 3 ? ` And ${result.error.issues.length - 3} more problem${result.error.issues.length - 3 === 1 ? "" : "s"}.` : "";
+  throw new Error(`The backup file has invalid data. ${lines.join(" ")}${more}`);
+}
+
+function describeBackupItem(kind: string, items: unknown, index: number | null) {
+  if (index === null || !Array.isArray(items)) return `${kind} list`;
+  const name = (items[index] as { name?: unknown } | undefined)?.name;
+  return typeof name === "string" && name.trim() ? `${kind} "${name.trim()}"` : `${kind} ${index + 1}`;
 }
 
 export function restorePostgresMonitorPasswords(

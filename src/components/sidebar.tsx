@@ -12,6 +12,7 @@ import type { WorkerStatus } from '@/lib/monitors/types';
 import { normalizeSidebarAccent, type SidebarAccent } from '@/lib/settings/accent-theme';
 import { cn } from '@/lib/utils';
 import { SIDEBAR_ACCENT_UPDATED_EVENT } from '@/stores/use-settings-store';
+import { startVisiblePolling } from '@/lib/client/visible-polling';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -150,8 +151,7 @@ export default function Sidebar({
     }
 
     void loadWorker('1h');
-    const intervalId = window.setInterval(() => void loadWorker('1h'), 15_000);
-    return () => window.clearInterval(intervalId);
+    return startVisiblePolling(() => void loadWorker('1h'), 15_000);
   }, [loadWorker, showWorkerStatus]);
 
   useEffect(() => {

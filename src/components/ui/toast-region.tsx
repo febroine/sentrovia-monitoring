@@ -30,10 +30,9 @@ export function ToastRegion() {
     return () => window.removeEventListener(TOAST_EVENT, handleToast);
   }, []);
 
-  if (toasts.length === 0) return null;
-
+  // The region stays mounted, so screen readers already watch it when the first toast arrives.
   return (
-    <div className="fixed right-4 top-4 z-[100] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2" aria-live="polite">
+    <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2" aria-live="polite">
       {toasts.map((toast) => (
         <Toast key={toast.id} item={toast} onClose={() => setToasts((current) => current.filter((item) => item.id !== toast.id))} />
       ))}
@@ -45,10 +44,12 @@ function Toast({ item, onClose }: { item: ToastItem; onClose: () => void }) {
   return (
     <div
       role={item.tone === "error" ? "alert" : "status"}
+      // An opaque surface with a tinted edge: a translucent tint let the page show through the text.
       className={cn(
-        "flex items-start gap-3 rounded-md bg-background px-3 py-3 shadow-md",
-        item.tone === "success" && "bg-emerald-500/10",
-        item.tone === "error" && "bg-destructive/10"
+        "pointer-events-auto flex items-start gap-3 rounded-md border border-border bg-popover px-3 py-3 text-popover-foreground shadow-lg",
+        item.tone === "success" && "border-l-4 border-l-emerald-500",
+        item.tone === "error" && "border-l-4 border-l-destructive",
+        item.tone === "info" && "border-l-4 border-l-sky-500"
       )}
     >
       <ToastIcon tone={item.tone} />

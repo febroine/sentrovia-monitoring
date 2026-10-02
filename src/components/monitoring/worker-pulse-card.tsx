@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useWorkerStore } from "@/stores/use-worker-store";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 import { formatPanelDateTime } from "@/lib/time";
+import { startVisiblePolling } from "@/lib/client/visible-polling";
 
 // A due monitor normally starts within one poll interval; waiting well beyond that means the slots
 // are full. The margin keeps the warning quiet at the default 10-second interval.
@@ -39,8 +40,7 @@ export function WorkerPulseCard() {
 
   useEffect(() => {
     void loadWorker();
-    const intervalId = window.setInterval(() => void loadWorker(), 10_000);
-    return () => window.clearInterval(intervalId);
+    return startVisiblePolling(() => void loadWorker(), 10_000);
   }, [loadWorker]);
 
   useEffect(() => {

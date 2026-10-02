@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatPanelDateTime } from "@/lib/time";
 import { useWorkerStore } from "@/stores/use-worker-store";
+import { startVisiblePolling } from "@/lib/client/visible-polling";
 
 interface SystemData {
   cpu: { usage: number; model: string; cores: number };
@@ -48,8 +49,7 @@ export function SystemStatus({ use24HourClock = true }: { use24HourClock?: boole
 
   useEffect(() => {
     void refreshAll(false);
-    const intervalId = window.setInterval(() => void refreshAll(false), REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
+    return startVisiblePolling(() => void refreshAll(false), REFRESH_INTERVAL_MS);
   }, [refreshAll]);
 
   const workerActive = worker?.running ?? false;

@@ -12,6 +12,7 @@ import { buildCsv, EXPORT_PRESETS } from "@/lib/logs/presets";
 import type { LogFilters, LogPresetRecord, LogRecord } from "@/lib/logs/types";
 import { showToast } from "@/lib/client-toast";
 import { createLogPreset, deleteLogPreset, loadLogPresets } from "@/lib/logs/client-presets";
+import { startVisiblePolling } from "@/lib/client/visible-polling";
 
 const DEFAULT_FILTERS: LogFilters = {
   search: "",
@@ -142,8 +143,7 @@ export default function LogsPage() {
   }, [loadLogs, loadPresets]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => void loadLogs(true), AUTO_REFRESH_MS);
-    return () => window.clearInterval(intervalId);
+    return startVisiblePolling(() => void loadLogs(true), AUTO_REFRESH_MS);
   }, [loadLogs]);
 
   async function clearAllLogs() {
