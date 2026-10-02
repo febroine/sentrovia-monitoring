@@ -1,6 +1,7 @@
 import http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { MONITOR_USER_AGENT } from "@/lib/monitors/request-identity";
 import { resolveMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 
 vi.mock("@/lib/security/public-network-target", async (importOriginal) => {
@@ -60,6 +61,21 @@ describe("failure screenshot browser isolation", () => {
     }));
 
     expect(attachment?.content).toBeInstanceOf(Buffer);
+  }, 25_000);
+
+  it("loads the page with the same identity as the HTTP check", async () => {
+    let userAgent: string | undefined;
+    const server = await createServer((request, response) => {
+      userAgent = request.headers["user-agent"];
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Identity</h1>");
+    });
+
+    await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/identity`,
+    }));
+
+    expect(userAgent).toBe(MONITOR_USER_AGENT);
   }, 25_000);
 
   it("leaves the screenshot out when the site responds normally again", async () => {

@@ -1439,7 +1439,13 @@ describe("verification timeout escalation", () => {
   it("increases verification timeout and caps it", () => {
     expect(calculateVerificationTimeout(5000, 1)).toBe(7500);
     expect(calculateVerificationTimeout(5000, 2)).toBe(10000);
-    expect(calculateVerificationTimeout(100000, 2)).toBe(120000);
+    expect(calculateVerificationTimeout(100000, 2)).toBe(200000);
+  });
+
+  it("gives even the longest monitor timeout twice its time during verification", () => {
+    expect(calculateVerificationTimeout(120000, 1)).toBe(180000);
+    expect(calculateVerificationTimeout(120000, 2)).toBe(240000);
+    expect(calculateVerificationTimeout(120000, 10)).toBe(240000);
   });
 });
 

@@ -27,6 +27,24 @@ describe("http monitor checks", () => {
     servers.length = 0;
   });
 
+  it("identifies as a desktop browser so bot filters treat the check like a visitor", async () => {
+    let headers: http.IncomingHttpHeaders = {};
+    const server = await createServer((request, response) => {
+      headers = request.headers;
+      response.writeHead(200, { "Content-Type": "text/plain" });
+      response.end("ok");
+    });
+
+    const result = await checkHttpMonitor(
+      buildHttpMonitor({ url: `http://127.0.0.1:${resolveServerPort(server)}/` })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(headers["user-agent"]).toMatch(/^Mozilla\/5\.0 .* Chrome\/[\d.]+ Safari\/537\.36 Sentrovia-Monitor$/);
+    expect(headers.accept).toContain("text/html");
+    expect(headers["accept-encoding"]).toBeUndefined();
+  });
+
   it("marks an unfollowed redirect as down when redirect limit is reached", async () => {
     const server = await createServer((_, response) => {
       response.writeHead(302, { Location: "/healthy" });

@@ -4,6 +4,7 @@ import https from "node:https";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { MONITOR_USER_AGENT } from "@/lib/monitors/request-identity";
 import { hasExpectedStatusCodeOverride, isExpectedHttpStatusCode } from "@/lib/monitors/status-codes";
 import type { NotificationLanguage } from "@/lib/settings/types";
 import {
@@ -321,6 +322,8 @@ async function captureScreenshotAttachment(
       ignoreHTTPSErrors: monitor.ignoreSslErrors,
       serviceWorkers: "block",
       viewport: SCREENSHOT_VIEWPORT,
+      // Same identity as the HTTP check, so both see the page a bot filter serves to that client.
+      userAgent: MONITOR_USER_AGENT,
     });
     const screenshotUrl = resolveScreenshotUrl(monitor);
     const page = await createScreenshotPage(context, screenshotUrl, approvedTargets);

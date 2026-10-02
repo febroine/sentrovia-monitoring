@@ -4,6 +4,7 @@ import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import type { IncomingMessage } from "node:http";
 import type { TLSSocket } from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
+import { MONITOR_REQUEST_HEADERS } from "@/lib/monitors/request-identity";
 import {
   hasExpectedStatusCodeOverride,
   isCustomExpectedStatusCode,
@@ -195,6 +196,7 @@ async function requestWithRedirects(
       parsed,
       {
         method,
+        headers: MONITOR_REQUEST_HEADERS,
         family: toNodeFamily(monitor.ipFamily),
         lookup: createPinnedLookup(resolvedTarget),
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
