@@ -12,6 +12,8 @@ function isAuthError(error: unknown): error is AuthError {
 type DatabaseErrorShape = {
   code?: string;
   constraint?: string;
+  // The name postgres.js uses for the violated constraint or unique index.
+  constraint_name?: string;
   errno?: string | number;
   message?: string;
   cause?: DatabaseErrorShape;
@@ -107,15 +109,17 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
 }
 
 function mapUniqueConstraintError(error: DatabaseErrorShape) {
-  const constraint = error.constraint?.toLowerCase() ?? "";
+  const constraint = (error.constraint ?? error.constraint_name ?? "").toLowerCase();
 
-  if (constraint.includes("public_status_slug")) {
+  if (constraint.includes("public_status_slug") || constraint.includes("public_status_pages_slug")) {
     return new AuthError("Public status slug is already in use.", 409);
   }
 
   if (
     constraint.includes("public_status_pages_user_company")
     || constraint.includes("public_status_pages_user_workspace")
+    || constraint.includes("public_status_pages_workspace_company")
+    || constraint.includes("public_status_pages_workspace_default")
   ) {
     return new AuthError("A public status page already exists for this scope.", 409);
   }
@@ -124,12 +128,20 @@ function mapUniqueConstraintError(error: DatabaseErrorShape) {
     return new AuthError("An account with this username already exists.", 409);
   }
 
-  if (constraint.includes("users_email") || constraint.length === 0) {
+  if (constraint.includes("users_email")) {
     return new AuthError("An account with this email already exists.", 409);
   }
 
-  if (constraint.includes("companies_user_normalized_name")) {
+  if (constraint.includes("companies_user_normalized_name") || constraint.includes("companies_workspace_normalized_name")) {
     return new AuthError("A company with this name already exists.", 409);
+  }
+
+  if (constraint.includes("log_filter_presets_user_name")) {
+    return new AuthError("A saved filter with this name already exists.", 409);
+  }
+
+  if (constraint.includes("workspace_members_workspace_user")) {
+    return new AuthError("This account is already a member of the workspace.", 409);
   }
 
   if (constraint.includes("monitors_heartbeat_token")) {

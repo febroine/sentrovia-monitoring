@@ -14,6 +14,7 @@ interface CompaniesState {
   deleteCompany: (id: string) => Promise<CompanyActionResult | null>;
   bulkAction: (action: "activate" | "deactivate" | "delete", ids: string[]) => Promise<CompanyActionResult | null>;
   restoreCompanies: (ids: string[]) => Promise<boolean>;
+  clearError: () => void;
 }
 
 type CompanyActionResult = { ids: string[]; undoUntil: string | null };
@@ -177,6 +178,7 @@ export const useCompaniesStore = create<CompaniesState>((set) => ({
       return null;
     }
   },
+  clearError: () => set({ error: null }),
   restoreCompanies: async (ids) => {
     invalidateCompanyLoads();
     set({ saving: true });

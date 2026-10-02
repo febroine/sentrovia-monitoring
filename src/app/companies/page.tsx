@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FormAlert } from "@/components/ui/form-alert";
+import { showToast } from "@/lib/client-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,8 +35,10 @@ type PendingCompanyRestore = { ids: string[]; expiresAt: number };
 type CompanyDeleteRequest = { ids: string[]; names: string[]; monitorsCount: number };
 
 export default function CompaniesPage() {
-  const { companies, loading, saving, error, loadCompanies, createCompany, updateCompany, deleteCompany, bulkAction, restoreCompanies } =
+  const { companies, loading, saving, error, loadCompanies, createCompany, updateCompany, deleteCompany, bulkAction, restoreCompanies, clearError } =
     useCompaniesStore();
+  // Why the open add or edit dialog could not be saved, shown inside it.
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<CompanyPayload>(DEFAULT_COMPANY_FORM);
   // The form as it was opened, to tell whether closing would lose edits.
@@ -110,23 +114,37 @@ export default function CompaniesPage() {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setDialogError(null);
     const created = await createCompany(form);
     if (created) {
       setForm(DEFAULT_COMPANY_FORM);
       setFormSnapshot(DEFAULT_COMPANY_FORM);
       setCreateOpen(false);
+      showToast(`${created.name} was added.`, "success");
+    } else {
+      takeStoreErrorIntoDialog();
     }
   }
 
   async function handleUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editing) return;
+    setDialogError(null);
     const updated = await updateCompany(editing.id, form);
     if (updated) {
       setEditing(null);
       setForm(DEFAULT_COMPANY_FORM);
       setFormSnapshot(DEFAULT_COMPANY_FORM);
+      showToast("Company updated.", "success");
+    } else {
+      takeStoreErrorIntoDialog();
     }
+  }
+
+  // The store keeps the error for the page banner, which an open dialog covers; show it in the dialog.
+  function takeStoreErrorIntoDialog() {
+    setDialogError(useCompaniesStore.getState().error ?? "The company could not be saved.");
+    clearError();
   }
 
   async function handleBulk(action: "activate" | "deactivate" | "delete") {
@@ -186,7 +204,14 @@ export default function CompaniesPage() {
     }
   }
 
+  // Each dialog opens without the previous attempt's error.
+  function openCreateDialog() {
+    setDialogError(null);
+    setCreateOpen(true);
+  }
+
   function openEdit(company: CompanyRecord) {
+    setDialogError(null);
     setEditing(company);
     const nextForm: CompanyPayload = {
       name: company.name,
@@ -241,7 +266,7 @@ export default function CompaniesPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search companies" className="pl-9" />
           </div>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => openCreateDialog()}>
             <Plus data-icon="inline-start" className="h-4 w-4" />
             Add company
           </Button>
@@ -316,7 +341,7 @@ export default function CompaniesPage() {
                       action={search.trim() ? (
                         <Button variant="outline" size="sm" onClick={() => setSearch("")}>Clear search</Button>
                       ) : (
-                        <Button size="sm" onClick={() => setCreateOpen(true)}>Add first company</Button>
+                        <Button size="sm" onClick={() => openCreateDialog()}>Add first company</Button>
                       )}
                     />
                   </TableCell>
@@ -390,10 +415,10 @@ export default function CompaniesPage() {
       </Dialog>
 
       {companyFormDiscardDialog}
-      <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} onOpenChange={(open) => {
+      <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} error={dialogError} onOpenChange={(open) => {
         if (open) {
           setFormSnapshot(DEFAULT_COMPANY_FORM);
-          setCreateOpen(true);
+          openCreateDialog();
           return;
         }
         guardCompanyFormClose(() => {
@@ -402,7 +427,7 @@ export default function CompaniesPage() {
           setFormSnapshot(DEFAULT_COMPANY_FORM);
         });
       }} onFormChange={setForm} onSubmit={handleCreate} />
-      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} monitors={editing ? companyMonitors(editing.id) : undefined} onOpenChange={(open) => {
+      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} error={dialogError} monitors={editing ? companyMonitors(editing.id) : undefined} onOpenChange={(open) => {
         if (open) return;
         guardCompanyFormClose(() => {
           setEditing(null);
@@ -443,12 +468,14 @@ function CompanyDialog({
   onOpenChange,
   onFormChange,
   onSubmit,
+  error,
 }: {
   open: boolean;
   title: string;
   description: string;
   form: CompanyPayload;
   saving: boolean;
+  error: string | null;
   // The company's monitors when editing; a new company has none.
   monitors?: MonitorRecord[];
   onOpenChange: (open: boolean) => void;
@@ -552,12 +579,13 @@ function CompanyDialog({
               </div>
             </div>
           </div>
+          <FormAlert message={error} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save Company"}
+              {saving ? "Saving…" : "Save company"}
             </Button>
           </DialogFooter>
         </form>

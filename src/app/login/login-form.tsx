@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 const inputClassName =
   "h-[3.375rem] rounded-[9px] border-blue-200/25 bg-[#091426]/78 px-4 text-base text-white shadow-[inset_0_1px_rgba(255,255,255,0.025),0_14px_36px_rgba(0,0,0,0.12)] backdrop-blur-[2px] transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-blue-100/38 hover:border-blue-100/40 focus-visible:border-primary/85 focus-visible:bg-[#0a172b]/90 focus-visible:ring-2 focus-visible:ring-primary/25";
 
-export function LoginForm() {
+export function LoginForm({ notice = null }: { notice?: string | null }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -76,6 +76,8 @@ export function LoginForm() {
       if (!response.ok) {
         clearPasswordFields(formRef.current);
         setError(data?.message ?? "Unable to sign in with those credentials.");
+        // The password was cleared; put the cursor back where it needs to be retyped.
+        formRef.current?.querySelector<HTMLInputElement>('input[name="password"]')?.focus();
         return;
       }
 
@@ -153,6 +155,12 @@ export function LoginForm() {
             </Button>
           </div>
         </FieldBlock>
+
+        {notice && !error ? (
+          <div role="status" className="rounded-[9px] border border-blue-200/20 bg-[#091426]/78 px-4 py-3.5 text-sm leading-5 text-blue-50">
+            {notice}
+          </div>
+        ) : null}
 
         {error ? (
           <div

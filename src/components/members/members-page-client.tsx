@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FormAlert } from "@/components/ui/form-alert";
+import { showToast } from "@/lib/client-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -71,6 +73,8 @@ export default function MembersPageClient() {
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
   const [createForm, setCreateForm] = useState<CreateMemberForm>(EMPTY_CREATE_FORM);
   const [createOpen, setCreateOpen] = useState(false);
+  // Errors of the open add, edit or delete dialog, shown inside it.
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   useEffect(() => {
     const requestedSearch = new URLSearchParams(window.location.search).get("search")?.trim();
@@ -147,7 +151,7 @@ export default function MembersPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(createForm),
       });
-      const data = (await response.json()) as { member?: MemberRecord; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { member?: MemberRecord; message?: string };
       if (!response.ok || !data.member) {
         throw new Error(data.message ?? "Unable to add the member.");
       }
@@ -155,9 +159,10 @@ export default function MembersPageClient() {
       setMembers((current) => sortMembers([...current, data.member as MemberRecord]));
       setCreateForm(EMPTY_CREATE_FORM);
       setCreateOpen(false);
-      setError(null);
+      setDialogError(null);
+      showToast(`${data.member.firstName} ${data.member.lastName} was added.`, "success");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to add the member.");
+      setDialogError(caughtError instanceof Error ? caughtError.message : "Unable to add the member.");
     } finally {
       setSaving(false);
     }
@@ -176,17 +181,18 @@ export default function MembersPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
       });
-      const data = (await response.json()) as { member?: MemberRecord; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { member?: MemberRecord; message?: string };
       if (!response.ok || !data.member) {
         throw new Error(data.message ?? "Unable to update the member.");
       }
 
       setEditingMember(null);
-      setError(null);
+      setDialogError(null);
+      showToast("Member updated.", "success");
       await loadMembers();
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to update the member.");
+      setDialogError(caughtError instanceof Error ? caughtError.message : "Unable to update the member.");
     } finally {
       setSaving(false);
     }
@@ -205,7 +211,7 @@ export default function MembersPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: memberIds }),
       });
-      const data = (await response.json()) as { ids?: string[]; message?: string; signedOut?: boolean };
+      const data = (await response.json().catch(() => ({}))) as { ids?: string[]; message?: string; signedOut?: boolean };
       if (!response.ok || !data.ids) {
         throw new Error(data.message ?? "Unable to delete the selected members.");
       }
@@ -214,14 +220,17 @@ export default function MembersPageClient() {
       setMembers((current) => current.filter((member) => !deleted.has(member.id)));
       setSelectedIds(new Set());
       setDeleteTargetIds([]);
-      setError(null);
+      setDialogError(null);
+      if (!data.signedOut) {
+        showToast(`${data.ids.length} member${data.ids.length === 1 ? "" : "s"} removed.`, "success");
+      }
 
       if (data.signedOut) {
         router.replace("/login?message=account-removed");
         router.refresh();
       }
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to delete the selected members.");
+      setDialogError(caughtError instanceof Error ? caughtError.message : "Unable to delete the selected members.");
     } finally {
       setSaving(false);
     }
@@ -259,6 +268,12 @@ export default function MembersPageClient() {
       return new Set([...current, ...selectableFilteredIds]);
     });
   }
+
+  // Each dialog starts without the previous one's error.
+  const deleteDialogOpen = deleteTargetIds.length > 0;
+  useEffect(() => {
+    setDialogError(null);
+  }, [createOpen, editingMember, deleteDialogOpen]);
 
   function openEdit(member: MemberRecord) {
     if (!canSelectMember(member)) {
@@ -478,6 +493,7 @@ export default function MembersPageClient() {
         onChange={setCreateForm}
         actorRole={currentUserRole}
         onSubmit={() => void createMember()}
+        error={dialogError}
       />
 
       <Dialog open={Boolean(editingMember)} onOpenChange={(open) => !open && setEditingMember(null)}>
@@ -522,6 +538,7 @@ export default function MembersPageClient() {
               </Field>
             ) : null}
           </div>
+          <FormAlert message={dialogError} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMember(null)}>Cancel</Button>
             <Button onClick={() => void saveMember()} disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
@@ -552,6 +569,7 @@ export default function MembersPageClient() {
               ))}
             </div>
           </div>
+          <FormAlert message={dialogError} />
           <DialogFooter>
             <Button variant="outline" onClick={closeDeleteConfirmation} disabled={saving}>Cancel</Button>
             <Button variant="destructive" onClick={() => void deleteMembersByIds(deleteTargetIds)} disabled={saving}>
@@ -572,6 +590,7 @@ function CreateMemberDialog({
   onChange,
   actorRole,
   onSubmit,
+  error,
 }: {
   open: boolean;
   form: CreateMemberForm;
@@ -580,6 +599,7 @@ function CreateMemberDialog({
   onChange: (form: CreateMemberForm) => void;
   actorRole: MemberRole;
   onSubmit: () => void;
+  error: string | null;
 }) {
   function updateField(field: keyof CreateMemberForm, value: string) {
     onChange({ ...form, [field]: value });
@@ -592,12 +612,19 @@ function CreateMemberDialog({
           <DialogTitle>Add member</DialogTitle>
           <DialogDescription>Create an account and assign its workspace role.</DialogDescription>
         </DialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First name">
-            <Input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
+            <Input required minLength={2} value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
           </Field>
           <Field label="Last name">
-            <Input value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
+            <Input required minLength={2} value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
           </Field>
           <Field label="Username">
             <Input
@@ -610,7 +637,7 @@ function CreateMemberDialog({
             />
           </Field>
           <Field label="Email">
-            <Input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} />
+            <Input type="email" required value={form.email} onChange={(event) => updateField("email", event.target.value)} />
           </Field>
           <Field label="Department">
             <Input value={form.department} onChange={(event) => updateField("department", event.target.value)} />
@@ -626,16 +653,21 @@ function CreateMemberDialog({
             </Select>
           </Field>
           <Field label="Password">
-            <Input type="password" minLength={12} maxLength={128} value={form.password} onChange={(event) => updateField("password", event.target.value)} />
+            <Input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={form.password} onChange={(event) => updateField("password", event.target.value)} />
           </Field>
           <Field label="Confirm password">
-            <Input type="password" minLength={12} maxLength={128} value={form.confirmPassword} onChange={(event) => updateField("confirmPassword", event.target.value)} />
+            <Input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={form.confirmPassword} onChange={(event) => updateField("confirmPassword", event.target.value)} />
           </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            At least 12 characters, with an uppercase and a lowercase letter, a number and a special character.
+          </p>
         </div>
+        <FormAlert message={error} />
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={onSubmit} disabled={saving}>{saving ? "Creating..." : "Create member"}</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button type="submit" disabled={saving}>{saving ? "Creating..." : "Create member"}</Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
