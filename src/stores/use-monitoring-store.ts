@@ -13,6 +13,8 @@ interface MonitoringState {
   loading: boolean;
   saving: boolean;
   error: string | null;
+  // Why the open create or edit form could not be saved, and which field it concerns.
+  formError: MonitorFormError | null;
   loadMonitors: (query?: MonitorQuery, options?: { silent?: boolean }) => Promise<void>;
   createMonitor: (payload: MonitorPayload) => Promise<MonitorRecord | null>;
   updateMonitor: (id: string, payload: MonitorPayload) => Promise<MonitorRecord | null>;
@@ -25,7 +27,7 @@ interface MonitoringState {
     id: string,
     flags: { isFavorite?: boolean; isCritical?: boolean; publishOnStatusPage?: boolean }
   ) => Promise<MonitorRecord | null>;
-  bulkUpdateMonitors: (ids: string[], payload: MonitorPayload) => Promise<MonitorRecord[]>;
+  bulkUpdateMonitors: (ids: string[], payload: MonitorPayload, fields?: string[]) => Promise<MonitorRecord[]>;
   bulkMoveMonitorsToCompany: (ids: string[], companyId: string | null) => Promise<MonitorRecord[]>;
   bulkUpdateMonitorPublication: (ids: string[], publishOnStatusPage: boolean) => Promise<MonitorRecord[]>;
   resetMonitorHistory: (ids: string[]) => Promise<MonitorRecord[]>;
@@ -33,6 +35,15 @@ interface MonitoringState {
   restoreMonitors: (ids: string[]) => Promise<MonitorRecord[]>;
   importMonitors: (items: MonitorRecord[]) => void;
   clearError: () => void;
+  clearFormError: () => void;
+}
+
+export type MonitorFormError = { message: string; field: string | null };
+
+class MonitorFormRequestError extends Error {
+  constructor(message: string, readonly field: string | null) {
+    super(message);
+  }
 }
 
 export type MonitorQuery = {
@@ -78,6 +89,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
   loading: true,
   saving: false,
   error: null,
+  formError: null,
   loadMonitors: async (query, options) => {
     const requestVersion = ++monitorLoadRequestVersion;
     activeMonitorLoadRequestVersion = requestVersion;
@@ -128,7 +140,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
   },
   createMonitor: async (payload) => {
     invalidateMonitorLoads();
-    set({ saving: true });
+    set({ saving: true, formError: null });
 
     try {
       const response = await fetch("/api/monitors", {
@@ -136,10 +148,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await readJsonOrNull<{ message?: string; monitor?: MonitorRecord }>(response);
+      const data = await readJsonOrNull<{ message?: string; field?: string | null; monitor?: MonitorRecord }>(response);
 
       if (!response.ok || !data?.monitor) {
-        throw new Error(data?.message ?? "Unable to create monitor.");
+        throw new MonitorFormRequestError(data?.message ?? "Unable to create monitor.", data?.field ?? null);
       }
 
       const monitor = data.monitor;
@@ -153,16 +165,15 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
 
       return monitor;
     } catch (error) {
-      const message = getErrorMessage(error, "Unable to create monitor.");
+      // Shown inside the open form, next to the field it concerns, rather than behind the dialog.
       invalidateMonitorLoads();
-      set({ saving: false, error: message });
-      showToast(message, "error");
+      set({ saving: false, formError: toMonitorFormError(error, "Unable to create monitor.") });
       return null;
     }
   },
   updateMonitor: async (id, payload) => {
     invalidateMonitorLoads();
-    set({ saving: true });
+    set({ saving: true, formError: null });
 
     try {
       const response = await fetch(`/api/monitors/${id}`, {
@@ -170,10 +181,10 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await readJsonOrNull<{ message?: string; monitor?: MonitorRecord }>(response);
+      const data = await readJsonOrNull<{ message?: string; field?: string | null; monitor?: MonitorRecord }>(response);
 
       if (!response.ok || !data?.monitor) {
-        throw new Error(data?.message ?? "Unable to update monitor.");
+        throw new MonitorFormRequestError(data?.message ?? "Unable to update monitor.", data?.field ?? null);
       }
 
       const monitor = data.monitor;
@@ -187,10 +198,8 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
 
       return monitor;
     } catch (error) {
-      const message = getErrorMessage(error, "Unable to update monitor.");
       invalidateMonitorLoads();
-      set({ saving: false, error: message });
-      showToast(message, "error");
+      set({ saving: false, formError: toMonitorFormError(error, "Unable to update monitor.") });
       return null;
     }
   },
@@ -302,7 +311,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       return null;
     }
   },
-  bulkUpdateMonitors: async (ids, payload) => {
+  bulkUpdateMonitors: async (ids, payload, fields) => {
     invalidateMonitorLoads();
     set({ saving: true });
 
@@ -310,7 +319,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
       const response = await fetch("/api/monitors/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, payload }),
+        body: JSON.stringify({ ids, payload, fields }),
       });
       const data = await readJsonOrNull<{ message?: string; monitors?: MonitorRecord[] }>(response);
 
@@ -506,6 +515,7 @@ export const useMonitoringStore = create<MonitoringState>((set) => ({
     }));
   },
   clearError: () => set({ error: null }),
+  clearFormError: () => set({ formError: null }),
 }));
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -539,4 +549,11 @@ function buildMonitorQueryString(query: MonitorQuery) {
   if (query.companyId && query.companyId !== "all") params.set("companyId", query.companyId);
   if (query.status) params.set("status", query.status);
   return params.toString();
+}
+
+function toMonitorFormError(error: unknown, fallback: string): MonitorFormError {
+  return {
+    message: getErrorMessage(error, fallback),
+    field: error instanceof MonitorFormRequestError ? error.field : null,
+  };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, LoaderCircle, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CompanyRecord } from "@/lib/companies/types";
 import type { SettingsPayload } from "@/lib/settings/types";
 import type { MonitorPayload } from "@/lib/monitors/types";
+import type { MonitorFormError } from "@/stores/use-monitoring-store";
 import { CheckMonitorSettings, GeneralMonitorSettings } from "@/components/monitoring/monitor-form-sections";
 import {
   NotificationMonitorSettings,
@@ -14,6 +15,52 @@ import {
 } from "@/components/monitoring/monitor-form-notification-sections";
 
 type MonitorFormMode = "single" | "bulk";
+type MonitorFormTab = "general" | "check" | "notification" | "templates";
+
+// Where each field lives, so a save error can open its tab and point at it. Labels match the form.
+const FIELD_LOCATIONS: Record<string, { tab: MonitorFormTab; label?: string }> = {
+  name: { tab: "general", label: "Monitor name" },
+  companyId: { tab: "general", label: "Company" },
+  url: { tab: "general", label: "URL" },
+  expectedStatusCodes: { tab: "general", label: "Expected status codes" },
+  keywordQuery: { tab: "general", label: "Keyword or phrase" },
+  jsonPath: { tab: "general", label: "JSON path" },
+  jsonExpectedValue: { tab: "general", label: "Expected value" },
+  portNumber: { tab: "general", label: "Port" },
+  heartbeatToken: { tab: "general", label: "Heartbeat endpoint" },
+  databaseHost: { tab: "general", label: "Database host" },
+  databasePort: { tab: "general", label: "Port" },
+  databaseName: { tab: "general", label: "Database name" },
+  databaseUsername: { tab: "general", label: "Username" },
+  databasePassword: { tab: "general", label: "Password" },
+  dnsServer: { tab: "general", label: "DNS server" },
+  dnsExpectedValues: { tab: "general", label: "Expected values" },
+  tags: { tab: "general", label: "Tags" },
+  intervalValue: { tab: "check", label: "Check interval" },
+  timeout: { tab: "check", label: "Hard failure timeout" },
+  slowResponseThresholdMs: { tab: "check", label: "Slow response threshold" },
+  retries: { tab: "check", label: "Consecutive failures required" },
+  renotifyCount: { tab: "check", label: "Re-notify" },
+  method: { tab: "check", label: "HTTP method" },
+  ipFamily: { tab: "check", label: "IP family" },
+  maxRedirects: { tab: "check", label: "Max redirects" },
+  responseMaxLength: { tab: "check", label: "Response max length" },
+  notificationPref: { tab: "notification", label: "Notification preference" },
+  notificationLanguage: { tab: "notification", label: "Notification language" },
+  notifEmail: { tab: "notification", label: "Alert recipients" },
+  telegramBotToken: { tab: "notification", label: "Bot token" },
+  telegramChatId: { tab: "notification", label: "Chat ID" },
+  telegramTemplate: { tab: "notification", label: "Telegram message template" },
+};
+
+function locateField(field: string | null, values: MonitorPayload) {
+  if (!field) return null;
+  if (field === "portHost") {
+    return { tab: "general" as const, label: values.monitorType === "dns" ? "Domain name" : "Host" };
+  }
+  if (FIELD_LOCATIONS[field]) return FIELD_LOCATIONS[field];
+  return /Template|Subject|Headline|Body/.test(field) ? { tab: "templates" as const } : null;
+}
 
 export function MonitorForm({
   initialValue,
@@ -27,6 +74,7 @@ export function MonitorForm({
   onCancel,
   onSubmit,
   onDirtyChange,
+  submitError,
 }: {
   initialValue: MonitorPayload;
   companies: CompanyRecord[];
@@ -40,11 +88,26 @@ export function MonitorForm({
   onSubmit: (payload: MonitorPayload) => Promise<void>;
   // Reports whether the form differs from the values it was opened with.
   onDirtyChange?: (dirty: boolean) => void;
+  // Why the last save failed; the form opens the field's tab and focuses it.
+  submitError?: MonitorFormError | null;
 }) {
   const [values, setValues] = useState(initialValue);
   const [tagsText, setTagsText] = useState(initialValue.tags.join(", "));
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<MonitorTestResult | null>(null);
+  const [tab, setTab] = useState<MonitorFormTab>(mode === "bulk" ? "check" : "general");
+  const formRef = useRef<HTMLFormElement>(null);
+  const errorLocation = submitError ? locateField(submitError.field, values) : null;
+  const errorTab = errorLocation?.tab ?? null;
+  const errorLabel = errorLocation && "label" in errorLocation ? errorLocation.label : undefined;
+
+  // A failed save opens the tab holding the field and focuses it, so the cause is in view.
+  useEffect(() => {
+    if (!submitError || !errorTab) return;
+    setTab(errorTab);
+    const frame = window.requestAnimationFrame(() => focusFieldByLabel(formRef.current, errorLabel));
+    return () => window.cancelAnimationFrame(frame);
+  }, [submitError, errorTab, errorLabel]);
 
   useEffect(() => {
     setValues(initialValue);
@@ -104,8 +167,8 @@ export function MonitorForm({
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <Tabs defaultValue={mode === "bulk" ? "check" : "general"} className="flex-col">
+    <form ref={formRef} onSubmit={handleSubmit}>
+      <Tabs value={tab} onValueChange={(value) => setTab(value as MonitorFormTab)} className="flex-col">
         <TabsList className="mb-6 grid h-9 w-full grid-cols-4 bg-surface-high">
           <TabsTrigger value="general" className="text-xs">
             General
@@ -157,6 +220,19 @@ export function MonitorForm({
 
       {mode === "single" && testResult ? <MonitorTestResultPanel result={testResult} /> : null}
 
+      {submitError ? (
+        <div role="alert" className="mt-5 flex items-start gap-3 rounded-md bg-destructive/10 px-4 py-3 text-sm">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <div className="min-w-0">
+            <p className="font-medium text-destructive">The monitor was not saved.</p>
+            <p className="mt-0.5 text-muted-foreground">
+              {errorLabel ? <span className="font-medium text-foreground">{TAB_TITLES[errorTab!]} › {errorLabel}: </span> : null}
+              {submitError.message}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <DialogFooter className="mt-6 pt-4">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
@@ -173,6 +249,26 @@ export function MonitorForm({
       </DialogFooter>
     </form>
   );
+}
+
+const TAB_TITLES: Record<MonitorFormTab, string> = {
+  general: "General",
+  check: "Check",
+  notification: "Notification",
+  templates: "Templates",
+};
+
+// Focuses the input that follows a field label, opening a collapsed section around it first.
+function focusFieldByLabel(form: HTMLFormElement | null, label?: string) {
+  if (!form || !label) return;
+  const labelElement = Array.from(form.querySelectorAll("label")).find((element) => element.textContent?.trim().startsWith(label));
+  const container = labelElement?.parentElement;
+  const control = container?.querySelector<HTMLElement>("input:not([type=hidden]), textarea, button, [role=combobox]");
+  if (!control) return;
+  const details = control.closest("details");
+  if (details && !details.open) details.open = true;
+  control.focus();
+  control.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
 interface MonitorTestResult {

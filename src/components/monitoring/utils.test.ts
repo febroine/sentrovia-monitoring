@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { duplicatePayloadFromMonitor, formatLatency } from "@/components/monitoring/utils";
+import { changedPayloadFields, duplicatePayloadFromMonitor, formatLatency } from "@/components/monitoring/utils";
 import { DEFAULT_MONITOR_FORM, type MonitorRecord } from "@/lib/monitors/types";
 
 describe("formatLatency", () => {
@@ -44,5 +44,14 @@ describe("duplicatePayloadFromMonitor", () => {
 
   it("keeps the copied name within the name limit", () => {
     expect(duplicatePayloadFromMonitor({ ...source, name: "x".repeat(120) }).name).toHaveLength(120);
+  });
+});
+
+describe("changedPayloadFields", () => {
+  it("lists only the fields that differ from the starting values", () => {
+    const initial = { ...DEFAULT_MONITOR_FORM, tags: ["prod"], intervalValue: 5 };
+    expect(changedPayloadFields(initial, { ...initial, intervalValue: 1, tags: ["prod"] })).toEqual(["intervalValue"]);
+    expect(changedPayloadFields(initial, { ...initial, tags: ["prod", "api"] })).toEqual(["tags"]);
+    expect(changedPayloadFields(initial, { ...initial })).toEqual([]);
   });
 });

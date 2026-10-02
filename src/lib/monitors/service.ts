@@ -650,7 +650,8 @@ export async function bulkUpdateMonitors(
   userId: string,
   ids: string[],
   input: MonitorInput,
-  workspaceId?: string
+  workspaceId?: string,
+  fields?: string[]
 ) {
   return db.transaction(async (tx) => {
     const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
@@ -665,7 +666,7 @@ export async function bulkUpdateMonitors(
     const now = new Date();
     const groups = new Map<string, {
       ids: string[];
-      values: ReturnType<typeof buildBulkEditableMonitorValues>;
+      values: Partial<ReturnType<typeof buildBulkEditableMonitorValues>>;
       active: boolean;
     }>();
     for (const existingMonitor of existingMonitors) {
@@ -677,7 +678,7 @@ export async function bulkUpdateMonitors(
       } else {
         groups.set(key, {
           ids: [existingMonitor.id],
-          values: buildBulkEditableMonitorValues(userId, resolvedWorkspaceId, monitorType, input),
+          values: pickBulkFields(buildBulkEditableMonitorValues(userId, resolvedWorkspaceId, monitorType, input), fields),
           active: existingMonitor.isActive,
         });
       }
@@ -798,6 +799,16 @@ export async function bulkUpdateMonitorPublication(
     }
     return updated;
   });
+}
+
+// Keeps only the settings the user changed in bulk edit (plus ownership), so each monitor keeps its
+// own values for everything else.
+export function pickBulkFields<T extends { workspaceId: string; userId: string }>(values: T, fields?: string[]): Partial<T> & Pick<T, "workspaceId" | "userId"> {
+  if (!fields) return values;
+  const selected = new Set(fields);
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) => key === "workspaceId" || key === "userId" || selected.has(key))
+  ) as Partial<T> & Pick<T, "workspaceId" | "userId">;
 }
 
 function buildBulkEditableMonitorValues(

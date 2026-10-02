@@ -34,7 +34,7 @@ import { DEFAULT_MONITOR_COLUMNS, MONITOR_OPTIONAL_COLUMNS, parseMonitorTablePre
 import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { MonitorTextImportDialog } from "@/components/monitoring/monitor-text-import-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
-import { duplicatePayloadFromMonitor, payloadFromMonitor } from "@/components/monitoring/utils";
+import { changedPayloadFields, duplicatePayloadFromMonitor, payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useUnsavedChangesGuard } from "@/components/ui/unsaved-changes";
@@ -106,6 +106,8 @@ export default function MonitoringPage() {
     restoreMonitors,
     importMonitors,
     clearError,
+    formError,
+    clearFormError,
   } = useMonitoringStore();
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
@@ -416,6 +418,11 @@ export default function MonitoringPage() {
     }
   }
 
+  // A save error belongs to the form it came from; opening or closing a form starts clean.
+  useEffect(() => {
+    clearFormError();
+  }, [createOpen, editingMonitor, clearFormError]);
+
   function closeCreateForm() {
     setCreateOpen(false);
     setDuplicateSource(null);
@@ -440,19 +447,20 @@ export default function MonitoringPage() {
 
   async function handleBulkUpdate(payload: MonitorPayload) {
     const ids = Array.from(selectedIds);
-    setBulkEditOpen(false);
-    await runBulkAction(
-      `Updating ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
-      "Schedule, check, notification, tag, and template settings will be updated.",
-      ids.length,
-      async () => {
-        const updated = await bulkUpdateMonitors(ids, payload);
-        if (updated.length > 0) {
-          await loadMonitorPage();
-          setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
-        }
-      }
-    );
+    // Only what the user changed is applied; the form starts from the first selected monitor, and
+    // writing every field would copy its tags, recipients and templates onto all the others.
+    const fields = changedPayloadFields(bulkEditTemplate, payload);
+    if (fields.length === 0) {
+      showToast("Change at least one setting to apply it to the selected monitors.", "info");
+      return;
+    }
+    // The dialog stays open until the update succeeds, so a failed save keeps the edits.
+    const updated = await bulkUpdateMonitors(ids, payload, fields);
+    if (updated.length > 0) {
+      setBulkEditOpen(false);
+      await loadMonitorPage();
+      setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
+    }
   }
 
   async function handleBulkCompanyMove() {
@@ -1160,6 +1168,7 @@ export default function MonitoringPage() {
             onCancel={() => guardMonitorFormClose(closeCreateForm)}
             onSubmit={handleCreate}
             onDirtyChange={setMonitorFormDirty}
+            submitError={formError}
           />
         </DialogContent>
       </Dialog>
@@ -1198,6 +1207,7 @@ export default function MonitoringPage() {
               submitting={saving}
               monitorId={editingMonitor.id}
               submitLabel="Save changes"
+              submitError={formError}
               onCancel={() => guardMonitorFormClose(() => setEditingMonitor(null))}
               onSubmit={handleUpdate}
               onDirtyChange={setMonitorFormDirty}
@@ -1208,17 +1218,16 @@ export default function MonitoringPage() {
 
       {monitorFormDiscardDialog}
 
-      <Dialog open={bulkEditOpen} onOpenChange={setBulkEditOpen}>
+      <Dialog open={bulkEditOpen} onOpenChange={(open) => (open ? setBulkEditOpen(true) : guardMonitorFormClose(() => setBulkEditOpen(false)))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Bulk monitor settings</DialogTitle>
             <DialogDescription>
-              Update shared schedule, notification, tag, and template settings for the selected monitors. Identity
-              fields stay unchanged.
+              Change schedule, check, notification, tag, or template settings for the selected monitors.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-            Impact: {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}. Identity fields and targets remain unchanged. The operation starts immediately.
+            The form shows the settings of the first selected monitor. Only the settings you change are applied to the {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}; everything else, including names and targets, stays as it is.
           </div>
           {selectedIds.size > 0 ? (
             <MonitorForm
@@ -1229,8 +1238,9 @@ export default function MonitoringPage() {
               submitting={saving}
               submitLabel="Apply to selected monitors"
               mode="bulk"
-              onCancel={() => setBulkEditOpen(false)}
+              onCancel={() => guardMonitorFormClose(() => setBulkEditOpen(false))}
               onSubmit={handleBulkUpdate}
+              onDirtyChange={setMonitorFormDirty}
             />
           ) : null}
         </DialogContent>

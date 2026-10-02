@@ -10,6 +10,7 @@ import {
   filterDuplicateMonitorInputs,
   getMonitorImportIdentityKey,
   hasMonitorTargetConflict,
+  pickBulkFields,
   listReservedMonitorTargets,
   normalizeHeartbeatTokenInput,
   queueMonitorRecheck,
@@ -456,3 +457,19 @@ function buildMonitorInput(overrides: Partial<MonitorInput> = {}): MonitorInput 
     ...overrides,
   };
 }
+
+describe("bulk monitor edits", () => {
+  const values = { workspaceId: "w-1", userId: "u-1", intervalValue: 1, tags: ["prod"], notifEmail: "ops@example.com" };
+
+  it("writes only the changed settings, keeping ownership", () => {
+    expect(pickBulkFields(values, ["intervalValue"])).toEqual({ workspaceId: "w-1", userId: "u-1", intervalValue: 1 });
+  });
+
+  it("ignores names that are not editable settings", () => {
+    expect(pickBulkFields(values, ["url", "name"])).toEqual({ workspaceId: "w-1", userId: "u-1" });
+  });
+
+  it("writes every editable setting when no field list is given", () => {
+    expect(pickBulkFields(values)).toEqual(values);
+  });
+});

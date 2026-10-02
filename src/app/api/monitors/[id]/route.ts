@@ -39,7 +39,12 @@ export async function PATCH(request: NextRequest, context: MonitorRouteContext) 
     const parsed = monitorInputSchema.safeParse(applyMonitorDefaults(body, settings));
 
     if (!parsed.success) {
-      return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Invalid monitor payload." }, { status: 400 });
+      const issue = parsed.error.issues[0];
+      // The form uses the field to open the right tab and point at the input.
+      return NextResponse.json({
+        message: issue?.message ?? "Invalid monitor payload.",
+        field: typeof issue?.path[0] === "string" ? issue.path[0] : null,
+      }, { status: 400 });
     }
 
     const monitor = await updateMonitor(session.id, id, parsed.data, session.activeWorkspaceId!);

@@ -69,3 +69,10 @@ export function duplicatePayloadFromMonitor(monitor: MonitorRecord): MonitorPayl
     databasePasswordConfigured: false,
   };
 }
+
+// The payload fields that differ from the values a form started with.
+export function changedPayloadFields(initial: MonitorPayload, next: MonitorPayload) {
+  return (Object.keys(next) as Array<keyof MonitorPayload>).filter(
+    (key) => JSON.stringify(next[key]) !== JSON.stringify(initial[key])
+  );
+}

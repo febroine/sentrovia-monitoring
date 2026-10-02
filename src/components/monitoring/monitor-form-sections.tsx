@@ -3,6 +3,7 @@
 import { Activity, Braces, Clock3, Copy, DatabaseZap, Globe, Network, Search, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -253,12 +254,11 @@ export function GeneralMonitorSettings({
                 />
               </Field>
               <Field label="Port">
-                <Input
-                  type="number"
+                <NumberInput
                   min={1}
                   max={65535}
                   value={values.portNumber}
-                  onChange={(event) => onFieldChange("portNumber", Number(event.target.value) || 1)}
+                  onValueChange={(value) => onFieldChange("portNumber", value)}
                   required
                 />
               </Field>
@@ -292,12 +292,11 @@ export function GeneralMonitorSettings({
                   />
                 </Field>
                 <Field label="Port">
-                  <Input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={65535}
                     value={values.databasePort}
-                    onChange={(event) => onFieldChange("databasePort", Number(event.target.value) || 5432)}
+                    onValueChange={(value) => onFieldChange("databasePort", value)}
                     required
                   />
                 </Field>
@@ -414,12 +413,12 @@ export function CheckMonitorSettings({
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Check interval">
           <div className="flex gap-2">
-            <Input
+            <NumberInput
               aria-label="Check interval"
-              type="number"
               min={1}
+              max={1440}
               value={values.intervalValue}
-              onChange={(event) => onFieldChange("intervalValue", Number(event.target.value) || 1)}
+              onValueChange={(value) => onFieldChange("intervalValue", value)}
             />
             <Select value={values.intervalUnit} onValueChange={(value) => onFieldChange("intervalUnit", value as IntervalUnit)}>
               <SelectTrigger aria-label="Check interval unit" className="w-28">
@@ -482,13 +481,12 @@ export function CheckMonitorSettings({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Consecutive failures required">
-          <Input
+          <NumberInput
             aria-label="Consecutive failures required"
-            type="number"
             min={2}
             max={10}
             value={values.retries}
-            onChange={(event) => onFieldChange("retries", Number(event.target.value) || 2)}
+            onValueChange={(value) => onFieldChange("retries", value)}
           />
         </Field>
         <Field label="Re-notify">
@@ -561,22 +559,21 @@ export function CheckMonitorSettings({
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Max redirects">
-                    <Input
+                    <NumberInput
                       aria-label="Max redirects"
-                      type="number"
                       min={0}
                       max={10}
                       value={values.maxRedirects}
-                      onChange={(event) => onFieldChange("maxRedirects", Number(event.target.value) || 0)}
+                      onValueChange={(value) => onFieldChange("maxRedirects", value)}
                     />
                   </Field>
                   <Field label="Response max length">
-                    <Input
+                    <NumberInput
                       aria-label="Response max length"
-                      type="number"
                       min={0}
+                      max={100000}
                       value={values.responseMaxLength}
-                      onChange={(event) => onFieldChange("responseMaxLength", Number(event.target.value) || 0)}
+                      onValueChange={(value) => onFieldChange("responseMaxLength", value)}
                     />
                     <p className="text-[11px] text-muted-foreground">Set to 0 to avoid retaining response content.</p>
                   </Field>

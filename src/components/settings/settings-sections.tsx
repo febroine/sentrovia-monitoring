@@ -21,6 +21,7 @@ import { SavedRecipientsManager } from "@/components/settings/saved-recipients-m
 import { TemplateEditor } from "@/components/settings/template-editor";
 import { NotificationTemplatePreviewPanel } from "@/components/settings/notification-template-preview";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatPanelDateTime } from "@/lib/time";
 import {
@@ -224,19 +225,19 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
           label="Prolonged downtime reminder interval (minutes)"
           hint="Example: 180 sends reminders at most every 3 hours until the monitor's Re-notify limit is reached."
         >
-          <Input
-            type="number"
+          <NumberInput
+            min={5}
+            max={10080}
             value={settings.notifications.prolongedDowntimeMinutes}
-            onChange={(event) =>
-              updateSetting("notifications.prolongedDowntimeMinutes", Number(event.target.value) || 180)
-            }
+            onValueChange={(value) => updateSetting("notifications.prolongedDowntimeMinutes", value)}
           />
         </Field>
         <Field label="Alert dedup window (minutes)" hint="Suppress duplicate notifications of the same kind for the same monitor inside this time window.">
-          <Input
-            type="number"
+          <NumberInput
+            min={0}
+            max={1440}
             value={settings.notifications.alertDedupMinutes}
-            onChange={(event) => updateSetting("notifications.alertDedupMinutes", Number(event.target.value) || 0)}
+            onValueChange={(value) => updateSetting("notifications.alertDedupMinutes", value)}
           />
         </Field>
       </SectionCard>
@@ -270,10 +271,11 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             />
           </Field>
           <Field label="Port">
-            <Input
-              type="number"
+            <NumberInput
+              min={1}
+              max={65535}
               value={settings.notifications.smtpPort}
-              onChange={(event) => updateSetting("notifications.smtpPort", Number(event.target.value) || 587)}
+              onValueChange={(value) => updateSetting("notifications.smtpPort", value)}
             />
           </Field>
           <Field label="User">
@@ -626,13 +628,12 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
               />
             </Field>
             <Field label="Hard failure timeout (ms)" hint="Maximum time allowed for a complete check when a monitor does not override it.">
-              <Input
-                type="number"
+              <NumberInput
                 min={1000}
                 max={120000}
                 step={500}
                 value={settings.monitoring.timeout}
-                onChange={(event) => updateSetting("monitoring.timeout", Number(event.target.value) || 1000)}
+                onValueChange={(value) => updateSetting("monitoring.timeout", value)}
               />
             </Field>
             <Field
@@ -656,24 +657,22 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
               label="Consecutive failures required"
               hint="Total failed probes required, including the initial failure. A final immediate confirmation probe must also fail before an outage is announced."
             >
-              <Input
-                type="number"
+              <NumberInput
                 min={2}
                 max={10}
                 value={settings.monitoring.retries}
-                onChange={(event) => updateSetting("monitoring.retries", Number(event.target.value) || 2)}
+                onValueChange={(value) => updateSetting("monitoring.retries", value)}
               />
             </Field>
             <Field
               label="Worker batch size"
               hint="Maximum number of this workspace's due monitors the worker claims at once. Free worker slots also limit each claim, and a slow check never holds back the others."
             >
-              <Input
-                type="number"
+              <NumberInput
                 min={1}
                 max={500}
                 value={settings.monitoring.batchSize}
-                onChange={(event) => updateSetting("monitoring.batchSize", Number(event.target.value) || 1)}
+                onValueChange={(value) => updateSetting("monitoring.batchSize", value)}
               />
             </Field>
           </div>
@@ -709,23 +708,19 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
               </Select>
             </Field>
             <Field label="Response max length" hint="0 uses the 100 KB worker safety limit for new monitors.">
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 max={100000}
                 value={settings.monitoring.responseMaxLength}
-                onChange={(event) =>
-                  updateSetting("monitoring.responseMaxLength", Number(event.target.value) || 0)
-                }
+                onValueChange={(value) => updateSetting("monitoring.responseMaxLength", value)}
               />
             </Field>
             <Field label="Max redirects" hint="0 disables redirect following for monitors that do not override it.">
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 max={10}
                 value={settings.monitoring.maxRedirects}
-                onChange={(event) => updateSetting("monitoring.maxRedirects", Number(event.target.value) || 0)}
+                onValueChange={(value) => updateSetting("monitoring.maxRedirects", value)}
               />
             </Field>
           </div>
@@ -910,30 +905,27 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
       >
         <div className="grid gap-4 md:grid-cols-3">
           <Field label="Monitor checks" hint="Latency and availability samples, in days.">
-            <Input
-              type="number"
+            <NumberInput
               min={7}
               max={3650}
               value={settings.data.retentionDays}
-              onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value))}
+              onValueChange={(value) => updateSetting("data.retentionDays", value)}
             />
           </Field>
           <Field label="Event logs" hint="Monitor events and diagnostic history, in days.">
-            <Input
-              type="number"
+            <NumberInput
               min={1}
               max={3650}
               value={settings.data.eventRetentionDays}
-              onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value))}
+              onValueChange={(value) => updateSetting("data.eventRetentionDays", value)}
             />
           </Field>
           <Field label="Delivery history" hint="Completed notification deliveries, in days.">
-            <Input
-              type="number"
+            <NumberInput
               min={7}
               max={3650}
               value={settings.data.deliveryRetentionDays}
-              onChange={(event) => updateSetting("data.deliveryRetentionDays", Number(event.target.value))}
+              onValueChange={(value) => updateSetting("data.deliveryRetentionDays", value)}
             />
           </Field>
         </div>
@@ -964,13 +956,12 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
               />
             </Field>
             <Field label="Backups to retain" hint="Older verified backup files are removed automatically.">
-              <Input
-                type="number"
+              <NumberInput
                 min={2}
                 max={90}
                 value={settings.data.backupRetentionCount}
                 disabled={!settings.data.autoBackupEnabled}
-                onChange={(event) => updateSetting("data.backupRetentionCount", Number(event.target.value))}
+                onValueChange={(value) => updateSetting("data.backupRetentionCount", value)}
               />
             </Field>
           </div>

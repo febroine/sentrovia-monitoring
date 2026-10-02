@@ -37,7 +37,8 @@ export async function PATCH(request: NextRequest) {
       session.id,
       parsed.data.ids,
       parsed.data.payload,
-      session.activeWorkspaceId!
+      session.activeWorkspaceId!,
+      parsed.data.fields
     );
 
     return NextResponse.json({
