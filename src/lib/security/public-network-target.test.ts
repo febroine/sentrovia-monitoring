@@ -146,3 +146,18 @@ describe("public network target safety", () => {
     expect(lookup).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("cloud metadata addresses", () => {
+  it("stays blocked even where private targets are allowed", () => {
+    for (const address of ["169.254.169.254", "100.100.100.200", "168.63.129.16", "fd00:ec2::254", "[fd00:ec2::254]", "64:ff9b::a9fe:a9fe", "64:ff9b::7f00:1", "::ffff:169.254.169.254"]) {
+      expect(isMonitorNetworkHostnameLiteralAllowed(address, true), address).toBe(false);
+      expect(isMonitorNetworkHostnameLiteralAllowed(address, false), address).toBe(false);
+    }
+  });
+
+  it("still allows ordinary private addresses where private targets are allowed", () => {
+    for (const address of ["10.0.0.12", "192.168.1.10", "fd12:3456::1", "64:ff9b::a00:c"]) {
+      expect(isMonitorNetworkHostnameLiteralAllowed(address, true), address).toBe(true);
+    }
+  });
+});

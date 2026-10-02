@@ -14,7 +14,8 @@ build_output_utf8.log
 errors.txt
 logs
 tsconfig.tsbuildinfo
-.env.local
 .env
+.env.*
+!.env.example
 /release
 /*.zip

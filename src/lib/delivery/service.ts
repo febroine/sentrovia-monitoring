@@ -12,7 +12,7 @@ import {
   decryptValueOrLegacyPlaintext,
   encryptValue,
 } from "@/lib/security/encryption";
-import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
+import { env } from "@/lib/env";
 import {
   resolveMonitorNetworkTargetWithTimeout,
   selectResolvedAddress,
@@ -447,7 +447,7 @@ export async function sendEmailDelivery(input: {
   }
 
   try {
-    const transporter = await createSafeSmtpTransport(input.userId, smtp, input.workspaceId);
+    const transporter = await createSafeSmtpTransport(smtp);
     await transporter.sendMail(buildEmailMessage({ ...input, attachments }, smtp.fromEmail, destination));
 
     return markDeliveryDelivered(event.id, 250);
@@ -1129,7 +1129,7 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
   }
 
   try {
-    const transporter = await createSafeSmtpTransport(event.userId, smtp, event.workspaceId);
+    const transporter = await createSafeSmtpTransport(smtp);
     await transporter.sendMail({
       from: smtp.fromEmail,
       to: destination,
@@ -1146,12 +1146,12 @@ async function deliverClaimedEmail(event: DeliveryEventRow) {
   }
 }
 
-async function createSafeSmtpTransport(
-  userId: string,
-  smtp: NonNullable<Awaited<ReturnType<typeof getSmtpSettings>>>,
-  workspaceId?: string
-) {
-  const allowPrivateTargets = await canUserAccessPrivateTargets(userId, undefined, workspaceId);
+async function createSafeSmtpTransport(smtp: NonNullable<Awaited<ReturnType<typeof getSmtpSettings>>>) {
+  // The SMTP server is a workspace setting: only users with private-target access can save an internal
+  // one, so it is reached under the server policy, whoever owns the monitor an alert is for. Using the
+  // monitor owner's rights let an operator's saved host borrow an admin's access, and blocked an
+  // admin's internal relay for operators' monitors.
+  const allowPrivateTargets = env.monitorAllowPrivateTargets;
   const resolvedTarget = await resolveMonitorNetworkTargetWithTimeout(
     smtp.host,
     {

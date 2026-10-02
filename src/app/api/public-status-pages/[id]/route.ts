@@ -3,7 +3,7 @@ import { toAuthError } from "@/lib/auth/errors";
 import { assertPermission } from "@/lib/auth/permissions";
 import { recordAuditEventSafely } from "@/lib/audit/service";
 import { getSession } from "@/lib/auth/session";
-import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
+import { assertSameOriginMutation, readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import {
   deletePublicStatusPage,
   updatePublicStatusPage,
@@ -64,8 +64,9 @@ workspaceId: session.activeWorkspaceId!,
   }
 }
 
-export async function DELETE(_request: NextRequest, context: PublicStatusPageRouteContext) {
+export async function DELETE(request: NextRequest, context: PublicStatusPageRouteContext) {
   try {
+    assertSameOriginMutation(request);
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

@@ -14,6 +14,7 @@ import {
 } from "@/lib/system/restore-approval";
 import { WORKSPACE_BACKUP_IMPORT_LIMITS } from "@/lib/import-limits";
 import { readJsonBody } from "@/lib/http/json-body";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
@@ -80,6 +81,16 @@ export async function POST(request: NextRequest) {
     const restored = await restoreWorkspaceBackup(session.id, bundle, {
       expectedRevision: workspaceRevision,
       workspaceId: session.activeWorkspaceId ?? undefined,
+    });
+    await recordAuditEventSafely({
+      userId: session.id,
+      workspaceId: session.activeWorkspaceId,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "backup",
+      entityLabel: "Workspace backup",
+      action: "backup.restored",
+      summary: "Replaced the workspace data with a restored backup.",
     });
     return NextResponse.json({ restored });
   } catch (error) {

@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
+    // The same rule the proxy applies; checked here too so the route never depends on the proxy alone.
+    assertPermission(session.role, "settings.manage");
 
     const requestData = requestSchema.safeParse(
       await readJsonBody(request, STANDARD_JSON_BODY_LIMIT_BYTES)

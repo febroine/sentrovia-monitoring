@@ -157,7 +157,7 @@ describe("notification templates", () => {
     expect(latency.htmlBody).toContain("Performance warning for api.example.com");
     expect(reminder.htmlBody).toContain("API has been unavailable for 5m");
     expect(sslExpiry.subject).toBe("Certificate warning: api.example.com");
-    expect(sslExpiry.htmlBody).toContain("Renew API's certificate");
+    expect(sslExpiry.htmlBody).toContain("Renew API&#39;s certificate");
     expect(sslExpiry.textBody).toContain("Certificate: TLS certificate expires in 10 days.");
     expect(sslExpiry.telegramBody).toBe("TLS api.example.com: TLS certificate expires in 10 days.");
   });

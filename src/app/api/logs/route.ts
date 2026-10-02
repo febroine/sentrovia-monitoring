@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspacePermission } from "@/lib/auth/authorization";
 import { toAuthError } from "@/lib/auth/errors";
 import { clearLogs, countClearableLogs, getLogFilterOptions, listLogs } from "@/lib/logs/service";
+import { hasPermission } from "@/lib/auth/permissions";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 import { assertSameOriginMutation } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
@@ -42,6 +44,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       logs: logs.rows.map((log) => ({ ...log, createdAt: log.createdAt.toISOString() })),
       filters: options,
+      canClear: hasPermission(session.role, "audit.manage"),
       pagination: {
         total: logs.total,
         clearableTotal,
@@ -58,9 +61,19 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     assertSameOriginMutation(request);
-    const session = await requireWorkspacePermission("audit.read");
+    const session = await requireWorkspacePermission("audit.manage");
 
     const deleted = await clearLogs(session.id, session.activeWorkspaceId!);
+    await recordAuditEventSafely({
+      userId: session.id,
+      workspaceId: session.activeWorkspaceId!,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "logs",
+      entityLabel: "Event logs",
+      action: "logs.cleared",
+      summary: `Cleared ${deleted.length} event log entries.`,
+    });
     return NextResponse.json({ count: deleted.length });
   } catch (error) {
     const authError = toAuthError(error, "Unable to clear logs right now.");

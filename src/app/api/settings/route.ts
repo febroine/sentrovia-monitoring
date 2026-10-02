@@ -7,6 +7,8 @@ import { settingsSchema } from "@/lib/settings/schemas";
 import { getSettings, upsertSettings } from "@/lib/settings/service";
 import { invalidateDashboardCache } from "@/lib/dashboard/service";
 import { recordAuditEventSafely } from "@/lib/audit/service";
+import { canUserAccessPrivateTargets } from "@/lib/security/network-policy";
+import { assertMonitorNetworkTarget } from "@/lib/security/public-network-target";
 
 export const runtime = "nodejs";
 
@@ -47,11 +49,23 @@ export async function PATCH(request: NextRequest) {
     }
 
     const allowBackupPolicyChanges = hasPermission(session.role, "backups.manage");
+    const current = await getSettings(session.id, false, session.activeWorkspaceId!);
+    if (!current) {
+      throw new AuthError("Unable to load current settings.", 409);
+    }
+    // The SMTP server is reached from the server for every alert in the workspace, so a new one must be
+    // a target the person saving it may reach: an internal mail relay needs private-target access.
+    const smtpHost = parsed.data.notifications.smtpHost.trim();
+    const smtpChanged = smtpHost.toLowerCase() !== current.notifications.smtpHost.trim().toLowerCase()
+      || parsed.data.notifications.smtpPort !== current.notifications.smtpPort;
+    if (smtpHost && smtpChanged) {
+      await assertMonitorNetworkTarget(smtpHost, {
+        allowPrivateTargets: await canUserAccessPrivateTargets(session.id, undefined, session.activeWorkspaceId!),
+        allowUnresolved: true,
+        message: "This SMTP server is not allowed by the network safety policy. Only an admin can use an internal mail server.",
+      });
+    }
     if (!allowBackupPolicyChanges) {
-      const current = await getSettings(session.id, false, session.activeWorkspaceId!);
-      if (!current) {
-        throw new AuthError("Unable to load current settings.", 409);
-      }
       if (
         parsed.data.data.autoBackupEnabled !== current.data.autoBackupEnabled ||
         parsed.data.data.backupWindow !== current.data.backupWindow ||

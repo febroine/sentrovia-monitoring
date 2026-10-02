@@ -91,7 +91,7 @@ describe("notification template preview route", () => {
   });
 
   it("suppresses HTTP failures that are explicitly configured as expected", async () => {
-    vi.mocked(getSession).mockResolvedValueOnce({ id: "admin-1" } as never);
+    vi.mocked(getSession).mockResolvedValueOnce({ id: "admin-1", role: "admin", activeWorkspaceId: "workspace-1" } as never);
     vi.mocked(getSettings).mockResolvedValueOnce(DEFAULT_SETTINGS);
     vi.mocked(buildMonitorForTest).mockResolvedValueOnce({
       id: "preview-monitor",

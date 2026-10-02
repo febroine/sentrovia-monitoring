@@ -4,7 +4,7 @@ import { toAuthError } from "@/lib/auth/errors";
 import { assertPermission } from "@/lib/auth/permissions";
 import { companyInputSchema } from "@/lib/companies/schemas";
 import { COMPANY_SOFT_DELETE_UNDO_MS, deleteCompany, updateCompany } from "@/lib/companies/service";
-import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
+import { assertSameOriginMutation, readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 
 export const runtime = "nodejs";
 
@@ -54,8 +54,9 @@ export async function PATCH(request: NextRequest, context: CompanyRouteContext) 
   }
 }
 
-export async function DELETE(_request: NextRequest, context: CompanyRouteContext) {
+export async function DELETE(request: NextRequest, context: CompanyRouteContext) {
   try {
+    assertSameOriginMutation(request);
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

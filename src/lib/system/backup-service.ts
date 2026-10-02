@@ -81,6 +81,9 @@ export async function buildWorkspaceBackupBundle(
       })),
     settings: {
       ...exportedSettings,
+      // The webhook URL is a credential; like other secrets it is left out, and a restore keeps the
+      // workspace's current one.
+      notifications: { ...exportedSettings.notifications, discordWebhookUrl: "" },
       data: {
         ...exportedSettings.data,
         lastBackupAt: exportedAt,
@@ -268,11 +271,12 @@ export async function restoreWorkspaceBackup(
     );
 
     const companyIdByName = buildCompanyIdByName(restoredCompanies);
-    const restoredSettings = remapPublicStatusCompany(
+    const remappedSettings = remapPublicStatusCompany(
       validated.settings,
       validated.publicStatusCompanyName,
       companyIdByName
     );
+    const restoredSettings = await keepCurrentDiscordWebhook(userId, remappedSettings, workspaceId);
     await upsertSettings(userId, restoredSettings, tx, true, workspaceId);
     await restorePublicStatusPages(userId, validated.publicStatusPages, companyIdByName, tx, workspaceId);
     await remapReportScheduleCompanies(workspaceId, scheduleCompanyMappings, companyIdByName, tx);
@@ -674,4 +678,18 @@ function assertUniqueMonitorTargets(monitors: MonitorInput[]) {
 
     seenTargets.add(identityKey);
   }
+}
+
+// Backups leave the Discord webhook URL out; restoring one without it keeps the URL already configured.
+async function keepCurrentDiscordWebhook<T extends { notifications: { discordWebhookUrl: string } }>(
+  userId: string,
+  settings: T,
+  workspaceId: string
+): Promise<T> {
+  if (settings.notifications.discordWebhookUrl.trim()) {
+    return settings;
+  }
+  const current = await getSettings(userId, true, workspaceId);
+  const discordWebhookUrl = current?.notifications.discordWebhookUrl ?? "";
+  return discordWebhookUrl ? { ...settings, notifications: { ...settings.notifications, discordWebhookUrl } } : settings;
 }

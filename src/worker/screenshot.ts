@@ -19,6 +19,7 @@ import {
   selectResolvedAddress,
   type ResolvedNetworkTarget,
 } from "@/lib/security/public-network-target";
+import { escapeHtml } from "@/lib/html";
 
 const SCREENSHOT_MONITOR_TYPES = new Set(["http", "keyword", "json"]);
 const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
@@ -622,13 +623,6 @@ img{display:block;width:${SCREENSHOT_VIEWPORT.width}px;height:${SCREENSHOT_VIEWP
     + `<img alt="" src="data:image/jpeg;base64,${image.toString("base64")}"></body></html>`;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;");
-}
 
 function formatSeconds(ms: number) {
   if (ms < 1000) return `${Math.round(ms)} ms`;

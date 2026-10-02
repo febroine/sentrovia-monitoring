@@ -255,7 +255,8 @@ function isNonPublicIpv4(address: string) {
     (first === 192 && second === 0) ||
     (first === 192 && second === 168) ||
     (first === 198 && (second === 18 || second === 19)) ||
-    first >= 224
+    first >= 224 ||
+    CLOUD_METADATA_IPV4.has(parts.join("."))
   );
 }
 
@@ -274,8 +275,24 @@ function isServerLocalIpv4(address: string) {
     first === 0 ||
     first === 127 ||
     (first === 169 && second === 254) ||
-    first >= 224
+    first >= 224 ||
+    CLOUD_METADATA_IPV4.has(parts.join("."))
   );
+}
+
+// Cloud instance metadata and platform endpoints outside 169.254.0.0/16: Alibaba Cloud metadata and the
+// Azure platform address. They stay blocked even where private targets are allowed.
+const CLOUD_METADATA_IPV4 = new Set(["100.100.100.200", "168.63.129.16"]);
+// AWS instance metadata over IPv6.
+const CLOUD_METADATA_IPV6 = new Set(["fd00:ec2::254"]);
+
+// The IPv4 address inside a NAT64 address (64:ff9b::/96), which a NAT64 gateway forwards to.
+function parseNat64Ipv4(normalized: string) {
+  const match = /^64:ff9b::([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(normalized);
+  if (!match) return null;
+  const high = Number.parseInt(match[1], 16);
+  const low = Number.parseInt(match[2], 16);
+  return [high >> 8, high & 255, low >> 8, low & 255].join(".");
 }
 
 function isNonPublicIpv6(address: string) {
@@ -308,7 +325,7 @@ function isNonPublicIpv6(address: string) {
 
 function isServerLocalIpv6(address: string) {
   const normalized = normalizeIpAddress(address);
-  const mappedIpv4 = parseIpv4MappedIpv6(normalized);
+  const mappedIpv4 = parseIpv4MappedIpv6(normalized) ?? parseNat64Ipv4(normalized);
   if (mappedIpv4) {
     return isServerLocalIpv4(mappedIpv4);
   }
@@ -316,6 +333,7 @@ function isServerLocalIpv6(address: string) {
   return (
     normalized === "::" ||
     normalized === "::1" ||
+    CLOUD_METADATA_IPV6.has(normalized) ||
     normalized.startsWith("fe8") ||
     normalized.startsWith("fe9") ||
     normalized.startsWith("fea") ||

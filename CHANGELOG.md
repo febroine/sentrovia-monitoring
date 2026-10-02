@@ -4,6 +4,20 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+### Security
+
+- Updated Next.js to 16.3.8 (GHSA-vcvr-r3jv-pc5j, remote code execution in `next/og`; Sentrovia does not use `next/og`) and nodemailer to 10.0.13 (GHSA-6vj9-mwq6-2f5v, a process-wide DNS cache could reuse one SMTP server's TLS name for another workspace's server, plus several address-parser denial-of-service fixes). nodemailer 10 needs Node.js 20, which Sentrovia already requires. `npm audit` reports no known vulnerabilities.
+- Clearing event logs is limited to admins (new `audit.manage` permission) and is recorded in the audit log. Before, managers could permanently delete the workspace's event history with the read permission alone. The Logs page shows *Clear logs* only to admins.
+- A new SMTP server is checked against the network safety policy with the rights of the person saving it, so only users with private-target access (admins) can point mail delivery at an internal host. At send time the SMTP server is reached under the server's policy instead of the rights of the monitor's owner: an operator could otherwise have saved an internal address and had it reached through an admin-owned monitor's alert, and an admin's internal mail relay failed for alerts of operators' monitors.
+- DNS monitors without a chosen DNS server use public resolvers (1.1.1.1, 8.8.8.8) for users without private-target access, so internal names that only the server's own DNS knows cannot be looked up and read back.
+- Cloud metadata endpoints outside 169.254.0.0/16 are blocked even where private targets are allowed: AWS over IPv6 (`fd00:ec2::254`), Alibaba Cloud (`100.100.100.200`), the Azure platform address (`168.63.129.16`), and server-local addresses wrapped in NAT64 (`64:ff9b::/96`).
+- Password changes, backup downloads and backup restores are recorded in the audit log.
+- Workspace backups leave out the Discord webhook URL, like the other stored credentials; restoring a backup keeps the URL that is already configured.
+- `npm run auth:recover-admin` now restores admin access: it promotes the account's workspace membership (which is what grants access) in each of its workspaces that has no admin. Before, it only changed a legacy user field, so the recovered account stayed without admin rights, and a leftover admin value on a removed member could stop recovery.
+- Report analytics and its PDF download, which are read-only, are available to viewers again; the access check treated them as report changes because the filters are sent in a POST body.
+- Body-less DELETE requests (monitor, company, status page, log preset) check the request origin like other changes; HTML escaping also covers single quotes; JSON path assertions only read the response's own keys (a path such as `constructor` no longer matches an inherited member); unexpected server errors are logged on the server while clients keep the generic message, and the live dashboard stream no longer passes raw internal error text to the browser.
+- `.dockerignore` keeps every `.env.*` file (except `.env.example`) out of the Docker build context.
+
 ### Added
 
 - Monitors can be duplicated from the monitor list (copy icon) or from the edit dialog. The create form opens with every setting of the original and the name "<name> (copy)"; the target must be changed before saving, a heartbeat copy gets its own heartbeat URL, and a PostgreSQL copy asks for the database password again.

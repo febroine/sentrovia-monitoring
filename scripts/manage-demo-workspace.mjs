@@ -143,7 +143,7 @@ async function createDemoWorkspace() {
           ${new Date(now.getTime() - 2 * 60 * 1000)}, ${nextCheckAt},
           ${monitor.status === "up" ? new Date(now.getTime() - 2 * 60 * 1000) : new Date(now.getTime() - 3 * 60 * 60 * 1000)},
           ${monitor.status === "down" ? new Date(now.getTime() - 27 * 60 * 1000) : null},
-          ${monitor.latencyMs}, 'both', 5, 'dk', 60000, 800, '200-399', 3, 'GET', ${monitor.tags},
+          ${monitor.latencyMs}, 'both', 5, 'dk', 60000, 800, null, 3, 'GET', ${monitor.tags},
           ${monitor.monitorType === "http" || monitor.monitorType === "json"},
           ${monitor.monitorType === "http" || monitor.monitorType === "json" ? new Date(now.getTime() + 74 * 24 * 60 * 60 * 1000) : null}
         )

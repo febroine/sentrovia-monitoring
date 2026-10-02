@@ -4,7 +4,10 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getSettings: vi.fn(),
   upsertSettings: vi.fn(),
+  canUserAccessPrivateTargets: vi.fn(),
 }));
+
+vi.mock("@/lib/security/network-policy", () => ({ canUserAccessPrivateTargets: mocks.canUserAccessPrivateTargets }));
 
 vi.mock("@/lib/auth/session", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/settings/service", () => ({
@@ -95,3 +98,49 @@ function settingsRequest(data: typeof DEFAULT_SETTINGS.data) {
     }),
   }) as never;
 }
+
+describe("settings route SMTP server policy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.upsertSettings.mockResolvedValue(DEFAULT_SETTINGS);
+  });
+
+  function smtpRequest(smtpHost: string) {
+    return new Request("http://localhost/api/settings", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...DEFAULT_SETTINGS,
+        profile: { ...DEFAULT_SETTINGS.profile, firstName: "Test", lastName: "User", email: "test@example.com" },
+        notifications: { ...DEFAULT_SETTINGS.notifications, smtpHost },
+      }),
+    }) as never;
+  }
+
+  it("refuses an internal SMTP server from a user without private-target access", async () => {
+    mocks.getSession.mockResolvedValue({ id: "operator-1", role: "operator", activeWorkspaceId: "workspace-1" });
+    mocks.getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    mocks.canUserAccessPrivateTargets.mockResolvedValue(false);
+
+    const response = await PATCH(smtpRequest("10.0.0.12"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ message: expect.stringContaining("Only an admin can use an internal mail server") });
+    expect(mocks.upsertSettings).not.toHaveBeenCalled();
+  });
+
+  it("lets an admin with private-target access use an internal relay", async () => {
+    mocks.getSession.mockResolvedValue({ id: "admin-1", role: "admin", activeWorkspaceId: "workspace-1" });
+    mocks.getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    mocks.canUserAccessPrivateTargets.mockResolvedValue(true);
+
+    expect((await PATCH(smtpRequest("10.0.0.12"))).status).toBe(200);
+  });
+
+  it("does not re-check an SMTP server that did not change", async () => {
+    mocks.getSession.mockResolvedValue({ id: "operator-1", role: "operator", activeWorkspaceId: "workspace-1" });
+    mocks.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, notifications: { ...DEFAULT_SETTINGS.notifications, smtpHost: "10.0.0.12" } });
+
+    expect((await PATCH(smtpRequest("10.0.0.12"))).status).toBe(200);
+    expect(mocks.canUserAccessPrivateTargets).not.toHaveBeenCalled();
+  });
+});

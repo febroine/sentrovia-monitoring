@@ -7,6 +7,10 @@ import { isMonitorNetworkHostnameLiteralAllowed, isNonPublicIpAddress } from "@/
 import { formatTimeoutDuration } from "@/worker/failure-reasons";
 import type { CheckFailureReason, CheckResult } from "@/worker/types";
 
+// Used instead of the server's own resolver when private targets are not allowed, so names that only the
+// internal DNS knows (split-horizon zones, internal hosts) cannot be looked up and read back.
+export const PUBLIC_DNS_SERVERS = ["1.1.1.1", "8.8.8.8"];
+
 class DnsCheckFailure extends Error {
   constructor(message: string, readonly reason: CheckFailureReason) {
     super(message);
@@ -25,10 +29,11 @@ export async function checkDnsMonitor(monitor: Monitor, allowPrivateTargets = fa
       throw new DnsCheckFailure("The DNS server is not allowed by the current network safety policy.", "configuration");
     }
 
-    const answers = await lookupRecords(target.host, target.recordType, target.server, monitor.timeout);
+    const servers = target.server ? [target.server] : allowPrivateTargets ? [] : PUBLIC_DNS_SERVERS;
+    const answers = await lookupRecords(target.host, target.recordType, servers, monitor.timeout);
     const latencyMs = Math.max(1, Math.round(performance.now() - startedAt));
-    // Without a chosen server the system resolver may answer with internal addresses, which are only
-    // shown where private targets are allowed.
+    // A public name can still point at an internal address; such answers are only shown where private
+    // targets are allowed.
     if (!allowPrivateTargets && !target.server && (target.recordType === "A" || target.recordType === "AAAA")
       && answers.some((address) => isNonPublicIpAddress(address))) {
       throw new DnsCheckFailure(
@@ -65,10 +70,10 @@ export async function checkDnsMonitor(monitor: Monitor, allowPrivateTargets = fa
   }
 }
 
-async function lookupRecords(host: string, recordType: DnsRecordType, server: string, timeoutMs: number) {
+async function lookupRecords(host: string, recordType: DnsRecordType, servers: string[], timeoutMs: number) {
   // Two tries inside the monitor timeout; the outer deadline cancels anything still pending.
   const resolver = new Resolver({ timeout: Math.max(500, Math.floor(timeoutMs / 2)), tries: 2 });
-  if (server) resolver.setServers([server]);
+  if (servers.length > 0) resolver.setServers(servers);
 
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<never>((_, reject) => {

@@ -101,6 +101,8 @@ export function toAuthError(error: unknown, fallbackMessage: string) {
     );
   }
 
+  // The client only sees the generic message; keep the cause in the server log for whoever investigates.
+  console.error(`[sentrovia] ${fallbackMessage}`, error);
   return new AuthError(fallbackMessage, 500);
 }
 

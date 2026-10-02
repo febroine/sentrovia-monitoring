@@ -56,10 +56,12 @@ export function resolveApiMutationPermission(pathname: string, method: string): 
   if (pathname.startsWith("/api/monitors")) return "monitors.manage";
   if (pathname.startsWith("/api/companies")) return "companies.manage";
   if (pathname.startsWith("/api/delivery")) return "delivery.manage";
+  // Analytics and its PDF are read-only queries sent as POST for their filter body; any member may read them.
+  if (pathname === "/api/reports/analytics" || pathname === "/api/reports/analytics/pdf") return null;
   if (pathname.startsWith("/api/reports")) return "reports.manage";
   if (pathname.startsWith("/api/notifications")) return "settings.manage";
   if (pathname === "/api/settings") return "settings.manage";
-  if (pathname === "/api/logs") return "audit.read";
+  if (pathname === "/api/logs") return "audit.manage";
   if (pathname.startsWith("/api/system/backup")) return "backups.manage";
   if (pathname === "/api/worker") return "worker.manage";
   return null;

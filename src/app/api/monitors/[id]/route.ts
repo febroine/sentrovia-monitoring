@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { toAuthError } from "@/lib/auth/errors";
 import { assertPermission } from "@/lib/auth/permissions";
-import { readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
+import { assertSameOriginMutation, readJsonBody, STANDARD_JSON_BODY_LIMIT_BYTES } from "@/lib/http/json-body";
 import { applyMonitorDefaults } from "@/lib/monitors/defaults";
 import { monitorInputSchema } from "@/lib/monitors/schemas";
 import { deleteMonitors, SOFT_DELETE_UNDO_MS, updateMonitor } from "@/lib/monitors/service";
@@ -66,8 +66,9 @@ export async function PATCH(request: NextRequest, context: MonitorRouteContext) 
   }
 }
 
-export async function DELETE(_request: NextRequest, context: MonitorRouteContext) {
+export async function DELETE(request: NextRequest, context: MonitorRouteContext) {
   try {
+    assertSameOriginMutation(request);
     const session = await getSession();
 
     if (!session) {

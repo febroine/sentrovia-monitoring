@@ -30,6 +30,7 @@ export default function LogsPage() {
   const [logs, setLogs] = useState<LogRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [clearableTotal, setClearableTotal] = useState(0);
+  const [canClear, setCanClear] = useState(false);
   const [options, setOptions] = useState<LogsFilterOptions>({ companies: [], monitors: [] });
   const [presets, setPresets] = useState<LogPresetRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +97,7 @@ export default function LogsPage() {
         logs?: LogRecord[];
         filters?: LogsFilterOptions;
         pagination?: { total: number; clearableTotal: number; page: number; pageSize: number };
+        canClear?: boolean;
       };
 
       if (!response.ok) {
@@ -115,6 +117,7 @@ export default function LogsPage() {
       setOptions(data.filters ?? { companies: [], monitors: [] });
       setTotal(data.pagination?.total ?? 0);
       setClearableTotal(data.pagination?.clearableTotal ?? 0);
+      setCanClear(data.canClear === true);
       setError(null);
 
       if (newIds.length > 0 && silent) {
@@ -302,10 +305,12 @@ export default function LogsPage() {
           <Button variant="outline" size="icon" aria-label="Refresh event logs" title="Refresh" onClick={() => void loadLogs()} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           </Button>
-          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={clearableTotal === 0}>
-            <Trash2 data-icon="inline-start" className="h-4 w-4" />
-            Clear logs
-          </Button>
+          {canClear ? (
+            <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={clearableTotal === 0}>
+              <Trash2 data-icon="inline-start" className="h-4 w-4" />
+              Clear logs
+            </Button>
+          ) : null}
         </div>
       </header>
 

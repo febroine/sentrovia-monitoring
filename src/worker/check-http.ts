@@ -614,7 +614,8 @@ function readJsonPath(payload: unknown, path: string) {
       return Number.isInteger(index) ? current[index] : undefined;
     }
 
-    if (typeof current === "object") {
+    // Only the document's own keys: a path such as "constructor" must not reach inherited members.
+    if (typeof current === "object" && Object.hasOwn(current, segment)) {
       return (current as Record<string, unknown>)[segment];
     }
 

@@ -6,6 +6,7 @@ import {
   recordWorkspaceBackupExport,
   serializeWorkspaceBackup,
 } from "@/lib/system/backup-service";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,16 @@ export async function GET(request: NextRequest) {
       session.activeWorkspaceId ?? undefined
     );
     const body = serializeWorkspaceBackup(bundle, format);
+    await recordAuditEventSafely({
+      userId: session.id,
+      workspaceId: session.activeWorkspaceId,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "backup",
+      entityLabel: "Workspace backup",
+      action: "backup.exported",
+      summary: `Downloaded a ${format.toUpperCase()} workspace backup.`,
+    });
     try {
       await recordWorkspaceBackupExport(session.id, bundle.exportedAt);
     } catch (error) {

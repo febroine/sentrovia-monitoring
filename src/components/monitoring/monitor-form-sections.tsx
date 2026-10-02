@@ -726,10 +726,10 @@ function DnsMonitorFields({ values, onFieldChange }: { values: MonitorPayload; o
             aria-label="DNS server"
             value={values.dnsServer}
             onChange={(event) => onFieldChange("dnsServer", event.target.value)}
-            placeholder="System resolver"
+            placeholder="Automatic"
           />
           <p className="text-[11px] text-muted-foreground">
-            Optional. An IP address such as 1.1.1.1, or your domain&apos;s own name server to see changes before caches expire.
+            Optional. An IP address such as 1.1.1.1, or your domain&apos;s own name server to see changes before caches expire. When empty, the server&apos;s resolver answers for admins with private-target access, and public resolvers (1.1.1.1, 8.8.8.8) for everyone else.
           </p>
         </Field>
       </div>

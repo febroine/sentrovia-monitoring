@@ -107,4 +107,15 @@ describe("checkDnsMonitor", () => {
     expect((await checkDnsMonitor(monitor("dns://intranet.example.com/A"), true)).status).toBe("up");
     expect(await checkDnsMonitor(monitor("dns://example.com/A?server=10.0.0.53"))).toMatchObject({ failureReason: "configuration" });
   });
+
+  it("asks public resolvers instead of the server's own DNS without private-target access", async () => {
+    resolver.resolveCname.mockResolvedValue(["db.internal.example"]);
+
+    await checkDnsMonitor(monitor("dns://corp-db.example.com/CNAME"));
+    expect(resolver.servers).toEqual(["1.1.1.1", "8.8.8.8"]);
+
+    resolver.servers = [];
+    await checkDnsMonitor(monitor("dns://corp-db.example.com/CNAME"), true);
+    expect(resolver.servers).toEqual([]);
+  });
 });
