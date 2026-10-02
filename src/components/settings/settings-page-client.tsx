@@ -27,6 +27,27 @@ const tabs: Array<{ id: TabId; label: string; adminOnly?: boolean }> = [
   { id: "updates", label: "Updates", adminOnly: true },
 ];
 
+// Address fragments that open a section, as used by global search and shared links.
+const HASH_TABS: Record<string, TabId> = {
+  notifications: "notifications",
+  monitoring: "monitoring",
+  "public-status": "publicStatus",
+  appearance: "appearance",
+  data: "data",
+  backup: "data",
+  backups: "data",
+  retention: "data",
+  updates: "updates",
+};
+const TAB_HASHES: Record<TabId, string> = {
+  notifications: "notifications",
+  monitoring: "monitoring",
+  publicStatus: "public-status",
+  appearance: "appearance",
+  data: "data",
+  updates: "updates",
+};
+
 export default function SettingsPageClient() {
   const [activeTab, setActiveTab] = useState<TabId>("notifications");
   const { settings, loading, saving, error, message, loadSettings, saveSettings, updateSetting } =
@@ -39,6 +60,26 @@ export default function SettingsPageClient() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  // Opens the section a link points to, also when the fragment changes on this page (global search).
+  useEffect(() => {
+    function openHashTab() {
+      const tab = HASH_TABS[window.location.hash.slice(1).toLowerCase()];
+      if (tab) setActiveTab(tab);
+    }
+    const frame = window.requestAnimationFrame(openHashTab);
+    window.addEventListener("hashchange", openHashTab);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("hashchange", openHashTab);
+    };
+  }, []);
+
+  function selectTab(tab: TabId) {
+    setActiveTab(tab);
+    // Keeps the address pointing at the open section, so it can be shared or reloaded.
+    window.history.replaceState(null, "", `#${TAB_HASHES[tab]}`);
+  }
 
   useEffect(() => {
     if (loading || typeof window === "undefined" || !window.location.hash) return;
@@ -81,12 +122,12 @@ export default function SettingsPageClient() {
 
       <Tabs
         value={effectiveActiveTab}
-        onValueChange={(value) => setActiveTab(value as TabId)}
+        onValueChange={(value) => selectTab(value as TabId)}
         orientation="vertical"
         className="!flex-col gap-4 lg:!grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-6"
       >
         <div className="sticky top-0 z-20 -mx-1 bg-background px-1 py-2 lg:hidden">
-          <Select value={effectiveActiveTab} onValueChange={(value) => setActiveTab(value as TabId)}>
+          <Select value={effectiveActiveTab} onValueChange={(value) => selectTab(value as TabId)}>
             <SelectTrigger aria-label="Settings section" className="w-full">
               <SelectValue />
             </SelectTrigger>

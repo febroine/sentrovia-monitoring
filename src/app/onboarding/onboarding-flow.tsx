@@ -27,6 +27,8 @@ export function OnboardingFlow() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<OnboardingFieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  // What was typed in the administrator form, kept when going back to the welcome step (passwords are not kept).
+  const [savedDetails, setSavedDetails] = useState<SavedAdminDetails>({});
   const [isNavigating, startTransition] = useTransition();
   const busy = submitting || isNavigating;
 
@@ -89,7 +91,10 @@ export function OnboardingFlow() {
     <ObservatoryShell contextLabel="Workspace setup · 2 of 2" scrim="broad">
       <section className="flex min-h-svh items-center justify-center px-5 pb-8 pt-24 sm:px-8 sm:pb-10 sm:pt-28">
         <div className={`${styles.authForm} w-full max-w-[46rem]`}>
-          <Button type="button" variant="ghost" onClick={() => setStep("welcome")} disabled={busy} className="-ml-3 mb-3 h-11 gap-2 px-3 text-blue-100/58 hover:bg-blue-100/8 hover:text-white focus-visible:ring-primary/35 sm:mb-4">
+          <Button type="button" variant="ghost" onClick={() => {
+            setSavedDetails(readAdminDetails(formRef.current));
+            setStep("welcome");
+          }} disabled={busy} className="-ml-3 mb-3 h-11 gap-2 px-3 text-blue-100/58 hover:bg-blue-100/8 hover:text-white focus-visible:ring-primary/35 sm:mb-4">
             <ArrowLeft aria-hidden="true" data-icon="inline-start" />
             Back
           </Button>
@@ -102,6 +107,7 @@ export function OnboardingFlow() {
 
           <AdminForm
             busy={busy}
+            defaults={savedDetails}
             error={error}
             fieldErrors={fieldErrors}
             formRef={formRef}
@@ -154,8 +160,21 @@ async function handleReadinessResponse(response: Response, isActive: () => boole
   setReady(true);
 }
 
-function AdminForm({ busy, error, fieldErrors, formRef, ready, showConfirmPassword, showPassword, onFieldInput, onSubmit, onToggleConfirmPassword, onTogglePassword }: {
+type SavedAdminDetails = Partial<Record<"firstName" | "lastName" | "username" | "email", string>>;
+
+function readAdminDetails(form: HTMLFormElement | null): SavedAdminDetails {
+  if (!form) return {};
+  const data = new FormData(form);
+  const value = (name: string) => {
+    const entry = data.get(name);
+    return typeof entry === "string" ? entry : undefined;
+  };
+  return { firstName: value("firstName"), lastName: value("lastName"), username: value("username"), email: value("email") };
+}
+
+function AdminForm({ busy, defaults, error, fieldErrors, formRef, ready, showConfirmPassword, showPassword, onFieldInput, onSubmit, onToggleConfirmPassword, onTogglePassword }: {
   busy: boolean;
+  defaults: SavedAdminDetails;
   error: string | null;
   fieldErrors: OnboardingFieldErrors;
   formRef: React.RefObject<HTMLFormElement | null>;
@@ -170,10 +189,10 @@ function AdminForm({ busy, error, fieldErrors, formRef, ready, showConfirmPasswo
   return (
     <form ref={formRef} aria-busy={busy} aria-labelledby="administrator-title" className="flex flex-col gap-4" onInput={(event) => handleFieldInput(event, onFieldInput)} onSubmit={onSubmit}>
       <div className="grid gap-x-3 gap-y-3 min-[360px]:grid-cols-2 sm:gap-x-4 sm:gap-y-4">
-        <FieldBlock label="First name" htmlFor="firstName" error={fieldErrors.firstName}><Input id="firstName" name="firstName" autoComplete="given-name" required disabled={!ready} aria-invalid={Boolean(fieldErrors.firstName)} aria-describedby={fieldErrors.firstName ? fieldErrorId("firstName") : undefined} placeholder="First name" className={inputClassName} /></FieldBlock>
-        <FieldBlock label="Last name" htmlFor="lastName" error={fieldErrors.lastName}><Input id="lastName" name="lastName" autoComplete="family-name" required disabled={!ready} aria-invalid={Boolean(fieldErrors.lastName)} aria-describedby={fieldErrors.lastName ? fieldErrorId("lastName") : undefined} placeholder="Last name" className={inputClassName} /></FieldBlock>
-        <FieldBlock label="Username" htmlFor="username" error={fieldErrors.username}><Input id="username" name="username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={!ready} aria-invalid={Boolean(fieldErrors.username)} aria-describedby={fieldErrors.username ? fieldErrorId("username") : undefined} placeholder="Username" className={inputClassName} /></FieldBlock>
-        <FieldBlock label="Email" htmlFor="email" error={fieldErrors.email}><Input id="email" name="email" type="email" autoComplete="email" spellCheck={false} required disabled={!ready} aria-invalid={Boolean(fieldErrors.email)} aria-describedby={fieldErrors.email ? fieldErrorId("email") : undefined} placeholder="Email address" className={inputClassName} /></FieldBlock>
+        <FieldBlock label="First name" htmlFor="firstName" error={fieldErrors.firstName}><Input id="firstName" name="firstName" defaultValue={defaults.firstName} autoComplete="given-name" required disabled={!ready} aria-invalid={Boolean(fieldErrors.firstName)} aria-describedby={fieldErrors.firstName ? fieldErrorId("firstName") : undefined} placeholder="First name" className={inputClassName} /></FieldBlock>
+        <FieldBlock label="Last name" htmlFor="lastName" error={fieldErrors.lastName}><Input id="lastName" name="lastName" defaultValue={defaults.lastName} autoComplete="family-name" required disabled={!ready} aria-invalid={Boolean(fieldErrors.lastName)} aria-describedby={fieldErrors.lastName ? fieldErrorId("lastName") : undefined} placeholder="Last name" className={inputClassName} /></FieldBlock>
+        <FieldBlock label="Username" htmlFor="username" error={fieldErrors.username}><Input id="username" name="username" defaultValue={defaults.username} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={!ready} aria-invalid={Boolean(fieldErrors.username)} aria-describedby={fieldErrors.username ? fieldErrorId("username") : undefined} placeholder="Username" className={inputClassName} /></FieldBlock>
+        <FieldBlock label="Email" htmlFor="email" error={fieldErrors.email}><Input id="email" name="email" defaultValue={defaults.email} type="email" autoComplete="email" spellCheck={false} required disabled={!ready} aria-invalid={Boolean(fieldErrors.email)} aria-describedby={fieldErrors.email ? fieldErrorId("email") : undefined} placeholder="Email address" className={inputClassName} /></FieldBlock>
         <PasswordField id="password" label="Password" error={fieldErrors.password} visible={showPassword} onToggle={onTogglePassword} disabled={!ready} />
         <PasswordField id="confirmPassword" label="Confirm password" error={fieldErrors.confirmPassword} visible={showConfirmPassword} onToggle={onToggleConfirmPassword} disabled={!ready} />
       </div>

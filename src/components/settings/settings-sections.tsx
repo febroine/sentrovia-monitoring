@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   BellRing,
   ChevronRight,
@@ -21,7 +21,11 @@ import { SavedRecipientsManager } from "@/components/settings/saved-recipients-m
 import { TemplateEditor } from "@/components/settings/template-editor";
 import { NotificationTemplatePreviewPanel } from "@/components/settings/notification-template-preview";
 import { Input } from "@/components/ui/input";
+import { DurationInput } from "@/components/ui/duration-input";
 import { NumberInput } from "@/components/ui/number-input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useSettingsStore } from "@/stores/use-settings-store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatPanelDateTime } from "@/lib/time";
 import {
@@ -627,30 +631,27 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
                 placeholder="5m"
               />
             </Field>
-            <Field label="Hard failure timeout (ms)" hint="Maximum time allowed for a complete check when a monitor does not override it.">
-              <NumberInput
-                min={1000}
-                max={120000}
-                step={500}
-                value={settings.monitoring.timeout}
-                onValueChange={(value) => updateSetting("monitoring.timeout", value)}
+            <Field label="Hard failure timeout" hint="Maximum time allowed for a complete check when a monitor does not override it.">
+              <DurationInput
+                ariaLabel="Hard failure timeout"
+                valueMs={settings.monitoring.timeout}
+                minSeconds={1}
+                maxSeconds={120}
+                onChange={(value) => { if (value !== null) updateSetting("monitoring.timeout", value); }}
               />
             </Field>
             <Field
-              label="Slow response threshold (ms)"
+              label="Slow response threshold"
               hint="Optional default for new and imported HTTP, keyword, and JSON monitors. Leave blank to disable the default."
             >
-              <Input
-                type="number"
-                min={1}
-                max={Math.max(1, settings.monitoring.timeout - 1)}
-                step={100}
-                value={settings.monitoring.slowResponseThresholdMs ?? ""}
+              <DurationInput
+                ariaLabel="Slow response threshold"
+                valueMs={settings.monitoring.slowResponseThresholdMs}
+                minSeconds={0.001}
+                maxSeconds={Math.max(0.001, (settings.monitoring.timeout - 1) / 1_000)}
                 placeholder="Optional"
-                onChange={(event) => {
-                  const value = event.target.value.trim();
-                  updateSetting("monitoring.slowResponseThresholdMs", value ? Number(value) : null);
-                }}
+                optional
+                onChange={(value) => updateSetting("monitoring.slowResponseThresholdMs", value)}
               />
             </Field>
             <Field
@@ -884,9 +885,28 @@ function AccentOptionPreview({
   );
 }
 
+const RETENTION_FIELDS = [
+  { key: "retentionDays", label: "Monitor checks" },
+  { key: "eventRetentionDays", label: "Event logs" },
+  { key: "deliveryRetentionDays", label: "Delivery history" },
+] as const;
+
 export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const isAdmin = settings.profile.role === "admin";
   const { saveSection, savingSection } = useSectionSave(saveSettings);
+  const persisted = useSettingsStore((state) => state.persistedSettings);
+  const [pendingSection, setPendingSection] = useState<SettingsSaveSection | null>(null);
+  // Shorter retention removes the older history at the next cleanup, so it is confirmed first.
+  const shortened = RETENTION_FIELDS
+    .filter((field) => settings.data[field.key] < persisted.data[field.key])
+    .map((field) => ({ ...field, from: persisted.data[field.key], to: settings.data[field.key] }));
+  const saveRetention = async (section: SettingsSaveSection) => {
+    if (shortened.length > 0) {
+      setPendingSection(section);
+      return;
+    }
+    await saveSection(section);
+  };
 
   return (
     <div className="space-y-6">
@@ -899,10 +919,41 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
             sectionId="retention-and-backups"
             saving={saving}
             savingSection={savingSection}
-            onSave={saveSection}
+            onSave={saveRetention}
           />
         }
       >
+        <Dialog open={pendingSection !== null} onOpenChange={(open) => !open && setPendingSection(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Shorten data retention?</DialogTitle>
+              <DialogDescription>
+                History older than the new limits is deleted permanently at the next cleanup.
+              </DialogDescription>
+            </DialogHeader>
+            <ul className="space-y-1 text-sm">
+              {shortened.map((field) => (
+                <li key={field.key}>
+                  {field.label}: {field.from} → <span className="font-medium">{field.to} days</span>
+                </li>
+              ))}
+            </ul>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPendingSection(null)}>Keep current limits</Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  const section = pendingSection;
+                  setPendingSection(null);
+                  if (section) void saveSection(section);
+                }}
+              >
+                Shorten and save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <div className="grid gap-4 md:grid-cols-3">
           <Field label="Monitor checks" hint="Latency and availability samples, in days.">
             <NumberInput

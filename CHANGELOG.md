@@ -59,6 +59,17 @@ All notable changes to Sentrovia are documented here. Published release tags and
 - System Health on the dashboard now covers only the signed-in workspace. It counted due and delayed monitors across every workspace and listed the names and targets of other workspaces' delayed monitors to any workspace administrator, so an empty workspace reported "1 active monitor is more than one interval behind schedule". Temporarily paused monitors no longer count as due.
 - A monitor added in the console is scheduled for an immediate first check, like monitors added in bulk, instead of showing "Check schedule missing" until the worker reached it.
 - The dashboard's offline alert links to the monitor list filtered to offline monitors (`/monitoring?status=down`).
+- Number fields in the monitor form, text import and settings can be cleared and retyped: the value is kept as typed, marked invalid while out of range, and brought to the nearest limit when the field is left (before, clearing a field put back a default at once and an out-of-range value was only rejected on save). Timeouts and thresholds are entered in seconds everywhere, including Settings.
+- When a monitor cannot be saved, the form switches to the tab with the problem, focuses the field and shows the reason inside the dialog ("Advanced › Port: Port must be between 1 and 65535") instead of a toast behind it. Member and company dialogs also show their errors inside the dialog, and a duplicate company name or status page address is reported as such.
+- Bulk edit changes only the settings that were changed in the dialog; before, every other setting of the selected monitors (such as tags) was overwritten with the dialog's defaults. The dialog stays open if saving fails.
+- Pages that fail to load (monitors, companies, deliveries, logs, settings) say so and offer *Try again* instead of showing an empty list, and the delivery setup guide no longer flashes before the history has loaded.
+- The live dashboard shows *Offline* with a reload button when its update stream closes, and the offline-monitor banner comes back when more monitors go offline after it was dismissed. Background refreshes pause while the tab is hidden and run again when it is shown.
+- Retrying a delivery reports whether the retry was delivered and keeps the history on its current page; backup restore errors name the item and field that is invalid; toasts are opaque and readable over any page.
+- Signing in after an account was removed explains why on the login page, and a failed sign-in moves the cursor back to the password field.
+- Settings tabs can be linked (`/settings#backup`, `#retention`, `#public-status` and so on) and the address follows the open tab. Shortening data retention asks for confirmation, since older history is deleted at the next cleanup.
+- Status page addresses can be typed with hyphens (the address is tidied when the field is left), and changing an existing address warns that the old link will stop working.
+- Editing a report schedule (*Edit*) saves changes to that schedule instead of creating a new one.
+- Going back from the administrator step of workspace setup keeps the names and email that were typed.
 
 ## [0.1.7] - 2026-09-22
 

@@ -3,6 +3,7 @@
 import { Activity, Braces, Clock3, Copy, DatabaseZap, Globe, Network, Search, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DurationInput } from "@/components/ui/duration-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,9 +14,7 @@ import { DNS_RECORD_TYPES, type DnsMatchMode, type DnsRecordType } from "@/lib/m
 import { getMonitorTypeLabel } from "@/lib/monitors/targets";
 import {
   buildOutageConfirmationSummary,
-  formatDurationInputMs,
   formatDurationMs,
-  parseDurationInputSeconds,
 } from "@/lib/monitors/duration";
 import type {
   HttpMethod,
@@ -438,7 +437,7 @@ export function CheckMonitorSettings({
             valueMs={values.timeout}
             minSeconds={1}
             maxSeconds={120}
-            onChange={(value) => onFieldChange("timeout", value ?? 1_000)}
+            onChange={(value) => { if (value !== null) onFieldChange("timeout", value); }}
           />
           <p className="text-[11px] text-muted-foreground">
             {isHeartbeatMonitor
@@ -457,6 +456,7 @@ export function CheckMonitorSettings({
               minSeconds={0.001}
               maxSeconds={Math.max(0.001, (values.timeout - 1) / 1_000)}
               placeholder="Optional"
+              optional
               onChange={(value) => onFieldChange("slowResponseThresholdMs", value)}
             />
             <p className="text-[11px] text-muted-foreground">
@@ -518,7 +518,9 @@ export function CheckMonitorSettings({
             <span>
               <span className="block">Advanced check settings</span>
               <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                HTTP method, IP family, redirects, response limits, cache, and SSL behavior.
+                {isPortMonitor || isPingMonitor
+                  ? "IP family used to reach the host."
+                  : "HTTP method, IP family, redirects, response limits, cache, and SSL behavior."}
               </span>
             </span>
             <span aria-hidden="true" className="text-lg leading-4 text-muted-foreground transition-transform group-open:rotate-90">
@@ -642,7 +644,9 @@ export function CheckMonitorSettings({
                 ? "Port monitors validate raw TCP reachability. HTTP redirects, response body limits, SSL expiry, and cache busters do not apply here."
                 : isAssertionMonitor
                   ? "Keyword and JSON monitors verify both endpoint reachability and the configured response assertion."
-                  : "HTTP monitors treat the configured success status codes as healthy responses."}
+                  : values.monitorType === "dns"
+                    ? "DNS monitors look up the record and compare it with the expected values. HTTP, TLS, and IP family options do not apply here."
+                    : "HTTP monitors treat the configured success status codes as healthy responses."}
         </div>
       )}
     </div>
@@ -739,41 +743,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-2">
       <Label>{label}</Label>
       {children}
-    </div>
-  );
-}
-
-function DurationInput({
-  ariaLabel,
-  valueMs,
-  minSeconds,
-  maxSeconds,
-  placeholder,
-  onChange,
-}: {
-  ariaLabel: string;
-  valueMs: number | null;
-  minSeconds: number;
-  maxSeconds: number;
-  placeholder?: string;
-  onChange: (value: number | null) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Input
-        aria-label={ariaLabel}
-        type="number"
-        min={minSeconds}
-        max={maxSeconds}
-        step="0.001"
-        value={formatDurationInputMs(valueMs)}
-        placeholder={placeholder}
-        onChange={(event) => {
-          const rawValue = event.target.value.trim();
-          onChange(rawValue.length > 0 ? parseDurationInputSeconds(rawValue, valueMs ?? minSeconds * 1_000) : null);
-        }}
-      />
-      <span className="shrink-0 text-xs text-muted-foreground">seconds</span>
     </div>
   );
 }

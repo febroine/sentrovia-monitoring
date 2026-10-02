@@ -423,7 +423,8 @@ function ScheduledReportWorkspace({ state }: { state: ReturnType<typeof useRepor
 }
 
 function ScheduleBuilder({ state }: { state: ReturnType<typeof useReportsPageState> }) {
-  const { companies, createSchedule, saving, scheduleDraft, scheduleNeedsCompany, scheduleRecipients, setScheduleDraft } = state;
+  const { companies, createSchedule, saving, scheduleDraft, scheduleNeedsCompany, scheduleRecipients, setScheduleDraft, editingScheduleId, setEditingScheduleId, schedules } = state;
+  const editingSchedule = editingScheduleId ? schedules.find((item) => item.id === editingScheduleId) ?? null : null;
   return (
     <Card className="overflow-hidden">
       <CardHeader className="bg-muted/20 pb-4"><CardTitle>Scheduled report</CardTitle></CardHeader>
@@ -438,11 +439,15 @@ function ScheduleBuilder({ state }: { state: ReturnType<typeof useReportsPageSta
           onTemplateChange={(template) => setScheduleDraft((current) => ({ ...current, template }))}
           onChange={(patch) => setScheduleDraft((current) => ({ ...current, ...patch }))}
         />
+        {editingSchedule ? (
+          <p className="text-xs text-muted-foreground" role="status">Editing “{editingSchedule.name}”. Saving updates this schedule.</p>
+        ) : null}
         <ScheduleBuilderActions
           disabled={scheduleNeedsCompany || scheduleRecipients.length === 0}
           saving={saving}
+          editing={Boolean(editingSchedule)}
           onCreate={() => void createSchedule()}
-          onReset={() => setScheduleDraft(EMPTY_SCHEDULE_DRAFT)}
+          onReset={() => { setScheduleDraft(EMPTY_SCHEDULE_DRAFT); setEditingScheduleId(null); }}
         />
         <RecipientHint count={scheduleRecipients.length} />
       </CardContent>
@@ -550,20 +555,22 @@ function ScheduleDeliveryFields({ state }: { state: ReturnType<typeof useReports
 function ScheduleBuilderActions({
   disabled,
   saving,
+  editing,
   onCreate,
   onReset,
 }: {
   disabled: boolean;
   saving: boolean;
+  editing: boolean;
   onCreate: () => void;
   onReset: () => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
       <Button onClick={onCreate} disabled={saving || disabled}>
-        {saving ? "Creating..." : "Create schedule"}
+        {editing ? (saving ? "Saving..." : "Save changes") : saving ? "Creating..." : "Create schedule"}
       </Button>
-      <Button variant="ghost" onClick={onReset} disabled={saving}>Reset</Button>
+      <Button variant="ghost" onClick={onReset} disabled={saving}>{editing ? "Cancel editing" : "Reset"}</Button>
     </div>
   );
 }
@@ -1013,7 +1020,7 @@ function ScheduleCard({
             Send now
           </Button>
           <Button variant="ghost" onClick={onEdit} disabled={saving}>
-            Load into builder
+            Edit
           </Button>
           <Button variant="ghost" onClick={onDuplicate} disabled={saving}>
             Duplicate

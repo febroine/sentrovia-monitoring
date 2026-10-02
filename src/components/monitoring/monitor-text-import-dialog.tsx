@@ -5,6 +5,7 @@ import { FileText, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DurationInput } from "@/components/ui/duration-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -254,28 +255,27 @@ export function MonitorTextImportDialog({
                     </div>
                   </Field>
 
-                  <Field label="Hard failure timeout (ms)" htmlFor="txt-timeout">
-                    <NumberInput
+                  <Field label="Hard failure timeout" htmlFor="txt-timeout">
+                    <DurationInput
                       id="txt-timeout"
-                      min={1000}
-                      max={120000}
-                      value={settings.timeout}
-                      onValueChange={(value) => updateSetting("timeout", value)}
+                      ariaLabel="Hard failure timeout"
+                      valueMs={settings.timeout}
+                      minSeconds={1}
+                      maxSeconds={120}
+                      onChange={(value) => { if (value !== null) updateSetting("timeout", value); }}
                     />
                   </Field>
 
-                  <Field label="Slow response threshold (ms)" htmlFor="txt-slow-threshold">
-                    <Input
+                  <Field label="Slow response threshold" htmlFor="txt-slow-threshold">
+                    <DurationInput
                       id="txt-slow-threshold"
-                      type="number"
-                      min={1}
-                      max={Math.max(1, settings.timeout - 1)}
+                      ariaLabel="Slow response threshold"
+                      valueMs={settings.slowResponseThresholdMs}
+                      minSeconds={0.001}
+                      maxSeconds={Math.max(0.001, (settings.timeout - 1) / 1_000)}
                       placeholder="Disabled"
-                      value={settings.slowResponseThresholdMs ?? ""}
-                      onChange={(event) => {
-                        const value = event.target.value.trim();
-                        updateSetting("slowResponseThresholdMs", value ? Number(value) || null : null);
-                      }}
+                      optional
+                      onChange={(value) => updateSetting("slowResponseThresholdMs", value)}
                     />
                   </Field>
 

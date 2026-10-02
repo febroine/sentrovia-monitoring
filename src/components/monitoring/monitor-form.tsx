@@ -109,9 +109,15 @@ export function MonitorForm({
     return () => window.cancelAnimationFrame(frame);
   }, [submitError, errorTab, errorLabel]);
 
+  // New starting values (for example workspace defaults arriving after the form opened) replace the
+  // form only while it is untouched, so they never wipe what the user has typed.
+  const appliedInitialRef = useRef(initialValue);
   useEffect(() => {
-    setValues(initialValue);
-    setTagsText(initialValue.tags.join(", "));
+    const previous = appliedInitialRef.current;
+    appliedInitialRef.current = initialValue;
+    if (previous === initialValue) return;
+    setValues((current) => (JSON.stringify(current) === JSON.stringify(previous) ? initialValue : current));
+    setTagsText((current) => (current === previous.tags.join(", ") ? initialValue.tags.join(", ") : current));
     setTestResult(null);
   }, [initialValue]);
 
