@@ -386,6 +386,7 @@ export interface WorkerStatus {
   connectivityStatus: "unknown" | "online" | "offline" | "disabled";
   connectivityCheckedAt: string | null;
   connectivityMessage: string | null;
+  pollIntervalMs?: number;
   observability?: WorkerObservability;
 }
 

@@ -677,6 +677,8 @@ export const workerCycleMetrics = pgTable("worker_cycle_metrics", {
   // How long claimed monitors had been due before their check started.
   averageScheduleLagMs: integer("average_schedule_lag_ms"),
   maxScheduleLagMs: integer("max_schedule_lag_ms"),
+  // Monitors the lag average covers; monitors without a due time are left out of it.
+  scheduleLagSamples: integer("schedule_lag_samples"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

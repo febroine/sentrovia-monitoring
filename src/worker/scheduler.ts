@@ -194,9 +194,11 @@ export function createMonitorDispatcher({
 }
 
 // How long a monitor had been due when its check started; the core health signal of a scheduler.
-export function calculateScheduleLagMs(monitor: Pick<ClaimedMonitor, "nextCheckAt">, startedAt: Date) {
+// A paused monitor only becomes due when its pause ends, even if an edit moved nextCheckAt earlier.
+export function calculateScheduleLagMs(monitor: Pick<ClaimedMonitor, "nextCheckAt" | "pausedUntil">, startedAt: Date) {
   if (!monitor.nextCheckAt) return null;
-  return Math.min(MAX_RECORDED_SCHEDULE_LAG_MS, Math.max(0, startedAt.getTime() - monitor.nextCheckAt.getTime()));
+  const dueAt = Math.max(monitor.nextCheckAt.getTime(), monitor.pausedUntil?.getTime() ?? 0);
+  return Math.min(MAX_RECORDED_SCHEDULE_LAG_MS, Math.max(0, startedAt.getTime() - dueAt));
 }
 
 async function recordFinishedBatch(
@@ -237,6 +239,7 @@ async function recordFinishedBatch(
       ? Math.round(scheduleLags.reduce((sum, value) => sum + value, 0) / scheduleLags.length)
       : null,
     maxScheduleLagMs: scheduleLags.length > 0 ? Math.max(...scheduleLags) : null,
+    scheduleLagSamples: scheduleLags.length,
     errorMessage: errors[0] ?? null,
   });
 

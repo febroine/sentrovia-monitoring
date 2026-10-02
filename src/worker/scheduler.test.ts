@@ -1661,6 +1661,8 @@ describe("monitoring scheduler verification flow", () => {
       await (await dispatcher.dispatch()).completion;
 
       const metric = mocks.recordWorkerCycleMetric.mock.calls[0][0];
+      // The monitor without a due time is left out of the average, and the sample count says so.
+      expect(metric.scheduleLagSamples).toBe(2);
       expect(metric.maxScheduleLagMs).toBeGreaterThanOrEqual(41_000);
       expect(metric.maxScheduleLagMs).toBeLessThan(42_000);
       expect(metric.averageScheduleLagMs).toBeGreaterThanOrEqual(21_000);
@@ -1693,16 +1695,27 @@ describe("schedule lag", () => {
   it("measures from the moment the monitor became due and never goes negative", () => {
     const startedAt = new Date("2026-05-08T07:00:30.000Z");
 
-    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:00:00.000Z") }, startedAt)).toBe(30_000);
-    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:01:00.000Z") }, startedAt)).toBe(0);
-    expect(calculateScheduleLagMs({ nextCheckAt: null }, startedAt)).toBeNull();
+    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:00:00.000Z"), pausedUntil: null }, startedAt)).toBe(30_000);
+    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:01:00.000Z"), pausedUntil: null }, startedAt)).toBe(0);
+    expect(calculateScheduleLagMs({ nextCheckAt: null, pausedUntil: null }, startedAt)).toBeNull();
+  });
+
+  it("counts a paused monitor as due only once its pause ends", () => {
+    // Renaming a monitor during a one-day pause moves nextCheckAt to the edit time.
+    const editedAt = new Date("2026-05-07T07:00:00.000Z");
+    const pauseEnds = new Date("2026-05-08T07:00:00.000Z");
+
+    expect(calculateScheduleLagMs(
+      { nextCheckAt: editedAt, pausedUntil: pauseEnds },
+      new Date("2026-05-08T07:00:04.000Z")
+    )).toBe(4_000);
   });
 
   it("stays within the metric column after a worker was stopped for weeks", () => {
     const startedAt = new Date("2026-05-08T07:00:00.000Z");
     const monthsAgo = new Date("2026-01-01T00:00:00.000Z");
 
-    expect(calculateScheduleLagMs({ nextCheckAt: monthsAgo }, startedAt)).toBe(2_147_483_647);
+    expect(calculateScheduleLagMs({ nextCheckAt: monthsAgo, pausedUntil: null }, startedAt)).toBe(2_147_483_647);
   });
 });
 

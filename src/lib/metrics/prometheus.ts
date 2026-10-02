@@ -76,6 +76,8 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
       .where(and(
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
+        // Same as what the worker can claim: a temporarily paused monitor is not waiting.
+        or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now)),
         or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
         or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
       )),

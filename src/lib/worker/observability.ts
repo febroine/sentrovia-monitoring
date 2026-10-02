@@ -72,6 +72,7 @@ export async function recordWorkerCycleMetric(input: {
   maxLatencyMs: number | null;
   averageScheduleLagMs?: number | null;
   maxScheduleLagMs?: number | null;
+  scheduleLagSamples?: number | null;
   errorMessage?: string | null;
 }) {
   await db.insert(workerCycleMetrics).values({
@@ -88,6 +89,7 @@ export async function recordWorkerCycleMetric(input: {
     maxLatencyMs: input.maxLatencyMs,
     averageScheduleLagMs: input.averageScheduleLagMs ?? null,
     maxScheduleLagMs: input.maxScheduleLagMs ?? null,
+    scheduleLagSamples: input.scheduleLagSamples ?? null,
     errorMessage: input.errorMessage ?? null,
   });
 }
@@ -129,6 +131,8 @@ export async function getWorkerObservability(
           monitorOwnershipCondition(userId, workspaceId),
           eq(monitors.isActive, true),
           isNull(monitors.deletedAt),
+          // Same as what the worker can claim: a temporarily paused monitor is not waiting.
+          or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now)),
           or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
           or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
         )
@@ -211,9 +215,12 @@ export async function getWorkerObservability(
     // Aggregated in the database so the whole range counts, not just the newest batch rows.
     db
       .select({
+        // Weighted by the monitors each batch average covers (rows written before the sample count
+        // existed fall back to the claimed count).
         averageMs: sql<number | null>`round(
-          sum(${workerCycleMetrics.averageScheduleLagMs}::numeric * ${workerCycleMetrics.claimedMonitors})
-          / nullif(sum(${workerCycleMetrics.claimedMonitors}) filter (
+          sum(${workerCycleMetrics.averageScheduleLagMs}::numeric
+            * coalesce(${workerCycleMetrics.scheduleLagSamples}, ${workerCycleMetrics.claimedMonitors}))
+          / nullif(sum(coalesce(${workerCycleMetrics.scheduleLagSamples}, ${workerCycleMetrics.claimedMonitors})) filter (
             where ${workerCycleMetrics.averageScheduleLagMs} is not null
           ), 0)
         )`.mapWith(toNullableNumber),

@@ -7,8 +7,10 @@ import { useWorkerStore } from "@/stores/use-worker-store";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 import { formatPanelDateTime } from "@/lib/time";
 
-// A due monitor normally starts within one poll interval; waiting this long means the slots are full.
+// A due monitor normally starts within one poll interval; waiting well beyond that means the slots
+// are full. The margin keeps the warning quiet at the default 10-second interval.
 const MONITOR_WAIT_WARNING_MS = 120_000;
+const MONITOR_WAIT_WARNING_MARGIN_MS = 60_000;
 
 export function WorkerPulseCard() {
   const { worker, commandLoading, error, loadWorker, toggleWorker } = useWorkerStore();
@@ -19,8 +21,9 @@ export function WorkerPulseCard() {
   const shouldOfferStop = Boolean(worker?.desiredState === "running" && (worker.running || worker.processAlive));
   const summary = worker?.observability?.summary;
   const oldestDueWaitMs = summary?.oldestDueWaitMs ?? null;
+  const waitWarningMs = Math.max(MONITOR_WAIT_WARNING_MS, (worker?.pollIntervalMs ?? 0) + MONITOR_WAIT_WARNING_MARGIN_MS);
   const monitorsWaiting = Boolean(
-    worker?.running && !stale && !connectivityOffline && oldestDueWaitMs !== null && oldestDueWaitMs >= MONITOR_WAIT_WARNING_MS
+    worker?.running && !stale && !connectivityOffline && oldestDueWaitMs !== null && oldestDueWaitMs >= waitWarningMs
   );
 
   useEffect(() => {
@@ -72,7 +75,7 @@ export function WorkerPulseCard() {
                   value={oldestDueWaitMs === null ? "None" : formatDuration(oldestDueWaitMs)}
                 />
                 <WorkerDetail
-                  label="Check delay (24h)"
+                  label={`Check delay (${worker?.observability?.range ?? "24h"})`}
                   value={formatCheckDelay(summary?.averageScheduleLagMsInRange, summary?.maxScheduleLagMsInRange)}
                 />
                 <WorkerDetail

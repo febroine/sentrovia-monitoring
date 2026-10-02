@@ -57,6 +57,8 @@ function serializeWorkerState(
     connectivityStatus: state.connectivityStatus,
     connectivityCheckedAt: state.connectivityCheckedAt?.toISOString() ?? null,
     connectivityMessage: state.connectivityMessage,
+    // A due monitor normally waits up to one poll interval before it is claimed.
+    pollIntervalMs: env.workerPollIntervalMs,
     observability,
   };
 }
