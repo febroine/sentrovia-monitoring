@@ -4,6 +4,7 @@ import https from "node:https";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { hasExpectedStatusCodeOverride, isExpectedHttpStatusCode } from "@/lib/monitors/status-codes";
 import {
   calculateScreenshotBudgetMs,
   calculateScreenshotNavigationTimeoutMs,
@@ -74,14 +75,26 @@ type ScreenshotQueueEntry = {
 export type ScreenshotTimedOutRender = "no-response" | "blank" | "partial";
 
 export type ScreenshotNavigationOutcome =
-  | { kind: "loaded"; durationMs: number; monitorTimeoutMs: number }
+  | { kind: "loaded"; durationMs: number; monitorTimeoutMs: number; statusCode: number | null }
   | { kind: "timed-out"; timeoutMs: number; rendered: ScreenshotTimedOutRender }
   | { kind: "error-page"; code: string };
+
+export type FailureScreenshotOptions = {
+  // HTTP status the failed check received (null when it got no response); shown in the banner.
+  checkStatusCode?: number | null;
+  // Leave the screenshot out when the browser finds the site responding normally: the image
+  // would show a working site next to an alert about a failure that has already passed.
+  skipWhenSiteResponds?: boolean;
+};
+
+// Thrown when the capture is deliberately left out; not a capture failure.
+class ScreenshotNotNeededError extends Error {}
 
 export async function buildFailureScreenshotAttachment(
   monitor: Monitor,
   capturedAt = new Date(),
-  onSkipped?: (reason: string) => void
+  onSkipped?: (reason: string) => void,
+  options: FailureScreenshotOptions = {}
 ): Promise<Mail.Attachment | null> {
   const skipReason = getScreenshotSkipReason(monitor);
   if (skipReason) {
@@ -95,10 +108,15 @@ export async function buildFailureScreenshotAttachment(
     return await withScreenshotDeadline(budgetMs, async (signal) => {
       const approvedTargets = await resolveApprovedScreenshotTargets(monitor, signal);
       return withScreenshotSlot(() =>
-        captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal, deadlineAt), signal
+        captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal, deadlineAt, options), signal
       );
     });
   } catch (error) {
+    if (error instanceof ScreenshotNotNeededError) {
+      onSkipped?.(error.message);
+      console.info(`[sentrovia] Failure screenshot left out for monitor ${monitor.id}: ${error.message}`);
+      return null;
+    }
     const message = describeScreenshotFailure(error);
     onSkipped?.(message);
     console.warn(
@@ -273,7 +291,8 @@ async function captureScreenshotAttachment(
   capturedAt: Date,
   approvedTargets: ResolvedNetworkTarget[],
   signal: AbortSignal,
-  deadlineAt: number
+  deadlineAt: number,
+  options: FailureScreenshotOptions
 ): Promise<Mail.Attachment | null> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
@@ -315,7 +334,7 @@ async function captureScreenshotAttachment(
     // Set only when the failed navigation path already captured the page.
     let screenshot: Buffer | null = null;
     try {
-      await page.goto(screenshotUrl, {
+      const response = await page.goto(screenshotUrl, {
         waitUntil: "domcontentloaded",
         timeout: navigationTimeoutMs,
       });
@@ -323,6 +342,7 @@ async function captureScreenshotAttachment(
         kind: "loaded",
         durationMs: Date.now() - navigationStartedAt,
         monitorTimeoutMs: monitor.timeout,
+        statusCode: response?.status() ?? null,
       };
     } catch (error) {
       if (signal.aborted) {
@@ -342,10 +362,15 @@ async function captureScreenshotAttachment(
       }
     }
 
+    if (options.skipWhenSiteResponds && outcome.kind === "loaded" && isRespondingNormally(monitor, outcome)) {
+      throw new ScreenshotNotNeededError(
+        `site was responding normally when the screenshot was taken (HTTP ${outcome.statusCode} in ${formatSeconds(outcome.durationMs)}), so the image would not show the failure`
+      );
+    }
     const content = await addScreenshotContextBanner(
       context,
       screenshot ?? await capturePageScreenshot(page, approvedTargets),
-      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime())
+      describeScreenshotContext(outcome, Date.now() - capturedAt.getTime(), options.checkStatusCode)
     );
     if (content.byteLength > SCREENSHOT_MAX_BYTES) {
       throw new Error(`screenshot exceeded ${SCREENSHOT_MAX_BYTES} bytes`);
@@ -466,13 +491,34 @@ const TIMED_OUT_TITLES: Record<ScreenshotTimedOutRender, (limit: string) => stri
   partial: (limit) => `Page was still loading after ${limit}; showing what had arrived`,
 };
 
-export function describeScreenshotContext(outcome: ScreenshotNavigationOutcome, sinceCheckMs: number) {
+// Mirrors the HTTP check: custom expected codes when configured, otherwise a 2xx response.
+function isRespondingNormally(
+  monitor: Monitor,
+  outcome: Extract<ScreenshotNavigationOutcome, { kind: "loaded" }>
+) {
+  const { statusCode } = outcome;
+  if (statusCode === null || outcome.durationMs > monitor.timeout) return false;
+  return isExpectedHttpStatusCode(monitor.expectedStatusCodes, statusCode)
+    && (hasExpectedStatusCodeOverride(monitor.expectedStatusCodes) || (statusCode >= 200 && statusCode < 300));
+}
+
+export function describeScreenshotContext(
+  outcome: ScreenshotNavigationOutcome,
+  sinceCheckMs: number,
+  checkStatusCode?: number | null
+) {
   // Status-code-change alerts capture a page that is up, so the wording does not assume a failure.
-  const capturedAfter = `Screenshot taken ${formatSeconds(Math.max(0, sinceCheckMs))} after the check started`;
+  const capturedAfter = [
+    checkStatusCode === undefined
+      ? null
+      : `Check got ${checkStatusCode === null ? "no HTTP response" : `HTTP ${checkStatusCode}`}`,
+    `Screenshot taken ${formatSeconds(Math.max(0, sinceCheckMs))} after the check started`,
+  ].filter(Boolean).join(" · ");
   if (outcome.kind === "loaded") {
+    const status = outcome.statusCode === null ? "" : ` with HTTP ${outcome.statusCode}`;
     return {
-      tone: "warning" as const,
-      title: `Page loaded in ${formatSeconds(outcome.durationMs)} (monitor timeout ${formatSeconds(outcome.monitorTimeoutMs)})`,
+      tone: outcome.statusCode !== null && outcome.statusCode >= 400 ? "critical" as const : "warning" as const,
+      title: `Page loaded in ${formatSeconds(outcome.durationMs)}${status} (monitor timeout ${formatSeconds(outcome.monitorTimeoutMs)})`,
       detail: capturedAfter,
     };
   }
@@ -544,6 +590,7 @@ function escapeHtml(value: string) {
 }
 
 function formatSeconds(ms: number) {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
   const seconds = ms / 1000;
   return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
 }

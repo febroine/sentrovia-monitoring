@@ -781,6 +781,14 @@ async function captureAlertEmailAttachments(
   let skippedReason: string | null = null;
   const screenshot = await buildFailureScreenshotAttachment(monitor, result.checkedAt, (reason) => {
     skippedReason = reason;
+  }, {
+    checkStatusCode: result.statusCode,
+    // Only a plain HTTP failure is disproved by a working page. Keyword and JSON failures happen on
+    // pages that load fine, status-code-change alerts are sent while the site is up, and the browser's
+    // GET says nothing about a POST, PUT, or other request the monitor sends.
+    skipWhenSiteResponds: !result.ok
+      && monitor.monitorType === "http"
+      && (monitor.method === "GET" || monitor.method === "HEAD"),
   });
 
   if (skippedReason && await isCurrentMonitorClaim(monitor)) {

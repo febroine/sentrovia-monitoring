@@ -62,6 +62,71 @@ describe("failure screenshot browser isolation", () => {
     expect(attachment?.content).toBeInstanceOf(Buffer);
   }, 25_000);
 
+  it("leaves the screenshot out when the site responds normally again", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Recovered</h1>");
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/recovered`,
+      timeout: 60_000,
+    }), new Date(), onSkipped, { checkStatusCode: 500, skipWhenSiteResponds: true });
+
+    expect(attachment).toBeNull();
+    expect(onSkipped).toHaveBeenCalledWith(
+      expect.stringMatching(/^site was responding normally when the screenshot was taken \(HTTP 200 in [\d.]+ m?s\)/)
+    );
+  }, 25_000);
+
+  it("still captures a page that keeps failing with an HTTP error", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(500, { "Content-Type": "text/html" });
+      response.end("<h1>Shop</h1><p>Looks normal, but the server returned 500</p>");
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/broken`,
+      timeout: 60_000,
+    }), new Date(), onSkipped, { checkStatusCode: 500, skipWhenSiteResponds: true });
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 25_000);
+
+  it("captures a page that only answers after the monitor timeout", async () => {
+    const server = await createServer((_, response) => {
+      setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end("<h1>Slow</h1>");
+      }, 2_000);
+    });
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/slow`,
+      timeout: 1_000,
+    }), new Date(), undefined, { checkStatusCode: null, skipWhenSiteResponds: true });
+
+    expectJpeg(attachment?.content);
+  }, 25_000);
+
+  it("respects custom expected status codes when deciding the site responds normally", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Wrong status for this monitor</h1>");
+    });
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/custom`,
+      timeout: 60_000,
+      expectedStatusCodes: "401",
+    }), new Date(), undefined, { checkStatusCode: 200, skipWhenSiteResponds: true });
+
+    expectJpeg(attachment?.content);
+  }, 25_000);
+
   it("captures the real page when the server responds with HTTP 503", async () => {
     const server = await createServer((_, response) => {
       response.writeHead(503, { "Content-Type": "text/html; charset=utf-8" });

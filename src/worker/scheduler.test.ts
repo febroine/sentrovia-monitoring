@@ -777,7 +777,8 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:01.000Z"),
-      expect.any(Function)
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: true }
     );
   });
 
@@ -850,7 +851,8 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:00.000Z"),
-      expect.any(Function)
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: true }
     );
   });
 
@@ -876,6 +878,52 @@ describe("monitoring scheduler verification flow", () => {
     await expect(getNotificationContext("failure").buildEmailAttachments?.()).resolves.toEqual([screenshot]);
     await expect(getNotificationContext("downtime-reminder").buildEmailAttachments?.()).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the screenshot for keyword failures even when the page loads", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        monitorType: "keyword",
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+    await getNotificationContext("failure").buildEmailAttachments?.();
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ monitorType: "keyword" }),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: false }
+    );
+  });
+
+  it("keeps the screenshot for POST monitors because the browser can only load the page with GET", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        method: "POST",
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+    await getNotificationContext("failure").buildEmailAttachments?.();
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "POST" }),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: false }
+    );
   });
 
   it("attaches a screenshot to status-change notifications when capture succeeds", async () => {
@@ -915,7 +963,8 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:00.000Z"),
-      expect.any(Function)
+      expect.any(Function),
+      { checkStatusCode: 204, skipWhenSiteResponds: false }
     );
   });
 

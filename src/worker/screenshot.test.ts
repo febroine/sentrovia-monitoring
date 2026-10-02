@@ -26,11 +26,27 @@ describe("failure screenshot timing", () => {
 
 describe("failure screenshot context banner", () => {
   it("shows how long a slow page took to load", () => {
-    expect(describeScreenshotContext({ kind: "loaded", durationMs: 41_200, monitorTimeoutMs: 60_000 }, 75_400)).toEqual({
+    expect(describeScreenshotContext({ kind: "loaded", durationMs: 41_200, monitorTimeoutMs: 60_000, statusCode: 200 }, 75_400)).toEqual({
       tone: "warning",
-      title: "Page loaded in 41 s (monitor timeout 60 s)",
+      title: "Page loaded in 41 s with HTTP 200 (monitor timeout 60 s)",
       detail: "Screenshot taken 75 s after the check started",
     });
+  });
+
+  it("puts the check status next to the status the browser received", () => {
+    expect(describeScreenshotContext(
+      { kind: "loaded", durationMs: 1_200, monitorTimeoutMs: 60_000, statusCode: 500 },
+      14_000,
+      500
+    )).toEqual({
+      tone: "critical",
+      title: "Page loaded in 1.2 s with HTTP 500 (monitor timeout 60 s)",
+      detail: "Check got HTTP 500 · Screenshot taken 14 s after the check started",
+    });
+    expect(describeScreenshotContext({ kind: "loaded", durationMs: 42, monitorTimeoutMs: 60_000, statusCode: 500 }, 14_000).title)
+      .toBe("Page loaded in 42 ms with HTTP 500 (monitor timeout 60 s)");
+    expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 3_000, null).detail)
+      .toBe("Check got no HTTP response · Screenshot taken 3.0 s after the check started");
   });
 
   it("explains a page that never finished loading", () => {
