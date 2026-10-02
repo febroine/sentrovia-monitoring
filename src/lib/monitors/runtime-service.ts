@@ -455,7 +455,9 @@ export async function refreshMonitorUptime(
 export async function renewMonitorLease(
   monitorId: string,
   expectedLeaseToken: string | null,
-  monitor: Pick<typeof monitors.$inferSelect, "timeout" | "verificationMode">
+  monitor: Pick<typeof monitors.$inferSelect, "timeout" | "verificationMode">,
+  // Periodic renewals during a check only extend the lease; the monitor itself did not change.
+  options: { heartbeat?: boolean } = {}
 ) {
   if (!expectedLeaseToken) {
     return false;
@@ -471,7 +473,7 @@ export async function renewMonitorLease(
         coalesce(${monitors.leaseExpiresAt}, now()),
         (${extendedLeaseTimestamp})::timestamptz
       )`,
-      updatedAt: new Date(),
+      ...(options.heartbeat ? {} : { updatedAt: new Date() }),
     })
     .where(
       and(

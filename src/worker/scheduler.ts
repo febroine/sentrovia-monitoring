@@ -17,6 +17,10 @@ import {
 // (a timeout or verification probe can take minutes), holding back every other monitor's next check.
 // Now a freed slot is refilled from the due queue right away, so one slow site delays nothing else.
 const MONITOR_REFILL_DELAY_MS = 250;
+// A check renews its lease this often while it runs, so a check that outlasts its precomputed lease
+// budget (slow database, slow delivery) is never taken over and run twice. Well below the shortest
+// lease of three minutes.
+const MONITOR_LEASE_HEARTBEAT_MS = 60_000;
 
 type DispatchSource = "tick" | "refill";
 
@@ -29,9 +33,14 @@ export type MonitorDispatch = {
 type MonitorDispatcherOptions = {
   concurrency: number;
   refillDelayMs?: number;
+  leaseHeartbeatMs?: number;
 };
 
-export function createMonitorDispatcher({ concurrency, refillDelayMs = MONITOR_REFILL_DELAY_MS }: MonitorDispatcherOptions) {
+export function createMonitorDispatcher({
+  concurrency,
+  refillDelayMs = MONITOR_REFILL_DELAY_MS,
+  leaseHeartbeatMs = MONITOR_LEASE_HEARTBEAT_MS,
+}: MonitorDispatcherOptions) {
   const slotCount = Math.max(1, concurrency);
   // Verification probes run with up to twice the monitor timeout. Capping them at half the slots keeps
   // room for regular checks when many sites fail at once.
@@ -113,7 +122,7 @@ export function createMonitorDispatcher({ concurrency, refillDelayMs = MONITOR_R
       // picks them up instead.
       let madeProgress = false;
       try {
-        const result = await processMonitor(monitor);
+        const result = await processMonitor(monitor, leaseHeartbeatMs);
         if (result) {
           results.push(result);
           madeProgress = true;
@@ -276,8 +285,9 @@ function buildCycleStatusMessage(claimedCount: number, completedCount: number, e
   return `Completed ${completedCount} of ${claimedCount} monitor check(s).${errorSuffix}`;
 }
 
-async function processMonitor(monitor: ClaimedMonitor): Promise<MonitorCycleResult | null> {
+async function processMonitor(monitor: ClaimedMonitor, leaseHeartbeatMs: number): Promise<MonitorCycleResult | null> {
   let processingError: unknown;
+  let heartbeat: ReturnType<typeof startLeaseHeartbeat> | null = null;
 
   try {
     const leaseRenewed = await renewMonitorLease(monitor.id, monitor.leaseToken, monitor);
@@ -285,11 +295,14 @@ async function processMonitor(monitor: ClaimedMonitor): Promise<MonitorCycleResu
       return null;
     }
 
+    heartbeat = startLeaseHeartbeat(monitor, leaseHeartbeatMs);
     return await processClaimedMonitor(monitor);
   } catch (error) {
     processingError = error;
     throw error;
   } finally {
+    // Stop renewing (and let an in-flight renewal settle) before the lease is released.
+    await heartbeat?.stop();
     try {
       await releaseMonitorLease(monitor.id, monitor.leaseToken);
     } catch (releaseError) {
@@ -300,4 +313,28 @@ async function processMonitor(monitor: ClaimedMonitor): Promise<MonitorCycleResu
       console.error(`Unable to release the monitor lease for ${monitor.id}.`, releaseError);
     }
   }
+}
+
+function startLeaseHeartbeat(monitor: ClaimedMonitor, intervalMs: number) {
+  let renewal: Promise<unknown> | null = null;
+  const timer = setInterval(() => {
+    if (renewal) return;
+    // A refused renewal means the monitor was paused, reset or deleted; the check's own lease
+    // checks then skip its side effects, so there is nothing else to do here.
+    renewal = renewMonitorLease(monitor.id, monitor.leaseToken, monitor, { heartbeat: true })
+      .catch((error) => {
+        console.error(`[sentrovia] Unable to renew the monitor lease for ${monitor.id}.`, error);
+      })
+      .finally(() => {
+        renewal = null;
+      });
+  }, intervalMs);
+  timer.unref?.();
+
+  return {
+    async stop() {
+      clearInterval(timer);
+      await renewal;
+    },
+  };
 }

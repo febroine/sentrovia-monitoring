@@ -54,6 +54,17 @@ describe("monitor lease persistence", () => {
 
     expect(mocks.gt).toHaveBeenCalledWith(monitors.leaseExpiresAt, expect.any(Date));
   });
+
+  it("only extends the lease on a heartbeat renewal, leaving the monitor's updatedAt alone", async () => {
+    const monitor = { timeout: 5_000, verificationMode: false } as Pick<Monitor, "timeout" | "verificationMode">;
+
+    await renewMonitorLease("monitor-1", "lease-1", monitor);
+    await renewMonitorLease("monitor-1", "lease-1", monitor, { heartbeat: true });
+
+    expect(mocks.set.mock.calls[0][0]).toHaveProperty("updatedAt");
+    expect(mocks.set.mock.calls[1][0]).not.toHaveProperty("updatedAt");
+    expect(mocks.set.mock.calls[1][0]).toHaveProperty("leaseExpiresAt");
+  });
 });
 
 describe("private target authorization", () => {

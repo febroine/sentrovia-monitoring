@@ -1627,6 +1627,27 @@ describe("monitoring scheduler verification flow", () => {
       expect(finalState).not.toHaveProperty("lastErrorMessage");
     });
 
+    it("keeps renewing the lease of a long check and stops before releasing it", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "slow-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, leaseHeartbeatMs: 5 });
+
+      const dispatch = await dispatcher.dispatch();
+      await vi.waitFor(() => expect(
+        mocks.renewMonitorLease.mock.calls.filter((call) => call[3]?.heartbeat === true).length
+      ).toBeGreaterThanOrEqual(3));
+
+      await slowChecks.releaseAll();
+      await dispatch.completion;
+      const renewalsAtRelease = mocks.renewMonitorLease.mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(mocks.renewMonitorLease).toHaveBeenCalledTimes(renewalsAtRelease);
+      const lastRenewal = Math.max(...mocks.renewMonitorLease.mock.invocationCallOrder);
+      const release = mocks.releaseMonitorLease.mock.invocationCallOrder[0];
+      expect(release).toBeGreaterThan(lastRenewal);
+    });
+
     it("records each finished batch without holding back later batches", async () => {
       const slowChecks = holdSlowChecks();
       mocks.claimDueMonitors
