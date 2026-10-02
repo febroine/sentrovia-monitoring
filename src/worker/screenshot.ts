@@ -26,7 +26,6 @@ const SCREENSHOT_TIMEOUT_MS = 12_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
 const MAX_CONCURRENT_SCREENSHOTS = 3;
-const SCREENSHOT_QUEUE_TIMEOUT_MS = 5_000;
 const SCREENSHOT_DEADLINE_ERROR = "screenshot capture timed out";
 const SCREENSHOT_REDIRECT_PROBE_TIMEOUT_MS = 3_000;
 const MAX_SCREENSHOT_REDIRECTS = 10;
@@ -108,12 +107,15 @@ export async function buildFailureScreenshotAttachment(
 
   try {
     const budgetMs = calculateScreenshotBudgetMs(monitor.timeout);
-    const deadlineAt = Date.now() + budgetMs;
-    return await withScreenshotDeadline(budgetMs, async (signal) => {
-      const approvedTargets = await resolveApprovedScreenshotTargets(monitor, signal);
-      return withScreenshotSlot(() =>
-        captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal, deadlineAt, options), signal
-      );
+    // A capture holds its browser slot for up to its whole budget, so when several sites fail together
+    // a queued capture may wait as long. Its own deadline starts once it has a slot, so the wait does
+    // not cut its navigation short.
+    return await withScreenshotSlot(budgetMs, () => {
+      const deadlineAt = Date.now() + budgetMs;
+      return withScreenshotDeadline(budgetMs, async (signal) => {
+        const approvedTargets = await resolveApprovedScreenshotTargets(monitor, signal);
+        return captureScreenshotAttachment(monitor, capturedAt, approvedTargets, signal, deadlineAt, options);
+      });
     });
   } catch (error) {
     if (error instanceof ScreenshotNotNeededError) {
@@ -753,49 +755,34 @@ function getInitialScreenshotHosts(targetUrl: string) {
   }
 }
 
-async function withScreenshotSlot<T>(task: () => Promise<T>, signal: AbortSignal) {
-  await acquireScreenshotSlot(signal);
+async function withScreenshotSlot<T>(queueTimeoutMs: number, task: () => Promise<T>) {
+  await acquireScreenshotSlot(queueTimeoutMs);
 
   try {
-    if (signal.aborted) {
-      throw new Error(SCREENSHOT_DEADLINE_ERROR);
-    }
     return await task();
   } finally {
     releaseScreenshotSlot();
   }
 }
 
-function acquireScreenshotSlot(signal: AbortSignal) {
-  if (signal.aborted) {
-    return Promise.reject(new Error(SCREENSHOT_DEADLINE_ERROR));
-  }
+function acquireScreenshotSlot(queueTimeoutMs: number) {
   if (activeScreenshots < MAX_CONCURRENT_SCREENSHOTS) {
     activeScreenshots += 1;
     return Promise.resolve();
   }
 
   return new Promise<void>((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(entry.timeout);
-      removeScreenshotQueueEntry(entry);
-      reject(new Error(SCREENSHOT_DEADLINE_ERROR));
-    };
     const entry: ScreenshotQueueEntry = {
       resolve: () => {
-        signal.removeEventListener("abort", onAbort);
         activeScreenshots += 1;
         resolve();
       },
       timeout: setTimeout(() => {
-        signal.removeEventListener("abort", onAbort);
         removeScreenshotQueueEntry(entry);
         reject(new Error("screenshot queue timed out"));
-      }, SCREENSHOT_QUEUE_TIMEOUT_MS),
+      }, queueTimeoutMs),
     };
     screenshotQueue.push(entry);
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) onAbort();
   });
 }
 

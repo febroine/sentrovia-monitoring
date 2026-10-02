@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, count, desc, eq, isNull, lte, min, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   automaticBackupRuns,
@@ -71,7 +71,11 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
       .orderBy(desc(automaticBackupRuns.completedAt))
       .limit(1),
     db
-      .select({ total: count(), oldestNextCheckAt: min(monitors.nextCheckAt) })
+      .select({
+        total: count(),
+        // A monitor edited during a pause keeps an earlier nextCheckAt; it became due when the pause ended.
+        oldestNextCheckAt: sql<string | null>`min(greatest(${monitors.nextCheckAt}, ${monitors.pausedUntil}))`,
+      })
       .from(monitors)
       .where(and(
         eq(monitors.isActive, true),

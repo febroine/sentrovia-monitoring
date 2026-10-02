@@ -956,6 +956,31 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("keeps the screenshot for a refused redirect reported as an HTTP status failure", async () => {
+    // With custom expected codes the check reports a redirect it may not follow as http_status.
+    mocks.checkResult = { ...mocks.checkResult, statusCode: 301, errorMessage: "Service returned HTTP 301.", failureReason: "http_status" };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        expectedStatusCodes: "200",
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 301, skipWhenSiteResponds: false, language: "en" }
+    );
+  });
+
   it("keeps the screenshot for POST monitors because the browser can only load the page with GET", async () => {
     mocks.dueMonitors = [
       buildMonitor({

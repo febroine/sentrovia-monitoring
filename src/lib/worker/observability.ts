@@ -124,7 +124,7 @@ export async function getWorkerObservability(
     scheduleLagRows,
   ] = await Promise.all([
     db
-      .select({ id: monitors.id, nextCheckAt: monitors.nextCheckAt })
+      .select({ id: monitors.id, nextCheckAt: monitors.nextCheckAt, pausedUntil: monitors.pausedUntil })
       .from(monitors)
       .where(
         and(
@@ -431,10 +431,16 @@ function trackMonitorTransition(
   transitionsByMonitor.set(monitorId, current);
 }
 
-// How long the most overdue monitor has been waiting for a worker slot right now.
-export function calculateOldestDueWaitMs(dueRows: Array<{ nextCheckAt: Date | null }>, now: Date) {
+// How long the most overdue monitor has been waiting for a worker slot right now. A monitor edited
+// during a pause keeps an earlier nextCheckAt, but it only became due when the pause ended.
+export function calculateOldestDueWaitMs(
+  dueRows: Array<{ nextCheckAt: Date | null; pausedUntil?: Date | null }>,
+  now: Date
+) {
   const dueTimes = dueRows
-    .map((row) => row.nextCheckAt?.getTime())
+    .map((row) => row.nextCheckAt
+      ? Math.max(row.nextCheckAt.getTime(), row.pausedUntil?.getTime() ?? 0)
+      : undefined)
     .filter((time): time is number => typeof time === "number");
   return dueTimes.length > 0 ? Math.max(0, now.getTime() - Math.min(...dueTimes)) : null;
 }

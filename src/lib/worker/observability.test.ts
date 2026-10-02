@@ -38,6 +38,12 @@ describe("oldest due wait", () => {
     ], now)).toBe(180_000);
   });
 
+  it("counts a monitor edited during a pause as waiting only since the pause ended", () => {
+    expect(calculateOldestDueWaitMs([
+      { nextCheckAt: new Date("2026-05-06T07:05:00.000Z"), pausedUntil: new Date("2026-05-08T07:04:00.000Z") },
+    ], now)).toBe(60_000);
+  });
+
   it("reports nothing when no monitor is waiting", () => {
     expect(calculateOldestDueWaitMs([], now)).toBeNull();
     expect(calculateOldestDueWaitMs([{ nextCheckAt: null }], now)).toBeNull();

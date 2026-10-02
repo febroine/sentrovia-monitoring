@@ -434,6 +434,23 @@ describe("failure screenshot browser isolation", () => {
     expect(onSkipped).toHaveBeenCalledWith("browser could not draw the page (its scripts may be keeping it busy)");
   }, 25_000);
 
+  it("captures every alert when more sites fail at once than there are browser slots", async () => {
+    const hangingServer = await createServer(() => undefined);
+    const onSkipped = vi.fn();
+    const monitor = buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(hangingServer)}/shared-outage`,
+      timeout: 8_000,
+    });
+
+    // Four monitors behind one failing upstream, with three browser slots.
+    const attachments = await Promise.all(Array.from({ length: 4 }, () =>
+      buildFailureScreenshotAttachment(monitor, new Date(), onSkipped)
+    ));
+
+    for (const attachment of attachments) expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 90_000);
+
   it("waits for a slow page as long as the monitor timeout allows", async () => {
     const slowServer = await createServer((_, response) => {
       setTimeout(() => {

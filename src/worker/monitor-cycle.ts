@@ -795,7 +795,14 @@ function isFailureDisprovedByWorkingPage(
   return !result.ok
     && monitor.monitorType === "http"
     && (monitor.method === "GET" || monitor.method === "HEAD")
-    && SCREENSHOT_DISPROVABLE_FAILURES.has(result.failureReason ?? "");
+    && SCREENSHOT_DISPROVABLE_FAILURES.has(result.failureReason ?? "")
+    // With custom expected codes a refused redirect is reported as an HTTP status failure; the
+    // browser would follow it to a working page all the same.
+    && !isRedirectStatusCode(result.statusCode);
+}
+
+function isRedirectStatusCode(statusCode: number | null) {
+  return statusCode !== null && statusCode >= 300 && statusCode < 400;
 }
 
 async function captureAlertEmailAttachments(
