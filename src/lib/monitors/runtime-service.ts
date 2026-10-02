@@ -6,7 +6,6 @@ import { monitors, userSettings, workspaceMembers, workspaceSettings, type Monit
 import { env, getDatabaseUrl } from "@/lib/env";
 import { encryptLegacyClaimedSecrets } from "@/lib/monitors/heartbeat-secrets";
 import { resolveDatabaseSessionSettings } from "@/lib/db/session-settings";
-import { calculateScreenshotBudgetMs } from "@/lib/monitors/screenshot-timing";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
 import { getMonitorUptimeById, NO_MONITOR_UPTIME_DATA } from "@/lib/monitoring/uptime";
 import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
@@ -16,10 +15,10 @@ const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_DUE_WORKSPACES_PER_CYCLE = 100;
 const DUE_WORKSPACE_QUERY_CONCURRENCY = 10;
-// Each worker slot holds at most one history lock, for its whole persist and notification phase
-// (diagnostics, screenshot, deliveries). A pool smaller than the slot count made the eleventh
-// concurrently failing monitor wait for a lock connection; the cap keeps a very high
-// WORKER_CONCURRENCY within PostgreSQL's default limit of 100 connections.
+// Each check slot holds at most one history lock, for its whole persist phase (including diagnostics).
+// A pool smaller than the slot count made the eleventh concurrently failing monitor wait for a lock
+// connection; the cap keeps a very high WORKER_CONCURRENCY within PostgreSQL's default limit of 100
+// connections. Notification slots take the lock briefly to record a sent alert and get their own share.
 const MIN_MONITOR_HISTORY_LOCK_POOL_SIZE = 10;
 const MAX_MONITOR_HISTORY_LOCK_POOL_SIZE = 50;
 // Lock connections idle out after a burst of failures instead of staying open.
@@ -28,7 +27,7 @@ const globalForMonitorHistoryLock = globalThis as unknown as {
   monitorHistoryLockSql?: ReturnType<typeof postgres>;
 };
 const monitorHistoryLockSql = globalForMonitorHistoryLock.monitorHistoryLockSql ?? postgres(getDatabaseUrl(), {
-  max: resolveMonitorHistoryLockPoolSize(env.workerConcurrency),
+  max: resolveMonitorHistoryLockPoolSize(env.workerConcurrency) + env.notificationConcurrency,
   idle_timeout: MONITOR_HISTORY_LOCK_IDLE_TIMEOUT_SECONDS,
   prepare: false,
   // Only statement and lock waits time out; the lock transaction stays open on purpose while the
@@ -312,10 +311,10 @@ export function calculateMonitorLeaseMs(
   const maximumCheckBudgetMs = rows.reduce(
     (maximum, row) => {
       const timeoutMs = Math.max(0, row.timeout);
-      // A failed check may also wait for the outage screenshot before its notification is sent.
-      const checkBudgetMs = (row.verificationMode
+      // Screenshots and deliveries run in the notification outbox, outside the check and its lease.
+      const checkBudgetMs = row.verificationMode
         ? calculateVerificationLeaseBudgetMs(timeoutMs)
-        : timeoutMs) + calculateScreenshotBudgetMs(timeoutMs);
+        : timeoutMs;
       return Math.max(maximum, checkBudgetMs);
     },
     0
@@ -396,6 +395,17 @@ export async function withMonitorClaimHistoryLock<T>(
   });
 
   return result as T | null;
+}
+
+// Serializes a notification job's bookkeeping with the monitor's checks and history resets, without
+// needing the monitor's lease.
+export async function withMonitorHistoryLock<T>(monitorId: string, operation: () => Promise<T>): Promise<T> {
+  const result = await monitorHistoryLockSql.begin(async (lockTransaction) => {
+    await lockTransaction`select pg_advisory_xact_lock(hashtextextended(${monitorHistoryLockKey(monitorId)}, 0))`;
+    return operation();
+  });
+
+  return result as T;
 }
 
 function monitorHistoryLockKey(monitorId: string) {

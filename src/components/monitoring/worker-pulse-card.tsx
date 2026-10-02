@@ -11,6 +11,8 @@ import { formatPanelDateTime } from "@/lib/time";
 // are full. The margin keeps the warning quiet at the default 10-second interval.
 const MONITOR_WAIT_WARNING_MS = 120_000;
 const MONITOR_WAIT_WARNING_MARGIN_MS = 60_000;
+// An alert normally goes out within seconds, or about two minutes with a slow site's screenshot.
+const NOTIFICATION_WAIT_WARNING_MS = 5 * 60_000;
 
 export function WorkerPulseCard() {
   const { worker, commandLoading, error, loadWorker, toggleWorker } = useWorkerStore();
@@ -24,6 +26,15 @@ export function WorkerPulseCard() {
   const waitWarningMs = Math.max(MONITOR_WAIT_WARNING_MS, (worker?.pollIntervalMs ?? 0) + MONITOR_WAIT_WARNING_MARGIN_MS);
   const monitorsWaiting = Boolean(
     worker?.running && !stale && !connectivityOffline && oldestDueWaitMs !== null && oldestDueWaitMs >= waitWarningMs
+  );
+  const queuedNotifications = summary?.queuedNotifications ?? 0;
+  const oldestQueuedNotificationWaitMs = summary?.oldestQueuedNotificationWaitMs ?? null;
+  const notificationsWaiting = Boolean(
+    worker?.running
+      && !stale
+      && !connectivityOffline
+      && oldestQueuedNotificationWaitMs !== null
+      && oldestQueuedNotificationWaitMs >= NOTIFICATION_WAIT_WARNING_MS
   );
 
   useEffect(() => {
@@ -79,6 +90,10 @@ export function WorkerPulseCard() {
                   value={formatCheckDelay(summary?.averageScheduleLagMsInRange, summary?.maxScheduleLagMsInRange)}
                 />
                 <WorkerDetail
+                  label="Alerts waiting"
+                  value={formatQueuedNotifications(queuedNotifications, oldestQueuedNotificationWaitMs)}
+                />
+                <WorkerDetail
                   className="sm:col-span-2 xl:col-span-3"
                   label="Status"
                   value={sanitizeWorkerStatusMessage(error ?? worker?.statusMessage) ?? "Worker status will appear here."}
@@ -116,6 +131,12 @@ export function WorkerPulseCard() {
             A due monitor has been waiting {formatDuration(oldestDueWaitMs)} for a free worker slot. If this persists, raise WORKER_CONCURRENCY.
           </div>
         ) : null}
+        {notificationsWaiting && oldestQueuedNotificationWaitMs !== null ? (
+          <div className="mt-3 flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            <Clock className="h-3.5 w-3.5" />
+            An alert has been waiting {formatDuration(oldestQueuedNotificationWaitMs)} to be sent. Check the delivery log for failing channels.
+          </div>
+        ) : null}
         {connectivityOffline ? (
           <div className="mt-3 flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
             <WifiOff className="h-3.5 w-3.5" />
@@ -147,6 +168,11 @@ function formatDuration(ms: number) {
   if (minutes < 60) return `${minutes}m ${totalSeconds % 60}s`;
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `${hours}h ${minutes % 60}m` : `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+function formatQueuedNotifications(count: number, oldestWaitMs: number | null) {
+  if (count === 0) return "None";
+  return oldestWaitMs === null ? String(count) : `${count} (oldest ${formatDuration(oldestWaitMs)})`;
 }
 
 function formatCheckDelay(averageMs: number | null | undefined, maxMs: number | null | undefined) {

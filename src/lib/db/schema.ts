@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   bigint,
+  bigserial,
   check,
   index,
   integer,
@@ -631,6 +632,51 @@ export const deliveryEvents = pgTable("delivery_events", {
   index("delivery_events_monitor_created_idx").on(table.monitorId, table.createdAt, table.id),
   index("delivery_events_queue_due_idx").on(table.status, table.nextRetryAt, table.claimExpiresAt, table.createdAt),
 ]);
+
+// Outbox of monitor notifications. The check only records the alert; a separate worker loop takes the
+// screenshot and sends it, so a slow capture or mail server never holds a check slot or its lease.
+export const notificationJobs = pgTable("notification_jobs", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  // Strict per-monitor order: a recovery is never sent before the outage alert it follows.
+  seq: bigserial("seq", { mode: "number" }).notNull(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  monitorId: text("monitor_id")
+    .notNull()
+    .references(() => monitors.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 24 }).notNull(),
+  // Alerts with a key are queued at most once while one is still waiting (e.g. one outage alert).
+  dedupeKey: varchar("dedupe_key", { length: 32 }),
+  status: varchar("status", { length: 16 }).default("pending").notNull(),
+  // Encrypted snapshot of the alert context; it holds recipients and bot tokens.
+  payload: text("payload").notNull(),
+  checkedAt: timestamp("checked_at", { withTimezone: true }).notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+  claimToken: text("claim_token"),
+  claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
+  deliveryStartedAt: timestamp("delivery_started_at", { withTimezone: true }),
+  outcome: varchar("outcome", { length: 16 }),
+  lastError: text("last_error"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("notification_jobs_pending_dedupe_idx")
+    .on(table.monitorId, table.dedupeKey)
+    .where(sql`${table.status} in ('pending', 'processing') and ${table.dedupeKey} is not null`),
+  index("notification_jobs_claim_idx").on(table.status, table.nextAttemptAt, table.seq),
+  index("notification_jobs_monitor_seq_idx").on(table.monitorId, table.seq),
+  index("notification_jobs_completed_idx").on(table.completedAt),
+  check("notification_jobs_status_check", sql`${table.status} in ('pending', 'processing', 'done', 'failed')`),
+]);
+
+export type NotificationJob = typeof notificationJobs.$inferSelect;
 
 export const workerState = pgTable("worker_state", {
   id: text("id").primaryKey(),

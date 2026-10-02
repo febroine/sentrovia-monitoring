@@ -288,6 +288,29 @@ export async function hasRecentFailedNotificationDelivery(input: {
   return Boolean(event);
 }
 
+// Whether a notification for this monitor and kind was handed to any channel since the given time;
+// a delivery still pending or retrying is sent by the delivery queue on its own.
+export async function hasAcceptedNotificationDeliverySince(input: {
+  monitorId: string;
+  kind: DeliveryKind;
+  since: Date;
+}) {
+  const [event] = await db
+    .select({ id: deliveryEvents.id })
+    .from(deliveryEvents)
+    .where(
+      and(
+        eq(deliveryEvents.monitorId, input.monitorId),
+        eq(deliveryEvents.kind, input.kind),
+        inArray(deliveryEvents.status, ["pending", "processing", "retrying", "delivered"]),
+        gte(deliveryEvents.createdAt, input.since)
+      )
+    )
+    .limit(1);
+
+  return Boolean(event);
+}
+
 export async function deleteDeliveryHistory(
   userId: string,
   range: DeliveryHistoryDeletionRange,

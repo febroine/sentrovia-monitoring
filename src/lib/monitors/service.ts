@@ -8,6 +8,7 @@ import {
   monitorEvents,
   monitorOutages,
   monitors,
+  notificationJobs,
   outageEvents,
 } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
@@ -55,6 +56,7 @@ export {
   resolveMonitorBatchSize,
   renewMonitorLease,
   withMonitorClaimHistoryLock,
+  withMonitorHistoryLock,
 } from "@/lib/monitors/runtime-service";
 export type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
 export {
@@ -964,6 +966,8 @@ export async function resetMonitorHistory(userId: string, ids: string[], workspa
     await acquireMonitorHistoryLocks(tx, resetIds);
 
     // The monitor ownership check above is authoritative; child history can retain a legacy scope value.
+    // Queued alerts belong to the history being reset; an outage alert must not arrive afterwards.
+    await tx.delete(notificationJobs).where(inArray(notificationJobs.monitorId, resetIds));
     await tx.delete(deliveryEvents).where(inArray(deliveryEvents.monitorId, resetIds));
     await tx.delete(outageEvents).where(inArray(outageEvents.monitorId, resetIds));
     await tx.delete(monitorOutages).where(inArray(monitorOutages.monitorId, resetIds));

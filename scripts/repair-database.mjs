@@ -25,6 +25,7 @@ const EXPECTED_TABLES = new Set([
   "monitor_import_runs",
   "monitor_outages",
   "monitors",
+  "notification_jobs",
   "outage_events",
   "report_schedules",
   "sentrovia_manual_migrations",

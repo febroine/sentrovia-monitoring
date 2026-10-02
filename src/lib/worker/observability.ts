@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, workerCycleMetrics } from "@/lib/db/schema";
 import { isMonitorCheckStale } from "@/lib/monitors/health";
+import { getNotificationQueueSummary } from "@/lib/notifications/outbox";
 import type {
   SiteStatus,
   WorkerObservability,
@@ -122,6 +123,7 @@ export async function getWorkerObservability(
     recentCycleRows,
     recentCycleErrors,
     scheduleLagRows,
+    notificationQueue,
   ] = await Promise.all([
     db
       .select({ id: monitors.id, nextCheckAt: monitors.nextCheckAt, pausedUntil: monitors.pausedUntil })
@@ -228,6 +230,7 @@ export async function getWorkerObservability(
       })
       .from(workerCycleMetrics)
       .where(gte(workerCycleMetrics.createdAt, rangeStart)),
+    getNotificationQueueSummary(now, { workspaceId, userId }),
   ]);
 
   const chronologicalChecks = [...checksInRange].reverse();
@@ -351,6 +354,8 @@ export async function getWorkerObservability(
       oldestDueWaitMs: calculateOldestDueWaitMs(dueRows, now),
       averageScheduleLagMsInRange: scheduleLagRows[0]?.averageMs ?? null,
       maxScheduleLagMsInRange: scheduleLagRows[0]?.maxMs ?? null,
+      queuedNotifications: notificationQueue.waiting,
+      oldestQueuedNotificationWaitMs: notificationQueue.oldestWaitMs,
     },
     recentCycles: recentCycleRows.slice(0, RECENT_CYCLE_LIMIT).map((cycle) => ({
       id: cycle.id,

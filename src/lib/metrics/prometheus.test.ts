@@ -33,6 +33,8 @@ describe("Prometheus metrics", () => {
       activeMonitors: 25,
       dueMonitors: 5,
       oldestDueSeconds: 42.5,
+      queuedNotifications: 2,
+      oldestQueuedNotificationSeconds: 75,
       monitorsByStatus: { up: 20, down: 3, pending: 2 },
       deliveriesByStatus: { pending: 1, retrying: 2, processing: 0, delivered: 30, failed: 4 },
       backupStatus: "completed",
@@ -41,6 +43,8 @@ describe("Prometheus metrics", () => {
 
     expect(output).toContain("sentrovia_worker_up 1");
     expect(output).toContain("sentrovia_monitors_oldest_due_seconds 42.5");
+    expect(output).toContain("sentrovia_notifications_queued 2");
+    expect(output).toContain("sentrovia_notifications_oldest_queued_seconds 75");
     expect(output).toContain('sentrovia_monitors_by_status{status="down"} 3');
     expect(output).toContain('sentrovia_automatic_backup_status{status="completed"} 1');
     expect(output).not.toContain("undefined");

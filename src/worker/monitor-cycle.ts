@@ -26,9 +26,7 @@ import {
   checkMonitor,
 } from "@/worker/checker";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
-import { sendMonitorNotifications } from "@/worker/notifier";
-import type { NotificationLanguage } from "@/lib/settings/types";
-import { buildFailureScreenshotAttachment } from "@/worker/screenshot";
+import { hasQueuedNotification, queueMonitorNotification } from "@/worker/notification-outbox";
 
 const SSL_EXPIRY_WARNING_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -427,10 +425,14 @@ async function handleSlowResponse(monitor: ClaimedMonitor, result: CheckResult, 
   await appendDetailedEvent(monitor, result, "latency", message, rca, "up");
   if (!monitor.slowResponseAlertsEnabled || !hasEnteredSlowResponseState(monitor, result)) return;
   if (!(await isCurrentMonitorClaim(monitor))) return;
-  const notificationSent = await sendMonitorNotifications({ kind: "latency", message, monitor, result, rca });
-  if (notificationSent && await isCurrentMonitorClaim(monitor)) {
-    await appendDetailedEvent(monitor, result, "latency-notification", message, rca, "up");
-  }
+  await queueMonitorNotification({
+    kind: "latency",
+    message,
+    monitor,
+    result,
+    rca,
+    markers: [{ eventType: "latency-notification", status: "up" }],
+  });
 }
 
 async function handleFailedCheck(
@@ -460,18 +462,15 @@ async function handleFailedCheck(
   await recordOutageTimeline(monitor, result, transition, message, diagnostic?.summary, outage?.id);
   if (transition.checkStatus !== "down") return false;
   if (!(await isCurrentMonitorClaim(monitor))) return false;
-  const sent = await sendMonitorNotifications({
+  return queueMonitorNotification({
     kind: "failure",
     message,
     monitor,
     result,
     rca,
-    buildEmailAttachments: (language) => buildAlertEmailAttachments(monitor, result, language),
+    markers: [{ eventType: "failure-notification", status: "down" }],
+    captureScreenshot: true,
   });
-  if (sent && await isCurrentMonitorClaim(monitor)) {
-    await appendDetailedEvent(monitor, result, "failure-notification", message, rca, "down");
-  }
-  return sent;
 }
 
 async function recordOutageTimeline(
@@ -510,17 +509,15 @@ async function sendDowntimeReminderIfNeeded(
   if (!(await isCurrentMonitorClaim(monitor))) return;
   const message = buildDowntimeReminderMessage(monitor, result.checkedAt);
   if (!message) return;
-  const sent = await sendMonitorNotifications({
+  await queueMonitorNotification({
     kind: "downtime-reminder",
     message,
     monitor,
     result,
     rca,
-    buildEmailAttachments: (language) => buildAlertEmailAttachments(monitor, result, language),
+    markers: [{ eventType: "downtime-reminder", status: "down" }],
+    captureScreenshot: true,
   });
-  if (sent && await isCurrentMonitorClaim(monitor)) {
-    await appendDetailedEvent(monitor, result, "downtime-reminder", message, rca, "down");
-  }
 }
 
 async function handleRecovery(monitor: ClaimedMonitor, result: CheckResult, rca: RootCause, hadConfirmedOutage: boolean) {
@@ -547,10 +544,14 @@ async function handleRecovery(monitor: ClaimedMonitor, result: CheckResult, rca:
     createdAt: result.checkedAt,
   });
   if (!(await isCurrentMonitorClaim(monitor))) return;
-  const sent = await sendMonitorNotifications({ kind: "recovery", message, monitor, result, rca });
-  if (sent && await isCurrentMonitorClaim(monitor)) {
-    await appendDetailedEvent(monitor, result, "recovery-notification", message, rca, "up");
-  }
+  await queueMonitorNotification({
+    kind: "recovery",
+    message,
+    monitor,
+    result,
+    rca,
+    markers: [{ eventType: "recovery-notification", status: "up" }],
+  });
 }
 
 async function handleStatusCodeChange(
@@ -565,17 +566,15 @@ async function handleStatusCodeChange(
   const message = `Status code changed from ${state.previousStatusCode} to ${result.statusCode}.`;
   await appendDetailedEvent(monitor, result, "status-change", message, rca, transition.checkStatus);
   if (!(await isCurrentMonitorClaim(monitor))) return;
-  const sent = await sendMonitorNotifications({
+  await queueMonitorNotification({
     kind: "status-change",
     message,
     monitor,
     result,
     rca,
-    buildEmailAttachments: (language) => buildAlertEmailAttachments(monitor, result, language),
+    markers: [{ eventType: "status-change-notification", status: transition.checkStatus }],
+    captureScreenshot: true,
   });
-  if (sent && await isCurrentMonitorClaim(monitor)) {
-    await appendDetailedEvent(monitor, result, "status-change-notification", message, rca, transition.checkStatus);
-  }
 }
 
 function shouldNotifyStatusCodeChange(
@@ -719,28 +718,21 @@ async function retryTransitionNotification(
   if (!failedDelivery) {
     return;
   }
+  // The transition's own alert may still be waiting to be sent.
+  if (await hasQueuedNotification(monitor.id, kind)) {
+    return;
+  }
 
   if (!(await isCurrentMonitorClaim(monitor))) return;
-  const notificationSent = await sendMonitorNotifications({
+  await queueMonitorNotification({
     kind,
     message: transitionMessage,
     monitor,
     result,
     rca,
-    buildEmailAttachments: kind === "status-change"
-      ? (language: NotificationLanguage) => buildAlertEmailAttachments(monitor, result, language)
-      : undefined,
+    markers: [{ eventType: `${kind}-notification`, status: "up" }],
+    captureScreenshot: kind === "status-change",
   });
-  if (notificationSent && await isCurrentMonitorClaim(monitor)) {
-    await appendDetailedEvent(
-      monitor,
-      result,
-      `${kind}-notification`,
-      transitionMessage,
-      rca,
-      "up"
-    );
-  }
 }
 
 function shouldRunFinalConfirmationProbe(
@@ -754,84 +746,6 @@ function shouldRunFinalConfirmationProbe(
     && !hadConfirmedOutage
     && wasVerifying
     && verificationAttempt + 1 >= threshold;
-}
-
-// A cycle can send more than one alert for the same check (e.g. a retried failure alert and a
-// downtime reminder); they share one screenshot, which also keeps the work inside the monitor lease.
-const alertAttachmentsByCheck = new WeakMap<
-  Awaited<ReturnType<typeof checkMonitor>>,
-  Map<NotificationLanguage, ReturnType<typeof captureAlertEmailAttachments>>
->();
-
-function buildAlertEmailAttachments(
-  monitor: Monitor,
-  result: Awaited<ReturnType<typeof checkMonitor>>,
-  language: NotificationLanguage
-) {
-  let byLanguage = alertAttachmentsByCheck.get(result);
-  if (!byLanguage) {
-    byLanguage = new Map();
-    alertAttachmentsByCheck.set(result, byLanguage);
-  }
-  let attachments = byLanguage.get(language);
-  if (!attachments) {
-    attachments = captureAlertEmailAttachments(monitor, result, language);
-    byLanguage.set(language, attachments);
-  }
-  return attachments;
-}
-
-// Failures a later page load can show to have passed. Redirect-limit failures are excluded because the
-// browser follows redirects the monitor forbids, so it would report the very page the monitor rejects.
-const SCREENSHOT_DISPROVABLE_FAILURES = new Set(["timeout", "http_status", "connection", "network"]);
-
-// Only a plain HTTP failure is disproved by a working page. Keyword and JSON failures happen on pages
-// that load fine, status-code-change alerts are sent while the site is up, and the browser's GET says
-// nothing about a POST, PUT, or other request the monitor sends.
-function isFailureDisprovedByWorkingPage(
-  monitor: Monitor,
-  result: Awaited<ReturnType<typeof checkMonitor>>
-) {
-  return !result.ok
-    && monitor.monitorType === "http"
-    && (monitor.method === "GET" || monitor.method === "HEAD")
-    && SCREENSHOT_DISPROVABLE_FAILURES.has(result.failureReason ?? "")
-    // With custom expected codes a refused redirect is reported as an HTTP status failure; the
-    // browser would follow it to a working page all the same.
-    && !isRedirectStatusCode(result.statusCode);
-}
-
-function isRedirectStatusCode(statusCode: number | null) {
-  return statusCode !== null && statusCode >= 300 && statusCode < 400;
-}
-
-async function captureAlertEmailAttachments(
-  monitor: Monitor,
-  result: Awaited<ReturnType<typeof checkMonitor>>,
-  language: NotificationLanguage
-) {
-  let skippedReason: string | null = null;
-  const screenshot = await buildFailureScreenshotAttachment(monitor, result.checkedAt, (reason) => {
-    skippedReason = reason;
-  }, {
-    checkStatusCode: result.statusCode,
-    skipWhenSiteResponds: isFailureDisprovedByWorkingPage(monitor, result),
-    language,
-  });
-
-  if (skippedReason && await isCurrentMonitorClaim(monitor)) {
-    await appendMonitorEvent({
-      monitorId: monitor.id,
-      userId: monitor.userId,
-      eventType: "screenshot-skipped",
-      status: monitor.status,
-      statusCode: monitor.statusCode,
-      latencyMs: monitor.latencyMs,
-      message: `Failure screenshot skipped: ${skippedReason}`,
-    });
-  }
-
-  return screenshot ? [screenshot] : undefined;
 }
 
 async function recordFailureDiagnostics(monitor: Monitor) {
@@ -995,19 +909,17 @@ async function sendSslExpiryWarning(
     return;
   }
 
-  const notificationSent = await sendMonitorNotifications({
+  await queueMonitorNotification({
     kind: "ssl-expiry",
     message,
     monitor,
     result,
     rca,
+    markers: [
+      { eventType: "ssl-expiry", status: "up" },
+      { eventType: "ssl-expiry-notification", status: "up" },
+    ],
   });
-
-  if (notificationSent && await isCurrentMonitorClaim(monitor)) {
-    await appendDetailedEvent(monitor, result, "ssl-expiry", message, rca, "up");
-    if (!(await isCurrentMonitorClaim(monitor))) return;
-    await appendDetailedEvent(monitor, result, "ssl-expiry-notification", message, rca, "up");
-  }
 }
 
 function buildSslExpiryMessage(monitor: Monitor, result: Awaited<ReturnType<typeof checkMonitor>>) {

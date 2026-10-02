@@ -25,18 +25,18 @@ import { buildHeartbeatMonitorTarget } from "@/lib/monitors/targets";
 import { hashSecretValue } from "@/lib/security/encryption";
 
 describe("monitor due selection", () => {
-  it("keeps leases longer than the slowest monitor timeout and its outage screenshot", () => {
-    expect(calculateMonitorLeaseMs([{ timeout: 120_000 }])).toBe(322_000);
+  it("keeps leases longer than the slowest monitor timeout", () => {
+    expect(calculateMonitorLeaseMs([{ timeout: 120_000 }])).toBe(240_000);
   });
 
   it("keeps verification leases long enough for the final confirmation probe", () => {
-    expect(calculateMonitorLeaseMs([{ timeout: 60_000, verificationMode: true }])).toBe(442_000);
+    expect(calculateMonitorLeaseMs([{ timeout: 60_000, verificationMode: true }])).toBe(360_000);
   });
 
   it("keeps queued monitors leased across every concurrency wave", () => {
     const monitors = Array.from({ length: 9 }, () => ({ timeout: 120_000 }));
 
-    expect(calculateMonitorLeaseMs(monitors, 2)).toBe(1_130_000);
+    expect(calculateMonitorLeaseMs(monitors, 2)).toBe(720_000);
   });
 
   it("prioritizes verification checks before normal due monitors within the batch", () => {

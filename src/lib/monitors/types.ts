@@ -246,6 +246,9 @@ export interface WorkerObservability {
     // How long monitors had been due when their check started, over the selected range.
     averageScheduleLagMsInRange: number | null;
     maxScheduleLagMsInRange: number | null;
+    // Alerts raised by checks and not sent yet (screenshot or delivery still running, or retrying).
+    queuedNotifications: number;
+    oldestQueuedNotificationWaitMs: number | null;
   };
   recentCycles: WorkerCycleMetricRecord[];
   trend: Array<{

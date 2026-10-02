@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
 import { calculateVerificationTimeout } from "@/lib/monitors/verification";
+import type { NotificationJob } from "@/lib/db/schema";
 import type { NotificationContext } from "@/worker/types";
 
 type CheckResult = {
@@ -52,14 +53,50 @@ const mocks = vi.hoisted(() => ({
   getRecentMonitorEventMessage: vi.fn(),
   hasRecentFailedNotificationDelivery: vi.fn(),
   canUserAccessPrivateTargets: vi.fn(),
+  evaluateNotificationDecision: vi.fn(),
+  hasAcceptedNotificationDeliverySince: vi.fn(),
+  enqueueNotificationJob: vi.fn(),
+  // The notification outbox, kept in memory; alerts are sent by flushQueuedNotifications().
+  notificationJobs: [] as NotificationJob[],
 }));
 
 vi.mock("@/lib/env", () => ({
   env: {
     workerConcurrency: 20,
     workerPollIntervalMs: 10_000,
+    screenshotConcurrency: 3,
+    notificationConcurrency: 5,
   },
+  getAppEncryptionSecret: () => "scheduler-test-encryption-secret-with-32-characters",
 }));
+
+vi.mock("@/lib/db", () => ({
+  db: { transaction: (operation: (tx: unknown) => Promise<unknown>) => operation({}) },
+}));
+
+vi.mock("@/lib/notifications/outbox", () => {
+  const findJob = (job: Pick<NotificationJob, "id">) => mocks.notificationJobs.find((item) => item.id === job.id);
+  const isOpen = (job: NotificationJob) => job.status === "pending" || job.status === "processing";
+  return {
+    MAX_NOTIFICATION_JOB_ATTEMPTS: 5,
+    NOTIFICATION_JOB_CLAIM_MS: 600_000,
+    enqueueNotificationJob: mocks.enqueueNotificationJob,
+    hasOpenNotificationJob: async (monitorId: string, kind: string) =>
+      mocks.notificationJobs.some((job) => job.monitorId === monitorId && job.kind === kind && isOpen(job)),
+    claimNotificationJobs: async () => [],
+    markNotificationDeliveryStarted: async () => undefined,
+    lockOwnedNotificationJob: async (_database: unknown, job: NotificationJob) => findJob(job)?.status === "processing",
+    isNotificationJobOwned: async (job: NotificationJob) => findJob(job)?.status === "processing",
+    completeNotificationJob: async (_database: unknown, job: NotificationJob, outcome: string) => {
+      Object.assign(findJob(job) ?? {}, { status: "done", outcome });
+      return true;
+    },
+    failNotificationJob: async (job: NotificationJob, errorMessage: string) => {
+      Object.assign(findJob(job) ?? {}, { status: "failed", lastError: errorMessage });
+      return true;
+    },
+  };
+});
 
 vi.mock("@/lib/outages/service", () => ({
   openOrUpdateOutage: mocks.openOrUpdateOutage,
@@ -89,7 +126,8 @@ vi.mock("@/lib/monitors/service", () => ({
   appendOutageEvent: mocks.appendOutageEvent,
   appendMonitorCheck: mocks.appendMonitorCheck,
   appendMonitorDiagnostic: mocks.appendMonitorDiagnostic,
-  appendMonitorEvent: mocks.appendMonitorEvent,
+  // Markers are written in the job's transaction; the tests only look at what was written.
+  appendMonitorEvent: (input: unknown) => mocks.appendMonitorEvent(input),
   claimDueMonitors: mocks.claimDueMonitors,
   countDueMonitors: mocks.countDueMonitors,
   incrementWorkerCheckedCount: mocks.incrementWorkerCheckedCount,
@@ -100,11 +138,13 @@ vi.mock("@/lib/monitors/service", () => ({
   renewMonitorLease: mocks.renewMonitorLease,
   updateWorkerState: mocks.updateWorkerState,
   withMonitorClaimHistoryLock: mocks.withMonitorClaimHistoryLock,
+  withMonitorHistoryLock: (_monitorId: string, operation: () => Promise<unknown>) => operation(),
   getRecentMonitorEventMessage: mocks.getRecentMonitorEventMessage,
 }));
 
 vi.mock("@/lib/delivery/service", () => ({
   hasRecentFailedNotificationDelivery: mocks.hasRecentFailedNotificationDelivery,
+  hasAcceptedNotificationDeliverySince: mocks.hasAcceptedNotificationDeliverySince,
 }));
 
 vi.mock("@/lib/worker/observability", () => ({
@@ -128,6 +168,7 @@ vi.mock("@/worker/checker", () => ({
 
 vi.mock("@/worker/notifier", () => ({
   sendMonitorNotifications: mocks.sendMonitorNotifications,
+  evaluateNotificationDecision: mocks.evaluateNotificationDecision,
 }));
 
 vi.mock("@/worker/connectivity", () => ({
@@ -138,6 +179,7 @@ vi.mock("@/worker/screenshot", () => ({
   buildFailureScreenshotAttachment: mocks.buildFailureScreenshotAttachment,
 }));
 
+import { processNotificationJob } from "@/worker/notification-outbox";
 import { calculateScheduleLagMs, createMonitorDispatcher, runMonitoringCycle } from "@/worker/scheduler";
 
 describe("monitoring scheduler verification flow", () => {
@@ -196,6 +238,32 @@ describe("monitoring scheduler verification flow", () => {
     mocks.getRecentMonitorEventMessage.mockResolvedValue(null);
     mocks.hasRecentFailedNotificationDelivery.mockResolvedValue(false);
     mocks.canUserAccessPrivateTargets.mockResolvedValue(true);
+    mocks.notificationJobs = [];
+    mocks.evaluateNotificationDecision.mockResolvedValue({ wouldNotify: true, reason: "Allowed in tests." });
+    mocks.hasAcceptedNotificationDeliverySince.mockResolvedValue(false);
+    mocks.enqueueNotificationJob.mockImplementation(async (input: Omit<NotificationJob, "id" | "seq">) => {
+      const duplicate = input.dedupeKey !== null && mocks.notificationJobs.some((job) =>
+        job.monitorId === input.monitorId
+        && job.dedupeKey === input.dedupeKey
+        && (job.status === "pending" || job.status === "processing"));
+      if (duplicate) return "duplicate";
+      mocks.notificationJobs.push({
+        ...input,
+        id: `job-${mocks.notificationJobs.length + 1}`,
+        seq: mocks.notificationJobs.length + 1,
+        status: "pending",
+        attempts: 0,
+        nextAttemptAt: new Date(0),
+        claimToken: null,
+        claimExpiresAt: null,
+        deliveryStartedAt: null,
+        outcome: null,
+        lastError: null,
+        completedAt: null,
+        createdAt: new Date(0),
+      } as NotificationJob);
+      return "queued";
+    });
     mocks.ensureWorkerConnectivity.mockResolvedValue({
       available: true,
       status: "online",
@@ -209,7 +277,7 @@ describe("monitoring scheduler verification flow", () => {
   it("schedules failed first verification attempts one minute later", async () => {
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -236,7 +304,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -253,7 +321,7 @@ describe("monitoring scheduler verification flow", () => {
   it("records diagnostics and outage timeline events for failed verification attempts", async () => {
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.runMonitorDiagnostics).toHaveBeenCalledWith(expect.objectContaining({ id: "monitor-1" }));
     expect(mocks.appendMonitorDiagnostic).toHaveBeenCalledWith(
@@ -281,7 +349,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -317,7 +385,7 @@ describe("monitoring scheduler verification flow", () => {
     ];
     mocks.sendMonitorNotifications.mockResolvedValue(true);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "failure-notification", status: "down" })
@@ -347,7 +415,7 @@ describe("monitoring scheduler verification flow", () => {
     ];
     mocks.sendMonitorNotifications.mockResolvedValue(true);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "recovery" })
@@ -385,7 +453,7 @@ describe("monitoring scheduler verification flow", () => {
     ];
     mocks.sendMonitorNotifications.mockResolvedValue(false);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200 })];
     mocks.getRecentMonitorEventMessage.mockImplementation(({ eventType }: { eventType: string }) =>
@@ -393,7 +461,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.hasRecentFailedNotificationDelivery.mockResolvedValue(true);
     mocks.sendMonitorNotifications.mockResolvedValue(true);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "recovery" })
@@ -427,7 +495,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -481,7 +549,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -518,7 +586,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "latency", status: "up" })
@@ -548,7 +616,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "latency", status: "up" })
@@ -579,7 +647,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -613,7 +681,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -646,7 +714,7 @@ describe("monitoring scheduler verification flow", () => {
     };
     mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, checkSslExpiry: true })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "ssl-expiry" })
@@ -681,7 +749,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.openOrUpdateOutage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -728,7 +796,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
@@ -768,7 +836,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const notificationContext = getNotificationContext("failure");
     expect(notificationContext.emailAttachments).toBeUndefined();
@@ -813,10 +881,14 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    // The screenshot is taken while the queued alert is being sent.
+    mocks.sendMonitorNotifications.mockImplementation(async (context: NotificationContext) => {
+      await expect(context.buildEmailAttachments?.("en")).resolves.toBeUndefined();
+      return true;
+    });
 
-    const notificationContext = getNotificationContext("failure");
-    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toBeUndefined();
+    await runCycleAndSendAlerts();
+
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "screenshot-skipped",
@@ -841,8 +913,13 @@ describe("monitoring scheduler verification flow", () => {
         lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
       }),
     ];
+    // The outage alert already went out an hour ago.
+    mocks.evaluateNotificationDecision.mockImplementation(async (context: NotificationContext) => ({
+      wouldNotify: context.kind !== "failure",
+      reason: "test",
+    }));
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const notificationContext = getNotificationContext("downtime-reminder");
     expect(notificationContext.emailAttachments).toBeUndefined();
@@ -858,7 +935,7 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
-  it("captures one screenshot when a failed failure alert is followed by a downtime reminder", async () => {
+  it("does not queue a downtime reminder while the outage alert is on its way", async () => {
     const screenshot = {
       filename: "sentrovia-api-outage.jpg",
       content: Buffer.from("image"),
@@ -875,14 +952,21 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
+    // An earlier check queued the outage alert and it is still waiting to be sent.
     await runMonitoringCycle();
+    mocks.dueMonitors = [mocks.dueMonitors[0]];
+    await runCycleAndSendAlerts();
 
+    expect(mocks.notificationJobs.map((job) => job.kind)).toEqual(["failure"]);
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledOnce();
     await expect(getNotificationContext("failure").buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
-    await expect(getNotificationContext("downtime-reminder").buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
-    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledOnce();
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "failure-notification", createdAt: new Date("2026-05-08T07:00:00.000Z") })
+    );
   });
 
-  it("captures the screenshot in each notification language it is requested in", async () => {
+  it("captures the screenshot in the alert's notification language", async () => {
     mocks.dueMonitors = [
       buildMonitor({
         status: "down",
@@ -893,10 +977,8 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
-    const context = getNotificationContext("failure");
-    await context.buildEmailAttachments?.("tr");
-    await context.buildEmailAttachments?.("tr");
+    await runCycleAndSendAlerts();
+    await getNotificationContext("failure").buildEmailAttachments?.("tr");
 
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledOnce();
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
@@ -919,7 +1001,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
     await getNotificationContext("failure").buildEmailAttachments?.("en");
 
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
@@ -947,7 +1029,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
     await getNotificationContext("failure").buildEmailAttachments?.("en");
 
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
@@ -972,7 +1054,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
     await getNotificationContext("failure").buildEmailAttachments?.("en");
 
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
@@ -995,7 +1077,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
     await getNotificationContext("failure").buildEmailAttachments?.("en");
 
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
@@ -1032,7 +1114,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const notificationContext = getNotificationContext("status-change");
     expect(notificationContext.emailAttachments).toBeUndefined();
@@ -1071,7 +1153,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -1138,7 +1220,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
     expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(2);
@@ -1202,7 +1284,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
@@ -1247,7 +1329,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(1);
     expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
@@ -1261,7 +1343,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.renewMonitorLease.mockResolvedValueOnce(false);
     mocks.dueMonitors = [buildMonitor()];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.renewMonitorLease).toHaveBeenCalledWith(
       "monitor-1",
@@ -1273,7 +1355,7 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
   });
 
-  it("holds the monitor lease until persistence and notification side effects finish", async () => {
+  it("queues alerts while holding the lease and sends them after releasing it", async () => {
     mocks.sendMonitorNotifications.mockResolvedValue(true);
     mocks.dueMonitors = [
       buildMonitor({
@@ -1285,20 +1367,23 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const releaseOrder = mocks.releaseMonitorLease.mock.invocationCallOrder[0];
     const resultOrder = mocks.recordMonitorResult.mock.invocationCallOrder[0];
+    const queuedOrder = mocks.enqueueNotificationJob.mock.invocationCallOrder[0];
     const notificationOrder = mocks.sendMonitorNotifications.mock.invocationCallOrder[0];
     expect(releaseOrder).toBeGreaterThan(resultOrder);
-    expect(releaseOrder).toBeGreaterThan(notificationOrder);
+    expect(releaseOrder).toBeGreaterThan(queuedOrder);
+    // A slow screenshot or mail server no longer keeps the monitor leased.
+    expect(notificationOrder).toBeGreaterThan(releaseOrder);
   });
 
   it("releases the monitor lease when a check throws unexpectedly", async () => {
     mocks.checkMonitor.mockRejectedValueOnce(new Error("Checker crashed."));
     mocks.dueMonitors = [buildMonitor()];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
     expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(
@@ -1319,7 +1404,7 @@ describe("monitoring scheduler verification flow", () => {
     };
     mocks.dueMonitors = [buildMonitor()];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorCheck).toHaveBeenCalledWith(
       expect.objectContaining({ status: "pending", statusCode: null })
@@ -1347,7 +1432,7 @@ describe("monitoring scheduler verification flow", () => {
       verificationFailureCount: 1,
     })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -1375,7 +1460,7 @@ describe("monitoring scheduler verification flow", () => {
     };
     mocks.dueMonitors = [buildMonitor({ status: "down", intervalValue: 15 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -1400,7 +1485,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledWith(
       expect.objectContaining({ timeout: 7500 }),
@@ -1420,7 +1505,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
     expect(mocks.checkMonitor).toHaveBeenNthCalledWith(
@@ -1439,7 +1524,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.recordMonitorResult.mockResolvedValue(null);
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
     expect(mocks.appendMonitorEvent).not.toHaveBeenCalled();
@@ -1458,7 +1543,7 @@ describe("monitoring scheduler verification flow", () => {
       .mockResolvedValueOnce(false);
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalled();
     expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
@@ -1471,7 +1556,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.withMonitorClaimHistoryLock.mockResolvedValueOnce(null);
     mocks.dueMonitors = [buildMonitor({ status: "up" })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.withMonitorClaimHistoryLock).toHaveBeenCalledWith(
       "monitor-1",
@@ -1880,6 +1965,21 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     updatedAt: now,
     ...overrides,
   };
+}
+
+// Runs a cycle and then sends what it queued, as the notification dispatcher would.
+async function runCycleAndSendAlerts() {
+  const claimed = await runMonitoringCycle();
+  await flushQueuedNotifications();
+  return claimed;
+}
+
+async function flushQueuedNotifications() {
+  for (const job of mocks.notificationJobs) {
+    if (job.status !== "pending") continue;
+    Object.assign(job, { status: "processing", claimToken: `claim-${job.id}`, attempts: job.attempts + 1 });
+    await processNotificationJob(job);
+  }
 }
 
 function getNotificationContext(kind: NotificationContext["kind"]) {

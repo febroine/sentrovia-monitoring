@@ -39,6 +39,7 @@ export async function appendMonitorEvent(input: {
   rcaType?: string | null;
   rcaTitle?: string | null;
   rcaSummary?: string | null;
+  createdAt?: Date;
 }, database: DatabaseExecutor = db) {
   const workspaceId = await resolveMonitorHistoryWorkspace(input, database);
   await database.insert(monitorEvents).values({
@@ -53,6 +54,7 @@ export async function appendMonitorEvent(input: {
     rcaType: input.rcaType ?? null,
     rcaTitle: input.rcaTitle ?? null,
     rcaSummary: input.rcaSummary ?? null,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   });
 }
 

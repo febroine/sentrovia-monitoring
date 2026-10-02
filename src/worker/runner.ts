@@ -8,6 +8,12 @@ import {
   setMonitorDispatchGuard,
   stopMonitorDispatch,
 } from "@/worker/scheduler";
+import {
+  getActiveNotificationJobCount,
+  resumeNotificationDispatch,
+  setNotificationDispatchGuard,
+  stopNotificationDispatch,
+} from "@/worker/notification-outbox";
 import { shouldAutoStartWorker } from "@/worker/startup";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
 import { acquireWorkerProcessLock } from "@/lib/worker/process-lock";
@@ -27,7 +33,7 @@ async function main() {
     await runWorkerLoop();
   } finally {
     // Even when the loop fails, checks still running finish before another worker may take over.
-    await stopMonitorDispatch().catch((error) => {
+    await stopWorkerDispatch().catch((error) => {
       console.error("[sentrovia] Unable to finish running monitor checks before shutdown.", error);
     });
     await releaseProcessLock();
@@ -38,6 +44,7 @@ async function runWorkerLoop() {
   void runHeartbeatLoop();
   // Freed check slots are refilled between loop iterations; this keeps those refills paused too.
   setMonitorDispatchGuard(isRunRequested);
+  setNotificationDispatchGuard(isRunRequested);
   const currentState = await getWorkerState();
   const shouldAutoStart = shouldAutoStartWorker(
     currentState,
@@ -59,6 +66,7 @@ async function runWorkerLoop() {
 
     if (state.desiredState === "running") {
       resumeMonitorDispatch();
+      resumeNotificationDispatch();
       if (!state.running) {
         await updateWorkerState({
           running: true,
@@ -79,14 +87,13 @@ async function runWorkerLoop() {
         const phaseResult = await runWorkerPhases(isRunRequested);
         if (phaseResult.status === "completed") {
           const activeChecks = getActiveMonitorCheckCount();
+          const activeNotifications = getActiveNotificationJobCount();
           await updateWorkerState({
             running: true,
             heartbeatAt: new Date(),
             lastCycleAt: new Date(),
             pid: process.pid,
-            statusMessage: activeChecks > 0
-              ? `Worker is running ${activeChecks} monitor check(s).`
-              : "Worker is healthy and waiting for the next due monitor.",
+            statusMessage: buildRunningStatusMessage(activeChecks, activeNotifications),
           });
         } else if (phaseResult.status === "connectivity-paused") {
           await updateWorkerState({
@@ -96,7 +103,7 @@ async function runWorkerLoop() {
             statusMessage: phaseResult.message,
           });
         } else {
-          await stopMonitorDispatch();
+          await stopWorkerDispatch();
           await markWorkerStopped();
         }
       } catch (error) {
@@ -111,7 +118,7 @@ async function runWorkerLoop() {
         });
       }
     } else if (state.running) {
-      await stopMonitorDispatch();
+      await stopWorkerDispatch();
       await markWorkerStopped();
     } else {
       await updateWorkerState({
@@ -126,7 +133,7 @@ async function runWorkerLoop() {
   }
 
   // Checks already running finish and release their leases before the process lock is released.
-  await stopMonitorDispatch();
+  await stopWorkerDispatch();
   await updateWorkerState({
     running: false,
     stoppedAt: new Date(),
@@ -135,10 +142,29 @@ async function runWorkerLoop() {
   });
 }
 
+// Checks stop first because they queue alerts; then the alerts being sent finish. Queued alerts stay in
+// the database for the next start.
+async function stopWorkerDispatch() {
+  await stopMonitorDispatch();
+  await stopNotificationDispatch();
+}
+
 async function isRunRequested() {
   if (!active) return false;
   const state = await getWorkerState();
   return state.desiredState === "running";
+}
+
+function buildRunningStatusMessage(activeChecks: number, activeNotifications: number) {
+  if (activeChecks === 0 && activeNotifications === 0) {
+    return "Worker is healthy and waiting for the next due monitor.";
+  }
+
+  const parts = [
+    activeChecks > 0 ? `${activeChecks} monitor check(s)` : null,
+    activeNotifications > 0 ? `${activeNotifications} notification(s)` : null,
+  ].filter(Boolean);
+  return `Worker is running ${parts.join(" and ")}.`;
 }
 
 async function markWorkerStopped() {

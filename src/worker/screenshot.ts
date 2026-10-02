@@ -25,7 +25,6 @@ const SCREENSHOT_VIEWPORT = { width: 1366, height: 768 };
 const SCREENSHOT_TIMEOUT_MS = 12_000;
 const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 const SCREENSHOT_JPEG_QUALITY = 70;
-const MAX_CONCURRENT_SCREENSHOTS = 3;
 const SCREENSHOT_DEADLINE_ERROR = "screenshot capture timed out";
 const SCREENSHOT_REDIRECT_PROBE_TIMEOUT_MS = 3_000;
 const MAX_SCREENSHOT_REDIRECTS = 10;
@@ -766,7 +765,7 @@ async function withScreenshotSlot<T>(queueTimeoutMs: number, task: () => Promise
 }
 
 function acquireScreenshotSlot(queueTimeoutMs: number) {
-  if (activeScreenshots < MAX_CONCURRENT_SCREENSHOTS) {
+  if (activeScreenshots < env.screenshotConcurrency) {
     activeScreenshots += 1;
     return Promise.resolve();
   }

@@ -8,6 +8,7 @@ import {
   workerState,
 } from "@/lib/db/schema";
 import { env, getMetricsAuthToken } from "@/lib/env";
+import { getNotificationQueueSummary } from "@/lib/notifications/outbox";
 import { WORKER_STATE_ID } from "@/lib/worker/constants";
 import { getHeartbeatAgeMs, isHeartbeatCurrent } from "@/lib/worker/heartbeat";
 
@@ -25,6 +26,8 @@ export type PrometheusSnapshot = {
   activeMonitors: number;
   dueMonitors: number;
   oldestDueSeconds: number;
+  queuedNotifications: number;
+  oldestQueuedNotificationSeconds: number;
   monitorsByStatus: Record<(typeof MONITOR_STATUSES)[number], number>;
   deliveriesByStatus: Record<(typeof DELIVERY_STATUSES)[number], number>;
   backupStatus: (typeof BACKUP_STATUSES)[number];
@@ -41,7 +44,16 @@ export function isMetricsRequestAuthorized(authorizationHeader: string | null) {
 }
 
 export async function collectPrometheusSnapshot(now = new Date()): Promise<PrometheusSnapshot> {
-  const [monitorRows, activeRows, deliveryRows, workerRows, backupRows, successfulBackupRows, dueRows] = await Promise.all([
+  const [
+    monitorRows,
+    activeRows,
+    deliveryRows,
+    workerRows,
+    backupRows,
+    successfulBackupRows,
+    dueRows,
+    notificationQueue,
+  ] = await Promise.all([
     db
       .select({
         status: monitors.status,
@@ -85,6 +97,7 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
         or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
         or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
       )),
+    getNotificationQueueSummary(now),
   ]);
   const worker = workerRows[0];
   const heartbeatAgeSeconds = (getHeartbeatAgeMs(worker?.heartbeatAt, now) ?? 0) / 1000;
@@ -104,6 +117,8 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
     activeMonitors: Number(activeRows[0]?.total ?? 0),
     dueMonitors: Number(dueRows[0]?.total ?? 0),
     oldestDueSeconds: calculateOldestDueSeconds(dueRows[0]?.oldestNextCheckAt, now),
+    queuedNotifications: notificationQueue.waiting,
+    oldestQueuedNotificationSeconds: (notificationQueue.oldestWaitMs ?? 0) / 1000,
     monitorsByStatus: buildStatusRecord(MONITOR_STATUSES, monitorCounts),
     deliveriesByStatus: buildStatusRecord(DELIVERY_STATUSES, deliveryCounts),
     backupStatus: isBackupStatus(backup?.status) ? backup.status : "none",
@@ -152,6 +167,12 @@ export function renderPrometheusMetrics(snapshot: PrometheusSnapshot) {
     "# HELP sentrovia_monitors_oldest_due_seconds How long the most overdue monitor has been waiting for a check.",
     "# TYPE sentrovia_monitors_oldest_due_seconds gauge",
     `sentrovia_monitors_oldest_due_seconds ${formatMetricValue(snapshot.oldestDueSeconds)}`,
+    "# HELP sentrovia_notifications_queued Alerts raised by checks and not sent yet.",
+    "# TYPE sentrovia_notifications_queued gauge",
+    `sentrovia_notifications_queued ${snapshot.queuedNotifications}`,
+    "# HELP sentrovia_notifications_oldest_queued_seconds How long the oldest unsent alert has been waiting.",
+    "# TYPE sentrovia_notifications_oldest_queued_seconds gauge",
+    `sentrovia_notifications_oldest_queued_seconds ${formatMetricValue(snapshot.oldestQueuedNotificationSeconds)}`,
     "# HELP sentrovia_monitors_by_status Non-deleted monitors by current status.",
     "# TYPE sentrovia_monitors_by_status gauge",
     ...MONITOR_STATUSES.map((status) => `sentrovia_monitors_by_status{status="${status}"} ${snapshot.monitorsByStatus[status]}`),

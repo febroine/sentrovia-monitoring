@@ -4,6 +4,11 @@ const MIN_WORKER_CONCURRENCY = 1;
 const MAX_WORKER_CONCURRENCY = 500;
 const MIN_WORKER_POLL_INTERVAL_MS = 1_000;
 const MAX_WORKER_POLL_INTERVAL_MS = 600_000;
+const DEFAULT_SCREENSHOT_CONCURRENCY = 3;
+const MIN_SCREENSHOT_CONCURRENCY = 1;
+const MAX_SCREENSHOT_CONCURRENCY = 10;
+// Alerts without a screenshot (recoveries, latency, SSL) keep moving while every browser is busy.
+const MIN_NOTIFICATION_CONCURRENCY = 5;
 const DEFAULT_WORKER_CONNECTIVITY_TIMEOUT_MS = 5_000;
 const MIN_WORKER_CONNECTIVITY_TIMEOUT_MS = 1_000;
 const MAX_WORKER_CONNECTIVITY_TIMEOUT_MS = 30_000;
@@ -135,6 +140,13 @@ export function getMetricsAuthToken() {
   return token.length >= 32 ? token : null;
 }
 
+const screenshotConcurrency = parseBoundedInteger(
+  process.env.SCREENSHOT_CONCURRENCY,
+  DEFAULT_SCREENSHOT_CONCURRENCY,
+  MIN_SCREENSHOT_CONCURRENCY,
+  MAX_SCREENSHOT_CONCURRENCY
+);
+
 export const env = {
   appUrl: readString(process.env.APP_URL, "http://localhost:3000"),
   isProduction: process.env.NODE_ENV === "production",
@@ -150,6 +162,9 @@ export const env = {
     MIN_WORKER_POLL_INTERVAL_MS,
     MAX_WORKER_POLL_INTERVAL_MS
   ),
+  // Each capture runs its own Chromium (roughly 150-300 MB), so this bounds the worker's memory.
+  screenshotConcurrency,
+  notificationConcurrency: Math.max(MIN_NOTIFICATION_CONCURRENCY, screenshotConcurrency + 2),
   workerAutoStart: parseBoolean(process.env.WORKER_AUTO_START, true),
   disableEmbeddedWorkerSpawn: parseBoolean(process.env.DISABLE_EMBEDDED_WORKER_SPAWN, false),
   monitorAllowPrivateTargets: parseBoolean(process.env.MONITOR_ALLOW_PRIVATE_TARGETS, true),
