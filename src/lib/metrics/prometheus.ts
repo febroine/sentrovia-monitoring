@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, count, desc, eq, isNull, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lte, min, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   automaticBackupRuns,
@@ -24,6 +24,7 @@ export type PrometheusSnapshot = {
   lastCycleMonitorCount: number;
   activeMonitors: number;
   dueMonitors: number;
+  oldestDueSeconds: number;
   monitorsByStatus: Record<(typeof MONITOR_STATUSES)[number], number>;
   deliveriesByStatus: Record<(typeof DELIVERY_STATUSES)[number], number>;
   backupStatus: (typeof BACKUP_STATUSES)[number];
@@ -70,7 +71,7 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
       .orderBy(desc(automaticBackupRuns.completedAt))
       .limit(1),
     db
-      .select({ total: count() })
+      .select({ total: count(), oldestNextCheckAt: min(monitors.nextCheckAt) })
       .from(monitors)
       .where(and(
         eq(monitors.isActive, true),
@@ -96,6 +97,7 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
     lastCycleMonitorCount: worker?.lastCycleMonitorCount ?? 0,
     activeMonitors: Number(activeRows[0]?.total ?? 0),
     dueMonitors: Number(dueRows[0]?.total ?? 0),
+    oldestDueSeconds: calculateOldestDueSeconds(dueRows[0]?.oldestNextCheckAt, now),
     monitorsByStatus: buildStatusRecord(MONITOR_STATUSES, monitorCounts),
     deliveriesByStatus: buildStatusRecord(DELIVERY_STATUSES, deliveryCounts),
     backupStatus: isBackupStatus(backup?.status) ? backup.status : "none",
@@ -103,6 +105,12 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
       ? successfulBackup.completedAt.getTime() / 1000
       : 0,
   };
+}
+
+function calculateOldestDueSeconds(oldestNextCheckAt: Date | string | null | undefined, now: Date) {
+  if (!oldestNextCheckAt) return 0;
+  const dueAt = new Date(oldestNextCheckAt).getTime();
+  return Number.isFinite(dueAt) ? Math.max(0, (now.getTime() - dueAt) / 1000) : 0;
 }
 
 export function isWorkerHeartbeatCurrent(heartbeatAt: Date | null | undefined, now: Date, thresholdSeconds: number) {
@@ -135,6 +143,9 @@ export function renderPrometheusMetrics(snapshot: PrometheusSnapshot) {
     "# HELP sentrovia_monitors_due Monitors currently due for a check.",
     "# TYPE sentrovia_monitors_due gauge",
     `sentrovia_monitors_due ${snapshot.dueMonitors}`,
+    "# HELP sentrovia_monitors_oldest_due_seconds How long the most overdue monitor has been waiting for a check.",
+    "# TYPE sentrovia_monitors_oldest_due_seconds gauge",
+    `sentrovia_monitors_oldest_due_seconds ${formatMetricValue(snapshot.oldestDueSeconds)}`,
     "# HELP sentrovia_monitors_by_status Non-deleted monitors by current status.",
     "# TYPE sentrovia_monitors_by_status gauge",
     ...MONITOR_STATUSES.map((status) => `sentrovia_monitors_by_status{status="${status}"} ${snapshot.monitorsByStatus[status]}`),

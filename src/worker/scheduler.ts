@@ -21,6 +21,8 @@ const MONITOR_REFILL_DELAY_MS = 250;
 // budget (slow database, slow delivery) is never taken over and run twice. Well below the shortest
 // lease of three minutes.
 const MONITOR_LEASE_HEARTBEAT_MS = 60_000;
+// Metric columns are 32-bit integers; a worker stopped for weeks would otherwise overflow them.
+const MAX_RECORDED_SCHEDULE_LAG_MS = 2_147_483_647;
 
 type DispatchSource = "tick" | "refill";
 
@@ -113,6 +115,9 @@ export function createMonitorDispatcher({
   async function runClaimedMonitors(claimed: ClaimedMonitor[], startedAt: Date, backlogAtStart: number) {
     const results: MonitorCycleResult[] = [];
     const errors: string[] = [];
+    const scheduleLags = claimed
+      .map((monitor) => calculateScheduleLagMs(monitor, startedAt))
+      .filter((lag): lag is number => lag !== null);
 
     await Promise.all(claimed.map(async (monitor) => {
       activeChecks += 1;
@@ -145,7 +150,7 @@ export function createMonitorDispatcher({
       }
     }));
 
-    await recordFinishedBatch(claimed.length, results, errors, startedAt, backlogAtStart);
+    await recordFinishedBatch(claimed.length, results, errors, startedAt, backlogAtStart, scheduleLags);
   }
 
   function scheduleRefill() {
@@ -188,12 +193,19 @@ export function createMonitorDispatcher({
   };
 }
 
+// How long a monitor had been due when its check started; the core health signal of a scheduler.
+export function calculateScheduleLagMs(monitor: Pick<ClaimedMonitor, "nextCheckAt">, startedAt: Date) {
+  if (!monitor.nextCheckAt) return null;
+  return Math.min(MAX_RECORDED_SCHEDULE_LAG_MS, Math.max(0, startedAt.getTime() - monitor.nextCheckAt.getTime()));
+}
+
 async function recordFinishedBatch(
   claimedCount: number,
   results: MonitorCycleResult[],
   errors: string[],
   startedAt: Date,
-  backlogAtStart: number
+  backlogAtStart: number,
+  scheduleLags: number[]
 ) {
   const finishedAt = new Date();
   const latencyValues = results
@@ -221,6 +233,10 @@ async function recordFinishedBatch(
     pendingCount,
     averageLatencyMs,
     maxLatencyMs,
+    averageScheduleLagMs: scheduleLags.length > 0
+      ? Math.round(scheduleLags.reduce((sum, value) => sum + value, 0) / scheduleLags.length)
+      : null,
+    maxScheduleLagMs: scheduleLags.length > 0 ? Math.max(...scheduleLags) : null,
     errorMessage: errors[0] ?? null,
   });
 

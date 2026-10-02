@@ -221,6 +221,8 @@ interface WorkerCycleMetricRecord {
   pendingCount: number;
   averageLatencyMs: number | null;
   maxLatencyMs: number | null;
+  averageScheduleLagMs: number | null;
+  maxScheduleLagMs: number | null;
   errorMessage: string | null;
 }
 
@@ -239,6 +241,11 @@ export interface WorkerObservability {
     lastCycleFailureCount: number;
     lastCyclePendingCount: number;
     lastCycleAverageLatencyMs: number | null;
+    // How long the most overdue monitor has been waiting for a worker slot right now.
+    oldestDueWaitMs: number | null;
+    // How long monitors had been due when their check started, over the selected range.
+    averageScheduleLagMsInRange: number | null;
+    maxScheduleLagMsInRange: number | null;
   };
   recentCycles: WorkerCycleMetricRecord[];
   trend: Array<{

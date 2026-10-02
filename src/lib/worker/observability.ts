@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorChecks, monitorEvents, monitors, workerCycleMetrics } from "@/lib/db/schema";
 import { isMonitorCheckStale } from "@/lib/monitors/health";
@@ -70,6 +70,8 @@ export async function recordWorkerCycleMetric(input: {
   pendingCount: number;
   averageLatencyMs: number | null;
   maxLatencyMs: number | null;
+  averageScheduleLagMs?: number | null;
+  maxScheduleLagMs?: number | null;
   errorMessage?: string | null;
 }) {
   await db.insert(workerCycleMetrics).values({
@@ -84,6 +86,8 @@ export async function recordWorkerCycleMetric(input: {
     pendingCount: input.pendingCount,
     averageLatencyMs: input.averageLatencyMs,
     maxLatencyMs: input.maxLatencyMs,
+    averageScheduleLagMs: input.averageScheduleLagMs ?? null,
+    maxScheduleLagMs: input.maxScheduleLagMs ?? null,
     errorMessage: input.errorMessage ?? null,
   });
 }
@@ -115,9 +119,10 @@ export async function getWorkerObservability(
     failureCountRows,
     recentCycleRows,
     recentCycleErrors,
+    scheduleLagRows,
   ] = await Promise.all([
     db
-      .select({ id: monitors.id })
+      .select({ id: monitors.id, nextCheckAt: monitors.nextCheckAt })
       .from(monitors)
       .where(
         and(
@@ -203,6 +208,19 @@ export async function getWorkerObservability(
       .where(gte(workerCycleMetrics.createdAt, rangeStart))
       .orderBy(desc(workerCycleMetrics.createdAt))
       .limit(20),
+    // Aggregated in the database so the whole range counts, not just the newest batch rows.
+    db
+      .select({
+        averageMs: sql<number | null>`round(
+          sum(${workerCycleMetrics.averageScheduleLagMs}::numeric * ${workerCycleMetrics.claimedMonitors})
+          / nullif(sum(${workerCycleMetrics.claimedMonitors}) filter (
+            where ${workerCycleMetrics.averageScheduleLagMs} is not null
+          ), 0)
+        )`.mapWith(toNullableNumber),
+        maxMs: sql<number | null>`max(${workerCycleMetrics.maxScheduleLagMs})`.mapWith(toNullableNumber),
+      })
+      .from(workerCycleMetrics)
+      .where(gte(workerCycleMetrics.createdAt, rangeStart)),
   ]);
 
   const chronologicalChecks = [...checksInRange].reverse();
@@ -323,6 +341,9 @@ export async function getWorkerObservability(
       lastCycleFailureCount: state.lastCycleFailureCount,
       lastCyclePendingCount: state.lastCyclePendingCount,
       lastCycleAverageLatencyMs: state.lastCycleAverageLatencyMs,
+      oldestDueWaitMs: calculateOldestDueWaitMs(dueRows, now),
+      averageScheduleLagMsInRange: scheduleLagRows[0]?.averageMs ?? null,
+      maxScheduleLagMsInRange: scheduleLagRows[0]?.maxMs ?? null,
     },
     recentCycles: recentCycleRows.slice(0, RECENT_CYCLE_LIMIT).map((cycle) => ({
       id: cycle.id,
@@ -337,6 +358,8 @@ export async function getWorkerObservability(
       pendingCount: cycle.pendingCount,
       averageLatencyMs: cycle.averageLatencyMs,
       maxLatencyMs: cycle.maxLatencyMs,
+      averageScheduleLagMs: cycle.averageScheduleLagMs,
+      maxScheduleLagMs: cycle.maxScheduleLagMs,
       errorMessage: cycle.errorMessage,
     })),
     trend: trend.map((bucket) => ({
@@ -399,6 +422,20 @@ function trackMonitorTransition(
 
   current.lastStatus = status;
   transitionsByMonitor.set(monitorId, current);
+}
+
+// How long the most overdue monitor has been waiting for a worker slot right now.
+export function calculateOldestDueWaitMs(dueRows: Array<{ nextCheckAt: Date | null }>, now: Date) {
+  const dueTimes = dueRows
+    .map((row) => row.nextCheckAt?.getTime())
+    .filter((time): time is number => typeof time === "number");
+  return dueTimes.length > 0 ? Math.max(0, now.getTime() - Math.min(...dueTimes)) : null;
+}
+
+function toNullableNumber(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function createTrendBuckets(

@@ -674,6 +674,9 @@ export const workerCycleMetrics = pgTable("worker_cycle_metrics", {
   pendingCount: integer("pending_count").default(0).notNull(),
   averageLatencyMs: integer("average_latency_ms"),
   maxLatencyMs: integer("max_latency_ms"),
+  // How long claimed monitors had been due before their check started.
+  averageScheduleLagMs: integer("average_schedule_lag_ms"),
+  maxScheduleLagMs: integer("max_schedule_lag_ms"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

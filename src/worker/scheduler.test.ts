@@ -136,7 +136,7 @@ vi.mock("@/worker/screenshot", () => ({
   buildFailureScreenshotAttachment: mocks.buildFailureScreenshotAttachment,
 }));
 
-import { createMonitorDispatcher, runMonitoringCycle } from "@/worker/scheduler";
+import { calculateScheduleLagMs, createMonitorDispatcher, runMonitoringCycle } from "@/worker/scheduler";
 
 describe("monitoring scheduler verification flow", () => {
   beforeEach(() => {
@@ -1648,6 +1648,25 @@ describe("monitoring scheduler verification flow", () => {
       expect(release).toBeGreaterThan(lastRenewal);
     });
 
+    it("records how long the batch's monitors had been due when their checks started", async () => {
+      mocks.checkMonitor.mockResolvedValue(healthyResult);
+      const now = Date.now();
+      mocks.claimDueMonitors.mockResolvedValueOnce([
+        buildMonitor({ id: "on-time", nextCheckAt: new Date(now - 1_000) }),
+        buildMonitor({ id: "late", nextCheckAt: new Date(now - 41_000) }),
+        buildMonitor({ id: "new", nextCheckAt: null }),
+      ]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await (await dispatcher.dispatch()).completion;
+
+      const metric = mocks.recordWorkerCycleMetric.mock.calls[0][0];
+      expect(metric.maxScheduleLagMs).toBeGreaterThanOrEqual(41_000);
+      expect(metric.maxScheduleLagMs).toBeLessThan(42_000);
+      expect(metric.averageScheduleLagMs).toBeGreaterThanOrEqual(21_000);
+      expect(metric.averageScheduleLagMs).toBeLessThan(22_000);
+    });
+
     it("records each finished batch without holding back later batches", async () => {
       const slowChecks = holdSlowChecks();
       mocks.claimDueMonitors
@@ -1667,6 +1686,23 @@ describe("monitoring scheduler verification flow", () => {
       await dispatcher.drain();
       expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe("schedule lag", () => {
+  it("measures from the moment the monitor became due and never goes negative", () => {
+    const startedAt = new Date("2026-05-08T07:00:30.000Z");
+
+    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:00:00.000Z") }, startedAt)).toBe(30_000);
+    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:01:00.000Z") }, startedAt)).toBe(0);
+    expect(calculateScheduleLagMs({ nextCheckAt: null }, startedAt)).toBeNull();
+  });
+
+  it("stays within the metric column after a worker was stopped for weeks", () => {
+    const startedAt = new Date("2026-05-08T07:00:00.000Z");
+    const monthsAgo = new Date("2026-01-01T00:00:00.000Z");
+
+    expect(calculateScheduleLagMs({ nextCheckAt: monthsAgo }, startedAt)).toBe(2_147_483_647);
   });
 });
 
