@@ -16,4 +16,4 @@ Start with the [repository overview and Quick Start](../README.md) if you are ev
 
 ## Product Scope
 
-Sentrovia is a self-hosted uptime monitoring platform for HTTP/HTTPS, API/JSON, keyword, TCP, ICMP ping, PostgreSQL, and heartbeat checks. The current product scope and constraints are summarized in the [README](../README.md#overview).
+Sentrovia is a self-hosted uptime monitoring platform for HTTP/HTTPS, API/JSON, keyword, TCP, ICMP ping, PostgreSQL, and heartbeat checks. The current product scope and constraints are summarized in the [README](../README.md#self-hosted-website-and-api-monitoring).

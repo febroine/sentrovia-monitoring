@@ -94,6 +94,18 @@ Playwright reuses the matching cached browser and downloads only a missing requi
 - Use `WORKER_CONNECTIVITY_TARGETS` to provide at least two reliable canaries when the defaults are unavailable from a restricted network.
 - Disabling `WORKER_CONNECTIVITY_CHECK_ENABLED` removes protection against monitoring-host connectivity failures.
 
+## Worker tuning
+
+| Variable                            | Default                | Effect                                                                                                                                                                                                                         |
+| ----------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WORKER_CONCURRENCY`                | `20` (1-500)           | Checks that run at the same time. Raise it when Worker Pulse warns that due monitors wait for a free slot.                                                                                                                     |
+| `WORKER_POLL_INTERVAL_MS`           | `10000`                | How often the worker looks for due monitors. A freed slot is refilled right away regardless.                                                                                                                                   |
+| `SCREENSHOT_CONCURRENCY`            | `3` (1-10)             | Chromium browsers used at once for outage screenshots. Each takes roughly 150-300 MB of memory. Alerts are sent from at least five notification slots, so alerts without a screenshot keep moving while every browser is busy. |
+| `WORKER_CONNECTIVITY_CHECK_ENABLED` | `true`                 | Pauses checks while the monitoring host has no internet access.                                                                                                                                                                |
+| `WORKER_CONNECTIVITY_TARGETS`       | three public endpoints | Endpoints used for that connectivity check.                                                                                                                                                                                    |
+
+Each check opens its own connection, so a site that stops accepting new connections or moves to a new address is seen at the next check. Worker database sessions give up a lock wait after one minute and a statement after five minutes, so a locked row or a stuck query cannot stall the worker.
+
 ## Database schema
 
 Use the schema synchronizer for normal installations and updates:
@@ -219,4 +231,9 @@ scrape_configs:
       - targets: ["sentrovia.example.com"]
 ```
 
-Metrics use bounded labels and cover worker health, monitor status and backlog, delivery outcomes, and automatic backup state. Require HTTPS and a strong token.
+Metrics use bounded labels and cover worker health, monitor status and backlog, delivery outcomes, and automatic backup state. Two signals show whether the worker keeps up:
+
+- `sentrovia_monitors_oldest_due_seconds`: how long the most overdue monitor has been waiting for a check.
+- `sentrovia_notifications_queued` and `sentrovia_notifications_oldest_queued_seconds`: alerts raised but not sent yet.
+
+Alert when either wait keeps growing. Require HTTPS and a strong token.
