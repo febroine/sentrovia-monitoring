@@ -55,3 +55,17 @@ export function payloadFromMonitor(monitor: MonitorRecord): MonitorPayload {
     slowResponseThresholdMs: monitor.slowResponseThresholdMs,
   };
 }
+
+// A new monitor with the same settings. Secrets and identities that belong to the original are left
+// out: a heartbeat monitor gets its own token, and a database password must be entered again.
+export function duplicatePayloadFromMonitor(monitor: MonitorRecord): MonitorPayload {
+  const payload = payloadFromMonitor(monitor);
+  return {
+    ...payload,
+    name: `${monitor.name} (copy)`.slice(0, 120),
+    heartbeatToken: "",
+    heartbeatLastReceivedAt: null,
+    databasePassword: "",
+    databasePasswordConfigured: false,
+  };
+}

@@ -1,4 +1,4 @@
-import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Play, Power, RadioTower, RefreshCw, Send, Settings2, Square, Star, XCircle } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Copy, Flag, Globe, Mail, Play, Power, RadioTower, RefreshCw, Send, Settings2, Square, Star, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,6 +106,7 @@ export function MonitorTable({
   onToggleFlag,
   onRecheck,
   onEdit,
+  onDuplicate,
   onOpenTimeline,
   emptyState,
 }: {
@@ -128,6 +129,7 @@ export function MonitorTable({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
+  onDuplicate?: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
   emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
@@ -338,6 +340,19 @@ export function MonitorTable({
                     >
                       <Settings2 className="size-3.5 text-muted-foreground" />
                     </Button>
+                    {onDuplicate ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        disabled={readOnly}
+                        aria-label={`Duplicate ${monitor.name}`}
+                        title="Duplicate monitor"
+                        onClick={() => onDuplicate(monitor)}
+                      >
+                        <Copy className="size-3.5 text-muted-foreground" />
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>
@@ -365,6 +380,7 @@ export function MonitorTable({
       onToggleFlag={onToggleFlag}
       onRecheck={onRecheck}
       onEdit={onEdit}
+      onDuplicate={onDuplicate}
       onOpenTimeline={onOpenTimeline}
       emptyState={emptyState}
       />
@@ -392,6 +408,7 @@ function MobileMonitorList({
   onToggleFlag,
   onRecheck,
   onEdit,
+  onDuplicate,
   onOpenTimeline,
   emptyState,
 }: {
@@ -413,6 +430,7 @@ function MobileMonitorList({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
+  onDuplicate?: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
   emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
@@ -458,6 +476,7 @@ function MobileMonitorList({
           onToggleFlag={onToggleFlag}
           onRecheck={onRecheck}
           onEdit={onEdit}
+      onDuplicate={onDuplicate}
           onOpenTimeline={onOpenTimeline}
         />
       ))}
@@ -480,6 +499,7 @@ function MobileMonitorCard({
   onToggleFlag,
   onRecheck,
   onEdit,
+  onDuplicate,
   onOpenTimeline,
 }: {
   monitor: MonitorRecord;
@@ -496,6 +516,7 @@ function MobileMonitorCard({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
+  onDuplicate?: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
   return (
@@ -559,6 +580,11 @@ function MobileMonitorCard({
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={flagPending} aria-label={monitor.isCritical ? `Remove critical flag from ${monitor.name}` : `Mark ${monitor.name} as critical`} onClick={() => onToggleFlag(monitor, "isCritical")}>
             <Flag className={`size-4 ${monitor.isCritical ? "fill-rose-500 text-rose-500" : "text-muted-foreground"}`} />
           </Button>
+          {onDuplicate ? (
+            <Button variant="ghost" size="sm" className="h-10 w-10 p-0" aria-label={`Duplicate ${monitor.name}`} onClick={() => onDuplicate(monitor)}>
+              <Copy className="size-4 text-muted-foreground" />
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" className="h-10 px-3" onClick={() => onEdit(monitor)}>
             Edit
           </Button>

@@ -4,6 +4,10 @@ All notable changes to Sentrovia are documented here. Published release tags and
 
 ## [Unreleased]
 
+### Added
+
+- Monitors can be duplicated from the monitor list (copy icon) or from the edit dialog. The create form opens with every setting of the original and the name "<name> (copy)"; the target must be changed before saving, a heartbeat copy gets its own heartbeat URL, and a PostgreSQL copy asks for the database password again.
+
 ### Fixed
 
 - Stopped sending a generated "unavailable" image when a monitored page cannot load.

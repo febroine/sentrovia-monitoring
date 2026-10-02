@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Copy,
   FileCode2,
   FileSpreadsheet,
   FileText,
@@ -33,7 +34,7 @@ import { DEFAULT_MONITOR_COLUMNS, MONITOR_OPTIONAL_COLUMNS, parseMonitorTablePre
 import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { MonitorTextImportDialog } from "@/components/monitoring/monitor-text-import-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
-import { payloadFromMonitor } from "@/components/monitoring/utils";
+import { duplicatePayloadFromMonitor, payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useUnsavedChangesGuard } from "@/components/ui/unsaved-changes";
@@ -138,6 +139,12 @@ export default function MonitoringPage() {
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
   const [workspaceSettings, setWorkspaceSettings] = useState<SettingsPayload | null>(null);
   const [defaultForm, setDefaultForm] = useState(DEFAULT_MONITOR_FORM);
+  // The monitor a new one is being copied from; the create form opens with its settings.
+  const [duplicateSource, setDuplicateSource] = useState<MonitorRecord | null>(null);
+  const createInitialValue = useMemo(
+    () => duplicateSource ? duplicatePayloadFromMonitor(duplicateSource) : defaultForm,
+    [duplicateSource, defaultForm]
+  );
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, MonitorHistoryPoint[]>>({});
   const [diagnosticsByMonitor, setDiagnosticsByMonitor] = useState<Record<string, MonitorDiagnosticRecord[]>>({});
   const [outageEventsByMonitor, setOutageEventsByMonitor] = useState<Record<string, MonitorOutageEventRecord[]>>({});
@@ -404,7 +411,18 @@ export default function MonitoringPage() {
     if (created) {
       await loadMonitorPage();
       setCreateOpen(false);
+      setDuplicateSource(null);
     }
+  }
+
+  function closeCreateForm() {
+    setCreateOpen(false);
+    setDuplicateSource(null);
+  }
+
+  function duplicateMonitor(monitor: MonitorRecord) {
+    setDuplicateSource(monitor);
+    setCreateOpen(true);
   }
 
   async function handleUpdate(payload: MonitorPayload) {
@@ -943,6 +961,7 @@ export default function MonitoringPage() {
         onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
         onRecheck={(monitor) => void handleRecheckMonitor(monitor)}
         onEdit={setEditingMonitor}
+        onDuplicate={duplicateMonitor}
         onOpenTimeline={(monitor) => void handleOpenTimeline(monitor)}
         emptyState={search.trim() || companyFilter !== "all" || statusFilter !== "all" ? {
           title: "No monitors match these filters",
@@ -1117,20 +1136,27 @@ export default function MonitoringPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : guardMonitorFormClose(() => setCreateOpen(false)))}>
+      <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : guardMonitorFormClose(closeCreateForm))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Create monitor</DialogTitle>
-            <DialogDescription>Configure the target, check behavior, and alert routing.</DialogDescription>
+            <DialogTitle>{duplicateSource ? "Duplicate monitor" : "Create monitor"}</DialogTitle>
+            <DialogDescription>
+              {duplicateSource
+                ? `Starts with the settings of ${duplicateSource.name}. ${duplicateSource.monitorType === "heartbeat"
+                  ? "The copy gets its own heartbeat URL when it is saved."
+                  : "Change the target before saving; two monitors cannot watch the same target."}${duplicateSource.monitorType === "postgres" ? " Enter the database password again." : ""}`
+                : "Configure the target, check behavior, and alert routing."}
+            </DialogDescription>
           </DialogHeader>
           <MonitorForm
-            initialValue={defaultForm}
+            key={duplicateSource?.id ?? "new"}
+            initialValue={createInitialValue}
             companies={companies}
             savedEmails={savedEmails}
             settings={workspaceSettings}
             submitting={saving}
             submitLabel="Save monitor"
-            onCancel={() => guardMonitorFormClose(() => setCreateOpen(false))}
+            onCancel={() => guardMonitorFormClose(closeCreateForm)}
             onSubmit={handleCreate}
             onDirtyChange={setMonitorFormDirty}
           />
@@ -1142,6 +1168,25 @@ export default function MonitoringPage() {
           <DialogHeader>
             <DialogTitle>Monitor settings</DialogTitle>
             <DialogDescription>Change the target, check behavior, alerts, and templates.</DialogDescription>
+            {editingMonitor ? (
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const source = editingMonitor;
+                    guardMonitorFormClose(() => {
+                      setEditingMonitor(null);
+                      duplicateMonitor(source);
+                    });
+                  }}
+                >
+                  <Copy data-icon="inline-start" className="size-3.5" />
+                  Duplicate monitor
+                </Button>
+              </div>
+            ) : null}
           </DialogHeader>
           {editingMonitor && editingMonitorInitialValue ? (
             <MonitorForm
