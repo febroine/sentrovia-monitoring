@@ -5,6 +5,7 @@ import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, workspaceMembers, workspaceSettings, type Monitor } from "@/lib/db/schema";
 import { env, getDatabaseUrl } from "@/lib/env";
 import { encryptLegacyClaimedSecrets } from "@/lib/monitors/heartbeat-secrets";
+import { resolveDatabaseSessionSettings } from "@/lib/db/session-settings";
 import { calculateScreenshotBudgetMs } from "@/lib/monitors/screenshot-timing";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
 import { getMonitorUptimeById, NO_MONITOR_UPTIME_DATA } from "@/lib/monitoring/uptime";
@@ -30,6 +31,9 @@ const monitorHistoryLockSql = globalForMonitorHistoryLock.monitorHistoryLockSql 
   max: resolveMonitorHistoryLockPoolSize(env.workerConcurrency),
   idle_timeout: MONITOR_HISTORY_LOCK_IDLE_TIMEOUT_SECONDS,
   prepare: false,
+  // Only statement and lock waits time out; the lock transaction stays open on purpose while the
+  // monitor's result is persisted, so no idle-in-transaction limit applies here.
+  connection: resolveDatabaseSessionSettings(),
 });
 
 if (process.env.NODE_ENV !== "production") {
@@ -138,9 +142,15 @@ export async function claimDueMonitors(now: Date, capacity: MonitorClaimCapacity
     })
     .where(
       and(
+        // A row another session holds locked (a stuck transaction, a long edit) is skipped and claimed
+        // on a later dispatch; waiting for it held back the claim of every other due monitor.
         inArray(
           monitors.id,
-          selectedRows.map((monitor) => monitor.id)
+          db
+            .select({ id: monitors.id })
+            .from(monitors)
+            .where(inArray(monitors.id, selectedRows.map((monitor) => monitor.id)))
+            .for("update", { skipLocked: true })
         ),
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),

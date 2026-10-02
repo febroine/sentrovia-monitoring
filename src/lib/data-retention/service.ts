@@ -23,6 +23,9 @@ export async function runRetentionCleanup(now = new Date()) {
     if (!lock?.acquired) {
       return { ran: false };
     }
+    // Bulk deletes can take minutes on a large history (e.g. after a retention change); the worker's
+    // statement limit would abort them every time, so it is lifted for this transaction only.
+    await tx.execute(sql`set local statement_timeout = 0`);
 
     const [state] = await tx
       .select({ lastRetentionCleanupAt: workerState.lastRetentionCleanupAt })

@@ -84,6 +84,8 @@ vi.mock("@/lib/monitoring/rca", () => ({
 }));
 
 vi.mock("@/lib/monitors/service", () => ({
+  // The default check watchdog; long enough that no test check reaches it.
+  calculateMonitorLeaseMs: () => 600_000,
   appendOutageEvent: mocks.appendOutageEvent,
   appendMonitorCheck: mocks.appendMonitorCheck,
   appendMonitorDiagnostic: mocks.appendMonitorDiagnostic,
@@ -1692,6 +1694,27 @@ describe("monitoring scheduler verification flow", () => {
       expect(metric.maxScheduleLagMs).toBeLessThan(42_000);
       expect(metric.averageScheduleLagMs).toBeGreaterThanOrEqual(21_000);
       expect(metric.averageScheduleLagMs).toBeLessThan(22_000);
+    });
+
+    it("abandons a hung check, frees its slot and lets its lease expire", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      // The check never returns, like a query waiting on a lock forever.
+      mocks.checkMonitor.mockImplementation(() => new Promise<CheckResult>(() => undefined));
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "hung-site", name: "Hung site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, leaseHeartbeatMs: 5, checkWatchdogMs: () => 40 });
+
+      await (await dispatcher.dispatch()).completion;
+      const renewalsAfterAbandon = mocks.renewMonitorLease.mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(dispatcher.getActiveCheckCount()).toBe(0);
+      expect(mocks.renewMonitorLease).toHaveBeenCalledTimes(renewalsAfterAbandon);
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(expect.objectContaining({
+        claimedMonitors: 1,
+        completedMonitors: 0,
+        errorMessage: expect.stringContaining("The check of monitor Hung site did not finish within"),
+      }));
+      consoleError.mockRestore();
     });
 
     it("records each finished batch without holding back later batches", async () => {

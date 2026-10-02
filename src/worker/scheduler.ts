@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import {
+  calculateMonitorLeaseMs,
   claimDueMonitors,
   countDueMonitors,
   releaseMonitorLease,
@@ -36,12 +37,15 @@ type MonitorDispatcherOptions = {
   concurrency: number;
   refillDelayMs?: number;
   leaseHeartbeatMs?: number;
+  // How long one check may run before it counts as hung; defaults to the monitor's lease budget.
+  checkWatchdogMs?: (monitor: ClaimedMonitor) => number;
 };
 
 export function createMonitorDispatcher({
   concurrency,
   refillDelayMs = MONITOR_REFILL_DELAY_MS,
   leaseHeartbeatMs = MONITOR_LEASE_HEARTBEAT_MS,
+  checkWatchdogMs = (monitor) => calculateMonitorLeaseMs([monitor]),
 }: MonitorDispatcherOptions) {
   const slotCount = Math.max(1, concurrency);
   // Verification probes run with up to twice the monitor timeout. Capping them at half the slots keeps
@@ -127,7 +131,9 @@ export function createMonitorDispatcher({
       // picks them up instead.
       let madeProgress = false;
       try {
-        const result = await processMonitor(monitor, leaseHeartbeatMs);
+        const result = await runWithWatchdog(monitor, checkWatchdogMs(monitor), (abandoned) =>
+          processMonitor(monitor, leaseHeartbeatMs, abandoned)
+        );
         if (result) {
           results.push(result);
           madeProgress = true;
@@ -304,7 +310,43 @@ function buildCycleStatusMessage(claimedCount: number, completedCount: number, e
   return `Completed ${completedCount} of ${claimedCount} monitor check(s).${errorSuffix}`;
 }
 
-async function processMonitor(monitor: ClaimedMonitor, leaseHeartbeatMs: number): Promise<MonitorCycleResult | null> {
+export class MonitorCheckHungError extends Error {}
+
+// A check that outlives its whole lease budget is stuck (a query or call that never returns). Its slot
+// is freed and its lease is no longer renewed, so the lease expires and the monitor is checked again;
+// anything the stuck check writes later is refused by its lease checks.
+async function runWithWatchdog<T>(
+  monitor: ClaimedMonitor,
+  limitMs: number,
+  task: (abandoned: AbortSignal) => Promise<T>
+) {
+  const abandon = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const running = task(abandon.signal);
+  try {
+    return await Promise.race([
+      running,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          abandon.abort();
+          void running.catch(() => undefined);
+          reject(new MonitorCheckHungError(
+            `The check of monitor ${monitor.name || monitor.id} did not finish within ${Math.round(limitMs / 1000)} s and was abandoned; it runs again once its lease expires.`
+          ));
+        }, limitMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function processMonitor(
+  monitor: ClaimedMonitor,
+  leaseHeartbeatMs: number,
+  abandoned: AbortSignal
+): Promise<MonitorCycleResult | null> {
   let processingError: unknown;
   let heartbeat: ReturnType<typeof startLeaseHeartbeat> | null = null;
 
@@ -314,7 +356,7 @@ async function processMonitor(monitor: ClaimedMonitor, leaseHeartbeatMs: number)
       return null;
     }
 
-    heartbeat = startLeaseHeartbeat(monitor, leaseHeartbeatMs);
+    heartbeat = startLeaseHeartbeat(monitor, leaseHeartbeatMs, abandoned);
     return await processClaimedMonitor(monitor);
   } catch (error) {
     processingError = error;
@@ -334,7 +376,7 @@ async function processMonitor(monitor: ClaimedMonitor, leaseHeartbeatMs: number)
   }
 }
 
-function startLeaseHeartbeat(monitor: ClaimedMonitor, intervalMs: number) {
+function startLeaseHeartbeat(monitor: ClaimedMonitor, intervalMs: number, abandoned: AbortSignal) {
   let renewal: Promise<unknown> | null = null;
   const timer = setInterval(() => {
     if (renewal) return;
@@ -349,10 +391,14 @@ function startLeaseHeartbeat(monitor: ClaimedMonitor, intervalMs: number) {
       });
   }, intervalMs);
   timer.unref?.();
+  // An abandoned (hung) check must let its lease expire so the monitor can be checked again.
+  const stopOnAbandon = () => clearInterval(timer);
+  abandoned.addEventListener("abort", stopOnAbandon, { once: true });
 
   return {
     async stop() {
       clearInterval(timer);
+      abandoned.removeEventListener("abort", stopOnAbandon);
       await renewal;
     },
   };
