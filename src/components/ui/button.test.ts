@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { cn } from "@/lib/utils";
 
-import { buttonVariants } from "./button";
+import { buttonVariants, resolveIconButtonTitle } from "./button";
 
 describe("buttonVariants", () => {
   it.each(["default", "xs", "sm", "lg", "icon", "icon-xs", "icon-sm", "icon-lg"] as const)(
@@ -20,5 +20,16 @@ describe("buttonVariants", () => {
 
   it("lets an explicit padding override opt out of the shared optical correction", () => {
     expect(cn(buttonVariants({ className: "p-0" }))).not.toContain("pb-px");
+  });
+});
+
+describe("icon button tooltip", () => {
+  it("shows an icon-only button's accessible name on hover", () => {
+    expect(resolveIconButtonTitle("icon-sm", { "aria-label": "Delete Atlas Data" })).toBe("Delete Atlas Data");
+  });
+
+  it("keeps an explicit title and leaves text buttons alone", () => {
+    expect(resolveIconButtonTitle("icon", { "aria-label": "Edit", title: "Edit company" })).toBeUndefined();
+    expect(resolveIconButtonTitle("sm", { "aria-label": "Save" })).toBeUndefined();
   });
 });

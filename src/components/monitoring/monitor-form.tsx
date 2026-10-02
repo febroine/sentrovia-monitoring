@@ -26,6 +26,7 @@ export function MonitorForm({
   monitorId,
   onCancel,
   onSubmit,
+  onDirtyChange,
 }: {
   initialValue: MonitorPayload;
   companies: CompanyRecord[];
@@ -37,6 +38,8 @@ export function MonitorForm({
   monitorId?: string;
   onCancel: () => void;
   onSubmit: (payload: MonitorPayload) => Promise<void>;
+  // Reports whether the form differs from the values it was opened with.
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [values, setValues] = useState(initialValue);
   const [tagsText, setTagsText] = useState(initialValue.tags.join(", "));
@@ -55,6 +58,12 @@ export function MonitorForm({
   }
 
   const payload = useMemo(() => buildPayload(values, tagsText), [tagsText, values]);
+  const initialPayload = useMemo(() => JSON.stringify(buildPayload(initialValue, initialValue.tags.join(", "))), [initialValue]);
+  const dirty = JSON.stringify(payload) !== initialPayload;
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

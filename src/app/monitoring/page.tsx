@@ -36,6 +36,7 @@ import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
 import { payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useUnsavedChangesGuard } from "@/components/ui/unsaved-changes";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { CompanyRecord } from "@/lib/companies/types";
@@ -114,6 +115,7 @@ export default function MonitoringPage() {
   const [preferencesLoadedFor, setPreferencesLoadedFor] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
+  const { setDirty: setMonitorFormDirty, guardClose: guardMonitorFormClose, confirmDialog: monitorFormDiscardDialog } = useUnsavedChangesGuard();
   const [toolsOpen, setToolsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -1112,7 +1114,7 @@ export default function MonitoringPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : guardMonitorFormClose(() => setCreateOpen(false)))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Create monitor</DialogTitle>
@@ -1125,13 +1127,14 @@ export default function MonitoringPage() {
             settings={workspaceSettings}
             submitting={saving}
             submitLabel="Save monitor"
-            onCancel={() => setCreateOpen(false)}
+            onCancel={() => guardMonitorFormClose(() => setCreateOpen(false))}
             onSubmit={handleCreate}
+            onDirtyChange={setMonitorFormDirty}
           />
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(editingMonitor)} onOpenChange={(open) => !open && setEditingMonitor(null)}>
+      <Dialog open={Boolean(editingMonitor)} onOpenChange={(open) => !open && guardMonitorFormClose(() => setEditingMonitor(null))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Monitor settings</DialogTitle>
@@ -1146,12 +1149,15 @@ export default function MonitoringPage() {
               submitting={saving}
               monitorId={editingMonitor.id}
               submitLabel="Save changes"
-              onCancel={() => setEditingMonitor(null)}
+              onCancel={() => guardMonitorFormClose(() => setEditingMonitor(null))}
               onSubmit={handleUpdate}
+              onDirtyChange={setMonitorFormDirty}
             />
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {monitorFormDiscardDialog}
 
       <Dialog open={bulkEditOpen} onOpenChange={setBulkEditOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">

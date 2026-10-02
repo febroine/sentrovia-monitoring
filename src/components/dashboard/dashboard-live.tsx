@@ -254,12 +254,12 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
 
       <div className="space-y-4">
         {isEmptyWorkspace ? (
-          <div className={cn("grid gap-4", summaryVisible && "lg:grid-cols-12")}>
-            <div className={cn(summaryVisible ? "lg:col-span-8" : "lg:col-span-12")}>
+          <div className={cn("grid grid-cols-1 gap-4", summaryVisible && "lg:grid-cols-12")}>
+            <div className={cn("min-w-0", summaryVisible ? "lg:col-span-8" : "lg:col-span-12")}>
               <EmptyDashboardGuide activation={data.activation} />
             </div>
             {summaryVisible ? (
-              <div className="lg:col-span-4">
+              <div className="min-w-0 lg:col-span-4">
                 <SummaryOverview summary={data.summary} />
               </div>
             ) : null}
@@ -271,11 +271,13 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
           </>
         )}
 
+        {/* An explicit single column keeps a wide child (the scrolling monitor focus strip) from
+            stretching every card past the screen on phones. */}
         {detailWidgets.length > 0 ? (
-          <div className="grid gap-4 lg:grid-cols-12">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             {detailWidgets.map((widget) => (
               <div
-                className={detailWidgets.length === 1 ? "lg:col-span-12" : dashboardWidgetClass(widget)}
+                className={cn("min-w-0", detailWidgets.length === 1 ? "lg:col-span-12" : dashboardWidgetClass(widget))}
                 key={widget}
               >
                 {renderWidget(widget)}
@@ -456,8 +458,8 @@ function ActivationProgressStrip({ activation }: { activation: DashboardData["ac
 
   return (
     <section className="rounded-lg bg-card px-4 py-3 shadow-sm" aria-labelledby="activation-progress-title">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-5">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <ListChecks className="size-4" aria-hidden="true" />
           </span>
@@ -477,7 +479,8 @@ function ActivationProgressStrip({ activation }: { activation: DashboardData["ac
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        {/* The progress and its action keep their width; the explanation beside them wraps instead. */}
+        <div className="flex min-w-0 items-center gap-3 lg:w-96 lg:shrink-0">
           <div
             className="h-1.5 min-w-20 flex-1 overflow-hidden rounded-full bg-muted"
             role="progressbar"

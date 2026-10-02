@@ -620,7 +620,7 @@ function AnalyticsReport({ report, filters, previewFilters, previewRangeInvalid,
               {hasFleetComparison ? <FleetHealthDistribution monitors={report.monitorBreakdown} /> : null}
             </div>
           ) : null}
-          <div className={cn("grid gap-6", hasResponseMix && "xl:grid-cols-[0.72fr_1.28fr]")}>
+          <div className={cn("grid grid-cols-1 gap-6 [&>*]:min-w-0", hasResponseMix && "xl:grid-cols-[0.72fr_1.28fr]")}>
             {hasResponseMix ? <StatusCodeDistribution codes={report.statusCodes} /> : null}
             <MonitorRiskTable report={report} />
           </div>

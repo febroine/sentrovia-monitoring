@@ -52,9 +52,20 @@ function Button({
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      title={resolveIconButtonTitle(size, props)}
       {...props}
     />
   )
+}
+
+// An icon-only button shows its accessible name as a tooltip, so mouse users can tell what it does
+// before clicking. An explicit title still wins.
+export function resolveIconButtonTitle(
+  size: VariantProps<typeof buttonVariants>["size"],
+  props: { title?: string; "aria-label"?: string }
+) {
+  if (props.title !== undefined || !size?.startsWith("icon")) return undefined
+  return props["aria-label"]
 }
 
 export { Button, buttonVariants }

@@ -12,6 +12,7 @@ import {
 import { CheckSquare, Pencil, Plus, Search, Square, Trash2, Undo2 } from "lucide-react";
 import { CompanyMonitorsPanel } from "@/components/companies/company-monitors-panel";
 import { CompanyRecipientScopes } from "@/components/companies/company-recipient-scopes";
+import { useUnsavedChangesGuard } from "@/components/ui/unsaved-changes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,6 +37,9 @@ export default function CompaniesPage() {
     useCompaniesStore();
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<CompanyPayload>(DEFAULT_COMPANY_FORM);
+  // The form as it was opened, to tell whether closing would lose edits.
+  const [formSnapshot, setFormSnapshot] = useState<CompanyPayload>(DEFAULT_COMPANY_FORM);
+  const { setDirty: setCompanyFormDirty, guardClose: guardCompanyFormClose, confirmDialog: companyFormDiscardDialog } = useUnsavedChangesGuard();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<CompanyRecord | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -98,6 +102,10 @@ export default function CompaniesPage() {
     monitors: companies.reduce((sum, company) => sum + company.monitorsCount, 0),
   };
 
+  useEffect(() => {
+    setCompanyFormDirty(JSON.stringify(form) !== JSON.stringify(formSnapshot));
+  }, [form, formSnapshot, setCompanyFormDirty]);
+
   const allFilteredSelected = filtered.length > 0 && filtered.every((company) => selectedIds.has(company.id));
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
@@ -105,6 +113,7 @@ export default function CompaniesPage() {
     const created = await createCompany(form);
     if (created) {
       setForm(DEFAULT_COMPANY_FORM);
+      setFormSnapshot(DEFAULT_COMPANY_FORM);
       setCreateOpen(false);
     }
   }
@@ -116,6 +125,7 @@ export default function CompaniesPage() {
     if (updated) {
       setEditing(null);
       setForm(DEFAULT_COMPANY_FORM);
+      setFormSnapshot(DEFAULT_COMPANY_FORM);
     }
   }
 
@@ -178,7 +188,7 @@ export default function CompaniesPage() {
 
   function openEdit(company: CompanyRecord) {
     setEditing(company);
-    setForm({
+    const nextForm: CompanyPayload = {
       name: company.name,
       description: company.description ?? "",
       notificationEmailRecipients: company.notificationEmailRecipients.join(", "),
@@ -187,7 +197,9 @@ export default function CompaniesPage() {
       telegramBotTokenConfigured: company.telegramBotTokenConfigured,
       telegramChatId: company.telegramChatId,
       isActive: company.isActive,
-    });
+    };
+    setForm(nextForm);
+    setFormSnapshot(nextForm);
   }
 
   function toggleSelect(id: string) {
@@ -217,14 +229,14 @@ export default function CompaniesPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Companies</h1>
           <p className="text-sm text-muted-foreground">
             Group monitors by customer or operating unit.
           </p>
         </div>
-        <div className="flex w-full flex-col gap-3 sm:flex-row md:w-auto">
+        <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search companies" className="pl-9" />
@@ -369,8 +381,27 @@ export default function CompaniesPage() {
         </DialogContent>
       </Dialog>
 
-      <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} onOpenChange={(open) => { setCreateOpen(open); if (!open) setForm(DEFAULT_COMPANY_FORM); }} onFormChange={setForm} onSubmit={handleCreate} />
-      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} monitors={editing ? companyMonitors(editing.id) : undefined} onOpenChange={(open) => { if (!open) { setEditing(null); setForm(DEFAULT_COMPANY_FORM); } }} onFormChange={setForm} onSubmit={handleUpdate} />
+      {companyFormDiscardDialog}
+      <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} onOpenChange={(open) => {
+        if (open) {
+          setFormSnapshot(DEFAULT_COMPANY_FORM);
+          setCreateOpen(true);
+          return;
+        }
+        guardCompanyFormClose(() => {
+          setCreateOpen(false);
+          setForm(DEFAULT_COMPANY_FORM);
+          setFormSnapshot(DEFAULT_COMPANY_FORM);
+        });
+      }} onFormChange={setForm} onSubmit={handleCreate} />
+      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} monitors={editing ? companyMonitors(editing.id) : undefined} onOpenChange={(open) => {
+        if (open) return;
+        guardCompanyFormClose(() => {
+          setEditing(null);
+          setForm(DEFAULT_COMPANY_FORM);
+          setFormSnapshot(DEFAULT_COMPANY_FORM);
+        });
+      }} onFormChange={setForm} onSubmit={handleUpdate} />
 
       <Dialog open={Boolean(deleteRequest)} onOpenChange={(open) => !open && setDeleteRequest(null)}>
         <DialogContent className="sm:max-w-md">
