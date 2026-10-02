@@ -88,7 +88,7 @@ export function LogsTable({
                 <button
                   type="button"
                   onClick={() => onToggleAll(logs.map((log) => log.id))}
-                  className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   aria-label={allVisibleSelected ? "Clear visible log selection" : "Select all visible logs"}
                 >
                   {allVisibleSelected ? (
@@ -218,7 +218,7 @@ function ExpandedRow({
           <button
             type="button"
             onClick={onToggleSelect}
-            className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             aria-label={selected ? `Deselect log from ${formatPanelDateTime(log.createdAt)}` : `Select log from ${formatPanelDateTime(log.createdAt)}`}
           >
             {selected ? (

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { parseRecipientAddresses } from "@/lib/companies/recipient-scopes";
 import type { MonitorRecord } from "@/lib/monitors/types";
+import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 
 type ScopeMode = "all" | "selected";
 
@@ -84,7 +85,7 @@ function AddressScope({
   const filtering = query.length > 0 || selectedOnly;
   const visible = sorted.filter((monitor) =>
     (!selectedOnly || selected.has(monitor.id))
-    && (!query || monitor.name.toLowerCase().includes(query) || monitor.url.toLowerCase().includes(query))
+    && (!query || monitor.name.toLowerCase().includes(query) || getMonitorTargetDisplay(monitor).toLowerCase().includes(query))
   );
   const showFilters = monitors.length > 5;
 
@@ -179,7 +180,7 @@ function AddressScope({
                     />
                     <span className="min-w-0">
                       <span className="block truncate">{monitor.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{monitor.url}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</span>
                     </span>
                   </label>
                 ))}

@@ -284,7 +284,7 @@ export default function CompaniesPage() {
         <CardContent className="relative p-0">
           {loading && filtered.length > 0 ? <p role="status" className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">Updating companies…</p> : null}
           <div aria-busy={loading} inert={loading && filtered.length > 0}>
-          <Table>
+          <Table className="min-w-0 lg:min-w-max">
             <TableHeader>
               <TableRow className="bg-background">
                 <TableHead className="w-14 pl-5">
@@ -292,16 +292,17 @@ export default function CompaniesPage() {
                     type="button"
                     onClick={toggleAllFiltered}
                     aria-label={allFilteredSelected ? "Clear visible company selection" : "Select all visible companies"}
-                    className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
                     {allFilteredSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
                 </TableHead>
                 <TableHead className="pl-1">Company</TableHead>
                 <TableHead>Monitors</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="w-[160px] pr-5 text-right">Actions</TableHead>
+                {/* Narrow screens keep the company, its monitors and the actions in view. */}
+                <TableHead className="hidden lg:table-cell">Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Created</TableHead>
+                <TableHead className="pr-5 text-right lg:w-[160px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -328,15 +329,22 @@ export default function CompaniesPage() {
                       type="button"
                       onClick={() => toggleSelect(company.id)}
                       aria-label={selectedIds.has(company.id) ? `Deselect ${company.name}` : `Select ${company.name}`}
-                      className="flex items-center justify-center rounded-sm text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+                      className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       {selectedIds.has(company.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                     </button>
                   </TableCell>
-                  <TableCell className="pl-1">
+                  <TableCell className="whitespace-normal pl-1">
                     <div className="space-y-1">
-                      <p className="font-medium">{company.name}</p>
+                      <button
+                        type="button"
+                        onClick={() => setDetailCompany(company)}
+                        className="rounded-sm text-left font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/40"
+                      >
+                        {company.name}
+                      </button>
                       {company.description ? <p className="max-w-md text-xs leading-5 text-muted-foreground">{company.description}</p> : null}
+                      {!company.isActive ? <p className="text-xs font-medium text-destructive lg:hidden">Inactive</p> : null}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -345,11 +353,11 @@ export default function CompaniesPage() {
                       <p className="text-xs text-muted-foreground">{company.activeMonitors} active</p>
                     </div>
                   </TableCell>
-                  <TableCell><Badge variant="outline" className={company.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive"}>{company.isActive ? "Active" : "Inactive"}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatPanelDateTime(company.createdAt, { dateStyle: "short" })}</TableCell>
+                  <TableCell className="hidden lg:table-cell"><Badge variant="outline" className={company.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive"}>{company.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                  <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">{formatPanelDateTime(company.createdAt, { dateStyle: "short" })}</TableCell>
                   <TableCell className="pr-5">
                     <div className="flex justify-end gap-1.5">
-                      <Button variant="ghost" size="sm" onClick={() => setDetailCompany(company)}>View</Button>
+                      <Button variant="ghost" size="sm" className="hidden lg:inline-flex" onClick={() => setDetailCompany(company)}>View</Button>
                       <Button variant="ghost" size="icon-sm" aria-label={`Edit ${company.name}`} title="Edit company" onClick={() => openEdit(company)}><Pencil className="h-4 w-4" /></Button>
                       <Button
                         variant="ghost"

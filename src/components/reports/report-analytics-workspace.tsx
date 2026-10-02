@@ -28,6 +28,7 @@ import {
 } from "@/lib/reports/metrics";
 import type { GeneratedReport, ReportPeriodRange } from "@/lib/reports/types";
 import { ReportComparison } from "@/components/reports/report-comparison";
+import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 
 type MonitorOption = {
   id: string;
@@ -445,7 +446,7 @@ function MonitorSelectionPicker({
                   />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium" title={monitor.name}>{monitor.name}</span>
-                    <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={monitor.url}>{monitor.url}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={sanitizeMonitorUrlForDisplay(monitor.url)}>{sanitizeMonitorUrlForDisplay(monitor.url)}</span>
                   </span>
                 </label>
               );

@@ -10,6 +10,7 @@ import { companyRecipientsForMonitor } from "@/lib/companies/recipient-scopes";
 import type { CompanyRecord } from "@/lib/companies/types";
 import type { CompanyMonthlyReport, CompanySlaReport, MonitorRecord } from "@/lib/monitors/types";
 import { formatPanelDateTime } from "@/lib/time";
+import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 
 const PAGE_SIZE = 10;
 
@@ -172,7 +173,7 @@ export function CompanyMonitorsPanel({
                   <Globe className="h-4 w-4 text-muted-foreground" />
                   <p className="text-sm font-medium">{monitor.name}</p>
                 </div>
-                <p className="text-xs text-muted-foreground">{monitor.url}</p>
+                <p className="break-all text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
                 {company ? (
                   <p className="text-xs text-muted-foreground">
                     <span className="font-medium text-foreground">Alert emails:</span>{" "}

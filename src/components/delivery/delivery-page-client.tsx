@@ -517,14 +517,16 @@ export function DeliveryPageClient() {
             <TableHeader>
               <TableRow className="bg-muted/30">
                 <TableHead className="w-10 pl-6">
-                  <input
-                    type="checkbox"
-                    aria-label="Select failed deliveries on this page"
-                    className="accent-primary"
-                    checked={failedHistoryIds.length > 0 && failedHistoryIds.every((id) => selectedDeliveryIds.includes(id))}
-                    onChange={(event) => setSelectedDeliveryIds(event.target.checked ? failedHistoryIds : [])}
-                    disabled={failedHistoryIds.length === 0 || pendingAction !== null}
-                  />
+                  <label className="-m-2 inline-flex cursor-pointer p-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Select failed deliveries on this page"
+                      className="size-4 cursor-pointer accent-primary"
+                      checked={failedHistoryIds.length > 0 && failedHistoryIds.every((id) => selectedDeliveryIds.includes(id))}
+                      onChange={(event) => setSelectedDeliveryIds(event.target.checked ? failedHistoryIds : [])}
+                      disabled={failedHistoryIds.length === 0 || pendingAction !== null}
+                    />
+                  </label>
                 </TableHead>
                 <TableHead className="pl-6">Channel</TableHead>
                 <TableHead>Kind</TableHead>
@@ -550,14 +552,16 @@ export function DeliveryPageClient() {
                   <TableRow key={item.id} className="cursor-pointer" onClick={() => setSelectedRow(item)}>
                     <TableCell className="pl-6" onClick={(event) => event.stopPropagation()}>
                       {item.status === "failed" ? (
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${toTitleCase(item.channel)} delivery to retry`}
-                          className="accent-primary"
-                          checked={selectedDeliveryIds.includes(item.id)}
-                          onChange={(event) => setSelectedDeliveryIds((ids) => event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))}
-                          disabled={pendingAction !== null}
-                        />
+                        <label className="-m-2 inline-flex cursor-pointer p-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${toTitleCase(item.channel)} delivery to retry`}
+                            className="size-4 cursor-pointer accent-primary"
+                            checked={selectedDeliveryIds.includes(item.id)}
+                            onChange={(event) => setSelectedDeliveryIds((ids) => event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))}
+                            disabled={pendingAction !== null}
+                          />
+                        </label>
                       ) : null}
                     </TableCell>
                     <TableCell className="pl-6">

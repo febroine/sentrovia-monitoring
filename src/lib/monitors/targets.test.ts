@@ -129,3 +129,18 @@ describe("DNS monitor targets", () => {
     });
   });
 });
+
+describe("sanitizeMonitorUrlForDisplay for non-HTTP targets", () => {
+  it("shows hosts, ports, databases and DNS records instead of internal URLs", () => {
+    expect(sanitizeMonitorUrlForDisplay("tcp://mail.example.com:587")).toBe("mail.example.com:587");
+    expect(sanitizeMonitorUrlForDisplay("icmp://edge.example.com")).toBe("edge.example.com");
+    expect(sanitizeMonitorUrlForDisplay("dns://example.com/MX?server=1.1.1.1")).toBe("example.com MX");
+    expect(sanitizeMonitorUrlForDisplay("postgres://monitor@db.example.com:5432/app")).toBe("db.example.com:5432/app");
+    expect(sanitizeMonitorUrlForDisplay("heartbeat://0123456789abcdef")).toBe("Heartbeat endpoint");
+  });
+
+  it("leaves web addresses and plain hosts as they were", () => {
+    expect(sanitizeMonitorUrlForDisplay("https://user:secret@example.com/health?token=1#keyword=ok")).toBe("https://example.com/health");
+    expect(sanitizeMonitorUrlForDisplay("edge-eu.relay.example")).toBe("edge-eu.relay.example");
+  });
+});

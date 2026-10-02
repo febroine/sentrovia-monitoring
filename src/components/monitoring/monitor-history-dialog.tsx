@@ -15,6 +15,7 @@ import { DailyAvailabilityCalendar } from "@/components/monitoring/daily-availab
 import { FailureEvidencePanel } from "@/components/monitoring/failure-evidence-panel";
 import { formatLatency } from "@/components/monitoring/utils";
 import { formatPanelDateTime } from "@/lib/time";
+import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 
 const EVENT_CONTEXT_WINDOW_MS = 2 * 60 * 60 * 1000;
 
@@ -54,7 +55,7 @@ export function MonitorHistoryDialog({
         <DialogHeader>
           <DialogTitle>Timeline details</DialogTitle>
           <DialogDescription>
-            {monitor ? `${monitor.name} · ${monitor.url}` : "Review the selected monitor check window."}
+            {monitor ? `${monitor.name} · ${getMonitorTargetDisplay(monitor)}` : "Review the selected monitor check window."}
             {eventAt ? ` · Event at ${formatDateTime(eventAt)}` : ""}
           </DialogDescription>
         </DialogHeader>

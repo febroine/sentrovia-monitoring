@@ -57,6 +57,7 @@ import { parseSoftDeleteUndoDeadline } from "@/lib/soft-delete";
 import { useMonitoringStore } from "@/stores/use-monitoring-store";
 import { hasPermission } from "@/lib/auth/permissions";
 import { LatestRequestCommitter } from "@/lib/client/latest-request";
+import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 
 const ALL_MONITORS_PAGE_SIZE = 500;
 const PAGE_SIZE_OPTIONS = [10, 50, 100, ALL_MONITORS_PAGE_SIZE] as const;
@@ -1299,7 +1300,7 @@ export default function MonitoringPage() {
               {deleteTargets.slice(0, 5).map((monitor) => (
                 <div key={monitor.id} className="py-2">
                   <p className="text-sm font-medium text-foreground">{monitor.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{monitor.url}</p>
+                  <p className="truncate text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
                 </div>
               ))}
               {deleteTargets.length > 5 ? (
@@ -1331,7 +1332,7 @@ export default function MonitoringPage() {
               {resetTargets.slice(0, 5).map((monitor) => (
                 <div key={monitor.id} className="py-2 first:pt-0 last:pb-0">
                   <p className="text-sm font-medium text-foreground">{monitor.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{monitor.url}</p>
+                  <p className="truncate text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
                 </div>
               ))}
               {resetTargets.length > 5 ? (

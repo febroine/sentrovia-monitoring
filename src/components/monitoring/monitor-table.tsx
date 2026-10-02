@@ -158,7 +158,7 @@ export function MonitorTable({
         <TableHeader>
           <TableRow className="bg-surface-high hover:bg-surface-high">
             <TableHead className="px-1 pl-2">
-              <button type="button" disabled={readOnly} onClick={onToggleAll} className="flex items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={allPageSelected ? "Clear visible monitor selection" : "Select all visible monitors"}>
+              <button type="button" disabled={readOnly} onClick={onToggleAll} className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={allPageSelected ? "Clear visible monitor selection" : "Select all visible monitors"}>
                 {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
               </button>
             </TableHead>
@@ -192,7 +192,7 @@ export function MonitorTable({
             monitors.map((monitor) => (
               <TableRow key={monitor.id} className={selectedIds.has(monitor.id) ? "bg-primary/5" : ""}>
                 <TableCell className="px-1 pl-2">
-                  <button type="button" disabled={readOnly} onClick={() => onToggleOne(monitor.id)} className="flex items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={selectedIds.has(monitor.id) ? `Deselect ${monitor.name}` : `Select ${monitor.name}`}>
+                  <button type="button" disabled={readOnly} onClick={() => onToggleOne(monitor.id)} className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={selectedIds.has(monitor.id) ? `Deselect ${monitor.name}` : `Select ${monitor.name}`}>
                     {selectedIds.has(monitor.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableCell>

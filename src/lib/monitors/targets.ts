@@ -297,6 +297,11 @@ export function toMonitorPayload(record: MonitorRecord): MonitorPayload {
 }
 
 export function sanitizeMonitorUrlForDisplay(value: string) {
+  const internalTarget = formatInternalMonitorTarget(value);
+  if (internalTarget !== null) {
+    return internalTarget;
+  }
+
   if (!value.includes("://")) {
     return sanitizePlainMonitorTarget(value);
   }
@@ -330,6 +335,31 @@ export function stripHttpUrlCredentials(value: string) {
   } catch {
     return value;
   }
+}
+
+// Targets of non-HTTP monitors are stored as internal URLs (tcp://, dns://, ...); shown to people
+// they read as a host, port or record. A DNS server and database user are left out.
+function formatInternalMonitorTarget(value: string) {
+  const scheme = /^([a-z]+):\/\//i.exec(value.trim())?.[1]?.toLowerCase();
+  if (scheme === "tcp") {
+    const target = parsePortMonitorTarget(value);
+    return `${target.host}:${target.port}`;
+  }
+  if (scheme === "icmp") {
+    return parsePingMonitorTarget(value).host;
+  }
+  if (scheme === "dns") {
+    const target = parseDnsMonitorTarget(value);
+    return `${target.host} ${target.recordType}`;
+  }
+  if (scheme === "postgres" || scheme === "postgresql") {
+    const target = parsePostgresMonitorTarget(value);
+    return `${target.host}:${target.port}/${target.databaseName}`;
+  }
+  if (scheme === "heartbeat") {
+    return "Heartbeat endpoint";
+  }
+  return null;
 }
 
 function buildPortMonitorTarget(host: string, port: number) {
