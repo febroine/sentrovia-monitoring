@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, workspaceMembers, workspaceSettings, type Monitor } from "@/lib/db/schema";
@@ -39,7 +39,10 @@ export type MonitorClaimCapacity = {
 
 export async function claimDueMonitors(now: Date, capacity: MonitorClaimCapacity = {}): Promise<ClaimedMonitor[]> {
   const dueWorkspaces = await db
-    .select({ workspaceId: monitors.workspaceId })
+    .select({
+      workspaceId: monitors.workspaceId,
+      hasDueVerification: sql<boolean>`bool_or(${monitors.verificationMode})`,
+    })
     .from(monitors)
     .where(buildDueMonitorPredicate(now))
     .groupBy(monitors.workspaceId)
@@ -93,15 +96,16 @@ export async function claimDueMonitors(now: Date, capacity: MonitorClaimCapacity
       legacyBatchSizeByWorkspace.get(workspaceId)
     ),
   ]));
+  const verificationLimit = capacity.verificationLimit ?? Number.POSITIVE_INFINITY;
   const selectedRows = selectClaimableMonitors(await mapWithConcurrency(
-    workspaceIds,
+    dueWorkspaces,
     DUE_WORKSPACE_QUERY_CONCURRENCY,
-    (workspaceId) => db
-      .select()
-      .from(monitors)
-      .where(and(eq(monitors.workspaceId, workspaceId), buildDueMonitorPredicate(now)))
-      .orderBy(desc(monitors.verificationMode), asc(monitors.nextCheckAt), asc(monitors.createdAt))
-      .limit(batchSizeByWorkspace.get(workspaceId) ?? DEFAULT_SETTINGS.monitoring.batchSize)
+    ({ workspaceId, hasDueVerification }) => selectWorkspaceDueMonitors(
+      workspaceId,
+      now,
+      batchSizeByWorkspace.get(workspaceId) ?? DEFAULT_SETTINGS.monitoring.batchSize,
+      hasDueVerification ? verificationLimit : 0
+    )
   ), capacity);
 
   if (selectedRows.length === 0) {
@@ -146,6 +150,37 @@ export async function claimDueMonitors(now: Date, capacity: MonitorClaimCapacity
     telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
     allowPrivateTargets: env.monitorAllowPrivateTargets && hasPrivateTargetAccess(monitor, membershipRows),
   }));
+}
+
+// Verification probes come first, but only as many as may start: fetching them with the regular
+// checks under one limit let a workspace with many failing monitors fill its whole window with
+// probes that cannot start, so none of its regular checks were claimed.
+async function selectWorkspaceDueMonitors(
+  workspaceId: string,
+  now: Date,
+  batchSize: number,
+  verificationLimit: number
+) {
+  const dueInWorkspace = and(eq(monitors.workspaceId, workspaceId), buildDueMonitorPredicate(now));
+  const byPriority = [asc(monitors.nextCheckAt), asc(monitors.createdAt)] as const;
+  const verificationRows = verificationLimit > 0
+    ? await db
+      .select()
+      .from(monitors)
+      .where(and(dueInWorkspace, eq(monitors.verificationMode, true)))
+      .orderBy(...byPriority)
+      .limit(Math.min(batchSize, verificationLimit))
+    : [];
+  const regularRows = verificationRows.length < batchSize
+    ? await db
+      .select()
+      .from(monitors)
+      .where(and(dueInWorkspace, eq(monitors.verificationMode, false)))
+      .orderBy(...byPriority)
+      .limit(batchSize - verificationRows.length)
+    : [];
+
+  return [...verificationRows, ...regularRows];
 }
 
 // Takes monitors round-robin across workspaces (each list already ordered by priority), so a

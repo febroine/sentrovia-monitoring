@@ -108,10 +108,15 @@ export function createMonitorDispatcher({ concurrency, refillDelayMs = MONITOR_R
     await Promise.all(claimed.map(async (monitor) => {
       activeChecks += 1;
       if (monitor.verificationMode) activeVerificationChecks += 1;
+      // A check that ends without a result (e.g. the worker is offline) leaves its monitor due again.
+      // Refilling from it would claim the same monitors in a tight loop; the next regular dispatch
+      // picks them up instead.
+      let madeProgress = false;
       try {
         const result = await processMonitor(monitor);
         if (result) {
           results.push(result);
+          madeProgress = true;
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "A monitor check failed unexpectedly.";
@@ -127,7 +132,7 @@ export function createMonitorDispatcher({ concurrency, refillDelayMs = MONITOR_R
       } finally {
         activeChecks -= 1;
         if (monitor.verificationMode) activeVerificationChecks -= 1;
-        scheduleRefill();
+        if (madeProgress) scheduleRefill();
       }
     }));
 
@@ -220,8 +225,8 @@ async function recordFinishedBatch(
     lastCyclePendingCount: pendingCount,
     lastCycleAverageLatencyMs: averageLatencyMs,
     lastCycleBacklog: backlogAtStart,
-    lastErrorAt: errors[0] ? finishedAt : null,
-    lastErrorMessage: errors[0] ?? null,
+    // Batches overlap, so a clean batch must not wipe an error another batch or phase just recorded.
+    ...(errors[0] ? { lastErrorAt: finishedAt, lastErrorMessage: errors[0] } : {}),
     statusMessage: buildCycleStatusMessage(claimedCount, results.length, errors.length),
   });
 }

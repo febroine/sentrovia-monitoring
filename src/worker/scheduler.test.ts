@@ -1600,6 +1600,33 @@ describe("monitoring scheduler verification flow", () => {
       expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
     });
 
+    it("does not keep reclaiming monitors whose checks end without a result while offline", async () => {
+      mocks.ensureWorkerConnectivity.mockResolvedValue({ available: false, message: "Internet connectivity unavailable." });
+      // The failed check leaves the monitor due, so every claim would return it again.
+      mocks.claimDueMonitors.mockResolvedValue([buildMonitor({ id: "offline-site" })]);
+      mocks.countDueMonitors.mockResolvedValue(30);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+
+      await (await dispatcher.dispatch()).completion;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(mocks.recordMonitorResult).not.toHaveBeenCalled();
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+    });
+
+    it("does not clear an error recorded elsewhere when a batch finishes cleanly", async () => {
+      mocks.checkMonitor.mockResolvedValue(healthyResult);
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "healthy-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await (await dispatcher.dispatch()).completion;
+
+      const finalState = mocks.updateWorkerState.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+      expect(finalState).toMatchObject({ statusMessage: "Completed 1 monitor check(s)." });
+      expect(finalState).not.toHaveProperty("lastErrorAt");
+      expect(finalState).not.toHaveProperty("lastErrorMessage");
+    });
+
     it("records each finished batch without holding back later batches", async () => {
       const slowChecks = holdSlowChecks();
       mocks.claimDueMonitors

@@ -26,6 +26,10 @@ async function main() {
   try {
     await runWorkerLoop();
   } finally {
+    // Even when the loop fails, checks still running finish before another worker may take over.
+    await stopMonitorDispatch().catch((error) => {
+      console.error("[sentrovia] Unable to finish running monitor checks before shutdown.", error);
+    });
     await releaseProcessLock();
   }
 }
