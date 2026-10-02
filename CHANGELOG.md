@@ -7,6 +7,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 ### Added
 
 - Monitors can be duplicated from the monitor list (copy icon) or from the edit dialog. The create form opens with every setting of the original and the name "<name> (copy)"; the target must be changed before saving, a heartbeat copy gets its own heartbeat URL, and a PostgreSQL copy asks for the database password again.
+- The monitor timeline shows a 90-day calendar of daily availability: one cell per day in the workspace time zone, colored by how much downtime the day had, with the day's uptime, downtime, incidents and checks on hover, tap or arrow keys, and a table of the days with downtime. It uses the same outage-time uptime as reports and SLA figures; days without checks show as no data. A new index on `monitor_checks (monitor_id, created_at)` keeps the per-monitor query fast in large workspaces.
 
 ### Fixed
 

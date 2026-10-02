@@ -67,6 +67,7 @@ Sentrovia checks reachability and response health. It does not collect CPU, memo
 - Real Chromium screenshots of failing pages, with a banner that compares what the check and the browser saw.
 - A "What the check saw" panel for every failed check in the timeline.
 - Per-check history, diagnostics, and an outage timeline.
+- A 90-day calendar of daily availability for each monitor, in the workspace time zone.
 
 **Alerts that reach people**
 - Channels: email, Telegram, Discord, and webhooks.

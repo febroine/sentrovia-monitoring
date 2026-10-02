@@ -523,6 +523,8 @@ export const monitorChecks = pgTable("monitor_checks", {
     table.monitorId,
     table.createdAt
   ),
+  // One monitor's checks over a period (the daily availability calendar), whoever owns the rows.
+  index("monitor_checks_monitor_created_idx").on(table.monitorId, table.createdAt),
 ]);
 
 // What a failed check saw (addresses, timings, response headers, a short body excerpt). Kept apart from
