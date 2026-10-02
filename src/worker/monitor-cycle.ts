@@ -366,6 +366,7 @@ async function recordCycleCheck(monitor: ClaimedMonitor, probe: ProbeSequence, c
     // A check that failed but was not counted as down (e.g. recovered in final confirmation) has
     // nothing to explain.
     evidence: checkStatus === "up" ? null : probe.result.evidence ?? null,
+    startsFailure: monitor.status === "up",
   });
   if (checkStatus !== "pending") {
     if (!(await isCurrentMonitorClaim(monitor))) return false;

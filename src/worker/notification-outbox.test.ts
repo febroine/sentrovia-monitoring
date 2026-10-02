@@ -220,6 +220,17 @@ describe("notification outbox", () => {
     expect(mocks.failNotificationJob).toHaveBeenCalledWith(job, "Gave up after 5 attempts.", { permanent: true });
   });
 
+  it("records a given-up job as sent when its alert already went out", async () => {
+    mocks.hasAcceptedNotificationDeliverySince.mockResolvedValue(true);
+    const job = { ...buildJob(buildNotification()), attempts: 6, deliveryStartedAt: new Date() };
+
+    await processNotificationJob(job);
+
+    expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
+    expect(mocks.failNotificationJob).not.toHaveBeenCalled();
+    expect(mocks.completeNotificationJob).toHaveBeenCalledWith({ tx: true }, job, "sent");
+  });
+
   it("drops a job whose payload cannot be read", async () => {
     const job = { ...buildJob(buildNotification()), payload: "broken" };
 

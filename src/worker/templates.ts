@@ -225,7 +225,7 @@ function buildTemplateReplacements(input: TemplateReplacementInput) {
     "{rca_details}": input.rcaDetails,
     "{organization}": input.organization,
     // Last, so text from the monitored server is never scanned for other placeholders.
-    "{check_details}": input.checkDetails,
+    "{check_details}": input.checkDetails || "N/A",
   };
 }
 

@@ -45,15 +45,28 @@ describe("failure evidence", () => {
 
   it("turns an HTML error page into the text a visitor would read", () => {
     const excerpt = buildBodyExcerpt(
-      "<html><head><title>x</title><script>secret()</script></head><body><h1>503</h1><p>Service&nbsp;Unavailable &#8212; retry</p></body></html>",
+      "<html><head><title>Maintenance</title><script>secret()</script></head><body><h1>503</h1><p>Service&nbsp;Unavailable &#8212; retry</p></body></html>",
       "text/html"
     );
 
-    expect(excerpt).toEqual({ contentType: "text/html", excerpt: "503\nService Unavailable — retry", truncated: false });
+    expect(excerpt).toEqual({ contentType: "text/html", excerpt: "Maintenance\n503\nService Unavailable — retry", truncated: false });
+  });
+
+  it("keeps the page title, which is often the only error text", () => {
+    expect(buildBodyExcerpt("<html><head><title>502 Bad Gateway</title><meta charset=utf-8></head><body></body></html>", "text/html")?.excerpt)
+      .toBe("502 Bad Gateway");
+  });
+
+  it("keeps long paths and words but hides long tokens", () => {
+    expect(redactSecrets("see /docs/getting-started/installation/troubleshooting-guide here"))
+      .toBe("see /docs/getting-started/installation/troubleshooting-guide here");
+    expect(redactSecrets("id 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"))
+      .toBe("id [redacted]");
   });
 
   it("leaves binary bodies out and cuts long ones", () => {
     expect(buildBodyExcerpt("\u0000PNG", "image/png")).toBeNull();
+    expect(buildBodyExcerpt("\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR\u0000\u0000", null)).toBeNull();
     const long = buildBodyExcerpt("x ".repeat(3_000), "text/plain");
     expect(long?.excerpt).toHaveLength(2_000);
     expect(long?.truncated).toBe(true);

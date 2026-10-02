@@ -139,6 +139,15 @@ describe("failed check evidence", () => {
     expect(mocks.insert).toHaveBeenLastCalledWith(monitorCheckEvidence);
   });
 
+  it("always keeps the details of the check that starts a failure", async () => {
+    const evidence = { version: 1 as const, phase: "connect" as const, hops: [], certificate: null, body: null, error: null };
+    latestEvidence.mockResolvedValue([{ createdAt: new Date(now.getTime() - 60_000), evidence }]);
+
+    await appendMonitorCheck({ ...subject, status: "pending", createdAt: now, evidence, startsFailure: true });
+
+    expect(mocks.insert).toHaveBeenLastCalledWith(monitorCheckEvidence);
+  });
+
   it("stores nothing extra for a check without evidence", async () => {
     await appendMonitorCheck({ ...subject, status: "up", createdAt: now });
 

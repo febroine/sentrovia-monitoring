@@ -134,7 +134,7 @@ export function WorkerPulseCard() {
         {notificationsWaiting && oldestQueuedNotificationWaitMs !== null ? (
           <div className="mt-3 flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             <Clock className="h-3.5 w-3.5" />
-            An alert has been waiting {formatDuration(oldestQueuedNotificationWaitMs)} to be sent. Check the delivery log for failing channels.
+            An alert has been waiting {formatDuration(oldestQueuedNotificationWaitMs)} to be sent. Check the worker log for notification errors.
           </div>
         ) : null}
         {connectivityOffline ? (

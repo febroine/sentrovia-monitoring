@@ -106,7 +106,7 @@ export function redactUrl(value: string) {
 // A readable, secret-free excerpt of the response body. Markup, scripts and styles are removed so the
 // excerpt shows what a visitor would read (e.g. "502 Bad Gateway"); binary bodies are left out.
 export function buildBodyExcerpt(bodyText: string, contentType: string | null) {
-  if (!bodyText || !isTextContentType(contentType)) return null;
+  if (!bodyText || !isTextContentType(contentType) || looksBinary(bodyText)) return null;
 
   const isHtml = /html|xml/i.test(contentType ?? "") || /^\s*</.test(bodyText);
   const readable = isHtml ? htmlToText(bodyText) : bodyText;
@@ -135,12 +135,19 @@ export function redactSecrets(text: string) {
     // Bearer tokens and JWTs
     .replace(/\bBearer\s+[\w.~+/-]+=*/gi, `Bearer ${REDACTED}`)
     .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, REDACTED)
-    // Long opaque strings (keys, hashes, session ids)
-    .replace(/\b[A-Za-z0-9+/_-]{40,}={0,2}/g, REDACTED);
+    // Long opaque strings (keys, hashes, session ids); a long path or word without digits is kept.
+    .replace(/\b(?=[A-Za-z0-9+_-]*\d)[A-Za-z0-9+_-]{40,}={0,2}/g, REDACTED);
 }
 
 export function truncateEvidenceError(message: string | null) {
   return message ? truncate(message, MAX_ERROR_LENGTH) : null;
+}
+
+// A body without a content type may still be an image or archive.
+function looksBinary(bodyText: string) {
+  const sample = bodyText.slice(0, 512);
+  const unreadable = sample.match(/[\u0000-\u0008\u000e-\u001f\ufffd]/g)?.length ?? 0;
+  return unreadable > sample.length * 0.05;
 }
 
 function isTextContentType(contentType: string | null) {
@@ -151,7 +158,7 @@ function isTextContentType(contentType: string | null) {
 function htmlToText(html: string) {
   return html
     .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<(script|style|noscript|template|svg|head)\b[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1\s*>/gi, " ")
     .replace(/<(br|\/p|\/div|\/h[1-6]|\/li|\/tr|\/title)\b[^>]*>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")

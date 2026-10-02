@@ -137,6 +137,8 @@ export async function appendMonitorCheck(input: {
   latencyMs?: number | null;
   createdAt: Date;
   evidence?: FailureEvidence | null;
+  // The first failing check after a healthy one starts a new failure; its details are always kept.
+  startsFailure?: boolean;
 }) {
   const workspaceId = await resolveMonitorHistoryWorkspace(input);
   const checkId = crypto.randomUUID();
@@ -151,7 +153,7 @@ export async function appendMonitorCheck(input: {
     createdAt: input.createdAt,
   });
 
-  if (input.evidence && await isNewFailureEvidence(input.monitorId, input.evidence, input.createdAt)) {
+  if (input.evidence && (input.startsFailure || await isNewFailureEvidence(input.monitorId, input.evidence, input.createdAt))) {
     await db.insert(monitorCheckEvidence).values({
       checkId,
       workspaceId,

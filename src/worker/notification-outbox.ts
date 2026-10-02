@@ -99,13 +99,18 @@ export async function processNotificationJob(job: NotificationJob) {
     await failNotificationJob(job, "The queued notification could not be read.", { permanent: true });
     return;
   }
-  // Claims count attempts, so a job that keeps crashing its worker is given up as well.
-  if (job.attempts > MAX_NOTIFICATION_JOB_ATTEMPTS) {
-    await failNotificationJob(job, `Gave up after ${MAX_NOTIFICATION_JOB_ATTEMPTS} attempts.`, { permanent: true });
-    return;
-  }
-
   try {
+    // Claims count attempts, so a job that keeps crashing its worker is given up as well. If its alert
+    // did go out, it is recorded as sent; otherwise the next check would raise and send it again.
+    if (job.attempts > MAX_NOTIFICATION_JOB_ATTEMPTS) {
+      if (await wasAlreadyDelivered(job, payload)) {
+        await finishNotificationJob(job, payload, true);
+      } else {
+        await failNotificationJob(job, `Gave up after ${MAX_NOTIFICATION_JOB_ATTEMPTS} attempts.`, { permanent: true });
+      }
+      return;
+    }
+
     const sent = await deliverNotificationJob(job, payload);
     await finishNotificationJob(job, payload, sent);
   } catch (error) {
@@ -117,13 +122,17 @@ export async function processNotificationJob(job: NotificationJob) {
   }
 }
 
-async function deliverNotificationJob(job: NotificationJob, payload: NotificationJobPayload) {
-  // A worker that stopped mid-delivery leaves its deliveries behind; sending again would repeat them.
-  if (job.deliveryStartedAt && await hasAcceptedNotificationDeliverySince({
+// A worker that stopped mid-delivery leaves its deliveries behind; sending again would repeat them.
+async function wasAlreadyDelivered(job: NotificationJob, payload: NotificationJobPayload) {
+  return Boolean(job.deliveryStartedAt) && hasAcceptedNotificationDeliverySince({
     monitorId: job.monitorId,
     kind: payload.kind,
-    since: job.deliveryStartedAt,
-  })) {
+    since: job.deliveryStartedAt!,
+  });
+}
+
+async function deliverNotificationJob(job: NotificationJob, payload: NotificationJobPayload) {
+  if (await wasAlreadyDelivered(job, payload)) {
     return true;
   }
 
