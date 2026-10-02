@@ -928,6 +928,34 @@ describe("monitoring scheduler verification flow", () => {
     );
   });
 
+  it("keeps the screenshot for redirect-limit failures because the browser follows the redirect", async () => {
+    mocks.checkResult = {
+      ...mocks.checkResult,
+      statusCode: 301,
+      errorMessage: "HTTP 301 redirect response was not followed within the configured redirect limit.",
+      failureReason: "redirect",
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runMonitoringCycle();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 301, skipWhenSiteResponds: false, language: "en" }
+    );
+  });
+
   it("keeps the screenshot for POST monitors because the browser can only load the page with GET", async () => {
     mocks.dueMonitors = [
       buildMonitor({
@@ -1439,13 +1467,12 @@ describe("verification timeout escalation", () => {
   it("increases verification timeout and caps it", () => {
     expect(calculateVerificationTimeout(5000, 1)).toBe(7500);
     expect(calculateVerificationTimeout(5000, 2)).toBe(10000);
-    expect(calculateVerificationTimeout(100000, 2)).toBe(200000);
+    expect(calculateVerificationTimeout(100000, 2)).toBe(120000);
   });
 
-  it("gives even the longest monitor timeout twice its time during verification", () => {
-    expect(calculateVerificationTimeout(120000, 1)).toBe(180000);
-    expect(calculateVerificationTimeout(120000, 2)).toBe(240000);
-    expect(calculateVerificationTimeout(120000, 10)).toBe(240000);
+  it("gives monitors with a timeout up to 60 seconds the full doubled verification wait", () => {
+    expect(calculateVerificationTimeout(60000, 1)).toBe(90000);
+    expect(calculateVerificationTimeout(60000, 2)).toBe(120000);
   });
 });
 

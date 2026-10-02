@@ -78,6 +78,70 @@ describe("failure screenshot browser isolation", () => {
     expect(userAgent).toBe(MONITOR_USER_AGENT);
   }, 25_000);
 
+  it("reaches the site over the IP family the monitor checks", async () => {
+    let requests = 0;
+    const server = await createServer((_, response) => {
+      requests += 1;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>IPv4 only</h1>");
+    });
+    // A dual-stack answer whose first address (IPv6) has nothing listening.
+    vi.mocked(resolveMonitorNetworkTargetWithTimeout).mockImplementationOnce(async (hostname: string) => ({
+      hostname,
+      addresses: [{ address: "::1", family: 6 as const }, { address: "127.0.0.1", family: 4 as const }],
+    }));
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/family`,
+      ipFamily: "ipv4",
+    }), new Date(), onSkipped);
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+    // Over IPv6 the browser would photograph its own connection-refused page instead.
+    expect(requests).toBeGreaterThan(0);
+  }, 25_000);
+
+  it("busts the CDN cache the same way the HTTP check does", async () => {
+    const urls: string[] = [];
+    const server = await createServer((request, response) => {
+      urls.push(request.url ?? "");
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Fresh</h1>");
+    });
+
+    await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/cached`,
+      cacheBuster: true,
+    }));
+
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((url) => /^\/cached\?_monitor_ts=\d+$/.test(url))).toBe(true);
+  }, 25_000);
+
+  it("sends the monitor identity on the redirect probe as well as the page load", async () => {
+    const userAgents: Array<string | undefined> = [];
+    const server = await createServer((request, response) => {
+      userAgents.push(request.headers["user-agent"]);
+      if (request.url === "/start") {
+        response.writeHead(302, { Location: "/final" });
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Final</h1>");
+    });
+
+    await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/start`,
+      maxRedirects: 5,
+    }));
+
+    expect(userAgents.length).toBeGreaterThanOrEqual(3);
+    expect(userAgents.every((userAgent) => userAgent === MONITOR_USER_AGENT)).toBe(true);
+  }, 25_000);
+
   it("leaves the screenshot out when the site responds normally again", async () => {
     const server = await createServer((_, response) => {
       response.writeHead(200, { "Content-Type": "text/html" });

@@ -781,6 +781,23 @@ function buildAlertEmailAttachments(
   return attachments;
 }
 
+// Failures a later page load can show to have passed. Redirect-limit failures are excluded because the
+// browser follows redirects the monitor forbids, so it would report the very page the monitor rejects.
+const SCREENSHOT_DISPROVABLE_FAILURES = new Set(["timeout", "http_status", "connection", "network"]);
+
+// Only a plain HTTP failure is disproved by a working page. Keyword and JSON failures happen on pages
+// that load fine, status-code-change alerts are sent while the site is up, and the browser's GET says
+// nothing about a POST, PUT, or other request the monitor sends.
+function isFailureDisprovedByWorkingPage(
+  monitor: Monitor,
+  result: Awaited<ReturnType<typeof checkMonitor>>
+) {
+  return !result.ok
+    && monitor.monitorType === "http"
+    && (monitor.method === "GET" || monitor.method === "HEAD")
+    && SCREENSHOT_DISPROVABLE_FAILURES.has(result.failureReason ?? "");
+}
+
 async function captureAlertEmailAttachments(
   monitor: Monitor,
   result: Awaited<ReturnType<typeof checkMonitor>>,
@@ -791,12 +808,7 @@ async function captureAlertEmailAttachments(
     skippedReason = reason;
   }, {
     checkStatusCode: result.statusCode,
-    // Only a plain HTTP failure is disproved by a working page. Keyword and JSON failures happen on
-    // pages that load fine, status-code-change alerts are sent while the site is up, and the browser's
-    // GET says nothing about a POST, PUT, or other request the monitor sends.
-    skipWhenSiteResponds: !result.ok
-      && monitor.monitorType === "http"
-      && (monitor.method === "GET" || monitor.method === "HEAD"),
+    skipWhenSiteResponds: isFailureDisprovedByWorkingPage(monitor, result),
     language,
   });
 

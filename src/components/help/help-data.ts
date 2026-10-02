@@ -89,7 +89,7 @@ export const helpCategories: HelpCategory[] = [
       {
         question: "What does the retries field control right now?",
         answer:
-          "The failure threshold includes the initial failed probe. Sentrovia then performs one-minute verification probes and requires one final immediate confirmation failure before it confirms the outage, which prevents a service that just recovered from producing a stale down alert. Verification probes wait longer than normal checks (1.5x, then 2x the monitor timeout), so a slow but working site is not confirmed as down; raising a monitor's timeout raises its verification wait too.",
+          "The failure threshold includes the initial failed probe. Sentrovia then performs one-minute verification probes and requires one final immediate confirmation failure before it confirms the outage, which prevents a service that just recovered from producing a stale down alert. Verification probes wait longer than normal checks (1.5x, then 2x the monitor timeout, at most 120 seconds), so a slow but working site is not confirmed as down.",
       },
       {
         question: "What happens if a monitor recovers during verification?",

@@ -4,7 +4,7 @@ import https from "node:https";
 import type { BrowserContext, Page, Route } from "playwright";
 import type { Monitor } from "@/lib/db/schema";
 import { env } from "@/lib/env";
-import { MONITOR_USER_AGENT } from "@/lib/monitors/request-identity";
+import { MONITOR_REQUEST_HEADERS, MONITOR_USER_AGENT } from "@/lib/monitors/request-identity";
 import { hasExpectedStatusCodeOverride, isExpectedHttpStatusCode } from "@/lib/monitors/status-codes";
 import type { NotificationLanguage } from "@/lib/settings/types";
 import {
@@ -191,7 +191,7 @@ async function resolveScreenshotRedirects(
 
     let redirectUrl: string | null;
     try {
-      redirectUrl = await inspectScreenshotRedirect(currentUrl, target, monitor.ignoreSslErrors, signal);
+      redirectUrl = await inspectScreenshotRedirect(currentUrl, target, monitor, signal);
     } catch {
       break;
     }
@@ -222,7 +222,7 @@ async function resolveScreenshotRedirects(
 function inspectScreenshotRedirect(
   url: string,
   target: ResolvedNetworkTarget,
-  ignoreSslErrors: boolean,
+  monitor: Pick<Monitor, "ignoreSslErrors" | "ipFamily">,
   signal: AbortSignal
 ) {
   return new Promise<string | null>((resolve, reject) => {
@@ -231,8 +231,11 @@ function inspectScreenshotRedirect(
     let settled = false;
     const request = transport.request(parsed, {
       method: "GET",
+      // The browser sends this identity too, so a bot filter answers the probe the way it answers the page.
+      headers: MONITOR_REQUEST_HEADERS,
+      family: toScreenshotAddressFamily(monitor.ipFamily) ?? undefined,
       lookup: createPinnedLookup(target),
-      rejectUnauthorized: parsed.protocol === "https:" ? !ignoreSslErrors : undefined,
+      rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
     }, (response) => {
       const location = response.headers.location;
       const status = response.statusCode ?? 0;
@@ -304,7 +307,7 @@ async function captureScreenshotAttachment(
     channel: "chromium",
     args: [
       ...CHROMIUM_HEADLESS_ARGS,
-      buildHostResolverRule(approvedTargets),
+      buildHostResolverRule(approvedTargets, toScreenshotAddressFamily(monitor.ipFamily)),
     ],
     headless: true,
     timeout: SCREENSHOT_TIMEOUT_MS,
@@ -796,9 +799,11 @@ function acquireScreenshotSlot(signal: AbortSignal) {
   });
 }
 
-function buildHostResolverRule(targets: ResolvedNetworkTarget[]) {
+// The browser reaches the site over the same IP family as the check; otherwise an outage on one
+// family would be photographed over the other and look like a working site.
+function buildHostResolverRule(targets: ResolvedNetworkTarget[], family: 4 | 6 | null) {
   const rules = targets.map((target) => {
-    const address = selectResolvedAddress(target);
+    const address = selectResolvedAddress(target, family);
     return `MAP ${target.hostname} ${address.includes(":") ? `[${address}]` : address}`;
   });
   return `--host-resolver-rules=${[...rules, "MAP * ~NOTFOUND"].join(", ")}`;
@@ -825,8 +830,20 @@ function removeScreenshotQueueEntry(entry: ScreenshotQueueEntry) {
   }
 }
 
+function toScreenshotAddressFamily(ipFamily: Monitor["ipFamily"]) {
+  if (ipFamily === "ipv4") return 4;
+  if (ipFamily === "ipv6") return 6;
+  return null;
+}
+
 function resolveScreenshotUrl(monitor: Monitor) {
-  return stripUrlFragment(monitor.url);
+  const url = stripUrlFragment(monitor.url);
+  if (!monitor.cacheBuster) return url;
+  // Same cache-busting parameter as the HTTP check, so a CDN cannot serve the browser a cached
+  // copy of a page whose origin the check found down.
+  const parsed = new URL(url);
+  parsed.searchParams.set("_monitor_ts", String(Date.now()));
+  return parsed.toString();
 }
 
 function stripUrlFragment(value: string) {

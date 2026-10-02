@@ -1,6 +1,7 @@
 import http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { MONITOR_USER_AGENT } from "@/lib/monitors/request-identity";
 import { runMonitorDiagnostics } from "@/lib/diagnostics/service";
 
 const mocks = vi.hoisted(() => ({
@@ -50,6 +51,21 @@ describe("runMonitorDiagnostics", () => {
     const diagnostic = await runMonitorDiagnostics(buildMonitor({ url, method: "POST" }));
 
     expect(diagnostic.httpStatus).toBe("ok");
+    expect(diagnostic.httpStatusCode).toBe(200);
+  });
+
+  it("probes with the same identity as the HTTP check so a bot filter cannot make them disagree", async () => {
+    const server = http.createServer((request, response) => {
+      response.statusCode = request.headers["user-agent"] === MONITOR_USER_AGENT ? 200 : 403;
+      response.end("ok");
+    });
+    const url = await new Promise<string>((resolve) => {
+      server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as { port: number }).port}/health`));
+    });
+    activeServer = server;
+
+    const diagnostic = await runMonitorDiagnostics(buildMonitor({ url }));
+
     expect(diagnostic.httpStatusCode).toBe(200);
   });
 
