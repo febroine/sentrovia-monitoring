@@ -21,6 +21,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 - Replaced raw browser errors in "Failure screenshot skipped" log entries with a short readable reason, without terminal color codes or Playwright call logs.
 - Extended the monitor lease to cover the outage screenshot, and reused one screenshot when a cycle sends more than one alert for the same check (e.g. a retried failure alert and a downtime reminder), so a long capture does not let another worker claim the monitor before the notification is sent.
 - Kept outage screenshots from stalling until the capture deadline when a stylesheet that never loads blocks the first paint or page scripts keep the browser busy.
+- The monitor history lock pool now has a connection for every worker slot (`WORKER_CONCURRENCY`, between 10 and 50) instead of a fixed 10, and closes idle connections after a minute. Each failing monitor holds a lock connection while its outage alert is prepared and sent, so with more than ten sites failing at once the rest waited for a connection (15 simultaneous failures took 4.0 s instead of 2.1 s against PostgreSQL).
 - When more sites fail at once than there are screenshot browsers (three), queued captures now wait for a free browser for up to one capture's budget instead of five seconds, so a shared outage no longer sends most alerts without a screenshot.
 
 ## [0.1.7] - 2026-09-22

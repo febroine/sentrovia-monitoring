@@ -15,17 +15,32 @@ const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_DUE_WORKSPACES_PER_CYCLE = 100;
 const DUE_WORKSPACE_QUERY_CONCURRENCY = 10;
-const MONITOR_HISTORY_LOCK_POOL_SIZE = 10;
+// Each worker slot holds at most one history lock, for its whole persist and notification phase
+// (diagnostics, screenshot, deliveries). A pool smaller than the slot count made the eleventh
+// concurrently failing monitor wait for a lock connection; the cap keeps a very high
+// WORKER_CONCURRENCY within PostgreSQL's default limit of 100 connections.
+const MIN_MONITOR_HISTORY_LOCK_POOL_SIZE = 10;
+const MAX_MONITOR_HISTORY_LOCK_POOL_SIZE = 50;
+// Lock connections idle out after a burst of failures instead of staying open.
+const MONITOR_HISTORY_LOCK_IDLE_TIMEOUT_SECONDS = 60;
 const globalForMonitorHistoryLock = globalThis as unknown as {
   monitorHistoryLockSql?: ReturnType<typeof postgres>;
 };
 const monitorHistoryLockSql = globalForMonitorHistoryLock.monitorHistoryLockSql ?? postgres(getDatabaseUrl(), {
-  max: MONITOR_HISTORY_LOCK_POOL_SIZE,
+  max: resolveMonitorHistoryLockPoolSize(env.workerConcurrency),
+  idle_timeout: MONITOR_HISTORY_LOCK_IDLE_TIMEOUT_SECONDS,
   prepare: false,
 });
 
 if (process.env.NODE_ENV !== "production") {
   globalForMonitorHistoryLock.monitorHistoryLockSql = monitorHistoryLockSql;
+}
+
+export function resolveMonitorHistoryLockPoolSize(workerConcurrency: number) {
+  return Math.min(
+    MAX_MONITOR_HISTORY_LOCK_POOL_SIZE,
+    Math.max(MIN_MONITOR_HISTORY_LOCK_POOL_SIZE, workerConcurrency)
+  );
 }
 
 export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };

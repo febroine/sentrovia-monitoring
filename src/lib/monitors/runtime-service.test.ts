@@ -21,6 +21,7 @@ import {
   hasPrivateTargetAccess,
   recordMonitorResult,
   renewMonitorLease,
+  resolveMonitorHistoryLockPoolSize,
   selectClaimableMonitors,
 } from "@/lib/monitors/runtime-service";
 import { monitors } from "@/lib/db/schema";
@@ -120,5 +121,17 @@ describe("claimable monitor selection", () => {
 
   it("selects nothing when there is no free slot", () => {
     expect(selectClaimableMonitors([[row("a1")]], { limit: 0 })).toEqual([]);
+  });
+});
+
+describe("monitor history lock pool", () => {
+  it("has a lock connection for every worker slot", () => {
+    expect(resolveMonitorHistoryLockPoolSize(20)).toBe(20);
+    expect(resolveMonitorHistoryLockPoolSize(35)).toBe(35);
+  });
+
+  it("keeps the old floor for small workers and stays within PostgreSQL's default connection limit", () => {
+    expect(resolveMonitorHistoryLockPoolSize(1)).toBe(10);
+    expect(resolveMonitorHistoryLockPoolSize(500)).toBe(50);
   });
 });
