@@ -1,13 +1,17 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, monitors, userSettings, workspaceSettings } from "@/lib/db/schema";
+import { companyRecipientsForMonitor, type CompanyRecipientScopes } from "@/lib/companies/recipient-scopes";
 import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
 
 interface NotificationRoutingCandidates {
+  monitorId?: string;
   monitorEmail: string | null;
   monitorTelegramBotToken: string | null;
   monitorTelegramChatId: string | null;
   companyEmails: string[] | null;
+  // Company addresses limited to some of the company's monitors.
+  companyEmailScopes?: CompanyRecipientScopes | null;
   companyTelegramBotToken: string | null;
   companyTelegramChatId: string | null;
   workspaceEmail: string | null;
@@ -37,6 +41,7 @@ export async function getMonitorNotificationRouting(
       monitorTelegramBotToken: monitors.telegramBotToken,
       monitorTelegramChatId: monitors.telegramChatId,
       companyEmails: companies.notificationEmailRecipients,
+      companyEmailScopes: companies.notificationEmailScopes,
       companyTelegramBotToken: companies.telegramBotTokenEncrypted,
       companyTelegramChatId: companies.telegramChatId,
       workspaceEmail: userSettings.smtpDefaultToEmail,
@@ -70,6 +75,7 @@ export async function getMonitorNotificationRouting(
 
   return resolveNotificationRouting({
     ...row,
+    monitorId,
     monitorTelegramBotToken: decryptValueOrLegacyPlaintext(row.monitorTelegramBotToken),
     companyTelegramBotToken: decryptValueOrLegacyPlaintext(row.companyTelegramBotToken),
     workspaceEmail: workspaceDefaults.email,
@@ -124,8 +130,11 @@ export function resolveNotificationRouting(
   }
 
   return {
-    emailRecipients: joinRecipients(candidates.monitorEmail, candidates.companyEmails)
-      ?? cleanString(candidates.workspaceEmail),
+    // When no address applies to the monitor, the workspace address keeps the alert from being lost.
+    emailRecipients: joinRecipients(
+      candidates.monitorEmail,
+      companyRecipientsForMonitor(candidates.companyEmails, candidates.companyEmailScopes, candidates.monitorId ?? null)
+    ) ?? cleanString(candidates.workspaceEmail),
     telegramTargets: telegramTargets.filter(
       (target, index) => telegramTargets.findIndex((candidate) => candidate.chatId === target.chatId) === index
     ),

@@ -3,6 +3,7 @@ export interface CompanyRecord {
   name: string;
   description: string | null;
   notificationEmailRecipients: string[];
+  notificationEmailScopes: Record<string, string[]>;
   telegramBotToken: string;
   telegramBotTokenConfigured: boolean;
   telegramChatId: string;
@@ -16,6 +17,7 @@ export interface CompanyPayload {
   name: string;
   description: string;
   notificationEmailRecipients: string;
+  notificationEmailScopes: Record<string, string[]>;
   telegramBotToken: string;
   telegramBotTokenConfigured: boolean;
   telegramChatId: string;
@@ -26,6 +28,7 @@ export const DEFAULT_COMPANY_FORM: CompanyPayload = {
   name: "",
   description: "",
   notificationEmailRecipients: "",
+  notificationEmailScopes: {},
   telegramBotToken: "",
   telegramBotTokenConfigured: false,
   telegramChatId: "",

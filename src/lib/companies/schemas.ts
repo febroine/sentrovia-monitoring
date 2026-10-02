@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_SCOPED_MONITORS_PER_RECIPIENT, normalizeRecipientScopes } from "@/lib/companies/recipient-scopes";
 
 const COMPANY_EMAIL_SPLIT_PATTERN = /[,;\n]/;
 
@@ -25,11 +26,19 @@ export const companyInputSchema = z.object({
     .max(4000)
     .default("")
     .transform(normalizeCompanyEmailRecipients),
+  // Address -> monitor ids; an address left out receives alerts for every monitor of the company.
+  notificationEmailScopes: z
+    .record(z.string().max(320), z.array(z.string().trim().min(1).max(128)).max(MAX_SCOPED_MONITORS_PER_RECIPIENT))
+    .default({}),
   telegramBotToken: z.string().trim().max(500).default(""),
   telegramBotTokenConfigured: z.boolean().default(false),
   telegramChatId: z.string().trim().max(120).default(""),
   isActive: z.boolean().default(true),
-}).superRefine((value, context) => {
+}).transform((value) => ({
+  ...value,
+  // Entries for addresses that were removed in the same edit are dropped.
+  notificationEmailScopes: normalizeRecipientScopes(value.notificationEmailScopes, value.notificationEmailRecipients),
+})).superRefine((value, context) => {
   for (const recipient of value.notificationEmailRecipients) {
     if (!z.string().email().safeParse(recipient).success) {
       context.addIssue({

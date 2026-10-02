@@ -131,7 +131,7 @@ export function MonitorForm({
         </TabsContent>
 
         <TabsContent value="notification" className="mt-0">
-          <NotificationMonitorSettings values={values} savedEmails={savedEmails} companies={companies} settings={settings} existingMonitor={Boolean(monitorId)} onFieldChange={setField} />
+          <NotificationMonitorSettings values={values} savedEmails={savedEmails} companies={companies} settings={settings} existingMonitor={Boolean(monitorId)} monitorId={monitorId ?? undefined} onFieldChange={setField} />
         </TabsContent>
 
         <TabsContent value="templates" className="mt-0">

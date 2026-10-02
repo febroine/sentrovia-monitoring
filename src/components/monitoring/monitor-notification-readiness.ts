@@ -1,3 +1,4 @@
+import { companyRecipientsForMonitor } from "@/lib/companies/recipient-scopes";
 import type { CompanyRecord } from "@/lib/companies/types";
 import type { MonitorPayload } from "@/lib/monitors/types";
 import type { SettingsPayload } from "@/lib/settings/types";
@@ -7,12 +8,13 @@ export function getMonitorNotificationReadiness(
   settings: SettingsPayload | null,
   company: CompanyRecord | undefined,
   existingMonitor: boolean,
+  monitorId: string | null = null,
 ) {
   if (monitor.notificationPref === "none") return [];
 
   const emailRecipients = Boolean(
     monitor.notifEmail.trim()
-    || company?.notificationEmailRecipients.length
+    || companyRecipientsForMonitor(company?.notificationEmailRecipients, company?.notificationEmailScopes, monitorId).length
     || settings?.notifications.smtpDefaultToEmail.trim(),
   );
   const emailTransport = Boolean(settings?.notifications.smtpHost.trim() && settings.notifications.smtpFromEmail.trim());

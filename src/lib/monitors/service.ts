@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
-import { getCompanyById } from "@/lib/companies/service";
+import { getCompanyById, removeMonitorsFromOtherCompanyScopes } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
   deliveryEvents,
@@ -422,6 +422,9 @@ async function updateMonitorInTransaction(
     return null;
   }
 
+  if (existingMonitor.companyId !== monitor.companyId) {
+    await removeMonitorsFromOtherCompanyScopes(tx, resolvedWorkspaceId, [monitor.id], monitor.companyId);
+  }
   await resolveOutageOnPause(existingMonitor, values.isActive, now, tx);
   if (targetChanged && existingMonitor.isActive && values.isActive) {
     await resolveOutage({
@@ -760,6 +763,7 @@ export async function bulkMoveMonitorsToCompany(
     if (updated.length !== ids.length) {
       throw new AuthError("One or more selected monitors are unavailable.", 404);
     }
+    await removeMonitorsFromOtherCompanyScopes(tx, workspaceId, ids, company?.id ?? null);
     return updated;
   });
 }

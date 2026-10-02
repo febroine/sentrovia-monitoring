@@ -13,6 +13,7 @@ import { getSettings, upsertSettings } from "@/lib/settings/service";
 import { DEFAULT_SETTINGS, type SettingsPayload } from "@/lib/settings/types";
 import { settingsSchema } from "@/lib/settings/schemas";
 import { createCompany, listCompanies } from "@/lib/companies/service";
+import { MAX_SCOPED_MONITORS_PER_RECIPIENT } from "@/lib/companies/recipient-scopes";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
   companies,
@@ -89,6 +90,8 @@ export async function buildWorkspaceBackupBundle(
       name: company.name,
       description: company.description ?? "",
       notificationEmailRecipients: company.notificationEmailRecipients.join(", "),
+      // Monitor ids change on restore, so limited addresses refer to monitors by their target.
+      notificationEmailScopeTargets: exportRecipientScopeTargets(company.notificationEmailScopes, monitorRows),
       telegramBotToken: "",
       telegramBotTokenConfigured: false,
       telegramChatId: "",
@@ -96,6 +99,70 @@ export async function buildWorkspaceBackupBundle(
     })),
     monitors: monitorRows.map((monitor) => redactMonitorExportSecrets(toMonitorPayload(serializeMonitorRecord(monitor) as MonitorRecord))),
   };
+}
+
+export function exportRecipientScopeTargets(
+  scopes: Record<string, string[]> | null | undefined,
+  monitorRows: Array<{ id: string; monitorType: string; url: string }>
+) {
+  const keysById = new Map(monitorRows.map((monitor) => [
+    monitor.id,
+    buildMonitorIdentityKey({ monitorType: monitor.monitorType as MonitorInput["monitorType"], url: monitor.url }),
+  ]));
+  return Object.fromEntries(Object.entries(scopes ?? {}).map(([address, ids]) => [
+    address,
+    ids.map((id) => keysById.get(id)).filter((key): key is string => Boolean(key)),
+  ]));
+}
+
+// Maps limited addresses back to the restored monitors. An address whose monitors cannot all be found
+// again (e.g. a heartbeat monitor gets a new token) covers every monitor instead, so a restore never
+// silently stops alerts from reaching an address.
+export function resolveRestoredRecipientScopes(
+  scopeTargets: unknown,
+  recipients: string[],
+  monitorIdsByKey: Map<string, string>
+) {
+  if (!scopeTargets || typeof scopeTargets !== "object" || Array.isArray(scopeTargets)) return {};
+
+  const known = new Set(recipients.map((recipient) => recipient.toLowerCase()));
+  const scopes: Record<string, string[]> = {};
+  for (const [address, keys] of Object.entries(scopeTargets as Record<string, unknown>)) {
+    const normalized = address.trim().toLowerCase();
+    if (!known.has(normalized) || !Array.isArray(keys) || keys.length > MAX_SCOPED_MONITORS_PER_RECIPIENT) continue;
+    const ids = keys.map((key) => (typeof key === "string" ? monitorIdsByKey.get(key) : undefined));
+    if (ids.some((id) => !id)) continue;
+    scopes[normalized] = Array.from(new Set(ids as string[]));
+  }
+  return scopes;
+}
+
+async function restoreRecipientScopes(
+  bundle: WorkspaceBackupBundle,
+  restoredCompanies: Array<{ id: string; name: string; notificationEmailRecipients: string[] }>,
+  createdMonitors: Array<{ id: string; monitorType: string; url: string; companyId: string | null }>,
+  database: DatabaseExecutor
+) {
+  for (const company of restoredCompanies) {
+    const name = company.name.trim().toLowerCase();
+    const source = bundle.companies.find((item) => normalizeBackupCompanyName(item.name)?.toLowerCase() === name);
+    if (!source?.notificationEmailScopeTargets) continue;
+
+    const monitorIdsByKey = new Map(createdMonitors
+      .filter((monitor) => monitor.companyId === company.id)
+      .map((monitor) => [
+        buildMonitorIdentityKey({ monitorType: monitor.monitorType as MonitorInput["monitorType"], url: monitor.url }),
+        monitor.id,
+      ]));
+    const scopes = resolveRestoredRecipientScopes(
+      source.notificationEmailScopeTargets,
+      company.notificationEmailRecipients,
+      monitorIdsByKey
+    );
+    if (Object.keys(scopes).length > 0) {
+      await database.update(companies).set({ notificationEmailScopes: scopes }).where(eq(companies.id, company.id));
+    }
+  }
 }
 
 export function preparePublicStatusSettingsForBackup(
@@ -214,7 +281,8 @@ export async function restoreWorkspaceBackup(
       companyId: resolveRestoredCompanyId(monitor.company, companyIdByName),
     }));
 
-    await createManyMonitors(userId, restoredMonitors, tx, workspaceId);
+    const createdMonitors = await createManyMonitors(userId, restoredMonitors, tx, workspaceId);
+    await restoreRecipientScopes(bundle, restoredCompanies, createdMonitors, tx);
   }, { isolationLevel: "serializable" });
 
   return {

@@ -290,6 +290,11 @@ export const companies = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    // Address -> monitor ids it is limited to; an address without an entry covers every monitor.
+    notificationEmailScopes: jsonb("notification_email_scopes")
+      .$type<Record<string, string[]>>()
+      .default({})
+      .notNull(),
     telegramBotTokenEncrypted: text("telegram_bot_token_encrypted"),
     telegramChatId: varchar("telegram_chat_id", { length: 120 }),
     isActive: boolean("is_active").default(true).notNull(),

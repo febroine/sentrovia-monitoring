@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Globe, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { companyRecipientsForMonitor } from "@/lib/companies/recipient-scopes";
+import type { CompanyRecord } from "@/lib/companies/types";
 import type { CompanyMonthlyReport, CompanySlaReport, MonitorRecord } from "@/lib/monitors/types";
 import { formatPanelDateTime } from "@/lib/time";
 
@@ -15,10 +17,12 @@ export function CompanyMonitorsPanel({
   companyId,
   companyName,
   monitors,
+  company,
 }: {
   companyId: string;
   companyName: string;
   monitors: MonitorRecord[];
+  company?: Pick<CompanyRecord, "notificationEmailRecipients" | "notificationEmailScopes">;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -169,6 +173,12 @@ export function CompanyMonitorsPanel({
                   <p className="text-sm font-medium">{monitor.name}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">{monitor.url}</p>
+                {company ? (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Alert emails:</span>{" "}
+                    <span className="break-all">{describeAlertEmails(monitor, company)}</span>
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge
@@ -217,6 +227,21 @@ export function CompanyMonitorsPanel({
       </div>
     </div>
   );
+}
+
+// Who receives this monitor's email alerts, using the same rule as the worker.
+function describeAlertEmails(
+  monitor: MonitorRecord,
+  company: Pick<CompanyRecord, "notificationEmailRecipients" | "notificationEmailScopes">
+) {
+  if (monitor.notificationPref !== "email" && monitor.notificationPref !== "both") {
+    return "Email alerts are off for this monitor";
+  }
+
+  const own = (monitor.notifEmail ?? "").split(/[,;\n]/).map((address) => address.trim()).filter(Boolean);
+  const fromCompany = companyRecipientsForMonitor(company.notificationEmailRecipients, company.notificationEmailScopes, monitor.id);
+  const recipients = Array.from(new Map([...own, ...fromCompany].map((address) => [address.toLowerCase(), address])).values());
+  return recipients.length > 0 ? recipients.join(", ") : "Workspace default address";
 }
 
 function formatSlaValue(period: CompanySlaReport["periods"][number] | undefined) {

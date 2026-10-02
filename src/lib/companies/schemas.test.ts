@@ -17,6 +17,19 @@ describe("companyInputSchema", () => {
     expect(parsed.notificationEmailRecipients).toEqual(["ops@example.com", "noc@example.com"]);
   });
 
+  it("keeps monitor limits only for the addresses saved with the company", () => {
+    const parsed = companyInputSchema.parse({
+      ...baseCompany,
+      notificationEmailRecipients: "ops@example.com, Manager@example.com",
+      notificationEmailScopes: {
+        "MANAGER@example.com": ["monitor-1", "monitor-1"],
+        "removed@example.com": ["monitor-2"],
+      },
+    });
+
+    expect(parsed.notificationEmailScopes).toEqual({ "manager@example.com": ["monitor-1"] });
+  });
+
   it("rejects invalid company recipients", () => {
     const parsed = companyInputSchema.safeParse({
       ...baseCompany,

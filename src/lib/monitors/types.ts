@@ -33,6 +33,8 @@ export interface WorkspaceBackupBundle {
     name: string;
     description: string;
     notificationEmailRecipients?: string;
+    // Address -> identity keys (type and target) of the monitors it is limited to.
+    notificationEmailScopeTargets?: Record<string, string[]>;
     telegramBotToken?: string;
     telegramBotTokenConfigured?: boolean;
     telegramChatId?: string;

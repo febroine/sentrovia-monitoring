@@ -10,6 +10,7 @@ import type { MonitorNotificationLanguage, MonitorPayload, NotificationPref } fr
 import type { CompanyRecord } from "@/lib/companies/types";
 import type { SettingsPayload } from "@/lib/settings/types";
 import { getMonitorNotificationReadiness } from "@/components/monitoring/monitor-notification-readiness";
+import { companyRecipientsForMonitor } from "@/lib/companies/recipient-scopes";
 
 const MONITOR_TEMPLATE_TOKENS = [
   "{name}",
@@ -48,6 +49,7 @@ export function NotificationMonitorSettings({
   companies,
   settings,
   existingMonitor = false,
+  monitorId,
   onFieldChange,
 }: {
   values: MonitorPayload;
@@ -55,11 +57,17 @@ export function NotificationMonitorSettings({
   companies: CompanyRecord[];
   settings: SettingsPayload | null;
   existingMonitor?: boolean;
+  monitorId?: string;
   onFieldChange: OnFieldChange;
 }) {
   const canAttachScreenshot = values.monitorType === "http" || values.monitorType === "keyword" || values.monitorType === "json";
   const company = companies.find((item) => item.id === values.companyId);
-  const readiness = getMonitorNotificationReadiness(values, settings, company, existingMonitor);
+  const readiness = getMonitorNotificationReadiness(values, settings, company, existingMonitor, monitorId ?? null);
+  // Company addresses limited to other monitors do not receive this monitor's alerts.
+  const companyEmails = company
+    ? companyRecipientsForMonitor(company.notificationEmailRecipients, company.notificationEmailScopes, monitorId ?? null)
+    : [];
+  const limitedCompanyEmails = company ? company.notificationEmailRecipients.length - companyEmails.length : 0;
 
   return (
     <div className="space-y-4">
@@ -80,7 +88,12 @@ export function NotificationMonitorSettings({
       {company ? (
         <div className="space-y-1 border-t border-border/60 pt-3 text-xs" aria-label="Company notification destinations">
           <p className="font-medium">{company.name} notification destinations</p>
-          <p className="text-muted-foreground">Email: {company.notificationEmailRecipients.join(", ") || "Not configured"}</p>
+          <p className="text-muted-foreground">
+            Email: {companyEmails.join(", ") || "Not configured"}
+            {limitedCompanyEmails > 0
+              ? ` (${limitedCompanyEmails} more address${limitedCompanyEmails === 1 ? " is" : "es are"} limited to other monitors)`
+              : ""}
+          </p>
           <p className="text-muted-foreground">
             Telegram: {company.telegramBotTokenConfigured && company.telegramChatId
               ? `Chat ${company.telegramChatId}`

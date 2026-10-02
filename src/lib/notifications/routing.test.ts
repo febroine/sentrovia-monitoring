@@ -35,6 +35,25 @@ describe("resolveNotificationRouting", () => {
     });
   });
 
+  it("leaves out company addresses limited to other monitors", () => {
+    expect(resolveNotificationRouting({
+      ...workspaceFallbacks,
+      monitorId: "monitor-1",
+      monitorEmail: "monitor@example.com",
+      companyEmails: ["ops@example.com", "manager@example.com"],
+      companyEmailScopes: { "manager@example.com": ["monitor-2"] },
+    }).emailRecipients).toBe("monitor@example.com, ops@example.com");
+  });
+
+  it("falls back to the workspace address when no company address covers the monitor", () => {
+    expect(resolveNotificationRouting({
+      ...workspaceFallbacks,
+      monitorId: "monitor-1",
+      companyEmails: ["manager@example.com"],
+      companyEmailScopes: { "manager@example.com": ["monitor-2"] },
+    }).emailRecipients).toBe("workspace@example.com");
+  });
+
   it("uses company routing before workspace defaults", () => {
     expect(resolveNotificationRouting({
       ...workspaceFallbacks,

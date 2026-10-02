@@ -70,7 +70,7 @@ Sentrovia checks reachability and response health. It does not collect CPU, memo
 
 **Alerts that reach people**
 - Channels: email, Telegram, Discord, and webhooks.
-- Per-monitor and per-company recipients, with duplicate addresses removed.
+- Per-monitor and per-company recipients, with duplicate addresses removed. A company address can be limited to selected monitors.
 - Editable templates in English or Turkish.
 - Delivery history with retries and resend.
 - Alerts are sent from a durable queue, in order, and never twice.
@@ -212,6 +212,8 @@ To place this line yourself, use the `{check_details}` placeholder in a notifica
 ### Recipients
 
 Email and Telegram alerts go to both the monitor's and its company's destinations, with duplicate addresses and chats removed. Workspace destinations are used when neither defines a channel. Configure company recipients in **Companies → Edit company**.
+
+A company email address can cover all of the company's monitors (the default) or only selected ones. For example, `ops@` can receive every alert while `manager@` receives only the alerts of three critical sites. The company's monitor list shows who receives each monitor's alerts. A monitor that no address covers falls back to its own recipients or the workspace address, so an alert is never dropped.
 
 The **Check site** link in an email opens the monitored target, never the private console. Test notifications appear in delivery history but do not count toward delivery health.
 

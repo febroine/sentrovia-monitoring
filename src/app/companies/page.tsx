@@ -11,6 +11,7 @@ import {
 } from "react";
 import { CheckSquare, Pencil, Plus, Search, Square, Trash2, Undo2 } from "lucide-react";
 import { CompanyMonitorsPanel } from "@/components/companies/company-monitors-panel";
+import { CompanyRecipientScopes } from "@/components/companies/company-recipient-scopes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -181,6 +182,7 @@ export default function CompaniesPage() {
       name: company.name,
       description: company.description ?? "",
       notificationEmailRecipients: company.notificationEmailRecipients.join(", "),
+      notificationEmailScopes: company.notificationEmailScopes ?? {},
       telegramBotToken: "",
       telegramBotTokenConfigured: company.telegramBotTokenConfigured,
       telegramChatId: company.telegramChatId,
@@ -363,12 +365,12 @@ export default function CompaniesPage() {
               Search and review monitors assigned to this company.
             </DialogDescription>
           </DialogHeader>
-          {detailCompany ? <CompanyMonitorsPanel companyId={detailCompany.id} companyName={detailCompany.name} monitors={companyMonitors(detailCompany.id)} /> : null}
+          {detailCompany ? <CompanyMonitorsPanel companyId={detailCompany.id} companyName={detailCompany.name} monitors={companyMonitors(detailCompany.id)} company={companies.find((company) => company.id === detailCompany.id) ?? detailCompany} /> : null}
         </DialogContent>
       </Dialog>
 
       <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} onOpenChange={(open) => { setCreateOpen(open); if (!open) setForm(DEFAULT_COMPANY_FORM); }} onFormChange={setForm} onSubmit={handleCreate} />
-      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} onOpenChange={(open) => { if (!open) { setEditing(null); setForm(DEFAULT_COMPANY_FORM); } }} onFormChange={setForm} onSubmit={handleUpdate} />
+      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} monitors={editing ? companyMonitors(editing.id) : undefined} onOpenChange={(open) => { if (!open) { setEditing(null); setForm(DEFAULT_COMPANY_FORM); } }} onFormChange={setForm} onSubmit={handleUpdate} />
 
       <Dialog open={Boolean(deleteRequest)} onOpenChange={(open) => !open && setDeleteRequest(null)}>
         <DialogContent className="sm:max-w-md">
@@ -398,6 +400,7 @@ function CompanyDialog({
   description,
   form,
   saving,
+  monitors,
   onOpenChange,
   onFormChange,
   onSubmit,
@@ -407,6 +410,8 @@ function CompanyDialog({
   description: string;
   form: CompanyPayload;
   saving: boolean;
+  // The company's monitors when editing; a new company has none.
+  monitors?: MonitorRecord[];
   onOpenChange: (open: boolean) => void;
   onFormChange: Dispatch<SetStateAction<CompanyPayload>>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -474,6 +479,12 @@ function CompanyDialog({
                   placeholder="oncall@example.com, noc@example.com"
                 />
               </Field>
+              <CompanyRecipientScopes
+                recipientsText={form.notificationEmailRecipients}
+                scopes={form.notificationEmailScopes}
+                monitors={monitors}
+                onChange={(notificationEmailScopes) => onFormChange((current) => ({ ...current, notificationEmailScopes }))}
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Telegram bot token">
                   <Input
