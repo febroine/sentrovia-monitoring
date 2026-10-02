@@ -111,6 +111,24 @@ describe("worker notifier", () => {
     );
   });
 
+  it("stops before the next channel once the alert's job is no longer its own", async () => {
+    const context = buildNotificationContext("recovery");
+    context.monitor = buildMonitor({ notificationPref: "both" });
+    let owned = true;
+    context.canDeliver = async () => owned;
+    mocks.sendEmailDelivery.mockImplementation(async () => {
+      owned = false;
+      return buildDeliveryResult("delivered");
+    });
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(true);
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledOnce();
+    expect(mocks.sendTelegramDelivery).not.toHaveBeenCalled();
+    expect(mocks.sendWebhookDelivery).not.toHaveBeenCalled();
+  });
+
   it("uses the resolved company or workspace destinations for monitor channels", async () => {
     const context = buildNotificationContext("recovery");
     context.monitor = buildMonitor({ notificationPref: "both" });

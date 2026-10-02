@@ -45,6 +45,7 @@ export const FAILURE_EVIDENCE_BODY_LIMIT = 2_000;
 const MAX_HEADER_VALUE_LENGTH = 200;
 const MAX_URL_LENGTH = 500;
 const MAX_ERROR_LENGTH = 500;
+const MAX_SUMMARY_HEADER_LENGTH = 60;
 
 // Headers that explain who answered and why, without identifying a visitor.
 const RECORDED_RESPONSE_HEADERS = [
@@ -86,6 +87,7 @@ export function pickRecordedHeaders(headers: Record<string, string | string[] | 
 // Drops credentials and the cache-busting parameter, and hides values of secret-looking parameters.
 export function redactUrl(value: string) {
   const isAbsolute = /^[a-z][a-z\d+.-]*:/i.test(value);
+  const isProtocolRelative = value.startsWith("//");
   try {
     const parsed = new URL(value, RELATIVE_URL_BASE);
     parsed.username = "";
@@ -96,21 +98,30 @@ export function redactUrl(value: string) {
       if (SENSITIVE_KEY.test(key)) parsed.searchParams.set(key, REDACTED);
     }
     // A relative redirect target stays relative.
-    const redacted = isAbsolute ? parsed.toString() : `${parsed.pathname}${parsed.search}`;
+    const redacted = isAbsolute
+      ? parsed.toString()
+      : `${isProtocolRelative ? `//${parsed.host}` : ""}${parsed.pathname}${parsed.search}`;
     return truncate(redacted, MAX_URL_LENGTH);
   } catch {
     return truncate(value.split("?")[0], MAX_URL_LENGTH);
   }
 }
 
+// Only this much of the body is turned into text and scanned for secrets; the excerpt keeps far less.
+// Bounding the input keeps the work per failed check small whatever the server sends.
+const MAX_SCANNED_BODY_LENGTH = 64_000;
+const MAX_SCANNED_TEXT_LENGTH = 8_000;
+
 // A readable, secret-free excerpt of the response body. Markup, scripts and styles are removed so the
 // excerpt shows what a visitor would read (e.g. "502 Bad Gateway"); binary bodies are left out.
 export function buildBodyExcerpt(bodyText: string, contentType: string | null) {
   if (!bodyText || !isTextContentType(contentType) || looksBinary(bodyText)) return null;
 
-  const isHtml = /html|xml/i.test(contentType ?? "") || /^\s*</.test(bodyText);
-  const readable = isHtml ? htmlToText(bodyText) : bodyText;
-  const normalized = redactSecrets(readable)
+  const body = bodyText.slice(0, MAX_SCANNED_BODY_LENGTH);
+  const isHtml = /html|xml/i.test(contentType ?? "") || /^\s*</.test(body);
+  const readable = isHtml ? htmlToText(body) : body;
+  const scanned = readable.slice(0, MAX_SCANNED_TEXT_LENGTH);
+  const normalized = redactSecrets(scanned)
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean)
@@ -120,23 +131,30 @@ export function buildBodyExcerpt(bodyText: string, contentType: string | null) {
   return {
     contentType,
     excerpt: normalized.slice(0, FAILURE_EVIDENCE_BODY_LIMIT),
-    truncated: normalized.length > FAILURE_EVIDENCE_BODY_LIMIT,
+    truncated: normalized.length > FAILURE_EVIDENCE_BODY_LIMIT || readable.length > MAX_SCANNED_TEXT_LENGTH
+      || bodyText.length > MAX_SCANNED_BODY_LENGTH,
   };
 }
 
+const SENSITIVE_WORD = "pass(?:word|wd)?|secret|token|api[-_]?key|access[-_]?key|session|signature|credential|private[-_]?key";
+
+// Every rule is linear in its input: no nested or lookahead-driven repetition.
 export function redactSecrets(text: string) {
   return text
-    // JSON style: "token": "value"
-    .replace(/("[^"\n]{0,60}"\s*:\s*)"([^"\n]*)"/g, (match, prefix: string) =>
+    // JSON style: "token": "value", "password": 1234
+    .replace(/("[^"\n]{0,60}"\s*:\s*)("[^"\n]*"|-?\d[\d.eE+-]*|true|false)/g, (match, prefix: string) =>
       SENSITIVE_BODY_KEY.test(prefix) ? `${prefix}"${REDACTED}"` : match)
-    // key=value or key: value
-    .replace(/\b([\w.-]{0,40}(?:pass(?:word|wd)?|secret|token|api[-_]?key|access[-_]?key|session|signature|credential)[\w.-]{0,20})(\s*[=:]\s*)([^\s&,;"'<>]+)/gi,
-      (_match, key: string, separator: string) => `${key}${separator}${REDACTED}`)
-    // Bearer tokens and JWTs
-    .replace(/\bBearer\s+[\w.~+/-]+=*/gi, `Bearer ${REDACTED}`)
+    // key=value, key: value, key = "value", KEY='value'
+    .replace(new RegExp(`\\b([\\w.-]{0,40}(?:${SENSITIVE_WORD})[\\w.-]{0,20})(\\s*[=:]\\s*)(["']?)[^\\s"'&,;<>]+\\3`, "gi"),
+      (_match, key: string, separator: string, quote: string) => `${key}${separator}${quote}${REDACTED}${quote}`)
+    // Authorization values, including Basic credentials echoed by debug pages
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, (_match, scheme: string) => `${scheme} ${REDACTED}`)
     .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, REDACTED)
-    // Long opaque strings (keys, hashes, session ids); a long path or word without digits is kept.
-    .replace(/\b(?=[A-Za-z0-9+_-]*\d)[A-Za-z0-9+_-]{40,}={0,2}/g, REDACTED);
+    // Hex keys and hashes
+    .replace(/\b[0-9a-fA-F]{32,}\b/g, (match) => (/\d/.test(match) ? REDACTED : match))
+    // Base64 or URL-safe tokens: long, mixed case and with digits. Paths and words are kept.
+    .replace(/[A-Za-z0-9+/_-]{40,}={0,2}/g, (match) =>
+      /\d/.test(match) && /[a-z]/.test(match) && /[A-Z]/.test(match) ? REDACTED : match);
 }
 
 export function truncateEvidenceError(message: string | null) {
@@ -156,19 +174,72 @@ function isTextContentType(contentType: string | null) {
 }
 
 function htmlToText(html: string) {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1\s*>/gi, " ")
-    .replace(/<(br|\/p|\/div|\/h[1-6]|\/li|\/tr|\/title)\b[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
+  return removeMarkup(html)
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, "\"")
     .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d+);/g, (_match, code: string) => safeCharacter(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => safeCharacter(Number.parseInt(code, 16)));
+    .replace(/&#(\d{1,7});/g, (_match, code: string) => safeCharacter(Number(code)))
+    .replace(/&#x([0-9a-f]{1,6});/gi, (_match, code: string) => safeCharacter(Number.parseInt(code, 16)));
+}
+
+const HIDDEN_ELEMENTS = /^<(script|style|noscript|template|svg)\b/;
+const LINE_BREAK_TAGS = /^<(br|\/p|\/div|\/h[1-6]|\/li|\/tr|\/title)\b/;
+
+// A single forward scan: regular expressions over markup rescan the rest of the body from every
+// unmatched "<", which takes seconds on a large malformed page.
+function removeMarkup(html: string) {
+  const lower = html.toLowerCase();
+  let output = "";
+  let index = 0;
+  let nextClose = -1;
+
+  while (index < html.length) {
+    const open = html.indexOf("<", index);
+    if (open === -1) {
+      output += html.slice(index);
+      break;
+    }
+    output += html.slice(index, open);
+
+    if (lower.startsWith("<!--", open)) {
+      const end = lower.indexOf("-->", open + 4);
+      if (end === -1) break;
+      output += " ";
+      index = end + 3;
+      continue;
+    }
+
+    const hidden = HIDDEN_ELEMENTS.exec(lower.slice(open, open + 10));
+    if (hidden) {
+      const closing = lower.indexOf(`</${hidden[1]}`, open);
+      if (closing === -1) break;
+      const end = lower.indexOf(">", closing);
+      output += " ";
+      index = end === -1 ? html.length : end + 1;
+      continue;
+    }
+
+    if (nextClose < open) nextClose = html.indexOf(">", open);
+    if (nextClose === -1) {
+      output += html.slice(open);
+      break;
+    }
+    const nextOpen = html.indexOf("<", open + 1);
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      // A lone "<" in text, not a tag.
+      output += "<";
+      index = open + 1;
+      continue;
+    }
+
+    output += LINE_BREAK_TAGS.test(lower.slice(open, open + 8)) ? "\n" : " ";
+    index = nextClose + 1;
+  }
+
+  return output;
 }
 
 function safeCharacter(code: number) {
@@ -234,7 +305,8 @@ export function summarizeFailureEvidence(evidence: FailureEvidence, language: "e
   }
   const headers = finalHop?.headers ?? {};
   for (const name of ["server", "cf-ray", "x-cache", "retry-after"] as const) {
-    if (headers[name]) parts.push(`${name}: ${headers[name]}`);
+    // Values come from the monitored server; the alert carries only a short form of them.
+    if (headers[name]) parts.push(`${name}: ${truncate(headers[name], MAX_SUMMARY_HEADER_LENGTH)}`);
   }
 
   return parts.join(" · ");

@@ -159,11 +159,12 @@ export async function completeNotificationJob(
 export async function failNotificationJob(
   job: Pick<NotificationJob, "id" | "claimToken" | "attempts">,
   errorMessage: string,
-  options: { permanent?: boolean } = {}
+  // keepRetrying: the alert already went out, so only its bookkeeping is left; it is never given up.
+  options: { permanent?: boolean; keepRetrying?: boolean } = {}
 ) {
   if (!job.claimToken) return false;
 
-  const exhausted = options.permanent || job.attempts >= MAX_NOTIFICATION_JOB_ATTEMPTS;
+  const exhausted = options.permanent || (!options.keepRetrying && job.attempts >= MAX_NOTIFICATION_JOB_ATTEMPTS);
   const updated = await db
     .update(notificationJobs)
     .set(exhausted

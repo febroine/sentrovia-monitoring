@@ -36,6 +36,8 @@ export interface NotificationContext {
   result: CheckResult;
   rca: RootCauseAnalysis;
   emailAttachments?: Mail.Attachment[];
+  // Checked before each channel; false stops the remaining deliveries.
+  canDeliver?: () => Promise<boolean>;
   // Receives the alert's resolved notification language so a screenshot banner matches the message.
   buildEmailAttachments?: (language: NotificationLanguage) => Promise<Mail.Attachment[] | undefined>;
 }

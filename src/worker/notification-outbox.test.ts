@@ -87,6 +87,7 @@ describe("notification outbox", () => {
     mocks.withMonitorHistoryLock.mockImplementation((_monitorId: string, operation: () => Promise<unknown>) => operation());
     mocks.buildFailureScreenshotAttachment.mockResolvedValue(null);
     mocks.canUserAccessPrivateTargets.mockResolvedValue(false);
+    mocks.claimNotificationJobs.mockResolvedValue([]);
   });
 
   it("keeps dates and secrets intact through the encrypted payload", () => {
@@ -119,7 +120,7 @@ describe("notification outbox", () => {
 
     expect(mocks.enqueueNotificationJob).toHaveBeenNthCalledWith(1, expect.objectContaining({
       kind: "failure",
-      dedupeKey: "failure",
+      dedupeKey: `failure:${new Date("2026-05-08T06:55:00.000Z").getTime()}`,
       checkedAt,
       monitorId: "monitor-1",
     }));
@@ -127,6 +128,21 @@ describe("notification outbox", () => {
       kind: "recovery",
       dedupeKey: null,
     }));
+  });
+
+  it("keys outage alerts by the outage they belong to", async () => {
+    const notification = buildNotification({ kind: "failure" });
+
+    await queueMonitorNotification(notification);
+    await queueMonitorNotification({
+      ...notification,
+      monitor: { ...notification.monitor, lastFailureAt: new Date("2026-05-08T08:00:00.000Z") },
+    });
+
+    expect(mocks.enqueueNotificationJob.mock.calls.map(([input]) => input.dedupeKey)).toEqual([
+      `failure:${new Date("2026-05-08T06:55:00.000Z").getTime()}`,
+      `failure:${new Date("2026-05-08T08:00:00.000Z").getTime()}`,
+    ]);
   });
 
   it("reports an alert already waiting in the queue as on its way", async () => {
@@ -207,8 +223,30 @@ describe("notification outbox", () => {
 
     await processNotificationJob(job);
 
-    expect(mocks.failNotificationJob).toHaveBeenCalledWith(job, "database unavailable");
+    expect(mocks.failNotificationJob).toHaveBeenCalledWith(job, "database unavailable", { keepRetrying: false });
     expect(mocks.completeNotificationJob).not.toHaveBeenCalled();
+  });
+
+  it("never gives up a job whose alert went out but whose bookkeeping failed", async () => {
+    mocks.completeNotificationJob.mockRejectedValue(new Error("lock timeout"));
+    const job = { ...buildJob(buildNotification()), attempts: 5 };
+
+    await processNotificationJob(job);
+
+    expect(mocks.failNotificationJob).toHaveBeenCalledWith(job, "lock timeout", { keepRetrying: true });
+  });
+
+  it("checks before each channel that the job is still its own", async () => {
+    mocks.isNotificationJobOwned.mockResolvedValue(false);
+    const job = buildJob(buildNotification());
+    mocks.sendMonitorNotifications.mockImplementation(async (context) => {
+      await expect(context.canDeliver()).resolves.toBe(false);
+      return false;
+    });
+
+    await processNotificationJob(job);
+
+    expect(mocks.isNotificationJobOwned).toHaveBeenCalledWith(job);
   });
 
   it("gives up a job that keeps crashing its worker", async () => {

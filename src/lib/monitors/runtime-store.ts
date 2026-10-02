@@ -184,8 +184,9 @@ async function isNewFailureEvidence(monitorId: string, evidence: FailureEvidence
 
 function describeEvidenceOutcome(evidence: Partial<FailureEvidence> | null) {
   const finalHop = evidence?.hops?.[evidence.hops.length - 1];
-  // Error texts carry timings, so they would make every check look new.
-  return [evidence?.phase, finalHop?.statusCode, finalHop?.remoteAddress].join("|");
+  // Error texts carry timings and round-robin DNS changes the address on every check; either would
+  // make every check look new.
+  return [evidence?.phase, finalHop?.statusCode].join("|");
 }
 
 export async function appendMonitorDiagnostic(input: {

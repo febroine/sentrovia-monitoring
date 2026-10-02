@@ -64,6 +64,29 @@ describe("failure evidence", () => {
       .toBe("id [redacted]");
   });
 
+  it("redacts quoted, numeric and Basic credentials and base64 keys with slashes", () => {
+    const text = redactSecrets(
+      'password = "hunter2" SECRET_KEY=\'abc\' {"password": 123456} Authorization: Basic dXNlcjpwYXNz '
+      + "key wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    );
+
+    expect(text).toBe(
+      'password = "[redacted]" SECRET_KEY=\'[redacted]\' {"password": "[redacted]"} Authorization: Basic [redacted] key [redacted]'
+    );
+  });
+
+  it("stays fast on large malformed bodies", () => {
+    for (const body of ["a-".repeat(50_000), "<".repeat(100_000), "<!--".repeat(25_000), "<script".repeat(14_000)]) {
+      const started = performance.now();
+      buildBodyExcerpt(body, "text/html");
+      expect(performance.now() - started).toBeLessThan(500);
+    }
+  });
+
+  it("keeps the host of a protocol-relative redirect", () => {
+    expect(redactUrl("//cdn.example.com/x?token=1&a=2")).toBe("//cdn.example.com/x?token=%5Bredacted%5D&a=2");
+  });
+
   it("leaves binary bodies out and cuts long ones", () => {
     expect(buildBodyExcerpt("\u0000PNG", "image/png")).toBeNull();
     expect(buildBodyExcerpt("\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR\u0000\u0000", null)).toBeNull();

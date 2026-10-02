@@ -2,7 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import type { ClientRequest, IncomingMessage } from "node:http";
-import type { Socket } from "node:net";
+import { isIP, type LookupFunction, type Socket } from "node:net";
 import tls, { type TLSSocket } from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
 import {
@@ -225,14 +225,12 @@ async function requestWithRedirects(
     message: MONITOR_PUBLIC_TARGET_ERROR,
   }, resolutionTimeoutMs);
   const requestStartedAt = Date.now();
-  if (hop && recorder) {
-    hop.timings.dnsMs = requestStartedAt - hopStartedAt;
-    recorder.stage = "connect";
-  }
+  if (hop) hop.timings.dnsMs = requestStartedAt - hopStartedAt;
   const remainingTimeoutMs = deadlineAt - Date.now();
   if (remainingTimeoutMs <= 0) {
     throw buildRequestTimeoutError(monitor.timeout);
   }
+  if (recorder) recorder.stage = "connect";
 
   return new Promise((resolve, reject) => {
     const transport = parsed.protocol === "https:" ? https : http;
@@ -262,7 +260,7 @@ async function requestWithRedirects(
         // connections, or keep talking to an old address after a DNS change.
         agent: false,
         family: toNodeFamily(monitor.ipFamily),
-        lookup: createPinnedLookup(resolvedTarget),
+        lookup: recordDialledAddress(createPinnedLookup(resolvedTarget), hop),
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
       (response) => {
@@ -283,6 +281,8 @@ async function requestWithRedirects(
           try {
             nextUrl = new URL(location, parsed).toString();
           } catch {
+            // The response arrived in full; it was its redirect target that was rejected.
+            if (recorder) recorder.stage = "response";
             rejectOnce(new Error("Service returned an invalid redirect location."));
             return;
           }
@@ -377,6 +377,9 @@ function startEvidenceHop(recorder: EvidenceRecorder | undefined, url: URL, meth
     timings: { dnsMs: null, connectMs: null, tlsMs: null, firstByteMs: null, totalMs: null },
     headers: {},
   };
+  // Node skips the lookup for an address literal, so the address is known right away.
+  const literal = url.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(literal)) hop.remoteAddress = literal;
   recorder.hops.push(hop);
   recorder.stage = "dns";
   // The certificate belongs to the hop that failed, never to an earlier one.
@@ -409,11 +412,6 @@ function watchEvidenceSocket(
       return;
     }
 
-    // The address being dialled is known before the connection succeeds, so a connect timeout still
-    // names the server that did not answer.
-    socket.once("lookup", (_error: Error | null, address: string) => {
-      hop.remoteAddress ??= address || null;
-    });
     socket.once("connect", () => {
       const connectedAt = Date.now();
       hop.timings.connectMs = connectedAt - requestStartedAt;
@@ -427,6 +425,20 @@ function watchEvidenceSocket(
       });
     });
   });
+}
+
+// The address being dialled is known before the connection succeeds, so a refused or timed-out
+// connection still names the server that did not answer. It is taken from the lookup itself: the
+// socket's own lookup event fires before a listener can be attached to the new socket.
+function recordDialledAddress(lookup: LookupFunction | undefined, hop: FailureEvidenceHop | null) {
+  if (!hop || !lookup) return lookup;
+
+  const wrapped: LookupFunction = (hostname, options, callback) => lookup(hostname, options, ((error: NodeJS.ErrnoException | null, address: string | Array<{ address: string }>, family?: number) => {
+    const dialled = Array.isArray(address) ? address[0]?.address : address;
+    if (!error && dialled) hop.remoteAddress ??= dialled;
+    (callback as (error: NodeJS.ErrnoException | null, address: unknown, family?: number) => void)(error, address, family);
+  }) as Parameters<LookupFunction>[2]);
+  return wrapped;
 }
 
 function recordEvidenceResponse(

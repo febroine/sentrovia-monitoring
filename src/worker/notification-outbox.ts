@@ -56,6 +56,16 @@ const NOTIFICATION_WAKE_DELAY_MS = 100;
 // A job running this long is stuck; its slot is freed before its claim expires and it is taken over.
 const NOTIFICATION_JOB_WATCHDOG_MS = NOTIFICATION_JOB_CLAIM_MS - 60_000;
 
+// Outage alerts and reminders are keyed by the outage they belong to: a new outage raised while the
+// previous outage's alert is still queued gets its own alert instead of being absorbed by the old one.
+function buildDedupeKey(notification: QueuedNotification) {
+  if (!DEDUPLICATED_KINDS.has(notification.kind)) return null;
+  if (notification.kind !== "failure" && notification.kind !== "downtime-reminder") return notification.kind;
+
+  const outageStartedAt = notification.monitor.lastFailureAt ?? notification.result.checkedAt;
+  return `${notification.kind}:${new Date(outageStartedAt).getTime()}`;
+}
+
 // Queues the alert when the notification settings allow it. Returns whether an alert is now on its way
 // (queued now or already waiting), so the check can skip alerts that the queued one makes redundant.
 export async function queueMonitorNotification(notification: QueuedNotification) {
@@ -69,7 +79,7 @@ export async function queueMonitorNotification(notification: QueuedNotification)
     userId: notification.monitor.userId,
     monitorId: notification.monitor.id,
     kind: notification.kind,
-    dedupeKey: DEDUPLICATED_KINDS.has(notification.kind) ? notification.kind : null,
+    dedupeKey: buildDedupeKey(notification),
     payload: encodeNotificationJobPayload({
       version: 1,
       kind: notification.kind,
@@ -99,11 +109,14 @@ export async function processNotificationJob(job: NotificationJob) {
     await failNotificationJob(job, "The queued notification could not be read.", { permanent: true });
     return;
   }
+  // Once an alert is out, the job must end as sent; giving it up would let the next check send it again.
+  let delivered = false;
   try {
     // Claims count attempts, so a job that keeps crashing its worker is given up as well. If its alert
     // did go out, it is recorded as sent; otherwise the next check would raise and send it again.
     if (job.attempts > MAX_NOTIFICATION_JOB_ATTEMPTS) {
       if (await wasAlreadyDelivered(job, payload)) {
+        delivered = true;
         await finishNotificationJob(job, payload, true);
       } else {
         await failNotificationJob(job, `Gave up after ${MAX_NOTIFICATION_JOB_ATTEMPTS} attempts.`, { permanent: true });
@@ -112,11 +125,12 @@ export async function processNotificationJob(job: NotificationJob) {
     }
 
     const sent = await deliverNotificationJob(job, payload);
+    delivered = sent;
     await finishNotificationJob(job, payload, sent);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The notification could not be sent.";
     console.error(`[sentrovia] Notification job ${job.id} for monitor ${job.monitorId} failed.`, error);
-    await failNotificationJob(job, message).catch((failError) => {
+    await failNotificationJob(job, message, { keepRetrying: delivered }).catch((failError) => {
       console.error(`[sentrovia] Unable to reschedule notification job ${job.id}.`, failError);
     });
   }
@@ -144,6 +158,8 @@ async function deliverNotificationJob(job: NotificationJob, payload: Notificatio
     monitor,
     result: payload.result,
     rca: payload.rca,
+    // A job abandoned by the watchdog and taken over by another worker stops before its next channel.
+    canDeliver: () => isNotificationJobOwned(job),
     buildEmailAttachments: payload.captureScreenshot
       ? (language) => captureAlertScreenshot(job, monitor, payload.result, language)
       : undefined,

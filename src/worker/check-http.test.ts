@@ -3,6 +3,7 @@ import https from "node:https";
 import { brotliCompressSync, gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { createPinnedLookup } from "@/lib/security/public-network-target";
 import { checkHttpMonitor } from "@/worker/check-http";
 
 vi.mock("@/lib/security/public-network-target", () => ({
@@ -451,6 +452,35 @@ describe("failure evidence", () => {
     expect(result.evidence?.phase).toBe("connect");
     expect(result.evidence?.hops[0]).toMatchObject({ remotePort: port, statusCode: null });
     expect(result.evidence?.error).toMatch(/ECONNREFUSED/);
+  });
+
+  it("names the address a host name resolved to when the connection is refused", async () => {
+    const server = await createServer(() => undefined);
+    const port = resolveServerPort(server);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    servers.length = 0;
+    vi.mocked(createPinnedLookup).mockImplementationOnce(() => ((_hostname, options, callback) => {
+      queueMicrotask(() => (options.all
+        ? (callback as (error: null, addresses: Array<{ address: string; family: number }>) => void)(null, [{ address: "127.0.0.1", family: 4 }])
+        : (callback as (error: null, address: string, family: number) => void)(null, "127.0.0.1", 4)));
+    }) as ReturnType<typeof createPinnedLookup>);
+
+    const result = await checkHttpMonitor(buildHttpMonitor({ url: `http://refused.sentrovia.test:${port}/` }));
+
+    expect(result.evidence?.phase).toBe("connect");
+    expect(result.evidence?.hops[0]).toMatchObject({ remoteAddress: "127.0.0.1", remotePort: port });
+  });
+
+  it("reports an unusable redirect target as a rejected response", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(302, { Location: "http://[invalid" });
+      response.end();
+    });
+
+    const result = await checkHttpMonitor(buildHttpMonitor({ url: `http://127.0.0.1:${resolveServerPort(server)}/`, maxRedirects: 2 }));
+
+    expect(result.errorMessage).toBe("Service returned an invalid redirect location.");
+    expect(result.evidence?.phase).toBe("response");
   });
 
   it("records the redirect chain without the secrets in it", async () => {
