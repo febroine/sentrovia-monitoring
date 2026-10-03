@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 import { buildLoginRedirectPath } from '@/lib/auth/redirect';
 import { GlobalCommandSearch } from '@/components/global-command-search';
 import { BrowserAlerts } from '@/components/browser-alerts';
+import { Button } from '@/components/ui/button';
+import { buildSessionEndedLoginPath, installSessionGuard } from '@/lib/client/session-guard';
 
 const AUTH_ROUTES = ['/login', '/onboarding'];
 const PUBLIC_ROUTES = ['/status'];
@@ -82,6 +84,14 @@ export default function AppShell({
       buildLoginRedirectPath(`${window.location.pathname}${window.location.search}`)
     );
   }, [initialAuthenticated, isProtectedRoute, router]);
+
+  // When the session ends while a page is open, say so once for the whole app instead of leaving every
+  // panel showing "Unauthorized". It does not navigate away by itself, so unsaved text can be copied first.
+  const [sessionEnded, setSessionEnded] = useState(false);
+  useEffect(() => {
+    if (!isProtectedRoute || !initialAuthenticated) return;
+    return installSessionGuard(() => setSessionEnded(true));
+  }, [initialAuthenticated, isProtectedRoute]);
 
   useEffect(() => {
     if (isAuth || isPublicRoute || isRootTransition || !initialAuthenticated) {
@@ -156,6 +166,29 @@ export default function AppShell({
       </div>
       {initialUser ? <GlobalCommandSearch open={searchOpen} onOpenChange={setSearchOpen} role={initialUser.role} /> : null}
       {initialUser ? <BrowserAlerts /> : null}
+      {sessionEnded ? <SessionEndedBanner /> : null}
+    </div>
+  );
+}
+
+function SessionEndedBanner() {
+  return (
+    <div
+      role="alert"
+      className="fixed inset-x-0 top-0 z-[70] flex flex-col gap-3 border-b border-amber-500/40 bg-popover px-4 py-3 text-sm shadow-lg sm:flex-row sm:items-center sm:justify-between sm:px-6"
+    >
+      <p>
+        <span className="font-medium">Your session has ended.</span>{' '}
+        <span className="text-muted-foreground">Changes cannot be saved until you sign in again; copy any unsaved text first.</span>
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        className="shrink-0 self-start sm:self-auto"
+        onClick={() => window.location.assign(buildSessionEndedLoginPath(`${window.location.pathname}${window.location.search}`))}
+      >
+        Sign in again
+      </Button>
     </div>
   );
 }

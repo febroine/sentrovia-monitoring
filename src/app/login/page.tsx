@@ -6,6 +6,7 @@ import { isOnboardingRequired } from "@/lib/auth/service";
 // Explanations for why someone was sent to the sign-in page.
 const LOGIN_NOTICES: Record<string, string> = {
   "account-removed": "Your account was removed from the workspace, so you were signed out.",
+  "session-ended": "Your session has ended. Sign in again to continue where you left off.",
 };
 
 export default async function LoginPage({

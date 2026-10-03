@@ -23,6 +23,19 @@ describe("authenticated route matcher", () => {
     expect(response.cookies.get(SESSION_COOKIE_NAME)?.value).toBe("");
   });
 
+  it("answers API calls without a session with a JSON 401 instead of the sign-in page", async () => {
+    const request = new NextRequest("http://localhost/api/monitors", {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=expired-token` },
+    });
+
+    const response = await proxy(request);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("location")).toBeNull();
+    expect(await response.json()).toEqual({ message: "Your session has ended. Sign in again." });
+    expect(response.cookies.get(SESSION_COOKIE_NAME)?.value).toBe("");
+  });
+
   it("preserves a protected page query when redirecting through login", async () => {
     const request = new NextRequest("http://localhost/monitoring?create=1&company=company-1");
 

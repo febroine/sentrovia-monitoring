@@ -25,11 +25,13 @@ export async function proxy(request: NextRequest) {
   const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 
   if (!isPublicRoute(pathname) && !session) {
-    const loginUrl = new URL(
-      buildLoginRedirectPath(`${pathname}${request.nextUrl.search}`),
-      request.url
-    );
-    const response = NextResponse.redirect(loginUrl);
+    // API callers get a 401 they can act on; a redirect would hand fetch the sign-in page as a 200.
+    const response = pathname.startsWith("/api/")
+      ? NextResponse.json({ message: "Your session has ended. Sign in again." }, { status: 401 })
+      : NextResponse.redirect(new URL(
+        buildLoginRedirectPath(`${pathname}${request.nextUrl.search}`),
+        request.url
+      ));
     if (request.cookies.has(SESSION_COOKIE_NAME)) {
       response.cookies.set({
         ...getSessionCookieOptions(),

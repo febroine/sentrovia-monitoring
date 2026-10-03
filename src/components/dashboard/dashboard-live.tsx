@@ -62,6 +62,9 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       if (stream.readyState === EventSource.CLOSED) {
         setStreamClosed(true);
         setStreamError("Live updates stopped. Reload the page to resume them; you may need to sign in again.");
+        // EventSource does not report why it closed; an ended session answers 401 here and the
+        // app-wide session guard takes the user to sign in.
+        void fetch("/api/auth/session", { cache: "no-store" }).catch(() => undefined);
         return;
       }
       setStreamError("Live dashboard disconnected. Reconnecting automatically.");

@@ -70,6 +70,7 @@ All notable changes to Sentrovia are documented here. Published release tags and
 - Status page addresses can be typed with hyphens (the address is tidied when the field is left), and changing an existing address warns that the old link will stop working.
 - Editing a report schedule (*Edit*) saves changes to that schedule instead of creating a new one.
 - Going back from the administrator step of workspace setup keeps the names and email that were typed.
+- When a session ends while a page is open (it expired, the password was changed on another device, or the account was removed from the workspace), a banner says "Your session has ended" with *Sign in again*, which returns to the same page after signing in; it does not leave the page by itself, so unsaved text can be copied first. Before, every panel showed "Unauthorized" or "could not be loaded" with a *Try again* that could not work. API requests without a session now get a JSON 401 instead of a redirect to the sign-in page, which `fetch` received as an HTML page with status 200.
 
 ## [0.1.7] - 2026-09-22
 

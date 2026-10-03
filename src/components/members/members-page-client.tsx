@@ -30,6 +30,7 @@ import {
   USER_ROLES,
 } from "@/lib/auth/permissions";
 import { formatPanelDateTime } from "@/lib/time";
+import { markIntentionalSignOut } from "@/lib/client/session-guard";
 
 type MemberRole = MemberRecord["role"];
 type MemberRoleFilter = "all" | MemberRole;
@@ -226,6 +227,7 @@ export default function MembersPageClient() {
       }
 
       if (data.signedOut) {
+        markIntentionalSignOut();
         router.replace("/login?message=account-removed");
         router.refresh();
       }
