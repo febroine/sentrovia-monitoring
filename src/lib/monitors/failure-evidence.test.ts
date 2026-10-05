@@ -52,6 +52,18 @@ describe("failure evidence", () => {
     expect(excerpt).toEqual({ contentType: "text/html", excerpt: "Maintenance\n503\nService Unavailable — retry", truncated: false });
   });
 
+  it("decodes each entity once, so escaped entities stay as written", () => {
+    expect(buildBodyExcerpt("<p>a &amp;lt;b&amp;gt; &#39;q&#39; &amp;amp; &#x41;&QUOT;</p>", "text/html")?.excerpt)
+      .toBe("a &lt;b&gt; 'q' &amp; A\"");
+  });
+
+  it("reads text and structured content types but not binary ones", () => {
+    expect(buildBodyExcerpt("{\"error\":\"down\"}", "application/problem+json")?.excerpt).toBe("{\"error\":\"down\"}");
+    expect(buildBodyExcerpt("plain", "TEXT/plain; charset=utf-8")?.excerpt).toBe("plain");
+    expect(buildBodyExcerpt("bytes", "application/octet-stream")).toBeNull();
+    expect(buildBodyExcerpt("text", "image/png")).toBeNull();
+  });
+
   it("keeps the page title, which is often the only error text", () => {
     expect(buildBodyExcerpt("<html><head><title>502 Bad Gateway</title><meta charset=utf-8></head><body></body></html>", "text/html")?.excerpt)
       .toBe("502 Bad Gateway");

@@ -170,20 +170,33 @@ function looksBinary(bodyText: string) {
 
 function isTextContentType(contentType: string | null) {
   if (!contentType) return true;
-  return /^text\/|json|xml|html|javascript|x-www-form-urlencoded|problem/i.test(contentType);
+  // Any text/* type, or a structured type such as application/problem+json or image/svg+xml.
+  return /^text\//i.test(contentType)
+    || /(?:json|xml|html|javascript|x-www-form-urlencoded|problem)/i.test(contentType);
 }
 
 function htmlToText(html: string) {
-  return removeMarkup(html)
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d{1,7});/g, (_match, code: string) => safeCharacter(Number(code)))
-    .replace(/&#x([0-9a-f]{1,6});/gi, (_match, code: string) => safeCharacter(Number.parseInt(code, 16)));
+  // One pass, so a decoded "&" never starts another entity ("&amp;lt;" stays "&lt;").
+  return removeMarkup(html).replace(/&(?:(nbsp|amp|lt|gt|quot|apos)|#(\d{1,7})|#x([0-9a-f]{1,6}));/gi, (
+    match,
+    name: string | undefined,
+    decimal: string | undefined,
+    hex: string | undefined
+  ) => {
+    if (decimal) return safeCharacter(Number(decimal));
+    if (hex) return safeCharacter(Number.parseInt(hex, 16));
+    return NAMED_ENTITIES[name!.toLowerCase()] ?? match;
+  });
 }
+
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: "\"",
+  apos: "'",
+};
 
 const HIDDEN_ELEMENTS = /^<(script|style|noscript|template|svg)\b/;
 const LINE_BREAK_TAGS = /^<(br|\/p|\/div|\/h[1-6]|\/li|\/tr|\/title)\b/;

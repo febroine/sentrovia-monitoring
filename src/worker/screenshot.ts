@@ -120,13 +120,13 @@ export async function buildFailureScreenshotAttachment(
   } catch (error) {
     if (error instanceof ScreenshotNotNeededError) {
       onSkipped?.(error.message);
-      console.info(`[sentrovia] Failure screenshot left out for monitor ${monitor.id}: ${error.message}`);
+      console.info(`[sentrovia] Failure screenshot left out for monitor ${monitor.id}: ${toLogText(error.message)}`);
       return null;
     }
     const message = describeScreenshotFailure(error);
     onSkipped?.(message);
     console.warn(
-      `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${message}`
+      `[sentrovia] Failure screenshot skipped for monitor ${monitor.id}: ${toLogText(message)}`
     );
     return null;
   }
@@ -896,6 +896,12 @@ function extractNetworkErrorCode(message: string) {
 }
 
 // Turns raw Playwright errors into a single readable line for the monitor log.
+// The reasons can quote the monitored site, so line breaks and control characters are flattened to keep
+// them from forging extra log lines.
+export function toLogText(value: string) {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim();
+}
+
 export function describeScreenshotFailure(error: unknown) {
   // The first line carries the reason; Playwright appends call logs and install banners below it.
   const message = toScreenshotErrorMessage(error)

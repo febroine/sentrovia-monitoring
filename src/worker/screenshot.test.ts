@@ -5,6 +5,7 @@ import {
   buildFailureScreenshotAttachment,
   describeScreenshotContext,
   describeScreenshotFailure,
+  toLogText,
   shouldAllowScreenshotRequest,
   shouldCaptureScreenshot,
 } from "@/worker/screenshot";
@@ -94,6 +95,11 @@ describe("failure screenshot log messages", () => {
     );
 
     expect(describeScreenshotFailure(error)).toBe("page did not load within 8.0 s");
+  });
+
+  it("keeps site-controlled text on one log line", () => {
+    expect(toLogText("status 500\n[sentrovia] Fake entry\r\u2028more\u0000"))
+      .toBe("status 500 [sentrovia] Fake entry more");
   });
 
   it("keeps the browser network error code", () => {
