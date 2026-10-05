@@ -895,13 +895,16 @@ function extractNetworkErrorCode(message: string) {
   return /net::(ERR_[A-Z0-9_]+)/.exec(message)?.[1] ?? null;
 }
 
-// Turns raw Playwright errors into a single readable line for the monitor log.
 // The reasons can quote the monitored site, so line breaks and control characters are flattened to keep
 // them from forging extra log lines.
 export function toLogText(value: string) {
-  return value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim();
+  return value
+    .replace(/[\r\n\u2028\u2029]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+    .trim();
 }
 
+// Turns raw Playwright errors into a single readable line for the monitor log.
 export function describeScreenshotFailure(error: unknown) {
   // The first line carries the reason; Playwright appends call logs and install banners below it.
   const message = toScreenshotErrorMessage(error)
