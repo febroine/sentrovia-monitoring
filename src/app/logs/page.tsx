@@ -12,6 +12,7 @@ import { buildCsv, EXPORT_PRESETS } from "@/lib/logs/presets";
 import type { LogFilters, LogPresetRecord, LogRecord } from "@/lib/logs/types";
 import { showToast } from "@/lib/client-toast";
 import { createLogPreset, deleteLogPreset, loadLogPresets } from "@/lib/logs/client-presets";
+import { startVisiblePolling } from "@/lib/client/visible-polling";
 
 const DEFAULT_FILTERS: LogFilters = {
   search: "",
@@ -27,9 +28,12 @@ const AUTO_REFRESH_MS = 15000;
 
 export default function LogsPage() {
   const [filters, setFilters] = useState<LogFilters>(DEFAULT_FILTERS);
+  // Search text being typed; it becomes a filter after a short pause instead of on every keystroke.
+  const [searchDraft, setSearchDraft] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [clearableTotal, setClearableTotal] = useState(0);
+  const [canClear, setCanClear] = useState(false);
   const [options, setOptions] = useState<LogsFilterOptions>({ companies: [], monitors: [] });
   const [presets, setPresets] = useState<LogPresetRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,11 +95,12 @@ export default function LogsPage() {
       }
 
       const response = await fetch(`/api/logs?${params.toString()}`, { cache: "no-store" });
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         message?: string;
         logs?: LogRecord[];
         filters?: LogsFilterOptions;
         pagination?: { total: number; clearableTotal: number; page: number; pageSize: number };
+        canClear?: boolean;
       };
 
       if (!response.ok) {
@@ -115,6 +120,7 @@ export default function LogsPage() {
       setOptions(data.filters ?? { companies: [], monitors: [] });
       setTotal(data.pagination?.total ?? 0);
       setClearableTotal(data.pagination?.clearableTotal ?? 0);
+      setCanClear(data.canClear === true);
       setError(null);
 
       if (newIds.length > 0 && silent) {
@@ -137,8 +143,7 @@ export default function LogsPage() {
   }, [loadLogs, loadPresets]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => void loadLogs(true), AUTO_REFRESH_MS);
-    return () => window.clearInterval(intervalId);
+    return startVisiblePolling(() => void loadLogs(true), AUTO_REFRESH_MS);
   }, [loadLogs]);
 
   async function clearAllLogs() {
@@ -147,7 +152,7 @@ export default function LogsPage() {
 
     try {
       const response = await fetch("/api/logs", { method: "DELETE" });
-      const data = (await response.json()) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
 
       if (!response.ok) {
         throw new Error(data.message ?? "Unable to clear logs.");
@@ -207,6 +212,17 @@ export default function LogsPage() {
     setSelectedIds(new Set());
     setPage(1);
   }
+
+  useEffect(() => {
+    if (searchDraft === null) return;
+    const timer = window.setTimeout(() => {
+      setFilters((current) => ({ ...current, search: searchDraft }));
+      setSelectedIds(new Set());
+      setPage(1);
+      setSearchDraft(null);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchDraft]);
 
   function updateFilter<K extends keyof LogFilters>(key: K, value: LogFilters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -302,10 +318,12 @@ export default function LogsPage() {
           <Button variant="outline" size="icon" aria-label="Refresh event logs" title="Refresh" onClick={() => void loadLogs()} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           </Button>
-          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={clearableTotal === 0}>
-            <Trash2 data-icon="inline-start" className="h-4 w-4" />
-            Clear logs
-          </Button>
+          {canClear ? (
+            <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setClearConfirmationOpen(true)} disabled={clearableTotal === 0}>
+              <Trash2 data-icon="inline-start" className="h-4 w-4" />
+              Clear logs
+            </Button>
+          ) : null}
         </div>
       </header>
 
@@ -315,8 +333,8 @@ export default function LogsPage() {
       <div className="relative">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input
-          value={filters.search}
-          onChange={(event) => updateFilter("search", event.target.value)}
+          value={searchDraft ?? filters.search}
+          onChange={(event) => setSearchDraft(event.target.value)}
           placeholder="Search event logs"
           aria-label="Search event logs"
           className="h-9 pl-9"
@@ -354,6 +372,7 @@ export default function LogsPage() {
         logs={logs}
         total={total}
         loading={loading}
+        loadFailed={Boolean(error)}
         selectedIds={selectedIds}
         highlightIds={highlightIds}
         page={page}

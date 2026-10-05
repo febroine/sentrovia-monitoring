@@ -5,6 +5,8 @@ import { FileText, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DurationInput } from "@/components/ui/duration-input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -141,7 +143,7 @@ export function MonitorTextImportDialog({
           lineNumbers: targets.map((target) => target.lineNumber),
         }),
       });
-      const data = (await response.json()) as { message?: string; monitors?: MonitorRecord[] };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; monitors?: MonitorRecord[] };
 
       if (!response.ok || !data.monitors) {
         throw new Error(data.message ?? "Unable to import TXT domain list.");
@@ -235,13 +237,12 @@ export function MonitorTextImportDialog({
 
                   <Field label="Check interval" htmlFor="txt-interval-value">
                     <div className="flex gap-2">
-                      <Input
+                      <NumberInput
                         id="txt-interval-value"
-                        type="number"
                         min={1}
                         max={1440}
                         value={settings.intervalValue}
-                        onChange={(event) => updateSetting("intervalValue", Number(event.target.value) || 1)}
+                        onValueChange={(value) => updateSetting("intervalValue", value)}
                       />
                       <Select value={settings.intervalUnit} onValueChange={(value) => updateSetting("intervalUnit", value as IntervalUnit)}>
                         <SelectTrigger className="w-28" aria-label="Check interval unit"><SelectValue /></SelectTrigger>
@@ -254,40 +255,37 @@ export function MonitorTextImportDialog({
                     </div>
                   </Field>
 
-                  <Field label="Hard failure timeout (ms)" htmlFor="txt-timeout">
-                    <Input
+                  <Field label="Hard failure timeout" htmlFor="txt-timeout">
+                    <DurationInput
                       id="txt-timeout"
-                      type="number"
-                      min={1000}
-                      max={120000}
-                      value={settings.timeout}
-                      onChange={(event) => updateSetting("timeout", Number(event.target.value) || 1000)}
+                      ariaLabel="Hard failure timeout"
+                      valueMs={settings.timeout}
+                      minSeconds={1}
+                      maxSeconds={120}
+                      onChange={(value) => { if (value !== null) updateSetting("timeout", value); }}
                     />
                   </Field>
 
-                  <Field label="Slow response threshold (ms)" htmlFor="txt-slow-threshold">
-                    <Input
+                  <Field label="Slow response threshold" htmlFor="txt-slow-threshold">
+                    <DurationInput
                       id="txt-slow-threshold"
-                      type="number"
-                      min={1}
-                      max={Math.max(1, settings.timeout - 1)}
+                      ariaLabel="Slow response threshold"
+                      valueMs={settings.slowResponseThresholdMs}
+                      minSeconds={0.001}
+                      maxSeconds={Math.max(0.001, (settings.timeout - 1) / 1_000)}
                       placeholder="Disabled"
-                      value={settings.slowResponseThresholdMs ?? ""}
-                      onChange={(event) => {
-                        const value = event.target.value.trim();
-                        updateSetting("slowResponseThresholdMs", value ? Number(value) || null : null);
-                      }}
+                      optional
+                      onChange={(value) => updateSetting("slowResponseThresholdMs", value)}
                     />
                   </Field>
 
                   <Field label="Consecutive failures required" htmlFor="txt-retries">
-                    <Input
+                    <NumberInput
                       id="txt-retries"
-                      type="number"
                       min={2}
                       max={10}
                       value={settings.retries}
-                      onChange={(event) => updateSetting("retries", Number(event.target.value) || 2)}
+                      onValueChange={(value) => updateSetting("retries", value)}
                     />
                   </Field>
 

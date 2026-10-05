@@ -7,6 +7,7 @@ import { changePasswordSchema, flattenValidationIssues } from "@/lib/auth/schema
 import { changeUserPassword } from "@/lib/auth/service";
 import { createSessionToken } from "@/lib/auth/token";
 import { readJsonBody } from "@/lib/http/json-body";
+import { recordAuditEventSafely } from "@/lib/audit/service";
 
 export const runtime = "nodejs";
 const AUTH_JSON_BODY_LIMIT_BYTES = 32_000;
@@ -33,6 +34,17 @@ export async function POST(request: NextRequest) {
 
     const result = await changeUserPassword(session.id, parsed.data);
     await clearAuthFailures(request, "change-password", identifier);
+    await recordAuditEventSafely({
+      userId: session.id,
+      workspaceId: session.activeWorkspaceId,
+      actorUserId: session.id,
+      actorLabel: session.email,
+      entityType: "user",
+      entityId: session.id,
+      entityLabel: session.email,
+      action: "auth.password_changed",
+      summary: "Changed their password; their other sessions were signed out.",
+    });
 
     const response = NextResponse.json({
       message: "Password updated successfully.",

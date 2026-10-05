@@ -157,7 +157,7 @@ describe("notification templates", () => {
     expect(latency.htmlBody).toContain("Performance warning for api.example.com");
     expect(reminder.htmlBody).toContain("API has been unavailable for 5m");
     expect(sslExpiry.subject).toBe("Certificate warning: api.example.com");
-    expect(sslExpiry.htmlBody).toContain("Renew API's certificate");
+    expect(sslExpiry.htmlBody).toContain("Renew API&#39;s certificate");
     expect(sslExpiry.textBody).toContain("Certificate: TLS certificate expires in 10 days.");
     expect(sslExpiry.telegramBody).toBe("TLS api.example.com: TLS certificate expires in 10 days.");
   });
@@ -673,6 +673,51 @@ describe("notification templates", () => {
     expect(rendered.htmlBody).toContain(">Sertifikayı kontrol et</a>");
     expect(rendered.telegramBody).toContain("TLS sertifikasının süresi 2026-05-23 tarihinde, 10 gün içinde dolacak.");
   });
+
+  it("adds what the failed check saw as one line, without the body excerpt", () => {
+    const context = withEvidence(buildContext());
+    const rendered = renderNotificationTemplates(context, DEFAULT_SETTINGS, "https://sentrovia.example.com");
+
+    const line = "Check details: 203.0.113.10:443 · DNS 4 ms · connect 20 ms · TLS 31 ms · first byte 15 ms · server: nginx";
+    expect(rendered.textBody).toContain(line);
+    expect(rendered.telegramBody).toContain(line);
+    expect(rendered.htmlBody).toContain("203.0.113.10:443");
+    // Kept with the other detail lines, ahead of the recommended checks.
+    expect(rendered.textBody.indexOf(line)).toBeLessThan(rendered.textBody.indexOf("Recommended checks"));
+    for (const body of [rendered.textBody, rendered.telegramBody, rendered.htmlBody]) {
+      expect(body).not.toContain("upstream body text");
+    }
+  });
+
+  it("writes the check details line in the alert language", () => {
+    const context = withEvidence(buildContext({ notificationLanguage: "tr" }));
+    const rendered = renderNotificationTemplates(context, DEFAULT_SETTINGS, "https://sentrovia.example.com");
+
+    expect(rendered.textBody).toContain("Kontrol ayrıntıları: 203.0.113.10:443 · DNS 4 ms · bağlantı 20 ms");
+  });
+
+  it("places the check details where a custom template asks for them, once", () => {
+    const context = withEvidence(buildContext({ emailBody: "Down: {domain}\nSaw: {check_details}\nOwner: {message}" }));
+    const rendered = renderNotificationTemplates(context, DEFAULT_SETTINGS, "https://sentrovia.example.com");
+
+    expect(rendered.textBody).toContain("Saw: 203.0.113.10:443");
+    expect(rendered.textBody).not.toContain("Check details:");
+  });
+
+  it("adds no check details line when the check recorded nothing", () => {
+    const rendered = renderNotificationTemplates(buildContext(), DEFAULT_SETTINGS, "https://sentrovia.example.com");
+
+    expect(rendered.textBody).not.toContain("Check details");
+    expect(rendered.telegramBody).not.toContain("Check details");
+  });
+
+  it("never expands placeholders sent by the monitored server", () => {
+    const context = withEvidence(buildContext());
+    context.result.evidence!.hops[0].headers.server = "{organization} {message}";
+    const rendered = renderNotificationTemplates(context, DEFAULT_SETTINGS, "https://sentrovia.example.com");
+
+    expect(rendered.textBody).toContain("server: {organization} {message}");
+  });
 });
 
 function buildContext(monitorOverrides: Partial<Monitor> = {}): NotificationContext {
@@ -759,6 +804,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     jsonPath: null,
     jsonExpectedValue: null,
     jsonMatchMode: "equals",
+    dnsExpectedValues: null,
+    dnsMatchMode: "includes",
     tags: [],
     renotifyCount: null,
     maxRedirects: 5,
@@ -794,4 +841,25 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     updatedAt: now,
     ...overrides,
   };
+}
+
+function withEvidence(context: NotificationContext): NotificationContext {
+  context.result.evidence = {
+    version: 1,
+    phase: "response",
+    hops: [{
+      url: "https://api.example.com/",
+      method: "GET",
+      statusCode: 500,
+      remoteAddress: "203.0.113.10",
+      remotePort: 443,
+      reusedConnection: false,
+      timings: { dnsMs: 4, connectMs: 20, tlsMs: 31, firstByteMs: 15, totalMs: 80 },
+      headers: { server: "nginx", "content-type": "text/html" },
+    }],
+    certificate: null,
+    body: { contentType: "text/html", excerpt: "upstream body text", truncated: false },
+    error: "Service returned HTTP 500.",
+  };
+  return context;
 }

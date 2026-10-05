@@ -1,3 +1,4 @@
+import type { DnsMatchMode, DnsRecordType } from "@/lib/monitors/dns-records";
 import type { NotificationLanguage, SettingsPayload } from "@/lib/settings/types";
 
 export type SiteStatus = "up" | "down" | "pending";
@@ -6,7 +7,7 @@ export type MonitorNotificationLanguage = "default" | NotificationLanguage;
 export type IntervalUnit = "sn" | "dk" | "sa";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 export type IpFamily = "auto" | "ipv4" | "ipv6";
-export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres" | "ping" | "heartbeat";
+export type MonitorType = "http" | "keyword" | "json" | "port" | "postgres" | "ping" | "dns" | "heartbeat";
 type JsonMatchMode = "equals" | "contains" | "exists";
 
 export interface MonitorConfigBundle {
@@ -33,6 +34,8 @@ export interface WorkspaceBackupBundle {
     name: string;
     description: string;
     notificationEmailRecipients?: string;
+    // Address -> identity keys (type and target) of the monitors it is limited to.
+    notificationEmailScopeTargets?: Record<string, string[]>;
     telegramBotToken?: string;
     telegramBotTokenConfigured?: boolean;
     telegramChatId?: string;
@@ -93,6 +96,8 @@ export interface MonitorRecord {
   jsonPath: string | null;
   jsonExpectedValue: string | null;
   jsonMatchMode: JsonMatchMode;
+  dnsExpectedValues: string | null;
+  dnsMatchMode: DnsMatchMode;
   checkSslExpiry: boolean;
   ignoreSslErrors: boolean;
   cacheBuster: boolean;
@@ -221,6 +226,8 @@ interface WorkerCycleMetricRecord {
   pendingCount: number;
   averageLatencyMs: number | null;
   maxLatencyMs: number | null;
+  averageScheduleLagMs: number | null;
+  maxScheduleLagMs: number | null;
   errorMessage: string | null;
 }
 
@@ -239,6 +246,14 @@ export interface WorkerObservability {
     lastCycleFailureCount: number;
     lastCyclePendingCount: number;
     lastCycleAverageLatencyMs: number | null;
+    // How long the most overdue monitor has been waiting for a worker slot right now.
+    oldestDueWaitMs: number | null;
+    // How long monitors had been due when their check started, over the selected range.
+    averageScheduleLagMsInRange: number | null;
+    maxScheduleLagMsInRange: number | null;
+    // Alerts raised by checks and not sent yet (screenshot or delivery still running, or retrying).
+    queuedNotifications: number;
+    oldestQueuedNotificationWaitMs: number | null;
   };
   recentCycles: WorkerCycleMetricRecord[];
   trend: Array<{
@@ -306,6 +321,10 @@ export interface MonitorPayload {
   jsonPath: string;
   jsonExpectedValue: string;
   jsonMatchMode: JsonMatchMode;
+  dnsRecordType: DnsRecordType;
+  dnsServer: string;
+  dnsExpectedValues: string;
+  dnsMatchMode: DnsMatchMode;
   companyId: string;
   company: string;
   notificationPref: NotificationPref;
@@ -379,6 +398,7 @@ export interface WorkerStatus {
   connectivityStatus: "unknown" | "online" | "offline" | "disabled";
   connectivityCheckedAt: string | null;
   connectivityMessage: string | null;
+  pollIntervalMs?: number;
   observability?: WorkerObservability;
 }
 
@@ -403,6 +423,10 @@ export const DEFAULT_MONITOR_FORM: MonitorPayload = {
   jsonPath: "",
   jsonExpectedValue: "",
   jsonMatchMode: "equals",
+  dnsRecordType: "A",
+  dnsServer: "",
+  dnsExpectedValues: "",
+  dnsMatchMode: "includes",
   companyId: "",
   company: "",
   notificationPref: "both",

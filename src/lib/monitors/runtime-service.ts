@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
-import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { monitors, userSettings, workspaceMembers, workspaceSettings, type Monitor } from "@/lib/db/schema";
 import { env, getDatabaseUrl } from "@/lib/env";
 import { encryptLegacyClaimedSecrets } from "@/lib/monitors/heartbeat-secrets";
+import { resolveDatabaseSessionSettings } from "@/lib/db/session-settings";
 import { calculateVerificationLeaseBudgetMs } from "@/lib/monitors/verification";
 import { getMonitorUptimeById, NO_MONITOR_UPTIME_DATA } from "@/lib/monitoring/uptime";
 import { decryptValueOrLegacyPlaintext } from "@/lib/security/encryption";
@@ -14,24 +15,52 @@ const MONITOR_LEASE_MS = Math.max(env.workerPollIntervalMs * 6, 180_000);
 const MONITOR_LEASE_SAFETY_MS = 120_000;
 const MAX_DUE_WORKSPACES_PER_CYCLE = 100;
 const DUE_WORKSPACE_QUERY_CONCURRENCY = 10;
-const MONITOR_HISTORY_LOCK_POOL_SIZE = 10;
+// Each check slot holds at most one history lock, for its whole persist phase (including diagnostics).
+// A pool smaller than the slot count made the eleventh concurrently failing monitor wait for a lock
+// connection; the cap keeps a very high WORKER_CONCURRENCY within PostgreSQL's default limit of 100
+// connections. Notification slots take the lock briefly to record a sent alert and get their own share.
+const MIN_MONITOR_HISTORY_LOCK_POOL_SIZE = 10;
+const MAX_MONITOR_HISTORY_LOCK_POOL_SIZE = 50;
+// Lock connections idle out after a burst of failures instead of staying open.
+const MONITOR_HISTORY_LOCK_IDLE_TIMEOUT_SECONDS = 60;
 const globalForMonitorHistoryLock = globalThis as unknown as {
   monitorHistoryLockSql?: ReturnType<typeof postgres>;
 };
 const monitorHistoryLockSql = globalForMonitorHistoryLock.monitorHistoryLockSql ?? postgres(getDatabaseUrl(), {
-  max: MONITOR_HISTORY_LOCK_POOL_SIZE,
+  max: resolveMonitorHistoryLockPoolSize(env.workerConcurrency) + env.notificationConcurrency,
+  idle_timeout: MONITOR_HISTORY_LOCK_IDLE_TIMEOUT_SECONDS,
   prepare: false,
+  // Only statement and lock waits time out; the lock transaction stays open on purpose while the
+  // monitor's result is persisted, so no idle-in-transaction limit applies here.
+  connection: resolveDatabaseSessionSettings(),
 });
 
 if (process.env.NODE_ENV !== "production") {
   globalForMonitorHistoryLock.monitorHistoryLockSql = monitorHistoryLockSql;
 }
 
+export function resolveMonitorHistoryLockPoolSize(workerConcurrency: number) {
+  return Math.min(
+    MAX_MONITOR_HISTORY_LOCK_POOL_SIZE,
+    Math.max(MIN_MONITOR_HISTORY_LOCK_POOL_SIZE, workerConcurrency)
+  );
+}
+
 export type ClaimedMonitor = Monitor & { allowPrivateTargets: boolean };
 
-export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
+export type MonitorClaimCapacity = {
+  // Free worker slots; at most this many monitors are claimed.
+  limit?: number;
+  // How many more verification probes may start; they are the checks that can run for minutes.
+  verificationLimit?: number;
+};
+
+export async function claimDueMonitors(now: Date, capacity: MonitorClaimCapacity = {}): Promise<ClaimedMonitor[]> {
   const dueWorkspaces = await db
-    .select({ workspaceId: monitors.workspaceId })
+    .select({
+      workspaceId: monitors.workspaceId,
+      hasDueVerification: sql<boolean>`bool_or(${monitors.verificationMode})`,
+    })
     .from(monitors)
     .where(buildDueMonitorPredicate(now))
     .groupBy(monitors.workspaceId)
@@ -85,16 +114,17 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
       legacyBatchSizeByWorkspace.get(workspaceId)
     ),
   ]));
-  const selectedRows = (await mapWithConcurrency(
-    workspaceIds,
+  const verificationLimit = capacity.verificationLimit ?? Number.POSITIVE_INFINITY;
+  const selectedRows = selectClaimableMonitors(await mapWithConcurrency(
+    dueWorkspaces,
     DUE_WORKSPACE_QUERY_CONCURRENCY,
-    (workspaceId) => db
-      .select()
-      .from(monitors)
-      .where(and(eq(monitors.workspaceId, workspaceId), buildDueMonitorPredicate(now)))
-      .orderBy(desc(monitors.verificationMode), asc(monitors.nextCheckAt), asc(monitors.createdAt))
-      .limit(batchSizeByWorkspace.get(workspaceId) ?? DEFAULT_SETTINGS.monitoring.batchSize)
-  )).flat();
+    ({ workspaceId, hasDueVerification }) => selectWorkspaceDueMonitors(
+      workspaceId,
+      now,
+      batchSizeByWorkspace.get(workspaceId) ?? DEFAULT_SETTINGS.monitoring.batchSize,
+      hasDueVerification ? verificationLimit : 0
+    )
+  ), capacity);
 
   if (selectedRows.length === 0) {
     return [];
@@ -111,9 +141,15 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
     })
     .where(
       and(
+        // A row another session holds locked (a stuck transaction, a long edit) is skipped and claimed
+        // on a later dispatch; waiting for it held back the claim of every other due monitor.
         inArray(
           monitors.id,
-          selectedRows.map((monitor) => monitor.id)
+          db
+            .select({ id: monitors.id })
+            .from(monitors)
+            .where(inArray(monitors.id, selectedRows.map((monitor) => monitor.id)))
+            .for("update", { skipLocked: true })
         ),
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
@@ -138,6 +174,65 @@ export async function claimDueMonitors(now: Date): Promise<ClaimedMonitor[]> {
     telegramBotToken: decryptValueOrLegacyPlaintext(monitor.telegramBotToken),
     allowPrivateTargets: env.monitorAllowPrivateTargets && hasPrivateTargetAccess(monitor, membershipRows),
   }));
+}
+
+// Verification probes come first, but only as many as may start: fetching them with the regular
+// checks under one limit let a workspace with many failing monitors fill its whole window with
+// probes that cannot start, so none of its regular checks were claimed.
+async function selectWorkspaceDueMonitors(
+  workspaceId: string,
+  now: Date,
+  batchSize: number,
+  verificationLimit: number
+) {
+  const dueInWorkspace = and(eq(monitors.workspaceId, workspaceId), buildDueMonitorPredicate(now));
+  const byPriority = [asc(monitors.nextCheckAt), asc(monitors.createdAt)] as const;
+  const verificationRows = verificationLimit > 0
+    ? await db
+      .select()
+      .from(monitors)
+      .where(and(dueInWorkspace, eq(monitors.verificationMode, true)))
+      .orderBy(...byPriority)
+      .limit(Math.min(batchSize, verificationLimit))
+    : [];
+  const regularRows = verificationRows.length < batchSize
+    ? await db
+      .select()
+      .from(monitors)
+      .where(and(dueInWorkspace, eq(monitors.verificationMode, false)))
+      .orderBy(...byPriority)
+      .limit(batchSize - verificationRows.length)
+    : [];
+
+  return [...verificationRows, ...regularRows];
+}
+
+// Takes monitors round-robin across workspaces (each list already ordered by priority), so a
+// workspace with many due monitors cannot fill every free slot while others wait.
+export function selectClaimableMonitors<T extends { verificationMode: boolean }>(
+  rowsByWorkspace: T[][],
+  capacity: MonitorClaimCapacity = {}
+) {
+  const limit = capacity.limit ?? Number.POSITIVE_INFINITY;
+  let verificationRemaining = capacity.verificationLimit ?? Number.POSITIVE_INFINITY;
+  const queues = rowsByWorkspace.map((rows) => [...rows]);
+  const selected: T[] = [];
+
+  while (selected.length < limit && queues.some((queue) => queue.length > 0)) {
+    for (const queue of queues) {
+      if (selected.length >= limit) break;
+      let row = queue.shift();
+      // Verification probes beyond their share stay due for a later claim.
+      while (row && row.verificationMode && verificationRemaining <= 0) {
+        row = queue.shift();
+      }
+      if (!row) continue;
+      if (row.verificationMode) verificationRemaining -= 1;
+      selected.push(row);
+    }
+  }
+
+  return selected;
 }
 
 export function resolveMonitorBatchSize(
@@ -216,6 +311,7 @@ export function calculateMonitorLeaseMs(
   const maximumCheckBudgetMs = rows.reduce(
     (maximum, row) => {
       const timeoutMs = Math.max(0, row.timeout);
+      // Screenshots and deliveries run in the notification outbox, outside the check and its lease.
       const checkBudgetMs = row.verificationMode
         ? calculateVerificationLeaseBudgetMs(timeoutMs)
         : timeoutMs;
@@ -301,6 +397,17 @@ export async function withMonitorClaimHistoryLock<T>(
   return result as T | null;
 }
 
+// Serializes a notification job's bookkeeping with the monitor's checks and history resets, without
+// needing the monitor's lease.
+export async function withMonitorHistoryLock<T>(monitorId: string, operation: () => Promise<T>): Promise<T> {
+  const result = await monitorHistoryLockSql.begin(async (lockTransaction) => {
+    await lockTransaction`select pg_advisory_xact_lock(hashtextextended(${monitorHistoryLockKey(monitorId)}, 0))`;
+    return operation();
+  });
+
+  return result as T;
+}
+
 function monitorHistoryLockKey(monitorId: string) {
   return `sentrovia:monitor-history:${monitorId}`;
 }
@@ -383,7 +490,9 @@ export async function refreshMonitorUptime(
 export async function renewMonitorLease(
   monitorId: string,
   expectedLeaseToken: string | null,
-  monitor: Pick<typeof monitors.$inferSelect, "timeout" | "verificationMode">
+  monitor: Pick<typeof monitors.$inferSelect, "timeout" | "verificationMode">,
+  // Periodic renewals during a check only extend the lease; the monitor itself did not change.
+  options: { heartbeat?: boolean } = {}
 ) {
   if (!expectedLeaseToken) {
     return false;
@@ -399,7 +508,7 @@ export async function renewMonitorLease(
         coalesce(${monitors.leaseExpiresAt}, now()),
         (${extendedLeaseTimestamp})::timestamptz
       )`,
-      updatedAt: new Date(),
+      ...(options.heartbeat ? {} : { updatedAt: new Date() }),
     })
     .where(
       and(

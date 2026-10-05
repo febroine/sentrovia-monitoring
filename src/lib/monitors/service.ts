@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
-import { getCompanyById } from "@/lib/companies/service";
+import { getCompanyById, removeMonitorsFromOtherCompanyScopes } from "@/lib/companies/service";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
   deliveryEvents,
@@ -8,6 +8,7 @@ import {
   monitorEvents,
   monitorOutages,
   monitors,
+  notificationJobs,
   outageEvents,
 } from "@/lib/db/schema";
 import { AuthError } from "@/lib/auth/errors";
@@ -22,6 +23,7 @@ import {
   buildCanonicalMonitorTarget,
   buildHeartbeatMonitorTarget,
   buildMonitorIdentityKey,
+  parseDnsMonitorTarget,
   parsePingMonitorTarget,
   parsePortMonitorTarget,
   parsePostgresMonitorTarget,
@@ -55,6 +57,7 @@ export {
   resolveMonitorBatchSize,
   renewMonitorLease,
   withMonitorClaimHistoryLock,
+  withMonitorHistoryLock,
 } from "@/lib/monitors/runtime-service";
 export type { ClaimedMonitor } from "@/lib/monitors/runtime-service";
 export {
@@ -70,6 +73,7 @@ export {
   updateWorkerState,
 } from "@/lib/monitors/runtime-store";
 export {
+  getMonitorCheckEvidence,
   getCompanyMonthlyUptimeReport,
   getCompanySlaReport,
   listRecentMonitorChecks,
@@ -275,9 +279,11 @@ export async function createMonitor(userId: string, input: MonitorInput, workspa
       tx,
       resolvedWorkspaceId
     );
+    // Due right away, like monitors added in bulk; without a schedule the console reported a new
+    // monitor as "Check schedule missing" until its first check.
     const [monitor] = await tx
       .insert(monitors)
-      .values(values)
+      .values({ ...values, nextCheckAt: values.isActive ? new Date() : null })
       .returning();
 
     return monitor;
@@ -419,6 +425,9 @@ async function updateMonitorInTransaction(
     return null;
   }
 
+  if (existingMonitor.companyId !== monitor.companyId) {
+    await removeMonitorsFromOtherCompanyScopes(tx, resolvedWorkspaceId, [monitor.id], monitor.companyId);
+  }
   await resolveOutageOnPause(existingMonitor, values.isActive, now, tx);
   if (targetChanged && existingMonitor.isActive && values.isActive) {
     await resolveOutage({
@@ -641,7 +650,8 @@ export async function bulkUpdateMonitors(
   userId: string,
   ids: string[],
   input: MonitorInput,
-  workspaceId?: string
+  workspaceId?: string,
+  fields?: string[]
 ) {
   return db.transaction(async (tx) => {
     const resolvedWorkspaceId = workspaceId ?? await requireWorkspaceIdForUser(userId, tx);
@@ -656,7 +666,7 @@ export async function bulkUpdateMonitors(
     const now = new Date();
     const groups = new Map<string, {
       ids: string[];
-      values: ReturnType<typeof buildBulkEditableMonitorValues>;
+      values: Partial<ReturnType<typeof buildBulkEditableMonitorValues>>;
       active: boolean;
     }>();
     for (const existingMonitor of existingMonitors) {
@@ -668,7 +678,7 @@ export async function bulkUpdateMonitors(
       } else {
         groups.set(key, {
           ids: [existingMonitor.id],
-          values: buildBulkEditableMonitorValues(userId, resolvedWorkspaceId, monitorType, input),
+          values: pickBulkFields(buildBulkEditableMonitorValues(userId, resolvedWorkspaceId, monitorType, input), fields),
           active: existingMonitor.isActive,
         });
       }
@@ -757,6 +767,7 @@ export async function bulkMoveMonitorsToCompany(
     if (updated.length !== ids.length) {
       throw new AuthError("One or more selected monitors are unavailable.", 404);
     }
+    await removeMonitorsFromOtherCompanyScopes(tx, workspaceId, ids, company?.id ?? null);
     return updated;
   });
 }
@@ -790,6 +801,16 @@ export async function bulkUpdateMonitorPublication(
   });
 }
 
+// Keeps only the settings the user changed in bulk edit (plus ownership), so each monitor keeps its
+// own values for everything else.
+export function pickBulkFields<T extends { workspaceId: string; userId: string }>(values: T, fields?: string[]): Partial<T> & Pick<T, "workspaceId" | "userId"> {
+  if (!fields) return values;
+  const selected = new Set(fields);
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) => key === "workspaceId" || key === "userId" || selected.has(key))
+  ) as Partial<T> & Pick<T, "workspaceId" | "userId">;
+}
+
 function buildBulkEditableMonitorValues(
   userId: string,
   workspaceId: string,
@@ -797,7 +818,7 @@ function buildBulkEditableMonitorValues(
   input: MonitorInput
 ) {
   const supportsHttpOptions = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
-  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat";
+  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "dns" || monitorType === "heartbeat";
 
   return {
     workspaceId,
@@ -964,6 +985,8 @@ export async function resetMonitorHistory(userId: string, ids: string[], workspa
     await acquireMonitorHistoryLocks(tx, resetIds);
 
     // The monitor ownership check above is authoritative; child history can retain a legacy scope value.
+    // Queued alerts belong to the history being reset; an outage alert must not arrive afterwards.
+    await tx.delete(notificationJobs).where(inArray(notificationJobs.monitorId, resetIds));
     await tx.delete(deliveryEvents).where(inArray(deliveryEvents.monitorId, resetIds));
     await tx.delete(outageEvents).where(inArray(outageEvents.monitorId, resetIds));
     await tx.delete(monitorOutages).where(inArray(monitorOutages.monitorId, resetIds));
@@ -1431,7 +1454,7 @@ function buildTypeSpecificMonitorValues(
 ) {
   const { heartbeatToken, heartbeatTokenHash, monitorType } = identity;
   const supportsHttpOptions = monitorType === "http" || monitorType === "keyword" || monitorType === "json";
-  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "heartbeat";
+  const usesSyntheticGet = monitorType === "port" || monitorType === "postgres" || monitorType === "ping" || monitorType === "dns" || monitorType === "heartbeat";
   return {
     heartbeatToken: heartbeatToken ? encryptValue(heartbeatToken) : null,
     heartbeatTokenHash,
@@ -1448,8 +1471,10 @@ function buildTypeSpecificMonitorValues(
     jsonPath: monitorType === "json" ? input.jsonPath.trim() : null,
     jsonExpectedValue: monitorType === "json" ? input.jsonExpectedValue.trim() : null,
     jsonMatchMode: monitorType === "json" ? input.jsonMatchMode : "equals",
+    dnsExpectedValues: monitorType === "dns" ? input.dnsExpectedValues.trim() || null : null,
+    dnsMatchMode: monitorType === "dns" ? input.dnsMatchMode : "includes",
     maxRedirects: usesSyntheticGet ? 0 : input.maxRedirects,
-    ipFamily: monitorType === "postgres" || monitorType === "heartbeat" ? "auto" : input.ipFamily,
+    ipFamily: monitorType === "postgres" || monitorType === "dns" || monitorType === "heartbeat" ? "auto" : input.ipFamily,
     checkSslExpiry: supportsHttpOptions ? input.checkSslExpiry : false,
     ignoreSslErrors: supportsHttpOptions ? input.ignoreSslErrors : false,
     cacheBuster: supportsHttpOptions ? input.cacheBuster : false,
@@ -1556,7 +1581,7 @@ function compareNullableDates(left: Date | null, right: Date | null) {
 }
 
 function normalizeMonitorType(value: string | null | undefined): MonitorInput["monitorType"] {
-  if (value === "port" || value === "postgres" || value === "keyword" || value === "json" || value === "ping" || value === "heartbeat") {
+  if (value === "port" || value === "postgres" || value === "keyword" || value === "json" || value === "ping" || value === "dns" || value === "heartbeat") {
     return value;
   }
 
@@ -1613,6 +1638,15 @@ export async function assertMonitorNetworkTargetAllowed(
   allowPrivateTargets = false
 ) {
   if (monitorType === "heartbeat") {
+    return;
+  }
+
+  if (monitorType === "dns") {
+    // The looked-up name is never connected to; only a chosen DNS server is.
+    const { server } = parseDnsMonitorTarget(url);
+    if (server) {
+      await assertMonitorNetworkTarget(server, { allowPrivateTargets, message: MONITOR_PUBLIC_TARGET_ERROR });
+    }
     return;
   }
 

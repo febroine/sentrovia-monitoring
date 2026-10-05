@@ -1,9 +1,21 @@
 import http from "node:http";
 import https from "node:https";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
-import type { IncomingMessage } from "node:http";
-import type { TLSSocket } from "node:tls";
+import type { ClientRequest, IncomingMessage } from "node:http";
+import { isIP, type LookupFunction, type Socket } from "node:net";
+import tls, { type TLSSocket } from "node:tls";
 import type { Monitor } from "@/lib/db/schema";
+import {
+  buildBodyExcerpt,
+  pickRecordedHeaders,
+  redactUrl,
+  truncateEvidenceError,
+  type FailureEvidence,
+  type FailureEvidenceCertificate,
+  type FailureEvidenceHop,
+  type FailureEvidencePhase,
+} from "@/lib/monitors/failure-evidence";
+import { MONITOR_REQUEST_HEADERS } from "@/lib/monitors/request-identity";
 import {
   hasExpectedStatusCodeOverride,
   isCustomExpectedStatusCode,
@@ -22,6 +34,14 @@ interface HttpResponseSnapshot {
   sslExpiresAt: Date | null;
 }
 
+// Collects what the request saw while it runs, so a failure can be explained afterwards.
+type EvidenceRecorder = {
+  hops: FailureEvidenceHop[];
+  stage: FailureEvidencePhase;
+  certificate: FailureEvidenceCertificate | null;
+  finalBody: { text: string; contentType: string | null } | null;
+};
+
 const MONITOR_PUBLIC_TARGET_ERROR = "Monitor target is not allowed by the current network safety policy.";
 const ABSOLUTE_RESPONSE_BODY_LIMIT_BYTES = 100_000;
 
@@ -30,6 +50,7 @@ export async function checkHttpMonitor(
   allowPrivateTargets = false
 ): Promise<CheckResult> {
   const checkedAt = new Date();
+  const recorder: EvidenceRecorder = { hops: [], stage: "dns", certificate: null, finalBody: null };
 
   try {
     const response = await requestWithRedirects(
@@ -38,7 +59,8 @@ export async function checkHttpMonitor(
       0,
       undefined,
       undefined,
-      allowPrivateTargets
+      allowPrivateTargets,
+      recorder
     );
     const result = evaluateHttpResponse(monitor, response.statusCode, response.bodyText);
 
@@ -49,19 +71,50 @@ export async function checkHttpMonitor(
       errorMessage: result.errorMessage,
       failureReason: result.failureReason,
       sslExpiresAt: response.sslExpiresAt,
+      evidence: result.ok ? null : buildFailureEvidence(recorder, "response", result.errorMessage),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed";
     const checkDurationMs = Math.max(1, Date.now() - checkedAt.getTime());
-    return buildCheckResult(checkedAt, {
-      ok: false,
-      status: "down",
-      statusCode: null,
-      errorMessage: formatRequestFailureMessage(message, monitor.timeout, checkDurationMs),
-      failureReason: classifyFailureMessage(message),
-      sslExpiresAt: null,
-    });
+    const errorMessage = formatRequestFailureMessage(message, monitor.timeout, checkDurationMs);
+    const failureReason = classifyFailureMessage(message);
+    const latencyMs = Math.max(1, Date.now() - checkedAt.getTime());
+    if (failureReason === "tls") {
+      await recordRejectedCertificate(recorder);
+    }
+    return {
+      ...buildCheckResult(checkedAt, {
+        ok: false,
+        status: "down",
+        statusCode: null,
+        errorMessage,
+        failureReason,
+        sslExpiresAt: null,
+        evidence: buildFailureEvidence(recorder, recorder.stage, errorMessage),
+      }),
+      // Reading the rejected certificate is not part of the check's response time.
+      latencyMs,
+    };
   }
+}
+
+function buildFailureEvidence(
+  recorder: EvidenceRecorder,
+  phase: FailureEvidencePhase,
+  errorMessage: string | null
+): FailureEvidence | null {
+  if (recorder.hops.length === 0) {
+    return null;
+  }
+
+  return {
+    version: 1,
+    phase,
+    hops: recorder.hops,
+    certificate: recorder.certificate,
+    body: recorder.finalBody ? buildBodyExcerpt(recorder.finalBody.text, recorder.finalBody.contentType) : null,
+    error: truncateEvidenceError(errorMessage),
+  };
 }
 
 function evaluateHttpResponse(monitor: Monitor, statusCode: number, bodyText: string) {
@@ -157,9 +210,12 @@ async function requestWithRedirects(
   redirectCount: number,
   deadlineAt = Date.now() + monitor.timeout,
   method: Monitor["method"] = monitor.method,
-  allowPrivateTargets = false
+  allowPrivateTargets = false,
+  recorder?: EvidenceRecorder
 ): Promise<HttpResponseSnapshot> {
   const parsed = new URL(url);
+  const hopStartedAt = Date.now();
+  const hop = startEvidenceHop(recorder, parsed, method);
   const resolutionTimeoutMs = deadlineAt - Date.now();
   if (resolutionTimeoutMs <= 0) {
     throw buildRequestTimeoutError(monitor.timeout);
@@ -168,10 +224,13 @@ async function requestWithRedirects(
     allowPrivateTargets,
     message: MONITOR_PUBLIC_TARGET_ERROR,
   }, resolutionTimeoutMs);
+  const requestStartedAt = Date.now();
+  if (hop) hop.timings.dnsMs = requestStartedAt - hopStartedAt;
   const remainingTimeoutMs = deadlineAt - Date.now();
   if (remainingTimeoutMs <= 0) {
     throw buildRequestTimeoutError(monitor.timeout);
   }
+  if (recorder) recorder.stage = "connect";
 
   return new Promise((resolve, reject) => {
     const transport = parsed.protocol === "https:" ? https : http;
@@ -195,13 +254,19 @@ async function requestWithRedirects(
       parsed,
       {
         method,
+        headers: MONITOR_REQUEST_HEADERS,
+        // Every check opens its own connection. Node keeps connections alive by default, so a check
+        // could reuse a socket from the previous one and report a site up that no longer accepts
+        // connections, or keep talking to an old address after a DNS change.
+        agent: false,
         family: toNodeFamily(monitor.ipFamily),
-        lookup: createPinnedLookup(resolvedTarget),
+        lookup: recordDialledAddress(createPinnedLookup(resolvedTarget), hop),
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,
       },
       (response) => {
         activeResponse = response;
         const statusCode = response.statusCode ?? 0;
+        recordEvidenceResponse(recorder, hop, response, requestStartedAt);
         const location = response.headers.location;
         const sslExpiresAt = readResponseSslExpiry(response, monitor.checkSslExpiry);
 
@@ -216,31 +281,43 @@ async function requestWithRedirects(
           try {
             nextUrl = new URL(location, parsed).toString();
           } catch {
+            // The response arrived in full; it was its redirect target that was rejected.
+            if (recorder) recorder.stage = "response";
             rejectOnce(new Error("Service returned an invalid redirect location."));
             return;
           }
+          if (hop) hop.timings.totalMs = Date.now() - hopStartedAt;
           resolveOnce(requestWithRedirects(
             monitor,
             nextUrl,
             redirectCount + 1,
             deadlineAt,
             resolveRedirectMethod(statusCode, method),
-            allowPrivateTargets
+            allowPrivateTargets,
+            recorder
           ));
           return;
         }
 
         consumeResponse(response, monitor.responseMaxLength).then(
-          (bodyText) => resolveOnce({
-            statusCode,
-            bodyText,
-            sslExpiresAt,
-          }),
+          (bodyText) => {
+            if (recorder && hop) {
+              hop.timings.totalMs = Date.now() - hopStartedAt;
+              recorder.stage = "response";
+              recorder.finalBody = { text: bodyText, contentType: readHeader(response.headers["content-type"]) };
+            }
+            resolveOnce({
+              statusCode,
+              bodyText,
+              sslExpiresAt,
+            });
+          },
           rejectOnce
         );
       }
     );
 
+    watchEvidenceSocket(request, recorder, hop, parsed, requestStartedAt);
     deadlineTimer = setTimeout(() => {
       const timeoutError = buildRequestTimeoutError(monitor.timeout);
       activeResponse?.destroy(timeoutError);
@@ -250,6 +327,161 @@ async function requestWithRedirects(
     request.on("error", rejectOnce);
     request.end();
   });
+}
+
+const CERTIFICATE_READ_TIMEOUT_MS = 2_000;
+
+// A certificate the check rejected cannot be read from the failed connection, so it is read once more
+// from the same address with verification off. Only the handshake runs; no request is sent.
+async function recordRejectedCertificate(recorder: EvidenceRecorder) {
+  const hop = recorder.hops[recorder.hops.length - 1];
+  if (recorder.certificate || !hop?.remoteAddress || !hop.remotePort || !hop.url.startsWith("https:")) return;
+
+  let servername: string | undefined;
+  try {
+    const hostname = new URL(hop.url).hostname;
+    // SNI takes host names only.
+    servername = /^[\d.]+$|:/.test(hostname) ? undefined : hostname;
+  } catch {
+    servername = undefined;
+  }
+
+  recorder.certificate = await new Promise<FailureEvidenceCertificate | null>((resolve) => {
+    const socket = tls.connect({
+      host: hop.remoteAddress!,
+      port: hop.remotePort!,
+      servername,
+      rejectUnauthorized: false,
+      timeout: CERTIFICATE_READ_TIMEOUT_MS,
+    });
+    const finish = (certificate: FailureEvidenceCertificate | null) => {
+      socket.destroy();
+      resolve(certificate);
+    };
+    socket.once("secureConnect", () => finish(readEvidenceCertificate(socket)));
+    socket.once("timeout", () => finish(null));
+    socket.once("error", () => finish(null));
+  });
+}
+
+function startEvidenceHop(recorder: EvidenceRecorder | undefined, url: URL, method: string) {
+  if (!recorder) return null;
+
+  const hop: FailureEvidenceHop = {
+    url: redactUrl(url.toString()),
+    method,
+    statusCode: null,
+    remoteAddress: null,
+    remotePort: null,
+    reusedConnection: false,
+    timings: { dnsMs: null, connectMs: null, tlsMs: null, firstByteMs: null, totalMs: null },
+    headers: {},
+  };
+  // Node skips the lookup for an address literal, so the address is known right away.
+  const literal = url.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(literal)) hop.remoteAddress = literal;
+  recorder.hops.push(hop);
+  recorder.stage = "dns";
+  // The certificate belongs to the hop that failed, never to an earlier one.
+  recorder.certificate = null;
+  return hop;
+}
+
+function watchEvidenceSocket(
+  request: ClientRequest,
+  recorder: EvidenceRecorder | undefined,
+  hop: FailureEvidenceHop | null,
+  url: URL,
+  requestStartedAt: number
+) {
+  if (!recorder || !hop) return;
+
+  hop.remotePort = Number(url.port) || (url.protocol === "https:" ? 443 : 80);
+  // A rejected certificate (expired, wrong host) is the very thing to show, and it is only readable
+  // while the failed handshake's socket is still around.
+  request.once("error", () => {
+    if (!recorder.certificate && url.protocol === "https:" && request.socket) {
+      recorder.certificate = readEvidenceCertificate(request.socket as TLSSocket);
+    }
+  });
+  request.once("socket", (socket: Socket) => {
+    if (request.reusedSocket) {
+      hop.reusedConnection = true;
+      hop.remoteAddress = socket.remoteAddress ?? null;
+      recorder.stage = "first-byte";
+      return;
+    }
+
+    socket.once("connect", () => {
+      const connectedAt = Date.now();
+      hop.timings.connectMs = connectedAt - requestStartedAt;
+      hop.remoteAddress = socket.remoteAddress ?? hop.remoteAddress;
+      hop.remotePort = socket.remotePort ?? hop.remotePort;
+      recorder.stage = url.protocol === "https:" ? "tls" : "first-byte";
+      socket.once("secureConnect", () => {
+        hop.timings.tlsMs = Date.now() - connectedAt;
+        recorder.certificate = readEvidenceCertificate(socket as TLSSocket);
+        recorder.stage = "first-byte";
+      });
+    });
+  });
+}
+
+// The address being dialled is known before the connection succeeds, so a refused or timed-out
+// connection still names the server that did not answer. It is taken from the lookup itself: the
+// socket's own lookup event fires before a listener can be attached to the new socket.
+function recordDialledAddress(lookup: LookupFunction | undefined, hop: FailureEvidenceHop | null) {
+  if (!hop || !lookup) return lookup;
+
+  const wrapped: LookupFunction = (hostname, options, callback) => lookup(hostname, options, ((error: NodeJS.ErrnoException | null, address: string | Array<{ address: string }>, family?: number) => {
+    const dialled = Array.isArray(address) ? address[0]?.address : address;
+    if (!error && dialled) hop.remoteAddress ??= dialled;
+    (callback as (error: NodeJS.ErrnoException | null, address: unknown, family?: number) => void)(error, address, family);
+  }) as Parameters<LookupFunction>[2]);
+  return wrapped;
+}
+
+function recordEvidenceResponse(
+  recorder: EvidenceRecorder | undefined,
+  hop: FailureEvidenceHop | null,
+  response: IncomingMessage,
+  requestStartedAt: number
+) {
+  if (!recorder || !hop) return;
+
+  // Time the server took to answer once the connection was ready.
+  const readyAfterMs = (hop.timings.connectMs ?? 0) + (hop.timings.tlsMs ?? 0);
+  hop.timings.firstByteMs = Math.max(0, Date.now() - requestStartedAt - readyAfterMs);
+  hop.statusCode = response.statusCode ?? null;
+  hop.headers = pickRecordedHeaders(response.headers);
+  hop.remoteAddress ??= response.socket?.remoteAddress ?? null;
+  recorder.stage = "body";
+}
+
+function readEvidenceCertificate(socket: TLSSocket): FailureEvidenceCertificate | null {
+  try {
+    const certificate = socket.getPeerCertificate?.();
+    if (!certificate || Object.keys(certificate).length === 0) return null;
+    return {
+      subject: readCertificateName(certificate.subject),
+      issuer: readCertificateName(certificate.issuer),
+      validFrom: certificate.valid_from ?? null,
+      validTo: certificate.valid_to ?? null,
+      protocol: socket.getProtocol?.() ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readCertificateName(name: Record<string, string | string[] | undefined> | undefined) {
+  if (!name) return null;
+  const value = name.CN ?? name.O;
+  return (Array.isArray(value) ? value.join(", ") : value) ?? null;
+}
+
+function readHeader(value: string | string[] | undefined) {
+  return (Array.isArray(value) ? value[0] : value) ?? null;
 }
 
 function isRedirectStatus(statusCode: number) {
@@ -382,7 +614,8 @@ function readJsonPath(payload: unknown, path: string) {
       return Number.isInteger(index) ? current[index] : undefined;
     }
 
-    if (typeof current === "object") {
+    // Only the document's own keys: a path such as "constructor" must not reach inherited members.
+    if (typeof current === "object" && Object.hasOwn(current, segment)) {
       return (current as Record<string, unknown>)[segment];
     }
 

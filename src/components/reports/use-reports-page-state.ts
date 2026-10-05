@@ -13,6 +13,7 @@ import {
   generateReportPreview,
   loadReportSchedule,
   sendReportPreview,
+  updateReportScheduleFromDraft,
   sendScheduledReport,
   toggleReportSchedule,
 } from "@/components/reports/reports-page-actions";
@@ -53,8 +54,8 @@ function useReportsCatalog(setMessage: Setter<Notice>) {
         fetch("/api/reports", { cache: "no-store" }),
         fetch("/api/companies", { cache: "no-store" }),
       ]);
-      const reportsData = (await reportsResponse.json()) as ReportsResponse;
-      const companiesData = (await companiesResponse.json()) as { companies?: CompanyRecord[]; message?: string };
+      const reportsData = (await reportsResponse.json().catch(() => ({}))) as ReportsResponse;
+      const companiesData = (await companiesResponse.json().catch(() => ({}))) as { companies?: CompanyRecord[]; message?: string };
       if (!reportsResponse.ok) throw new Error(reportsData.message ?? "Unable to load report schedules.");
       if (!companiesResponse.ok) throw new Error(companiesData.message ?? "Unable to load companies.");
       setSchedules(reportsData.schedules ?? []);
@@ -90,6 +91,8 @@ function useScheduleWorkspace(companies: CompanyRecord[], schedules: ReportSched
   const [scheduleSearch, setScheduleSearch] = useState("");
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>("all");
   const [scheduleToDelete, setScheduleToDelete] = useState<ReportScheduleRecord | null>(null);
+  // The schedule the builder is editing; null when it creates a new one.
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const filteredSchedules = useMemo(
     () => filterSchedules(schedules, scheduleSearch, scheduleFilter),
     [scheduleFilter, scheduleSearch, schedules]
@@ -113,6 +116,7 @@ function useScheduleWorkspace(companies: CompanyRecord[], schedules: ReportSched
   return {
     activeSchedules, filteredSchedules, scheduleDraft, scheduleFilter, scheduleSearch, scheduleToDelete,
     setScheduleDraft, setScheduleFilter, setScheduleSearch, setScheduleToDelete,
+    editingScheduleId, setEditingScheduleId,
   };
 }
 
@@ -130,18 +134,25 @@ function buildReportsPageActions(context: ReportsActionContext) {
   const base = { notify: context.notify, setSaving: context.setSaving };
   const scheduleRuntime = { ...base, setSchedules: context.catalog.setSchedules };
   return {
-    createSchedule: () => createReportSchedule(context.schedule.scheduleDraft, {
-      ...scheduleRuntime,
-      setActiveTab: context.activeTab.setActiveTab,
-      setScheduleDraft: context.schedule.setScheduleDraft,
-    }),
+    createSchedule: () => context.schedule.editingScheduleId
+      ? updateReportScheduleFromDraft(context.schedule.editingScheduleId, context.schedule.scheduleDraft, {
+        ...scheduleRuntime,
+        setScheduleDraft: context.schedule.setScheduleDraft,
+        setEditingScheduleId: context.schedule.setEditingScheduleId,
+      })
+      : createReportSchedule(context.schedule.scheduleDraft, {
+        ...scheduleRuntime,
+        setActiveTab: context.activeTab.setActiveTab,
+        setScheduleDraft: context.schedule.setScheduleDraft,
+      }),
     deleteSchedule: (id: string) => deleteReportSchedule(id, scheduleRuntime),
     duplicateSchedule: (item: ReportScheduleRecord) => duplicateReportSchedule(item, scheduleRuntime),
     exportPreviewHtml: () => exportReportPreview(context.preview),
     loadScheduleIntoBuilder: (item: ReportScheduleRecord) => loadReportSchedule(
       item,
       context.schedule.setScheduleDraft,
-      context.activeTab.setActiveTab
+      context.activeTab.setActiveTab,
+      context.schedule.setEditingScheduleId
     ),
     sendScheduleNow: (id: string) => sendScheduledReport(id, {
       ...scheduleRuntime,
@@ -219,6 +230,7 @@ export function useReportsPageState() {
     sendPreviewNow,
     scheduleNeedsCompany: schedule.scheduleDraft.scope === "company" && !schedule.scheduleDraft.companyId,
     scheduleRecipients: parseRecipients(schedule.scheduleDraft.recipients),
+    schedules: catalog.schedules,
     setActiveTab: activeTab.setActiveTab,
     setLastDeliveryResult,
     setPreview,

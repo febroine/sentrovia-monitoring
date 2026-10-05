@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -11,11 +12,15 @@ import {
 } from "react";
 import { CheckSquare, Pencil, Plus, Search, Square, Trash2, Undo2 } from "lucide-react";
 import { CompanyMonitorsPanel } from "@/components/companies/company-monitors-panel";
+import { CompanyRecipientScopes } from "@/components/companies/company-recipient-scopes";
+import { useUnsavedChangesGuard } from "@/components/ui/unsaved-changes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FormAlert } from "@/components/ui/form-alert";
+import { showToast } from "@/lib/client-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,10 +36,15 @@ type PendingCompanyRestore = { ids: string[]; expiresAt: number };
 type CompanyDeleteRequest = { ids: string[]; names: string[]; monitorsCount: number };
 
 export default function CompaniesPage() {
-  const { companies, loading, saving, error, loadCompanies, createCompany, updateCompany, deleteCompany, bulkAction, restoreCompanies } =
+  const { companies, loading, saving, error, loadCompanies, createCompany, updateCompany, deleteCompany, bulkAction, restoreCompanies, clearError } =
     useCompaniesStore();
+  // Why the open add or edit dialog could not be saved, shown inside it.
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<CompanyPayload>(DEFAULT_COMPANY_FORM);
+  // The form as it was opened, to tell whether closing would lose edits.
+  const [formSnapshot, setFormSnapshot] = useState<CompanyPayload>(DEFAULT_COMPANY_FORM);
+  const { setDirty: setCompanyFormDirty, guardClose: guardCompanyFormClose, confirmDialog: companyFormDiscardDialog } = useUnsavedChangesGuard();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<CompanyRecord | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -53,22 +63,18 @@ export default function CompaniesPage() {
     return () => window.cancelAnimationFrame(frameId);
   }, []);
 
+  const refreshMonitors = useCallback(async () => {
+    const all = await fetchAllMonitors();
+    // A failed load keeps the previous list rather than showing companies without monitors.
+    if (all) setMonitors(all);
+  }, []);
+
   useEffect(() => {
     let active = true;
     void loadCompanies();
-    fetch("/api/monitors", { cache: "no-store" })
-      .then(async (response) => {
-        const data = (await response.json()) as { monitors?: MonitorRecord[] };
-        if (active) {
-          setMonitors(data.monitors ?? []);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setMonitors([]);
-        }
-      });
-
+    void fetchAllMonitors().then((all) => {
+      if (active && all) setMonitors(all);
+    });
     return () => {
       active = false;
     };
@@ -97,25 +103,45 @@ export default function CompaniesPage() {
     monitors: companies.reduce((sum, company) => sum + company.monitorsCount, 0),
   };
 
+  useEffect(() => {
+    setCompanyFormDirty(JSON.stringify(form) !== JSON.stringify(formSnapshot));
+  }, [form, formSnapshot, setCompanyFormDirty]);
+
   const allFilteredSelected = filtered.length > 0 && filtered.every((company) => selectedIds.has(company.id));
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setDialogError(null);
     const created = await createCompany(form);
     if (created) {
       setForm(DEFAULT_COMPANY_FORM);
+      setFormSnapshot(DEFAULT_COMPANY_FORM);
       setCreateOpen(false);
+      showToast(`${created.name} was added.`, "success");
+    } else {
+      takeStoreErrorIntoDialog();
     }
   }
 
   async function handleUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editing) return;
+    setDialogError(null);
     const updated = await updateCompany(editing.id, form);
     if (updated) {
       setEditing(null);
       setForm(DEFAULT_COMPANY_FORM);
+      setFormSnapshot(DEFAULT_COMPANY_FORM);
+      showToast("Company updated.", "success");
+    } else {
+      takeStoreErrorIntoDialog();
     }
+  }
+
+  // The store keeps the error for the page banner, which an open dialog covers; show it in the dialog.
+  function takeStoreErrorIntoDialog() {
+    setDialogError(useCompaniesStore.getState().error ?? "The company could not be saved.");
+    clearError();
   }
 
   async function handleBulk(action: "activate" | "deactivate" | "delete") {
@@ -175,17 +201,28 @@ export default function CompaniesPage() {
     }
   }
 
+  // Each dialog opens without the previous attempt's error.
+  function openCreateDialog() {
+    setDialogError(null);
+    setCreateOpen(true);
+  }
+
   function openEdit(company: CompanyRecord) {
+    setDialogError(null);
+    void refreshMonitors();
     setEditing(company);
-    setForm({
+    const nextForm: CompanyPayload = {
       name: company.name,
       description: company.description ?? "",
       notificationEmailRecipients: company.notificationEmailRecipients.join(", "),
+      notificationEmailScopes: company.notificationEmailScopes ?? {},
       telegramBotToken: "",
       telegramBotTokenConfigured: company.telegramBotTokenConfigured,
       telegramChatId: company.telegramChatId,
       isActive: company.isActive,
-    });
+    };
+    setForm(nextForm);
+    setFormSnapshot(nextForm);
   }
 
   function toggleSelect(id: string) {
@@ -215,26 +252,33 @@ export default function CompaniesPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Companies</h1>
           <p className="text-sm text-muted-foreground">
             Group monitors by customer or operating unit.
           </p>
         </div>
-        <div className="flex w-full flex-col gap-3 sm:flex-row md:w-auto">
+        <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search companies" className="pl-9" />
           </div>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => openCreateDialog()}>
             <Plus data-icon="inline-start" className="h-4 w-4" />
             Add company
           </Button>
         </div>
       </header>
 
-      {error ? <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
+      {error ? (
+        <div role="alert" className="flex flex-col gap-2 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => { clearError(); void loadCompanies(); }} disabled={loading}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
 
       {pendingRestores.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-md bg-emerald-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
@@ -270,7 +314,7 @@ export default function CompaniesPage() {
         <CardContent className="relative p-0">
           {loading && filtered.length > 0 ? <p role="status" className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">Updating companies…</p> : null}
           <div aria-busy={loading} inert={loading && filtered.length > 0}>
-          <Table>
+          <Table className="min-w-0 lg:min-w-max">
             <TableHeader>
               <TableRow className="bg-background">
                 <TableHead className="w-14 pl-5">
@@ -278,21 +322,29 @@ export default function CompaniesPage() {
                     type="button"
                     onClick={toggleAllFiltered}
                     aria-label={allFilteredSelected ? "Clear visible company selection" : "Select all visible companies"}
-                    className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
                     {allFilteredSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
                 </TableHead>
                 <TableHead className="pl-1">Company</TableHead>
                 <TableHead>Monitors</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="w-[160px] pr-5 text-right">Actions</TableHead>
+                {/* Narrow screens keep the company, its monitors and the actions in view. */}
+                <TableHead className="hidden lg:table-cell">Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Created</TableHead>
+                <TableHead className="pr-5 text-right lg:w-[160px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && filtered.length === 0 ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Loading companies…</TableCell></TableRow> : null}
-              {!loading && filtered.length === 0 ? (
+              {!loading && filtered.length === 0 && error && companies.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    Companies could not be loaded.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+              {!loading && filtered.length === 0 && !(error && companies.length === 0) ? (
                 <TableRow>
                   <TableCell colSpan={6}>
                     <EmptyState
@@ -301,7 +353,7 @@ export default function CompaniesPage() {
                       action={search.trim() ? (
                         <Button variant="outline" size="sm" onClick={() => setSearch("")}>Clear search</Button>
                       ) : (
-                        <Button size="sm" onClick={() => setCreateOpen(true)}>Add first company</Button>
+                        <Button size="sm" onClick={() => openCreateDialog()}>Add first company</Button>
                       )}
                     />
                   </TableCell>
@@ -314,15 +366,22 @@ export default function CompaniesPage() {
                       type="button"
                       onClick={() => toggleSelect(company.id)}
                       aria-label={selectedIds.has(company.id) ? `Deselect ${company.name}` : `Select ${company.name}`}
-                      className="flex items-center justify-center rounded-sm text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+                      className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       {selectedIds.has(company.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                     </button>
                   </TableCell>
-                  <TableCell className="pl-1">
+                  <TableCell className="whitespace-normal pl-1">
                     <div className="space-y-1">
-                      <p className="font-medium">{company.name}</p>
+                      <button
+                        type="button"
+                        onClick={() => setDetailCompany(company)}
+                        className="rounded-sm text-left font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/40"
+                      >
+                        {company.name}
+                      </button>
                       {company.description ? <p className="max-w-md text-xs leading-5 text-muted-foreground">{company.description}</p> : null}
+                      {!company.isActive ? <p className="text-xs font-medium text-destructive lg:hidden">Inactive</p> : null}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -331,11 +390,11 @@ export default function CompaniesPage() {
                       <p className="text-xs text-muted-foreground">{company.activeMonitors} active</p>
                     </div>
                   </TableCell>
-                  <TableCell><Badge variant="outline" className={company.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive"}>{company.isActive ? "Active" : "Inactive"}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatPanelDateTime(company.createdAt, { dateStyle: "short" })}</TableCell>
+                  <TableCell className="hidden lg:table-cell"><Badge variant="outline" className={company.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive"}>{company.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                  <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">{formatPanelDateTime(company.createdAt, { dateStyle: "short" })}</TableCell>
                   <TableCell className="pr-5">
                     <div className="flex justify-end gap-1.5">
-                      <Button variant="ghost" size="sm" onClick={() => setDetailCompany(company)}>View</Button>
+                      <Button variant="ghost" size="sm" className="hidden lg:inline-flex" onClick={() => setDetailCompany(company)}>View</Button>
                       <Button variant="ghost" size="icon-sm" aria-label={`Edit ${company.name}`} title="Edit company" onClick={() => openEdit(company)}><Pencil className="h-4 w-4" /></Button>
                       <Button
                         variant="ghost"
@@ -363,12 +422,31 @@ export default function CompaniesPage() {
               Search and review monitors assigned to this company.
             </DialogDescription>
           </DialogHeader>
-          {detailCompany ? <CompanyMonitorsPanel companyId={detailCompany.id} companyName={detailCompany.name} monitors={companyMonitors(detailCompany.id)} /> : null}
+          {detailCompany ? <CompanyMonitorsPanel companyId={detailCompany.id} companyName={detailCompany.name} monitors={companyMonitors(detailCompany.id)} company={companies.find((company) => company.id === detailCompany.id) ?? detailCompany} /> : null}
         </DialogContent>
       </Dialog>
 
-      <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} onOpenChange={(open) => { setCreateOpen(open); if (!open) setForm(DEFAULT_COMPANY_FORM); }} onFormChange={setForm} onSubmit={handleCreate} />
-      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} onOpenChange={(open) => { if (!open) { setEditing(null); setForm(DEFAULT_COMPANY_FORM); } }} onFormChange={setForm} onSubmit={handleUpdate} />
+      {companyFormDiscardDialog}
+      <CompanyDialog open={createOpen} title="Add company" description="Group monitors and set company-level notification recipients." form={form} saving={saving} error={dialogError} onOpenChange={(open) => {
+        if (open) {
+          setFormSnapshot(DEFAULT_COMPANY_FORM);
+          openCreateDialog();
+          return;
+        }
+        guardCompanyFormClose(() => {
+          setCreateOpen(false);
+          setForm(DEFAULT_COMPANY_FORM);
+          setFormSnapshot(DEFAULT_COMPANY_FORM);
+        });
+      }} onFormChange={setForm} onSubmit={handleCreate} />
+      <CompanyDialog open={Boolean(editing)} title="Edit company" description="Change company details and notification recipients." form={form} saving={saving} error={dialogError} monitors={editing ? companyMonitors(editing.id) : undefined} onOpenChange={(open) => {
+        if (open) return;
+        guardCompanyFormClose(() => {
+          setEditing(null);
+          setForm(DEFAULT_COMPANY_FORM);
+          setFormSnapshot(DEFAULT_COMPANY_FORM);
+        });
+      }} onFormChange={setForm} onSubmit={handleUpdate} />
 
       <Dialog open={Boolean(deleteRequest)} onOpenChange={(open) => !open && setDeleteRequest(null)}>
         <DialogContent className="sm:max-w-md">
@@ -398,15 +476,20 @@ function CompanyDialog({
   description,
   form,
   saving,
+  monitors,
   onOpenChange,
   onFormChange,
   onSubmit,
+  error,
 }: {
   open: boolean;
   title: string;
   description: string;
   form: CompanyPayload;
   saving: boolean;
+  error: string | null;
+  // The company's monitors when editing; a new company has none.
+  monitors?: MonitorRecord[];
   onOpenChange: (open: boolean) => void;
   onFormChange: Dispatch<SetStateAction<CompanyPayload>>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -474,6 +557,12 @@ function CompanyDialog({
                   placeholder="oncall@example.com, noc@example.com"
                 />
               </Field>
+              <CompanyRecipientScopes
+                recipientsText={form.notificationEmailRecipients}
+                scopes={form.notificationEmailScopes}
+                monitors={monitors}
+                onChange={(notificationEmailScopes) => onFormChange((current) => ({ ...current, notificationEmailScopes }))}
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Telegram bot token">
                   <Input
@@ -502,12 +591,13 @@ function CompanyDialog({
               </div>
             </div>
           </div>
+          <FormAlert message={error} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save Company"}
+              {saving ? "Saving…" : "Save company"}
             </Button>
           </DialogFooter>
         </form>
@@ -519,4 +609,15 @@ function CompanyDialog({
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <div className="space-y-2"><Label>{label}</Label>{children}</div>;
+}
+
+// Every monitor of the workspace (the list endpoint returns all of them when no page is requested).
+async function fetchAllMonitors(): Promise<MonitorRecord[] | null> {
+  try {
+    const response = await fetch("/api/monitors", { cache: "no-store" });
+    const data = (await response.json().catch(() => null)) as { monitors?: MonitorRecord[] } | null;
+    return response.ok && data?.monitors ? data.monitors : null;
+  } catch {
+    return null;
+  }
 }

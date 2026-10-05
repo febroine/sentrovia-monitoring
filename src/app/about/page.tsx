@@ -13,7 +13,7 @@ const resourceLinkClassName =
 const capabilities = [
   {
     title: "Service monitoring",
-    description: "HTTP, keyword, JSON, TCP, ping, PostgreSQL, and heartbeat checks share one scheduling model.",
+    description: "HTTP, keyword, JSON, TCP, ping, DNS, PostgreSQL, and heartbeat checks share one scheduling model.",
   },
   {
     title: "Failure verification",
@@ -62,6 +62,7 @@ const monitorTypes = [
   ["JSON", "HTTP response with a JSON path assertion"],
   ["TCP port", "Host and port reachability"],
   ["Ping", "ICMP host reachability"],
+  ["DNS record", "A, AAAA, CNAME, MX, TXT, or NS records and their expected values"],
   ["PostgreSQL", "Database connection and authentication"],
   ["Heartbeat", "Expected calls from scheduled or background jobs"],
 ] as const;

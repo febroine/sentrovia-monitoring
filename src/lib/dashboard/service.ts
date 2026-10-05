@@ -12,7 +12,7 @@ import {
 } from "@/lib/dashboard/preferences";
 import { getWorkerState } from "@/lib/monitors/service";
 import { intervalToMs } from "@/lib/monitors/utils";
-import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
+import { getMonitorTargetDisplay, sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 import { NOTIFICATION_MARKER_EVENT_TYPES } from "@/lib/monitors/event-types";
 import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 import { sanitizeWorkerStatusMessage } from "@/lib/worker/status-message";
@@ -435,6 +435,8 @@ export function buildDashboardMonitorFocus(rows: DashboardMonitorRow[], focus: D
       name: monitor.name,
       monitorType: monitor.monitorType,
       url: sanitizeMonitorUrlForDisplay(monitor.url),
+      // What the monitor list shows: a host and port, a DNS name and record type, and so on.
+      target: getMonitorTargetDisplay(monitor),
       companyId: monitor.companyId,
       company: monitor.company,
       isFavorite: monitor.isFavorite,

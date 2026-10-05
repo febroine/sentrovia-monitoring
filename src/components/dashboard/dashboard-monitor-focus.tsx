@@ -154,9 +154,13 @@ function MonitorFocusRow({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{monitor.name}</p>
-              <a href={monitor.url} target="_blank" rel="noreferrer" className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground" title={monitor.url}>
-                <span className="truncate">{monitor.url}</span><ExternalLink className="h-3 w-3 shrink-0" />
-              </a>
+              {opensInBrowser(monitor.monitorType) ? (
+                <a href={monitor.url} target="_blank" rel="noreferrer" className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground" title={monitor.url}>
+                  <span className="truncate">{monitor.target}</span><ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+              ) : (
+                <p className="mt-0.5 truncate text-xs text-muted-foreground" title={monitor.target}>{monitor.target}</p>
+              )}
             </div>
             <span className={`shrink-0 text-xs font-medium ${statusClass}`}>{statusLabel}</span>
           </div>
@@ -177,4 +181,9 @@ function MonitorFocusRow({
       </div>
     </div>
   );
+}
+
+// Only web monitors have a page to open; other targets (hosts, databases, DNS names) are shown as text.
+function opensInBrowser(monitorType: string) {
+  return monitorType === "http" || monitorType === "keyword" || monitorType === "json";
 }

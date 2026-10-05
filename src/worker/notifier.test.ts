@@ -111,6 +111,24 @@ describe("worker notifier", () => {
     );
   });
 
+  it("stops before the next channel once the alert's job is no longer its own", async () => {
+    const context = buildNotificationContext("recovery");
+    context.monitor = buildMonitor({ notificationPref: "both" });
+    let owned = true;
+    context.canDeliver = async () => owned;
+    mocks.sendEmailDelivery.mockImplementation(async () => {
+      owned = false;
+      return buildDeliveryResult("delivered");
+    });
+
+    const sent = await sendMonitorNotifications(context);
+
+    expect(sent).toBe(true);
+    expect(mocks.sendEmailDelivery).toHaveBeenCalledOnce();
+    expect(mocks.sendTelegramDelivery).not.toHaveBeenCalled();
+    expect(mocks.sendWebhookDelivery).not.toHaveBeenCalled();
+  });
+
   it("uses the resolved company or workspace destinations for monitor channels", async () => {
     const context = buildNotificationContext("recovery");
     context.monitor = buildMonitor({ notificationPref: "both" });
@@ -333,6 +351,34 @@ describe("worker notifier", () => {
     expect(telegramInput.photo).toBeUndefined();
     expect(telegramInput.buildPhoto).toEqual(expect.any(Function));
     await expect(telegramInput.buildPhoto()).resolves.toBe(attachment);
+  });
+
+  it.each([
+    ["the monitor's own language", "tr", "en", "tr"],
+    ["the workspace language when the monitor uses the default", "default", "tr", "tr"],
+    ["English when both are English", "default", "en", "en"],
+  ])("builds the screenshot in %s", async (_case, monitorLanguage, workspaceLanguage, expected) => {
+    mocks.hasRecentMonitorEvent.mockResolvedValue(false);
+    mocks.getSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        notificationLanguage: workspaceLanguage,
+      },
+    });
+    const buildEmailAttachments = vi.fn().mockResolvedValue(undefined);
+    const context = buildNotificationContext("failure");
+    context.monitor = buildMonitor({
+      notificationPref: "telegram",
+      notificationLanguage: monitorLanguage,
+      telegramBotToken: "123456:telegram-token",
+      telegramChatId: "-1001234567890",
+    });
+
+    await sendMonitorNotifications({ ...context, buildEmailAttachments });
+    await mocks.sendTelegramDelivery.mock.calls[0]?.[0].buildPhoto();
+
+    expect(buildEmailAttachments).toHaveBeenCalledWith(expected);
   });
 
   it("suppresses an outage notification already accepted for the current outage", async () => {
@@ -592,6 +638,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     jsonPath: null,
     jsonExpectedValue: null,
     jsonMatchMode: "equals",
+    dnsExpectedValues: null,
+    dnsMatchMode: "includes",
     tags: [],
     renotifyCount: null,
     maxRedirects: 5,

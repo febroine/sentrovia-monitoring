@@ -26,6 +26,7 @@ import type {
   DiagnosticStepResult,
   MonitorDiagnosticResult,
 } from "@/lib/diagnostics/types";
+import { MONITOR_REQUEST_HEADERS } from "@/lib/monitors/request-identity";
 
 const DEFAULT_HTTP_PORT = 80;
 const DEFAULT_HTTPS_PORT = 443;
@@ -164,7 +165,8 @@ export async function runMonitorDiagnostics(monitor: Monitor): Promise<MonitorDi
 }
 
 function resolveDiagnosticTarget(monitor: Monitor): DiagnosticTarget | null {
-  if (monitor.monitorType === "heartbeat") {
+  // A DNS monitor's own check is the lookup; there is no connection to diagnose.
+  if (monitor.monitorType === "heartbeat" || monitor.monitorType === "dns") {
     return null;
   }
 
@@ -323,6 +325,10 @@ async function checkHttp(
       parsed,
       {
         method: monitor.method,
+        // Same identity as the HTTP check, so a bot filter cannot make the diagnosis disagree with it.
+        headers: MONITOR_REQUEST_HEADERS,
+        // A fresh connection, like the check, so the diagnosis sees the connection step too.
+        agent: false,
         timeout: remainingTimeoutMs,
         lookup: createPinnedLookup(resolvedTarget),
         rejectUnauthorized: parsed.protocol === "https:" ? !monitor.ignoreSslErrors : undefined,

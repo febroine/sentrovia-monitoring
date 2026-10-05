@@ -701,8 +701,11 @@ async function verifyCrossOriginMutationGuards(request) {
 async function verifyLogout(page) {
   const response = await page.request.post("/api/auth/logout", { data: {} });
   await assertHttpStatus(response, 200);
+  // API calls answer an ended session with a JSON 401 (pages still redirect to sign-in).
   const protectedResponse = await page.request.get("/api/monitors", { maxRedirects: 0 });
-  await assertHttpStatus(protectedResponse, 307);
+  await assertHttpStatus(protectedResponse, 401);
+  const protectedPage = await page.request.get("/monitoring", { maxRedirects: 0 });
+  await assertHttpStatus(protectedPage, 307);
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(500);
 }

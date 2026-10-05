@@ -1,18 +1,20 @@
 "use client";
 
-import { Activity, Braces, Clock3, Copy, DatabaseZap, Globe, Network, Search } from "lucide-react";
+import { Activity, Braces, Clock3, Copy, DatabaseZap, Globe, Network, Search, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DurationInput } from "@/components/ui/duration-input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import type { CompanyRecord } from "@/lib/companies/types";
+import { DNS_RECORD_TYPES, type DnsMatchMode, type DnsRecordType } from "@/lib/monitors/dns-records";
 import { getMonitorTypeLabel } from "@/lib/monitors/targets";
 import {
   buildOutageConfirmationSummary,
-  formatDurationInputMs,
   formatDurationMs,
-  parseDurationInputSeconds,
 } from "@/lib/monitors/duration";
 import type {
   HttpMethod,
@@ -49,6 +51,11 @@ const MONITOR_TYPE_OPTIONS: Array<{ value: MonitorType; icon: typeof Globe; desc
     description: "ICMP ping checks for host reachability and packet round-trip latency.",
   },
   {
+    value: "dns",
+    icon: Waypoints,
+    description: "DNS lookups that confirm a record exists and, optionally, still has the expected values.",
+  },
+  {
     value: "port",
     icon: Network,
     description: "TCP reachability checks for a host and port without waiting for an HTTP response.",
@@ -83,6 +90,7 @@ export function GeneralMonitorSettings({
   const isJsonMonitor = values.monitorType === "json";
   const isPortMonitor = values.monitorType === "port";
   const isPingMonitor = values.monitorType === "ping";
+  const isDnsMonitor = values.monitorType === "dns";
   const isHeartbeatMonitor = values.monitorType === "heartbeat";
   const isPostgresMonitor = values.monitorType === "postgres";
 
@@ -232,6 +240,8 @@ export function GeneralMonitorSettings({
             </Field>
           ) : null}
 
+          {isDnsMonitor ? <DnsMonitorFields values={values} onFieldChange={onFieldChange} /> : null}
+
           {isPortMonitor ? (
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
               <Field label="Host">
@@ -243,12 +253,11 @@ export function GeneralMonitorSettings({
                 />
               </Field>
               <Field label="Port">
-                <Input
-                  type="number"
+                <NumberInput
                   min={1}
                   max={65535}
                   value={values.portNumber}
-                  onChange={(event) => onFieldChange("portNumber", Number(event.target.value) || 1)}
+                  onValueChange={(value) => onFieldChange("portNumber", value)}
                   required
                 />
               </Field>
@@ -282,12 +291,11 @@ export function GeneralMonitorSettings({
                   />
                 </Field>
                 <Field label="Port">
-                  <Input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={65535}
                     value={values.databasePort}
-                    onChange={(event) => onFieldChange("databasePort", Number(event.target.value) || 5432)}
+                    onValueChange={(value) => onFieldChange("databasePort", value)}
                     required
                   />
                 </Field>
@@ -404,12 +412,12 @@ export function CheckMonitorSettings({
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Check interval">
           <div className="flex gap-2">
-            <Input
+            <NumberInput
               aria-label="Check interval"
-              type="number"
               min={1}
+              max={1440}
               value={values.intervalValue}
-              onChange={(event) => onFieldChange("intervalValue", Number(event.target.value) || 1)}
+              onValueChange={(value) => onFieldChange("intervalValue", value)}
             />
             <Select value={values.intervalUnit} onValueChange={(value) => onFieldChange("intervalUnit", value as IntervalUnit)}>
               <SelectTrigger aria-label="Check interval unit" className="w-28">
@@ -429,7 +437,7 @@ export function CheckMonitorSettings({
             valueMs={values.timeout}
             minSeconds={1}
             maxSeconds={120}
-            onChange={(value) => onFieldChange("timeout", value ?? 1_000)}
+            onChange={(value) => { if (value !== null) onFieldChange("timeout", value); }}
           />
           <p className="text-[11px] text-muted-foreground">
             {isHeartbeatMonitor
@@ -448,6 +456,7 @@ export function CheckMonitorSettings({
               minSeconds={0.001}
               maxSeconds={Math.max(0.001, (values.timeout - 1) / 1_000)}
               placeholder="Optional"
+              optional
               onChange={(value) => onFieldChange("slowResponseThresholdMs", value)}
             />
             <p className="text-[11px] text-muted-foreground">
@@ -472,13 +481,12 @@ export function CheckMonitorSettings({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Consecutive failures required">
-          <Input
+          <NumberInput
             aria-label="Consecutive failures required"
-            type="number"
             min={2}
             max={10}
             value={values.retries}
-            onChange={(event) => onFieldChange("retries", Number(event.target.value) || 2)}
+            onValueChange={(value) => onFieldChange("retries", value)}
           />
         </Field>
         <Field label="Re-notify">
@@ -510,7 +518,9 @@ export function CheckMonitorSettings({
             <span>
               <span className="block">Advanced check settings</span>
               <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                HTTP method, IP family, redirects, response limits, cache, and SSL behavior.
+                {isPortMonitor || isPingMonitor
+                  ? "IP family used to reach the host."
+                  : "HTTP method, IP family, redirects, response limits, cache, and SSL behavior."}
               </span>
             </span>
             <span aria-hidden="true" className="text-lg leading-4 text-muted-foreground transition-transform group-open:rotate-90">
@@ -551,22 +561,21 @@ export function CheckMonitorSettings({
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Max redirects">
-                    <Input
+                    <NumberInput
                       aria-label="Max redirects"
-                      type="number"
                       min={0}
                       max={10}
                       value={values.maxRedirects}
-                      onChange={(event) => onFieldChange("maxRedirects", Number(event.target.value) || 0)}
+                      onValueChange={(value) => onFieldChange("maxRedirects", value)}
                     />
                   </Field>
                   <Field label="Response max length">
-                    <Input
+                    <NumberInput
                       aria-label="Response max length"
-                      type="number"
                       min={0}
+                      max={100000}
                       value={values.responseMaxLength}
-                      onChange={(event) => onFieldChange("responseMaxLength", Number(event.target.value) || 0)}
+                      onValueChange={(value) => onFieldChange("responseMaxLength", value)}
                     />
                     <p className="text-[11px] text-muted-foreground">Set to 0 to avoid retaining response content.</p>
                   </Field>
@@ -635,9 +644,96 @@ export function CheckMonitorSettings({
                 ? "Port monitors validate raw TCP reachability. HTTP redirects, response body limits, SSL expiry, and cache busters do not apply here."
                 : isAssertionMonitor
                   ? "Keyword and JSON monitors verify both endpoint reachability and the configured response assertion."
-                  : "HTTP monitors treat the configured success status codes as healthy responses."}
+                  : values.monitorType === "dns"
+                    ? "DNS monitors look up the record and compare it with the expected values. HTTP, TLS, and IP family options do not apply here."
+                    : "HTTP monitors treat the configured success status codes as healthy responses."}
         </div>
       )}
+    </div>
+  );
+}
+
+const DNS_RECORD_HINTS: Record<DnsRecordType, { description: string; example: string }> = {
+  A: { description: "IPv4 address", example: "93.184.216.34" },
+  AAAA: { description: "IPv6 address", example: "2606:2800:21f:cb07:6820:80da:af6b:8b2c" },
+  CNAME: { description: "Alias to another name", example: "example.cdn-provider.net" },
+  MX: { description: "Mail servers", example: "10 mail.example.com" },
+  TXT: { description: "Text, such as SPF or verification", example: "v=spf1 include:_spf.example.com ~all" },
+  NS: { description: "Name servers", example: "ns1.example-dns.com" },
+};
+
+function DnsMonitorFields({ values, onFieldChange }: { values: MonitorPayload; onFieldChange: OnFieldChange }) {
+  const hint = DNS_RECORD_HINTS[values.dnsRecordType];
+  return (
+    <div className="space-y-4 rounded-md bg-muted/20 p-4">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+        <Field label="Domain name">
+          <Input
+            aria-label="Domain name"
+            value={values.portHost}
+            onChange={(event) => onFieldChange("portHost", event.target.value)}
+            placeholder="example.com"
+            required
+          />
+        </Field>
+        <Field label="Record type">
+          <Select value={values.dnsRecordType} onValueChange={(value) => onFieldChange("dnsRecordType", value as DnsRecordType)}>
+            <SelectTrigger aria-label="Record type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DNS_RECORD_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {`${type} · ${DNS_RECORD_HINTS[type].description}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+      <Field label="Expected values">
+        <Textarea
+          aria-label="Expected values"
+          rows={3}
+          value={values.dnsExpectedValues}
+          onChange={(event) => onFieldChange("dnsExpectedValues", event.target.value)}
+          placeholder={hint.example}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Optional, one per line. Leave empty to only require that the record exists.
+          {values.dnsRecordType === "MX" ? " A mail server without a priority matches at any priority." : ""}
+          {values.dnsRecordType === "TXT" ? " With \"Includes\", a value may be part of a longer record, such as v=spf1." : ""}
+        </p>
+      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Match">
+          <Select value={values.dnsMatchMode} onValueChange={(value) => onFieldChange("dnsMatchMode", value as DnsMatchMode)}>
+            <SelectTrigger aria-label="Match">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="includes">Includes every expected value</SelectItem>
+              <SelectItem value="exact">Exactly the expected values</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            {values.dnsMatchMode === "exact"
+              ? "Any added or missing record is reported, so unexpected changes are caught."
+              : "Other records may exist alongside the expected ones."}
+          </p>
+        </Field>
+        <Field label="DNS server">
+          <Input
+            aria-label="DNS server"
+            value={values.dnsServer}
+            onChange={(event) => onFieldChange("dnsServer", event.target.value)}
+            placeholder="Automatic"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Optional. An IP address such as 1.1.1.1, or your domain&apos;s own name server to see changes before caches expire. When empty, the server&apos;s resolver answers for admins with private-target access, and public resolvers (1.1.1.1, 8.8.8.8) for everyone else.
+          </p>
+        </Field>
+      </div>
     </div>
   );
 }
@@ -647,41 +743,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-2">
       <Label>{label}</Label>
       {children}
-    </div>
-  );
-}
-
-function DurationInput({
-  ariaLabel,
-  valueMs,
-  minSeconds,
-  maxSeconds,
-  placeholder,
-  onChange,
-}: {
-  ariaLabel: string;
-  valueMs: number | null;
-  minSeconds: number;
-  maxSeconds: number;
-  placeholder?: string;
-  onChange: (value: number | null) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Input
-        aria-label={ariaLabel}
-        type="number"
-        min={minSeconds}
-        max={maxSeconds}
-        step="0.001"
-        value={formatDurationInputMs(valueMs)}
-        placeholder={placeholder}
-        onChange={(event) => {
-          const rawValue = event.target.value.trim();
-          onChange(rawValue.length > 0 ? parseDurationInputSeconds(rawValue, valueMs ?? minSeconds * 1_000) : null);
-        }}
-      />
-      <span className="shrink-0 text-xs text-muted-foreground">seconds</span>
     </div>
   );
 }

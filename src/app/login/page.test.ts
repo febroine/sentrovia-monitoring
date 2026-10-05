@@ -36,7 +36,7 @@ describe("login page session redirect", () => {
   it("redirects an authenticated user through the configured landing-page route", async () => {
     mocks.getSession.mockResolvedValue({ id: "user-1" });
 
-    await expect(LoginPage()).rejects.toThrow("NEXT_REDIRECT");
+    await expect(LoginPage(pageProps())).rejects.toThrow("NEXT_REDIRECT");
 
     expect(mocks.redirect).toHaveBeenCalledWith("/");
   });
@@ -44,7 +44,7 @@ describe("login page session redirect", () => {
   it("renders the login form when there is no active session", async () => {
     mocks.getSession.mockResolvedValue(null);
 
-    const result = await LoginPage();
+    const result = await LoginPage(pageProps());
 
     expect(mocks.redirect).not.toHaveBeenCalled();
     expect(result).not.toBeNull();
@@ -54,8 +54,22 @@ describe("login page session redirect", () => {
     mocks.getSession.mockResolvedValue(null);
     mocks.isOnboardingRequired.mockResolvedValue(true);
 
-    await expect(LoginPage()).rejects.toThrow("NEXT_REDIRECT");
+    await expect(LoginPage(pageProps())).rejects.toThrow("NEXT_REDIRECT");
 
     expect(mocks.redirect).toHaveBeenCalledWith("/onboarding");
   });
+
+  it("explains why a removed member was signed out", async () => {
+    mocks.getSession.mockResolvedValue(null);
+
+    const result = await LoginPage(pageProps({ message: "account-removed" }));
+    const ignored = await LoginPage(pageProps({ message: "<script>" }));
+
+    expect((result as { props: { notice: string | null } }).props.notice).toContain("removed from the workspace");
+    expect((ignored as { props: { notice: string | null } }).props.notice).toBeNull();
+  });
 });
+
+function pageProps(params: Record<string, string> = {}) {
+  return { searchParams: Promise.resolve(params) };
+}

@@ -12,6 +12,8 @@ import {
   resolveRestoredCompanyId,
   remapPublicStatusCompany,
   restorePostgresMonitorPasswords,
+  exportRecipientScopeTargets,
+  resolveRestoredRecipientScopes,
   validateWorkspaceBackupBundle,
 } from "@/lib/system/backup-service";
 import {
@@ -66,6 +68,19 @@ describe("workspace backup validation", () => {
     }]);
 
     expect(restored[0].databasePassword).toBe("database-secret");
+  });
+
+  it("names the item and field when a backup holds invalid data", () => {
+    const bundle = buildBackupBundle({
+      monitors: [
+        { ...DEFAULT_MONITOR_FORM, name: "Shop", url: "https://shop.example.com" },
+        { ...DEFAULT_MONITOR_FORM, name: "Checkout API", monitorType: "json", url: "https://api.example.com/health", jsonPath: "" },
+      ],
+    });
+
+    expect(() => validateWorkspaceBackupBundle(bundle)).toThrow(
+      'The backup file has invalid data. monitor "Checkout API" (jsonPath): Enter a JSON path such as data.status or result.items[0].name.'
+    );
   });
 
   it("rejects a redacted PostgreSQL password when no matching secret exists", () => {
@@ -394,3 +409,34 @@ function buildSettingsPayload() {
     },
   };
 }
+
+describe("company recipient limits in backups", () => {
+  const monitors = [
+    { id: "old-1", monitorType: "http", url: "https://a.example.test/" },
+    { id: "old-2", monitorType: "http", url: "https://b.example.test/" },
+  ];
+
+  it("refers to limited monitors by their target, since ids change on restore", () => {
+    expect(exportRecipientScopeTargets({ "manager@abc.test": ["old-2", "deleted"] }, monitors)).toEqual({
+      "manager@abc.test": ["http:https://b.example.test/"],
+    });
+  });
+
+  it("maps the targets to the restored monitors", () => {
+    const restored = new Map([["http:https://b.example.test/", "new-2"]]);
+
+    expect(resolveRestoredRecipientScopes(
+      { "Manager@abc.test": ["http:https://b.example.test/"], "gone@abc.test": ["http:https://b.example.test/"] },
+      ["manager@abc.test"],
+      restored
+    )).toEqual({ "manager@abc.test": ["new-2"] });
+  });
+
+  it("lets an address cover every monitor when one of its monitors cannot be found again", () => {
+    expect(resolveRestoredRecipientScopes(
+      { "manager@abc.test": ["http:https://b.example.test/", "heartbeat:changed-token"] },
+      ["manager@abc.test"],
+      new Map([["http:https://b.example.test/", "new-2"]])
+    )).toEqual({});
+  });
+});

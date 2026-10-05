@@ -1,5 +1,6 @@
 import type { Monitor } from "@/lib/db/schema";
 import { intervalToMs } from "@/lib/monitors/utils";
+import { checkDnsMonitor } from "@/worker/check-dns";
 import { checkHeartbeatMonitor } from "@/worker/check-heartbeat";
 import { checkHttpMonitor } from "@/worker/check-http";
 import { checkPingMonitor } from "@/worker/check-ping";
@@ -24,6 +25,10 @@ export async function checkMonitor(
 
     if (monitor.monitorType === "ping") {
       return await checkPingMonitor(monitor, allowPrivateTargets);
+    }
+
+    if (monitor.monitorType === "dns") {
+      return await checkDnsMonitor(monitor, allowPrivateTargets);
     }
 
     if (monitor.monitorType === "postgres") {

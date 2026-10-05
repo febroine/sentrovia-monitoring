@@ -25,11 +25,13 @@ export async function proxy(request: NextRequest) {
   const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 
   if (!isPublicRoute(pathname) && !session) {
-    const loginUrl = new URL(
-      buildLoginRedirectPath(`${pathname}${request.nextUrl.search}`),
-      request.url
-    );
-    const response = NextResponse.redirect(loginUrl);
+    // API callers get a 401 they can act on; a redirect would hand fetch the sign-in page as a 200.
+    const response = pathname.startsWith("/api/")
+      ? NextResponse.json({ message: "Your session has ended. Sign in again." }, { status: 401 })
+      : NextResponse.redirect(new URL(
+        buildLoginRedirectPath(`${pathname}${request.nextUrl.search}`),
+        request.url
+      ));
     if (request.cookies.has(SESSION_COOKIE_NAME)) {
       response.cookies.set({
         ...getSessionCookieOptions(),
@@ -56,10 +58,12 @@ export function resolveApiMutationPermission(pathname: string, method: string): 
   if (pathname.startsWith("/api/monitors")) return "monitors.manage";
   if (pathname.startsWith("/api/companies")) return "companies.manage";
   if (pathname.startsWith("/api/delivery")) return "delivery.manage";
+  // Analytics and its PDF are read-only queries sent as POST for their filter body; any member may read them.
+  if (pathname === "/api/reports/analytics" || pathname === "/api/reports/analytics/pdf") return null;
   if (pathname.startsWith("/api/reports")) return "reports.manage";
   if (pathname.startsWith("/api/notifications")) return "settings.manage";
   if (pathname === "/api/settings") return "settings.manage";
-  if (pathname === "/api/logs") return "audit.read";
+  if (pathname === "/api/logs") return "audit.manage";
   if (pathname.startsWith("/api/system/backup")) return "backups.manage";
   if (pathname === "/api/worker") return "worker.manage";
   return null;

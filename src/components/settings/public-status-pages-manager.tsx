@@ -127,6 +127,7 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...draft,
+          slug: normalizePublicStatusSlug(draft.slug).slice(0, 120),
           companyId: draft.companyId === WORKSPACE_SCOPE ? null : draft.companyId,
         }),
       });
@@ -240,13 +241,20 @@ export function PublicStatusSettingsTab({ canManage }: { canManage: boolean }) {
               <Input
                 id="public-status-slug"
                 value={draft.slug}
+                // Cleaned lightly while typing (a hyphen being typed must survive), fully on leaving the field.
                 onChange={(event) => setDraft((current) => ({
                   ...current,
-                  slug: normalizePublicStatusSlug(event.target.value).slice(0, 120),
+                  slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-{2,}/g, "-").slice(0, 120),
                 }))}
+                onBlur={() => setDraft((current) => ({ ...current, slug: normalizePublicStatusSlug(current.slug).slice(0, 120) }))}
                 placeholder="company-status"
               />
-              <p className="text-xs text-muted-foreground">Public URL: /status/{draft.slug || "company-status"}</p>
+              <p className="text-xs text-muted-foreground">Public URL: /status/{normalizePublicStatusSlug(draft.slug) || "company-status"}</p>
+              {editingPage && normalizePublicStatusSlug(draft.slug) !== editingPage.slug ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  The current address /status/{editingPage.slug} will stop working; update any links that point to it.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="public-status-title">Page title</Label>

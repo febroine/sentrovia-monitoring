@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { LoaderCircle, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { markIntentionalSignOut } from "@/lib/client/session-guard";
 
 export default function LogoutButton({ className }: { className?: string }) {
   const router = useRouter();
@@ -28,6 +29,7 @@ export default function LogoutButton({ className }: { className?: string }) {
         throw new Error(data?.message ?? "Unable to sign out right now.");
       }
 
+      markIntentionalSignOut();
       startTransition(() => {
         router.replace("/login");
         router.refresh();

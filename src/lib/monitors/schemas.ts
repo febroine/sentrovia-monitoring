@@ -2,9 +2,11 @@ import { z } from "zod";
 import { getMonitorPauseDurationMs, MAX_MONITOR_PAUSE_MS } from "@/lib/monitors/pause";
 import { env } from "@/lib/env";
 import { MAX_HEARTBEAT_TOKEN_LENGTH, MIN_HEARTBEAT_TOKEN_LENGTH } from "@/lib/monitors/constants";
+import { findInvalidDnsExpectedValue, isDnsHostname, isDnsServerAddress, parseDnsExpectedValues } from "@/lib/monitors/dns";
+import { DNS_MATCH_MODES, DNS_RECORD_TYPES } from "@/lib/monitors/dns-records";
 import { isMonitorNetworkHostnameLiteralAllowed } from "@/lib/security/public-network-target";
 
-const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "heartbeat"]);
+const monitorTypeSchema = z.enum(["http", "keyword", "json", "port", "postgres", "ping", "dns", "heartbeat"]);
 const notificationPrefSchema = z.enum(["email", "telegram", "both", "none"]);
 const notificationLanguageSchema = z.enum(["default", "en", "tr"]);
 const intervalUnitSchema = z.enum(["sn", "dk", "sa"]);
@@ -99,11 +101,11 @@ const monitorInputObjectSchema = z
     monitorType: monitorTypeSchema.default("http"),
     url: optionalRequiredString(2000),
     portHost: optionalRequiredString(255),
-    portNumber: z.coerce.number().int().min(1).max(65_535).default(443),
+    portNumber: z.coerce.number().int().min(1, "Port must be between 1 and 65535.").max(65_535, "Port must be between 1 and 65535.").default(443),
     heartbeatToken: optionalRequiredString(MAX_HEARTBEAT_TOKEN_LENGTH),
     heartbeatLastReceivedAt: z.string().datetime().nullable().default(null),
     databaseHost: optionalRequiredString(255),
-    databasePort: z.coerce.number().int().min(1).max(65_535).default(5432),
+    databasePort: z.coerce.number().int().min(1, "Port must be between 1 and 65535.").max(65_535, "Port must be between 1 and 65535.").default(5432),
     databaseName: optionalRequiredString(120),
     databaseUsername: optionalRequiredString(120),
     databasePassword: z.string().max(500).default(""),
@@ -115,6 +117,10 @@ const monitorInputObjectSchema = z
     jsonPath: optionalRequiredString(255),
     jsonExpectedValue: optionalRequiredString(500),
     jsonMatchMode: jsonMatchModeSchema.default("equals"),
+    dnsRecordType: z.enum(DNS_RECORD_TYPES).default("A"),
+    dnsServer: optionalRequiredString(64),
+    dnsExpectedValues: optionalRequiredString(2000),
+    dnsMatchMode: z.enum(DNS_MATCH_MODES).default("includes"),
     companyId: z
       .string()
       .trim()
@@ -135,26 +141,26 @@ const monitorInputObjectSchema = z
       }),
     telegramBotToken: optionalString(500),
     telegramChatId: optionalString(120),
-    intervalValue: z.coerce.number().int().min(1).max(1440),
+    intervalValue: z.coerce.number().int().min(1, "Check interval must be between 1 and 1440.").max(1440, "Check interval must be between 1 and 1440."),
     intervalUnit: intervalUnitSchema,
-    timeout: z.coerce.number().int().min(1000).max(120000),
+    timeout: z.coerce.number().int().min(1000, "Hard failure timeout must be between 1 and 120 seconds.").max(120000, "Hard failure timeout must be between 1 and 120 seconds."),
     slowResponseThresholdMs: optionalPositiveInteger(120000),
     slowResponseAlertsEnabled: z.boolean().default(true),
     expectedStatusCodes: expectedStatusCodesSchema,
-    retries: z.coerce.number().int().min(2).max(10),
+    retries: z.coerce.number().int().min(2, "Consecutive failures required must be between 2 and 10.").max(10, "Consecutive failures required must be between 2 and 10."),
     method: methodSchema,
     tags: z.array(z.string().trim().min(1).max(40)).max(20),
     renotifyCount: z
       .union([z.coerce.number().int().min(1).max(10), z.literal(null)])
       .default(null),
-    maxRedirects: z.coerce.number().int().min(0).max(10),
+    maxRedirects: z.coerce.number().int().min(0, "Max redirects must be between 0 and 10.").max(10, "Max redirects must be between 0 and 10."),
     ipFamily: ipFamilySchema,
     checkSslExpiry: z.boolean().default(false),
     ignoreSslErrors: z.boolean().default(false),
     cacheBuster: z.boolean().default(false),
     saveErrorPages: z.boolean().default(false),
     saveSuccessPages: z.boolean().default(false),
-    responseMaxLength: z.coerce.number().int().min(0).max(100_000),
+    responseMaxLength: z.coerce.number().int().min(0, "Response max length must be between 0 and 100000.").max(100_000, "Response max length must be between 0 and 100000."),
     telegramTemplate: optionalString(4000),
     emailSubject: optionalString(500),
     emailHeadline: optionalString(500),
@@ -289,6 +295,48 @@ const monitorInputObjectSchema = z
       return;
     }
 
+    if (value.monitorType === "dns") {
+      if (!isDnsHostname(value.portHost)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["portHost"],
+          message: "Enter the domain name to look up, such as example.com or _dmarc.example.com.",
+        });
+      }
+
+      const server = value.dnsServer.trim();
+      if (server && !isDnsServerAddress(server)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsServer"],
+          message: "Enter the DNS server as an IP address, such as 1.1.1.1, or leave it empty to use the system resolver.",
+        });
+      } else if (server && !isAllowedMonitorHostnameLiteral(server)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsServer"],
+          message: "This DNS server address is not allowed by the network safety policy.",
+        });
+      }
+
+      const expected = parseDnsExpectedValues(value.dnsRecordType, value.dnsExpectedValues);
+      const invalid = findInvalidDnsExpectedValue(value.dnsRecordType, expected);
+      if (invalid) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsExpectedValues"],
+          message: `"${invalid}" is not a valid ${value.dnsRecordType} record value.`,
+        });
+      } else if (value.dnsMatchMode === "exact" && expected.length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dnsExpectedValues"],
+          message: "Enter the expected records, or match records that include them instead.",
+        });
+      }
+      return;
+    }
+
     if (value.monitorType === "heartbeat") {
       if (
         value.heartbeatToken.trim().length > 0 &&
@@ -357,6 +405,8 @@ export const monitorBulkDeleteSchema = z.object({
 export const monitorBulkUpdateSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
   payload: monitorInputSchema,
+  // The settings the user changed; only these are written. Omitted, every editable setting is written.
+  fields: z.array(z.string().trim().min(1).max(64)).max(100).optional(),
 });
 
 export const monitorBulkCompanySchema = z.object({

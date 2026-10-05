@@ -1,10 +1,130 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { calculateScreenshotBudgetMs, calculateScreenshotNavigationTimeoutMs } from "@/lib/monitors/screenshot-timing";
 import {
   buildFailureScreenshotAttachment,
+  describeScreenshotContext,
+  describeScreenshotFailure,
+  toLogText,
   shouldAllowScreenshotRequest,
   shouldCaptureScreenshot,
 } from "@/worker/screenshot";
+
+describe("failure screenshot timing", () => {
+  it("waits as long as the monitor timeout within the screenshot bounds", () => {
+    expect(calculateScreenshotNavigationTimeoutMs(60_000)).toBe(60_000);
+    expect(calculateScreenshotNavigationTimeoutMs(25_000)).toBe(25_000);
+    expect(calculateScreenshotNavigationTimeoutMs(120_000)).toBe(60_000);
+    expect(calculateScreenshotNavigationTimeoutMs(3_000)).toBe(8_000);
+    expect(calculateScreenshotNavigationTimeoutMs(undefined)).toBe(8_000);
+  });
+
+  it("reserves setup and capture time on top of navigation", () => {
+    expect(calculateScreenshotBudgetMs(8_000)).toBe(30_000);
+    expect(calculateScreenshotBudgetMs(60_000)).toBe(82_000);
+  });
+});
+
+describe("failure screenshot context banner", () => {
+  it("shows how long a slow page took to load", () => {
+    expect(describeScreenshotContext({ kind: "loaded", durationMs: 41_200, monitorTimeoutMs: 60_000, statusCode: 200 }, 75_400)).toEqual({
+      tone: "warning",
+      title: "Page loaded in 41 s with HTTP 200 (monitor timeout 60 s)",
+      detail: "Screenshot taken 75 s after the check started",
+    });
+  });
+
+  it("puts the check status next to the status the browser received", () => {
+    expect(describeScreenshotContext(
+      { kind: "loaded", durationMs: 1_200, monitorTimeoutMs: 60_000, statusCode: 500 },
+      14_000,
+      500
+    )).toEqual({
+      tone: "critical",
+      title: "Page loaded in 1.2 s with HTTP 500 (monitor timeout 60 s)",
+      detail: "Check got HTTP 500 · Screenshot taken 14 s after the check started",
+    });
+    expect(describeScreenshotContext({ kind: "loaded", durationMs: 42, monitorTimeoutMs: 60_000, statusCode: 500 }, 14_000).title)
+      .toBe("Page loaded in 42 ms with HTTP 500 (monitor timeout 60 s)");
+    expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 3_000, null).detail)
+      .toBe("Check got no HTTP response · Screenshot taken 3.0 s after the check started");
+  });
+
+  it("explains a page that never finished loading", () => {
+    const title = (rendered: "no-response" | "blank" | "partial") =>
+      describeScreenshotContext({ kind: "timed-out", timeoutMs: 60_000, rendered }, 4_250).title;
+
+    expect(title("no-response")).toBe("Page did not load within 60 s; the server sent nothing, so the browser shows a blank page");
+    expect(title("blank")).toBe("Page was still loading after 60 s; nothing visible had arrived yet");
+    expect(title("partial")).toBe("Page was still loading after 60 s; showing what had arrived");
+  });
+
+  it("writes the banner in Turkish with Turkish number formatting", () => {
+    expect(describeScreenshotContext(
+      { kind: "loaded", durationMs: 1_250, monitorTimeoutMs: 60_000, statusCode: 500 },
+      14_000,
+      500,
+      "tr"
+    )).toEqual({
+      tone: "critical",
+      title: "Sayfa 1,3 sn içinde HTTP 500 ile yüklendi (monitör zaman aşımı 60 sn)",
+      detail: "Kontrol HTTP 500 aldı · Ekran görüntüsü kontrol başladıktan 14 sn sonra alındı",
+    });
+    expect(describeScreenshotContext({ kind: "timed-out", timeoutMs: 8_000, rendered: "no-response" }, 420, null, "tr")).toEqual({
+      tone: "critical",
+      title: "Sayfa 8,0 sn içinde yüklenmedi; sunucu hiçbir şey göndermediği için tarayıcı boş sayfa gösteriyor",
+      detail: "Kontrol HTTP yanıtı alamadı · Ekran görüntüsü kontrol başladıktan 420 ms sonra alındı",
+    });
+    expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 3_000, undefined, "tr").title)
+      .toBe("Tarayıcı sayfayı açamadı (ERR_CONNECTION_REFUSED)");
+  });
+
+  it("names the browser network error", () => {
+    expect(describeScreenshotContext({ kind: "error-page", code: "ERR_CONNECTION_REFUSED" }, 9_500)).toMatchObject({
+      tone: "critical",
+      title: "Browser could not open the page (ERR_CONNECTION_REFUSED)",
+      detail: "Screenshot taken 9.5 s after the check started",
+    });
+  });
+});
+
+describe("failure screenshot log messages", () => {
+  it("removes Playwright colors and call logs from navigation timeouts", () => {
+    const error = new Error(
+      'page.goto: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - navigating to "https://example.com/", waiting until "domcontentloaded"\u001b[22m\n'
+    );
+
+    expect(describeScreenshotFailure(error)).toBe("page did not load within 8.0 s");
+  });
+
+  it("keeps site-controlled text on one log line", () => {
+    expect(toLogText("status 500 \n[sentrovia] Fake entry \r\u2028more\u0000\ttail"))
+      .toBe("status 500 [sentrovia] Fake entry more tail");
+  });
+
+  it("keeps the browser network error code", () => {
+    expect(describeScreenshotFailure(new Error("page.goto: net::ERR_UNSAFE_PORT at http://example.com:6666/")))
+      .toBe("browser could not open the page (ERR_UNSAFE_PORT)");
+  });
+
+  it("keeps only the first line of a browser launch failure", () => {
+    const error = new Error(
+      "browserType.launch: Executable doesn't exist at /opt/chrome\n╔════════╗\n║ Please run the following command ║\n╚════════╝"
+    );
+
+    expect(describeScreenshotFailure(error)).toBe("browser could not be started: Executable doesn't exist at /opt/chrome");
+  });
+
+  it("explains a full screenshot queue", () => {
+    expect(describeScreenshotFailure(new Error("screenshot queue timed out")))
+      .toBe("too many screenshots were already being captured (queue timed out)");
+  });
+
+  it("keeps other messages readable", () => {
+    expect(describeScreenshotFailure(new Error("screenshot target is not allowed by the current network safety policy")))
+      .toBe("screenshot target is not allowed by the current network safety policy");
+  });
+});
 
 describe("failure screenshot capture rules", () => {
   it("allows enabled HTTP monitors with email delivery", () => {
@@ -227,6 +347,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     jsonPath: null,
     jsonExpectedValue: null,
     jsonMatchMode: "equals",
+    dnsExpectedValues: null,
+    dnsMatchMode: "includes",
     tags: [],
     renotifyCount: null,
     maxRedirects: 5,

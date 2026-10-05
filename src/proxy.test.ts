@@ -23,6 +23,19 @@ describe("authenticated route matcher", () => {
     expect(response.cookies.get(SESSION_COOKIE_NAME)?.value).toBe("");
   });
 
+  it("answers API calls without a session with a JSON 401 instead of the sign-in page", async () => {
+    const request = new NextRequest("http://localhost/api/monitors", {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=expired-token` },
+    });
+
+    const response = await proxy(request);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("location")).toBeNull();
+    expect(await response.json()).toEqual({ message: "Your session has ended. Sign in again." });
+    expect(response.cookies.get(SESSION_COOKIE_NAME)?.value).toBe("");
+  });
+
   it("preserves a protected page query when redirecting through login", async () => {
     const request = new NextRequest("http://localhost/monitoring?create=1&company=company-1");
 
@@ -50,6 +63,40 @@ describe("authenticated route matcher", () => {
 
     const response = await proxy(request);
     expect(response.status).toBe(403);
+  });
+
+  it("lets viewers read report analytics but not change reports or clear logs", async () => {
+    const token = await createSessionToken({
+      id: "viewer-2",
+      firstName: "Read",
+      lastName: "Only",
+      email: "viewer2@example.com",
+      department: null,
+      role: "viewer",
+    });
+    const cookie = `${SESSION_COOKIE_NAME}=${token}`;
+    const post = (path: string, method = "POST") => proxy(new NextRequest(`http://localhost${path}`, { method, headers: { cookie } }));
+
+    await expect(post("/api/reports/analytics")).resolves.toMatchObject({ status: 200 });
+    await expect(post("/api/reports/analytics/pdf")).resolves.toMatchObject({ status: 200 });
+    await expect(post("/api/reports")).resolves.toMatchObject({ status: 403 });
+    await expect(post("/api/logs", "DELETE")).resolves.toMatchObject({ status: 403 });
+  });
+
+  it("keeps clearing logs to admins", async () => {
+    const token = await createSessionToken({
+      id: "manager-1",
+      firstName: "Team",
+      lastName: "Lead",
+      email: "manager@example.com",
+      department: null,
+      role: "manager",
+    });
+
+    await expect(proxy(new NextRequest("http://localhost/api/logs", {
+      method: "DELETE",
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${token}` },
+    }))).resolves.toMatchObject({ status: 403 });
   });
 
   it("allows operators to mutate monitors but not worker state", async () => {

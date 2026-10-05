@@ -61,7 +61,7 @@ export function GlobalCommandSearch({ open, onOpenChange, role }: { open: boolea
       setError(null);
       try {
         const response = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { cache: "no-store", signal: controller.signal });
-        const data = (await response.json()) as { results?: GlobalSearchResult[]; message?: string };
+        const data = (await response.json().catch(() => ({}))) as { results?: GlobalSearchResult[]; message?: string };
         if (!response.ok) throw new Error(data.message ?? "Unable to search.");
         setResults(data.results ?? []);
       } catch (caughtError) {
@@ -86,7 +86,7 @@ export function GlobalCommandSearch({ open, onOpenChange, role }: { open: boolea
     setCheckingId(result.monitorId);
     try {
       const response = await fetch(`/api/monitors/${result.monitorId}/recheck`, { method: "POST" });
-      const data = (await response.json()) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) throw new Error(data.message ?? "Unable to queue the check.");
       showToast(`Check queued for ${result.title}.`, "success");
       navigate(result.href);

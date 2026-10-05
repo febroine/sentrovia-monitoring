@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getLatestDate, isObservedMonitorStale } from "@/lib/worker/observability";
+import { calculateOldestDueWaitMs, getLatestDate, isObservedMonitorStale } from "@/lib/worker/observability";
 
 describe("worker observability helpers", () => {
   it("resolves the latest failure timestamp regardless of input ordering", () => {
@@ -24,5 +24,28 @@ describe("worker observability helpers", () => {
       intervalUnit: "sa",
       timeout: 60_000,
     }, new Date("2026-07-22T12:00:00.000Z"))).toBe(false);
+  });
+});
+
+describe("oldest due wait", () => {
+  const now = new Date("2026-05-08T07:05:00.000Z");
+
+  it("reports how long the most overdue monitor has been waiting", () => {
+    expect(calculateOldestDueWaitMs([
+      { nextCheckAt: new Date("2026-05-08T07:04:30.000Z") },
+      { nextCheckAt: new Date("2026-05-08T07:02:00.000Z") },
+      { nextCheckAt: null },
+    ], now)).toBe(180_000);
+  });
+
+  it("counts a monitor edited during a pause as waiting only since the pause ended", () => {
+    expect(calculateOldestDueWaitMs([
+      { nextCheckAt: new Date("2026-05-06T07:05:00.000Z"), pausedUntil: new Date("2026-05-08T07:04:00.000Z") },
+    ], now)).toBe(60_000);
+  });
+
+  it("reports nothing when no monitor is waiting", () => {
+    expect(calculateOldestDueWaitMs([], now)).toBeNull();
+    expect(calculateOldestDueWaitMs([{ nextCheckAt: null }], now)).toBeNull();
   });
 });

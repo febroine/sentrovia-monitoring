@@ -26,7 +26,8 @@ describe("wide table containment", () => {
     expect(monitorTable).toContain('Table className="min-w-0 table-fixed');
     expect(monitorTable).not.toContain('Table className="min-w-[1180px]');
     expect(monitorTable).toContain("<colgroup>");
-    expect(monitorTable).toContain("HTTP {monitor.statusCode ?? \"--\"} · {formatLatency(monitor.latencyMs)}");
+    expect(monitorTable).toContain("{formatResponseSummary(monitor)}");
+    expect(monitorTable).toContain("`HTTP ${monitor.statusCode ?? \"--\"} · ${latency}`");
     expect(monitorTable).toContain("{monitor.uptime} uptime");
     expect(monitorTable).toContain("monitor.tags.join(\" · \")");
     expect(monitorTable).toContain("onOpenTimeline");

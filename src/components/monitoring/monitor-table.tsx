@@ -1,4 +1,4 @@
-import { CheckCircle2, CheckSquare, Clock, Flag, Globe, Mail, Play, Power, RadioTower, RefreshCw, Send, Settings2, Square, Star, XCircle } from "lucide-react";
+import { CheckCircle2, CheckSquare, Clock, Copy, Flag, Globe, Mail, Play, Power, RadioTower, RefreshCw, Send, Settings2, Square, Star, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,6 +106,7 @@ export function MonitorTable({
   onToggleFlag,
   onRecheck,
   onEdit,
+  onDuplicate,
   onOpenTimeline,
   emptyState,
 }: {
@@ -128,6 +129,7 @@ export function MonitorTable({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
+  onDuplicate?: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
   emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
@@ -156,7 +158,7 @@ export function MonitorTable({
         <TableHeader>
           <TableRow className="bg-surface-high hover:bg-surface-high">
             <TableHead className="px-1 pl-2">
-              <button type="button" disabled={readOnly} onClick={onToggleAll} className="flex items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={allPageSelected ? "Clear visible monitor selection" : "Select all visible monitors"}>
+              <button type="button" disabled={readOnly} onClick={onToggleAll} className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={allPageSelected ? "Clear visible monitor selection" : "Select all visible monitors"}>
                 {allPageSelected ? <CheckSquare className="size-4 text-primary" /> : somePageSelected ? <Square className="size-4 text-primary opacity-60" /> : <Square className="size-4" />}
               </button>
             </TableHead>
@@ -190,7 +192,7 @@ export function MonitorTable({
             monitors.map((monitor) => (
               <TableRow key={monitor.id} className={selectedIds.has(monitor.id) ? "bg-primary/5" : ""}>
                 <TableCell className="px-1 pl-2">
-                  <button type="button" disabled={readOnly} onClick={() => onToggleOne(monitor.id)} className="flex items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={selectedIds.has(monitor.id) ? `Deselect ${monitor.name}` : `Select ${monitor.name}`}>
+                  <button type="button" disabled={readOnly} onClick={() => onToggleOne(monitor.id)} className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-30" aria-label={selectedIds.has(monitor.id) ? `Deselect ${monitor.name}` : `Select ${monitor.name}`}>
                     {selectedIds.has(monitor.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableCell>
@@ -231,8 +233,8 @@ export function MonitorTable({
                       slow={isSlowMonitor(monitor)}
                     />
                     <CheckScheduleIssue monitor={monitor} />
-                    <p className="mt-1 truncate text-[10px] tabular-nums text-muted-foreground" title={`HTTP ${monitor.statusCode ?? "--"} · ${formatLatency(monitor.latencyMs)}`}>
-                      HTTP {monitor.statusCode ?? "--"} · {formatLatency(monitor.latencyMs)}
+                    <p className="mt-1 truncate text-[10px] tabular-nums text-muted-foreground" title={formatResponseSummary(monitor)}>
+                      {formatResponseSummary(monitor)}
                     </p>
                   </div>
                 </TableCell>
@@ -338,6 +340,19 @@ export function MonitorTable({
                     >
                       <Settings2 className="size-3.5 text-muted-foreground" />
                     </Button>
+                    {onDuplicate ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        disabled={readOnly}
+                        aria-label={`Duplicate ${monitor.name}`}
+                        title="Duplicate monitor"
+                        onClick={() => onDuplicate(monitor)}
+                      >
+                        <Copy className="size-3.5 text-muted-foreground" />
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>
@@ -365,6 +380,7 @@ export function MonitorTable({
       onToggleFlag={onToggleFlag}
       onRecheck={onRecheck}
       onEdit={onEdit}
+      onDuplicate={onDuplicate}
       onOpenTimeline={onOpenTimeline}
       emptyState={emptyState}
       />
@@ -392,6 +408,7 @@ function MobileMonitorList({
   onToggleFlag,
   onRecheck,
   onEdit,
+  onDuplicate,
   onOpenTimeline,
   emptyState,
 }: {
@@ -413,6 +430,7 @@ function MobileMonitorList({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
+  onDuplicate?: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
   emptyState?: { title: string; description?: string; action?: ReactNode };
 }) {
@@ -458,6 +476,7 @@ function MobileMonitorList({
           onToggleFlag={onToggleFlag}
           onRecheck={onRecheck}
           onEdit={onEdit}
+      onDuplicate={onDuplicate}
           onOpenTimeline={onOpenTimeline}
         />
       ))}
@@ -480,6 +499,7 @@ function MobileMonitorCard({
   onToggleFlag,
   onRecheck,
   onEdit,
+  onDuplicate,
   onOpenTimeline,
 }: {
   monitor: MonitorRecord;
@@ -496,6 +516,7 @@ function MobileMonitorCard({
   onToggleFlag: (monitor: MonitorRecord, field: "isFavorite" | "isCritical" | "publishOnStatusPage") => void;
   onRecheck: (monitor: MonitorRecord) => void;
   onEdit: (monitor: MonitorRecord) => void;
+  onDuplicate?: (monitor: MonitorRecord) => void;
   onOpenTimeline: (monitor: MonitorRecord) => void;
 }) {
   return (
@@ -522,8 +543,8 @@ function MobileMonitorCard({
         </div>
       </div>
       <p className="mt-3 break-all text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
-      <div className="mt-3 grid grid-cols-3 gap-2 rounded-md bg-muted/25 p-3 text-xs">
-        <MobileMetric label="HTTP" value={monitor.statusCode ? String(monitor.statusCode) : "--"} />
+      <div className={`mt-3 grid gap-2 rounded-md bg-muted/25 p-3 text-xs ${usesHttpResponse(monitor) ? "grid-cols-3" : "grid-cols-2"}`}>
+        {usesHttpResponse(monitor) ? <MobileMetric label="HTTP" value={monitor.statusCode ? String(monitor.statusCode) : "--"} /> : null}
         <MobileMetric label="Latency" value={formatLatency(monitor.latencyMs)} />
         <MobileMetric label="Uptime" value={monitor.uptime} />
       </div>
@@ -559,6 +580,11 @@ function MobileMonitorCard({
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" disabled={flagPending} aria-label={monitor.isCritical ? `Remove critical flag from ${monitor.name}` : `Mark ${monitor.name} as critical`} onClick={() => onToggleFlag(monitor, "isCritical")}>
             <Flag className={`size-4 ${monitor.isCritical ? "fill-rose-500 text-rose-500" : "text-muted-foreground"}`} />
           </Button>
+          {onDuplicate ? (
+            <Button variant="ghost" size="sm" className="h-10 w-10 p-0" aria-label={`Duplicate ${monitor.name}`} onClick={() => onDuplicate(monitor)}>
+              <Copy className="size-4 text-muted-foreground" />
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" className="h-10 px-3" onClick={() => onEdit(monitor)}>
             Edit
           </Button>
@@ -631,4 +657,14 @@ function getStatusDescription(monitor: MonitorRecord) {
 
 function formatPauseUntil(value: string) {
   return formatPanelDateTime(value, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// Only HTTP-based monitors receive an HTTP status; the others show their latency alone.
+function usesHttpResponse(monitor: MonitorRecord) {
+  return monitor.monitorType === "http" || monitor.monitorType === "keyword" || monitor.monitorType === "json";
+}
+
+function formatResponseSummary(monitor: MonitorRecord) {
+  const latency = formatLatency(monitor.latencyMs);
+  return usesHttpResponse(monitor) ? `HTTP ${monitor.statusCode ?? "--"} · ${latency}` : latency;
 }

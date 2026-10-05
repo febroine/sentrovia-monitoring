@@ -1,6 +1,7 @@
 import { eq, sql, type SQLWrapper } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { WORKER_STATE_ID } from "@/lib/worker/constants";
+import { NOTIFICATION_JOB_RETENTION_DAYS } from "@/lib/notifications/outbox";
 import {
   userSettings,
   workerState,
@@ -23,6 +24,9 @@ export async function runRetentionCleanup(now = new Date()) {
     if (!lock?.acquired) {
       return { ran: false };
     }
+    // Bulk deletes can take minutes on a large history (e.g. after a retention change); the worker's
+    // statement limit would abort them every time, so it is lifted for this transaction only.
+    await tx.execute(sql`set local statement_timeout = 0`);
 
     const [state] = await tx
       .select({ lastRetentionCleanupAt: workerState.lastRetentionCleanupAt })
@@ -107,6 +111,11 @@ export async function runRetentionCleanup(now = new Date()) {
           userSettings.deliveryRetentionDays,
           DEFAULT_SETTINGS.data.deliveryRetentionDays
         )})
+    `);
+    await tx.execute(sql`
+      delete from notification_jobs
+      where status in ('done', 'failed')
+        and completed_at < (${queryTimestamp})::timestamptz - make_interval(days => ${NOTIFICATION_JOB_RETENTION_DAYS})
     `);
     await tx.execute(sql`
       delete from audit_events as record

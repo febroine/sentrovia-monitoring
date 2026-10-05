@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, type TimeDisplaySettings } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { startVisiblePolling } from "@/lib/client/visible-polling";
 
 interface SystemHealthResponse {
   generatedAt: string;
@@ -72,8 +73,7 @@ export function SystemHealthCard({
 
   useEffect(() => {
     void loadHealth();
-    const intervalId = window.setInterval(() => void loadHealth(), 15_000);
-    return () => window.clearInterval(intervalId);
+    return startVisiblePolling(() => void loadHealth(), 15_000);
   }, [loadHealth]);
 
   const status = health ? formatOverallStatus(health.overallStatus) : "Loading";

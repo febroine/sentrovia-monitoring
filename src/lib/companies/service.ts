@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle
 import { db, type DatabaseExecutor } from "@/lib/db";
 import { companies, monitors, reportSchedules, userSettings } from "@/lib/db/schema";
 import type { CompanyInput } from "@/lib/companies/schemas";
+import { normalizeRecipientScopes, removeMonitorsFromScopes } from "@/lib/companies/recipient-scopes";
 import { decryptValueOrLegacyPlaintext, encryptValue } from "@/lib/security/encryption";
 import {
   resolveWorkspaceScope,
@@ -67,6 +68,8 @@ async function persistCompany(subject: WorkspaceSubject, input: CompanyInput, da
       name: input.name,
       description: input.description,
       notificationEmailRecipients: input.notificationEmailRecipients,
+      // A new company has no monitors yet, so every address starts by covering all of them.
+      notificationEmailScopes: {},
       telegramBotTokenEncrypted: telegram.botTokenEncrypted,
       telegramChatId: telegram.chatId,
       isActive: input.isActive,
@@ -151,6 +154,13 @@ export async function updateCompany(subject: WorkspaceSubject, companyId: string
       input,
       existing.telegramBotTokenEncrypted
     );
+    const notificationEmailScopes = await limitScopesToCompanyMonitors(
+      input.notificationEmailScopes,
+      input.notificationEmailRecipients,
+      scope.workspaceId,
+      companyId,
+      tx
+    );
 
     const [updated] = await tx
       .update(companies)
@@ -158,6 +168,7 @@ export async function updateCompany(subject: WorkspaceSubject, companyId: string
         name: input.name,
         description: input.description,
         notificationEmailRecipients: input.notificationEmailRecipients,
+        notificationEmailScopes,
         telegramBotTokenEncrypted: telegram.botTokenEncrypted,
         telegramChatId: telegram.chatId,
         isActive: input.isActive,
@@ -225,6 +236,61 @@ export function resolveCompanyTelegramCredentials(input: CompanyInput, existingE
     botTokenEncrypted,
     chatId: botTokenEncrypted ? input.telegramChatId : null,
   };
+}
+
+// A scope may only name monitors that belong to the company right now.
+async function limitScopesToCompanyMonitors(
+  scopes: CompanyInput["notificationEmailScopes"],
+  recipients: string[],
+  workspaceId: string,
+  companyId: string,
+  database: DatabaseExecutor
+) {
+  const normalized = normalizeRecipientScopes(scopes, recipients);
+  if (Object.keys(normalized).length === 0) return normalized;
+
+  const companyMonitors = await database
+    .select({ id: monitors.id })
+    .from(monitors)
+    .where(and(
+      eq(monitors.workspaceId, workspaceId),
+      eq(monitors.companyId, companyId),
+      isNull(monitors.deletedAt)
+    ));
+  const assigned = new Set(companyMonitors.map((monitor) => monitor.id));
+  return Object.fromEntries(
+    Object.entries(normalized).map(([address, ids]) => [address, ids.filter((id) => assigned.has(id))])
+  );
+}
+
+// Monitors that move to another company, or to none, leave the address limits of every other company,
+// so they are not picked up again if they ever return.
+export async function removeMonitorsFromOtherCompanyScopes(
+  database: DatabaseExecutor,
+  workspaceId: string,
+  monitorIds: string[],
+  currentCompanyId: string | null
+) {
+  if (monitorIds.length === 0) return;
+
+  const scoped = await database
+    .select({ id: companies.id, scopes: companies.notificationEmailScopes })
+    .from(companies)
+    .where(and(
+      eq(companies.workspaceId, workspaceId),
+      sql`${companies.notificationEmailScopes} <> '{}'::jsonb`
+    ));
+  const moved = new Set(monitorIds);
+  for (const company of scoped) {
+    if (company.id === currentCompanyId) continue;
+    const { scopes, changed } = removeMonitorsFromScopes(company.scopes ?? {}, moved);
+    if (changed) {
+      await database
+        .update(companies)
+        .set({ notificationEmailScopes: scopes })
+        .where(eq(companies.id, company.id));
+    }
+  }
 }
 
 function toCompanyOutput(company: typeof companies.$inferSelect) {

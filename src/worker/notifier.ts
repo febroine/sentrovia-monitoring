@@ -7,8 +7,10 @@ import {
   sendWebhookDelivery,
 } from "@/lib/delivery/service";
 import { countMonitorEvents, hasRecentMonitorEvent, isMonitorActive } from "@/lib/monitors/service";
+import { resolveNotificationLanguage } from "@/lib/notifications/language";
 import { getMonitorNotificationRouting } from "@/lib/notifications/routing";
 import { getSettings } from "@/lib/settings/service";
+import type { NotificationLanguage } from "@/lib/settings/types";
 import type { NotificationContext } from "@/worker/types";
 import { renderNotificationTemplates } from "@/worker/templates";
 
@@ -40,9 +42,14 @@ export async function sendMonitorNotifications(context: NotificationContext) {
 
   const rendered = renderNotificationTemplates(context, settings, env.appUrl);
   const deliveryResults: NotificationDeliveryResult[] = [];
-  const getScreenshotAttachments = createScreenshotAttachmentResolver(context);
+  const getScreenshotAttachments = createScreenshotAttachmentResolver(
+    context,
+    resolveNotificationLanguage(context.monitor.notificationLanguage, settings.notifications.notificationLanguage)
+  );
 
-  if (context.monitor.notificationPref === "email" || context.monitor.notificationPref === "both") {
+  const mayDeliver = async () => !context.canDeliver || await context.canDeliver();
+
+  if ((context.monitor.notificationPref === "email" || context.monitor.notificationPref === "both") && await mayDeliver()) {
     deliveryResults.push(
       await sendEmailDelivery({
         userId: context.monitor.userId,
@@ -65,6 +72,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
       chatId: context.monitor.telegramChatId ?? "",
     }];
     for (const target of telegramTargets.length > 0 ? telegramTargets : [{ botToken: "", chatId: "" }]) {
+      if (!(await mayDeliver())) return deliveryResults.some(isAcceptedDelivery);
       deliveryResults.push(await sendTelegramDelivery({
         userId: context.monitor.userId,
         workspaceId: context.monitor.workspaceId,
@@ -79,6 +87,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     }
   }
 
+  if (!(await mayDeliver())) return deliveryResults.some(isAcceptedDelivery);
   if (settings.notifications.discordEnabled && settings.notifications.discordWebhookUrl) {
     deliveryResults.push(
       await sendChannelWebhookDelivery(
@@ -92,6 +101,7 @@ export async function sendMonitorNotifications(context: NotificationContext) {
     );
   }
 
+  if (!(await mayDeliver())) return deliveryResults.some(isAcceptedDelivery);
   const webhookPayload = await buildNotificationWebhookPayload({
     userId: context.monitor.userId,
     workspaceId: context.monitor.workspaceId,
@@ -123,7 +133,7 @@ function isAcceptedDelivery(result: NotificationDeliveryResult) {
   return result?.status === "delivered" || result?.status === "retrying";
 }
 
-function createScreenshotAttachmentResolver(context: NotificationContext) {
+function createScreenshotAttachmentResolver(context: NotificationContext, language: NotificationLanguage) {
   let cached: Promise<NotificationContext["emailAttachments"]> | null = null;
 
   return () => {
@@ -135,7 +145,7 @@ function createScreenshotAttachmentResolver(context: NotificationContext) {
       return Promise.resolve(undefined);
     }
 
-    cached ??= context.buildEmailAttachments();
+    cached ??= context.buildEmailAttachments(language);
     return cached;
   };
 }

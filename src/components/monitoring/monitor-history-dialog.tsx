@@ -11,8 +11,11 @@ import type {
 import { buildMonitorHistoryWindow } from "@/lib/monitors/history-window";
 import { isMonitorTemporarilyPaused } from "@/lib/monitors/pause";
 import { toEnglishUppercase } from "@/lib/text/casing";
+import { DailyAvailabilityCalendar } from "@/components/monitoring/daily-availability-calendar";
+import { FailureEvidencePanel } from "@/components/monitoring/failure-evidence-panel";
 import { formatLatency } from "@/components/monitoring/utils";
 import { formatPanelDateTime } from "@/lib/time";
+import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 
 const EVENT_CONTEXT_WINDOW_MS = 2 * 60 * 60 * 1000;
 
@@ -52,14 +55,17 @@ export function MonitorHistoryDialog({
         <DialogHeader>
           <DialogTitle>Timeline details</DialogTitle>
           <DialogDescription>
-            {monitor ? `${monitor.name} · ${monitor.url}` : "Review the selected monitor check window."}
+            {monitor ? `${monitor.name} · ${getMonitorTargetDisplay(monitor)}` : "Review the selected monitor check window."}
             {eventAt ? ` · Event at ${formatDateTime(eventAt)}` : ""}
           </DialogDescription>
         </DialogHeader>
 
         {!monitor || !selection ? (
-          <div className="rounded-md bg-muted/25 px-4 py-4 text-sm text-muted-foreground">
-            Select a timeline point to inspect its state window.
+          <div className="space-y-4">
+            <div className="rounded-md bg-muted/25 px-4 py-4 text-sm text-muted-foreground">
+              Select a timeline point to inspect its state window.
+            </div>
+            {monitor ? <DailyAvailabilityCalendar key={monitor.id} monitorId={monitor.id} /> : null}
           </div>
         ) : (
           <div className="space-y-4">
@@ -142,6 +148,12 @@ export function MonitorHistoryDialog({
                 </div>
               </div>
             </div>
+
+            <DailyAvailabilityCalendar key={monitor.id} monitorId={monitor.id} />
+
+            {selection.point.status !== "up" ? (
+              <FailureEvidencePanel key={selection.point.id} checkId={selection.point.id} />
+            ) : null}
 
             {selectedDiagnostic ? (
               <div className="rounded-md bg-muted/20 p-4">

@@ -2,7 +2,8 @@ import { runRetentionCleanup } from "@/lib/data-retention/service";
 import { retryDeliveryQueueForAllUsers } from "@/lib/delivery/service";
 import { runDueReportSchedules } from "@/lib/reports/service";
 import { ensureWorkerConnectivity } from "@/worker/connectivity";
-import { runMonitoringCycle } from "@/worker/scheduler";
+import { dispatchQueuedNotifications } from "@/worker/notification-outbox";
+import { dispatchDueMonitors } from "@/worker/scheduler";
 import { triggerAutomaticDatabaseBackup } from "@/lib/system/automatic-backup";
 
 export type WorkerPhaseResult =
@@ -33,7 +34,18 @@ export async function runWorkerPhases(
   }
   if (!(await isRunRequested())) return { status: "stopped" };
 
-  await runMonitoringCycle();
+  // Starts due monitors in free slots; they finish in the background, so slow checks never hold back
+  // delivery retries, reports, or the next monitors.
+  await dispatchDueMonitors();
+  if (!(await isRunRequested())) return { status: "stopped" };
+
+  // Queued alerts are normally started the moment they are raised; this picks up retries that came
+  // due and alerts left from before a restart or a connectivity pause.
+  try {
+    await dispatchQueuedNotifications(outboundConnectivity.available);
+  } catch (error) {
+    console.error("[sentrovia] Unable to start queued notifications; monitor checks will continue.", error);
+  }
   if (!(await isRunRequested())) return { status: "stopped" };
 
   if (!outboundConnectivity.available) {

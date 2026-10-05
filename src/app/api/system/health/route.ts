@@ -7,8 +7,11 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    await requireAdminSession();
-    return NextResponse.json({ health: await getSystemHealth() });
+    const session = await requireAdminSession();
+    if (!session.activeWorkspaceId) {
+      return NextResponse.json({ message: "No active workspace." }, { status: 403 });
+    }
+    return NextResponse.json({ health: await getSystemHealth(session.activeWorkspaceId) });
   } catch (error) {
     const authError = toAuthError(error, "Unable to load system health right now.");
     return NextResponse.json({ message: authError.message }, { status: authError.status });

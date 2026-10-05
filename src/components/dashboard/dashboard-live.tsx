@@ -41,7 +41,10 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [customizationError, setCustomizationError] = useState<string | null>(null);
   const [flagPendingId, setFlagPendingId] = useState<string | null>(null);
-  const [outageBannerDismissed, setOutageBannerDismissed] = useState(false);
+  // How many monitors were offline when the outage banner was dismissed; more offline shows it again.
+  const [dismissedOfflineCount, setDismissedOfflineCount] = useState<number | null>(null);
+  // The browser gave up reconnecting (for example after the session ended).
+  const [streamClosed, setStreamClosed] = useState(false);
 
   useEffect(() => {
     const stream = new EventSource("/api/dashboard/stream");
@@ -56,6 +59,14 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
     };
 
     stream.onerror = () => {
+      if (stream.readyState === EventSource.CLOSED) {
+        setStreamClosed(true);
+        setStreamError("Live updates stopped. Reload the page to resume them; you may need to sign in again.");
+        // EventSource does not report why it closed; an ended session answers 401 here and the
+        // app-wide session guard takes the user to sign in.
+        void fetch("/api/auth/session", { cache: "no-store" }).catch(() => undefined);
+        return;
+      }
       setStreamError("Live dashboard disconnected. Reconnecting automatically.");
     };
 
@@ -77,7 +88,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draftPreferences),
       });
-      const body = (await response.json()) as { dashboard?: DashboardData; message?: string };
+      const body = (await response.json().catch(() => ({}))) as { dashboard?: DashboardData; message?: string };
       if (!response.ok || !body.dashboard) {
         throw new Error(body.message ?? "Unable to save dashboard preferences.");
       }
@@ -100,7 +111,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
       });
-      const body = (await response.json()) as { message?: string };
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
         throw new Error(body.message ?? "Unable to update monitor dashboard flags.");
       }
@@ -182,12 +193,12 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
                   : "bg-primary/10 text-primary",
               )}
             >
-              {streamError ? (
+              {streamError && !streamClosed ? (
                 <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" />
               ) : (
                 <Radio className="size-3.5" aria-hidden="true" />
               )}
-              {streamError ? "Reconnecting" : "Live"}
+              {streamClosed ? "Offline" : streamError ? "Reconnecting" : "Live"}
             </span>
           </div>
           <Button variant="outline" size="sm" onClick={() => { setCustomizationError(null); setCustomizationOpen((open) => !open); }}>
@@ -219,24 +230,34 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
       ) : null}
 
       {streamError ? (
-        <div className="rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-          {streamError}
+        <div className="flex flex-col gap-2 rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 sm:flex-row sm:items-center sm:justify-between dark:text-amber-300">
+          <span>{streamError}</span>
+          {streamClosed ? (
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
       {data.warnings.length > 0 ? (
         <div className="rounded-md bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-          Some dashboard data is temporarily unavailable: {data.warnings.join(", ")}. Review the server log and database migration status.
+          {isAdmin
+            ? `Some dashboard data is temporarily unavailable: ${data.warnings.join(", ")}. Review the server log and database migration status.`
+            : "Some dashboard data is temporarily unavailable. The figures will fill in once it is back."}
         </div>
       ) : null}
 
-      {showOutageBanner && data.summary.offline > 0 && !outageBannerDismissed ? (
+      {showOutageBanner && data.summary.offline > 0 && (dismissedOfflineCount === null || data.summary.offline > dismissedOfflineCount) ? (
         <div
           role="alert"
           className="flex items-center gap-3 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
           <p className="min-w-0 flex-1">
-            {data.summary.offline} monitor{data.summary.offline === 1 ? "" : "s"} currently offline. Verification and delivery history are available below.
+            {data.summary.offline} monitor{data.summary.offline === 1 ? "" : "s"} currently offline.{" "}
+            <Link href="/monitoring?status=down" className="font-medium underline underline-offset-4 hover:no-underline">
+              Show offline monitor{data.summary.offline === 1 ? "" : "s"}
+            </Link>
           </p>
           <Button
             type="button"
@@ -245,7 +266,7 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             aria-label="Dismiss offline monitor alert"
             title="Dismiss"
-            onClick={() => setOutageBannerDismissed(true)}
+            onClick={() => setDismissedOfflineCount(data.summary.offline)}
           >
             <X className="size-4" />
           </Button>
@@ -254,12 +275,12 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
 
       <div className="space-y-4">
         {isEmptyWorkspace ? (
-          <div className={cn("grid gap-4", summaryVisible && "lg:grid-cols-12")}>
-            <div className={cn(summaryVisible ? "lg:col-span-8" : "lg:col-span-12")}>
+          <div className={cn("grid grid-cols-1 gap-4", summaryVisible && "lg:grid-cols-12")}>
+            <div className={cn("min-w-0", summaryVisible ? "lg:col-span-8" : "lg:col-span-12")}>
               <EmptyDashboardGuide activation={data.activation} />
             </div>
             {summaryVisible ? (
-              <div className="lg:col-span-4">
+              <div className="min-w-0 lg:col-span-4">
                 <SummaryOverview summary={data.summary} />
               </div>
             ) : null}
@@ -271,11 +292,13 @@ export function DashboardLive({ initialData }: { initialData: DashboardData }) {
           </>
         )}
 
+        {/* An explicit single column keeps a wide child (the scrolling monitor focus strip) from
+            stretching every card past the screen on phones. */}
         {detailWidgets.length > 0 ? (
-          <div className="grid gap-4 lg:grid-cols-12">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             {detailWidgets.map((widget) => (
               <div
-                className={detailWidgets.length === 1 ? "lg:col-span-12" : dashboardWidgetClass(widget)}
+                className={cn("min-w-0", detailWidgets.length === 1 ? "lg:col-span-12" : dashboardWidgetClass(widget))}
                 key={widget}
               >
                 {renderWidget(widget)}
@@ -456,8 +479,8 @@ function ActivationProgressStrip({ activation }: { activation: DashboardData["ac
 
   return (
     <section className="rounded-lg bg-card px-4 py-3 shadow-sm" aria-labelledby="activation-progress-title">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-5">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <ListChecks className="size-4" aria-hidden="true" />
           </span>
@@ -477,7 +500,8 @@ function ActivationProgressStrip({ activation }: { activation: DashboardData["ac
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        {/* The progress and its action keep their width; the explanation beside them wraps instead. */}
+        <div className="flex min-w-0 items-center gap-3 lg:w-96 lg:shrink-0">
           <div
             className="h-1.5 min-w-20 flex-1 overflow-hidden rounded-full bg-muted"
             role="progressbar"

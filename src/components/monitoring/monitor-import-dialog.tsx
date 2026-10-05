@@ -18,6 +18,7 @@ const DEFAULT_MAPPING = [
   "databaseUsername=databaseUsername", "databasePassword=databasePassword", "databaseSsl=databaseSsl",
   "databaseTlsVerify=databaseTlsVerify", "keywordQuery=keywordQuery", "keywordInvert=keywordInvert",
   "jsonPath=jsonPath", "jsonExpectedValue=jsonExpectedValue", "jsonMatchMode=jsonMatchMode",
+  "dnsRecordType=dnsRecordType", "dnsServer=dnsServer", "dnsExpectedValues=dnsExpectedValues", "dnsMatchMode=dnsMatchMode",
   "company=company", "intervalValue=intervalValue", "intervalUnit=intervalUnit", "timeout=timeout",
   "slowResponseThresholdMs=slowResponseThresholdMs", "slowResponseAlertsEnabled=slowResponseAlertsEnabled",
   "expectedStatusCodes=expectedStatusCodes", "retries=retries", "method=method", "tags=tags",
@@ -79,7 +80,7 @@ export function MonitorImportDialog({ open, onOpenChange, onImported }: {
     setHistoryError(null);
     try {
       const response = await fetch("/api/monitors/imports", { cache: "no-store" });
-      const data = (await response.json()) as { runs?: ImportRun[]; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { runs?: ImportRun[]; message?: string };
       if (!response.ok) throw new Error(data.message ?? "Unable to load import history.");
       setHistory(data.runs ?? []);
     } catch (caughtError) {
@@ -151,7 +152,7 @@ export function MonitorImportDialog({ open, onOpenChange, onImported }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload, preview: previewOnly, fileName }),
       });
-      const data = (await response.json()) as { message?: string; monitors?: MonitorRecord[]; preview?: Preview };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; monitors?: MonitorRecord[]; preview?: Preview };
       if (!response.ok) throw new Error(data.message ?? (previewOnly ? "Unable to preview CSV." : "Unable to import CSV."));
       if (previewOnly) {
         if (!data.preview) throw new Error("Unable to preview CSV.");
@@ -205,7 +206,7 @@ export function MonitorImportDialog({ open, onOpenChange, onImported }: {
     setHistoryError(null);
     try {
       const response = await fetch(`/api/monitors/imports/${runId}/undo`, { method: "POST" });
-      const data = (await response.json()) as { removedCount?: number; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { removedCount?: number; message?: string };
       if (!response.ok) throw new Error(data.message ?? "Unable to undo this import.");
       setNotice(`Removed ${data.removedCount ?? 0} imported monitor${data.removedCount === 1 ? "" : "s"}.`);
       setConfirmUndoId(null);

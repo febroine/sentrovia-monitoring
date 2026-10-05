@@ -36,7 +36,18 @@ export const useWorkerStore = create<WorkerStore>((set, get) => ({
         return;
       }
 
-      set({ worker: data, loading: false, error: null });
+      // The sidebar polls a short range for the status alone while Worker Pulse shows its own range;
+      // a poll for another range must not replace the statistics on display, or they flip between ranges.
+      const current = get().worker;
+      const keepObservability = current?.observability
+        && data.observability
+        && current.observability.range !== data.observability.range
+        && range !== "24h";
+      set({
+        worker: keepObservability ? { ...data, observability: current.observability } : data,
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       if (requestVersion !== workerRequestVersion) {
         return;

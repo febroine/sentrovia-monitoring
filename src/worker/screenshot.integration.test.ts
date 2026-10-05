@@ -1,6 +1,7 @@
 import http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
+import { MONITOR_USER_AGENT } from "@/lib/monitors/request-identity";
 import { resolveMonitorNetworkTargetWithTimeout } from "@/lib/security/public-network-target";
 
 vi.mock("@/lib/security/public-network-target", async (importOriginal) => {
@@ -60,6 +61,150 @@ describe("failure screenshot browser isolation", () => {
     }));
 
     expect(attachment?.content).toBeInstanceOf(Buffer);
+  }, 25_000);
+
+  it("loads the page with the same identity as the HTTP check", async () => {
+    let userAgent: string | undefined;
+    const server = await createServer((request, response) => {
+      userAgent = request.headers["user-agent"];
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Identity</h1>");
+    });
+
+    await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/identity`,
+    }));
+
+    expect(userAgent).toBe(MONITOR_USER_AGENT);
+  }, 25_000);
+
+  it("reaches the site over the IP family the monitor checks", async () => {
+    let requests = 0;
+    const server = await createServer((_, response) => {
+      requests += 1;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>IPv4 only</h1>");
+    });
+    // A dual-stack answer whose first address (IPv6) has nothing listening.
+    vi.mocked(resolveMonitorNetworkTargetWithTimeout).mockImplementationOnce(async (hostname: string) => ({
+      hostname,
+      addresses: [{ address: "::1", family: 6 as const }, { address: "127.0.0.1", family: 4 as const }],
+    }));
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/family`,
+      ipFamily: "ipv4",
+    }), new Date(), onSkipped);
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+    // Over IPv6 the browser would photograph its own connection-refused page instead.
+    expect(requests).toBeGreaterThan(0);
+  }, 25_000);
+
+  it("busts the CDN cache the same way the HTTP check does", async () => {
+    const urls: string[] = [];
+    const server = await createServer((request, response) => {
+      urls.push(request.url ?? "");
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Fresh</h1>");
+    });
+
+    await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/cached`,
+      cacheBuster: true,
+    }));
+
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((url) => /^\/cached\?_monitor_ts=\d+$/.test(url))).toBe(true);
+  }, 25_000);
+
+  it("sends the monitor identity on the redirect probe as well as the page load", async () => {
+    const userAgents: Array<string | undefined> = [];
+    const server = await createServer((request, response) => {
+      userAgents.push(request.headers["user-agent"]);
+      if (request.url === "/start") {
+        response.writeHead(302, { Location: "/final" });
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Final</h1>");
+    });
+
+    await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/start`,
+      maxRedirects: 5,
+    }));
+
+    expect(userAgents.length).toBeGreaterThanOrEqual(3);
+    expect(userAgents.every((userAgent) => userAgent === MONITOR_USER_AGENT)).toBe(true);
+  }, 25_000);
+
+  it("leaves the screenshot out when the site responds normally again", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Recovered</h1>");
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/recovered`,
+      timeout: 60_000,
+    }), new Date(), onSkipped, { checkStatusCode: 500, skipWhenSiteResponds: true });
+
+    expect(attachment).toBeNull();
+    expect(onSkipped).toHaveBeenCalledWith(
+      expect.stringMatching(/^site was responding normally when the screenshot was taken \(HTTP 200 in [\d.]+ m?s\)/)
+    );
+  }, 25_000);
+
+  it("still captures a page that keeps failing with an HTTP error", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(500, { "Content-Type": "text/html" });
+      response.end("<h1>Shop</h1><p>Looks normal, but the server returned 500</p>");
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/broken`,
+      timeout: 60_000,
+    }), new Date(), onSkipped, { checkStatusCode: 500, skipWhenSiteResponds: true });
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 25_000);
+
+  it("captures a page that only answers after the monitor timeout", async () => {
+    const server = await createServer((_, response) => {
+      setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end("<h1>Slow</h1>");
+      }, 2_000);
+    });
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/slow`,
+      timeout: 1_000,
+    }), new Date(), undefined, { checkStatusCode: null, skipWhenSiteResponds: true });
+
+    expectJpeg(attachment?.content);
+  }, 25_000);
+
+  it("respects custom expected status codes when deciding the site responds normally", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<h1>Wrong status for this monitor</h1>");
+    });
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/custom`,
+      timeout: 60_000,
+      expectedStatusCodes: "401",
+    }), new Date(), undefined, { checkStatusCode: 200, skipWhenSiteResponds: true });
+
+    expectJpeg(attachment?.content);
   }, 25_000);
 
   it("captures the real page when the server responds with HTTP 503", async () => {
@@ -246,17 +391,83 @@ describe("failure screenshot browser isolation", () => {
     expect(onSkipped).toHaveBeenCalledWith(expect.stringContaining("ERR_UNSAFE_PORT"));
   }, 25_000);
 
-  it("skips the screenshot when the approved target never responds", async () => {
+  it("captures the still-loading page when the approved target never responds", async () => {
     const hangingServer = await createServer(() => undefined);
     const onSkipped = vi.fn();
 
     const attachment = await buildFailureScreenshotAttachment(buildMonitor({
       url: `http://fixture.test:${resolveServerPort(hangingServer)}/timeout`,
-    }), new Date("2026-05-15T08:00:00.000Z"), onSkipped);
+    }), new Date(), onSkipped);
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 25_000);
+
+  it("captures the real page content when a stylesheet that never loads blocks the first paint", async () => {
+    const server = await createServer((request, response) => {
+      if (request.url === "/blocking.css") return;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.write("<!doctype html><html><head><link rel=stylesheet href=/blocking.css></head><body><h1>Loading</h1>");
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/blocked`,
+    }), new Date(), onSkipped);
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 25_000);
+
+  it("skips without a generated image when page scripts keep the browser from drawing", async () => {
+    const server = await createServer((_, response) => {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.write("<!doctype html><body><h1>Busy page</h1><script>while (true) {}</script>");
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(server)}/busy`,
+    }), new Date(), onSkipped);
 
     expect(attachment).toBeNull();
-    expect(onSkipped).toHaveBeenCalledOnce();
+    expect(onSkipped).toHaveBeenCalledWith("browser could not draw the page (its scripts may be keeping it busy)");
   }, 25_000);
+
+  it("captures every alert when more sites fail at once than there are browser slots", async () => {
+    const hangingServer = await createServer(() => undefined);
+    const onSkipped = vi.fn();
+    const monitor = buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(hangingServer)}/shared-outage`,
+      timeout: 8_000,
+    });
+
+    // Four monitors behind one failing upstream, with three browser slots.
+    const attachments = await Promise.all(Array.from({ length: 4 }, () =>
+      buildFailureScreenshotAttachment(monitor, new Date(), onSkipped)
+    ));
+
+    for (const attachment of attachments) expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 90_000);
+
+  it("waits for a slow page as long as the monitor timeout allows", async () => {
+    const slowServer = await createServer((_, response) => {
+      setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end("<h1>Slow but alive</h1>");
+      }, 9_000);
+    });
+    const onSkipped = vi.fn();
+
+    const attachment = await buildFailureScreenshotAttachment(buildMonitor({
+      url: `http://fixture.test:${resolveServerPort(slowServer)}/slow`,
+      timeout: 15_000,
+    }), new Date(), onSkipped);
+
+    expectJpeg(attachment?.content);
+    expect(onSkipped).not.toHaveBeenCalled();
+  }, 40_000);
 
   it.each(["page", "worker"])("blocks private WebSocket handshakes from %s scripts", async (realm) => {
     let privateRequests = 0;

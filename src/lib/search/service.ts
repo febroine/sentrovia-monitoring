@@ -71,7 +71,7 @@ export async function searchWorkspace(
   const settings = hasPermission(role, "settings.manage")
     ? [
       { id: "settings-monitoring", title: "Monitoring settings", description: "Defaults, intervals, and check behaviour", href: "/settings#monitoring" },
-      { id: "settings-notifications", title: "Notification settings", description: "Email, Telegram, Slack, and delivery defaults", href: "/settings#notifications" },
+      { id: "settings-notifications", title: "Notification settings", description: "Email, Telegram, Discord, and delivery defaults", href: "/settings#notifications" },
       { id: "settings-backups", title: "Backup settings", description: "Automatic backups and retention", href: "/settings#backup" },
     ].filter((item) => `${item.title} ${item.description}`.toLowerCase().includes(term.toLowerCase()))
     : [];

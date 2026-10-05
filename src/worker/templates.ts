@@ -1,6 +1,8 @@
 import { getHttpStatusMeta } from "@/lib/http/status-codes";
 import { escapeHtml } from "@/lib/html";
+import { summarizeFailureEvidence } from "@/lib/monitors/failure-evidence";
 import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
+import { resolveNotificationLanguage } from "@/lib/notifications/language";
 import {
   DEFAULT_NOTIFICATION_TEMPLATES_BY_LANGUAGE,
   getDefaultNotificationTemplates,
@@ -81,8 +83,10 @@ export function renderNotificationTemplates(
   const targetHref = normalizeHttpHref(displayTarget);
   const targetLink = buildSafeAnchor(targetHref, displayTarget);
   const emailPresentation = resolveEmailPresentation(context, language);
+  const checkDetails = context.result.evidence ? summarizeFailureEvidence(context.result.evidence, language) : "";
 
   const textReplacements = buildTemplateReplacements({
+    checkDetails,
     context,
     displayTarget,
     domain,
@@ -102,8 +106,16 @@ export function renderNotificationTemplates(
   });
 
   const subjectTemplate = resolveSubjectTemplate(context, settings, language);
-  const bodyTemplate = normalizeTemplate(resolveEmailBodyTemplate(context, settings, language));
-  const telegramTemplate = normalizeTemplate(resolveTelegramTemplate(context, settings, language));
+  const bodyTemplate = withCheckDetailsLine(
+    normalizeTemplate(resolveEmailBodyTemplate(context, settings, language)),
+    checkDetails,
+    language
+  );
+  const telegramTemplate = withCheckDetailsLine(
+    normalizeTemplate(resolveTelegramTemplate(context, settings, language)),
+    checkDetails,
+    language
+  );
   const renderedTextBody = applyTemplate(bodyTemplate, textReplacements);
   const renderedHtmlSource = applyTemplate(bodyTemplate, {
     ...textReplacements,
@@ -144,7 +156,22 @@ export function renderNotificationTemplates(
   };
 }
 
+// What the failed check saw, in one line under the alert unless the template places it itself.
+function withCheckDetailsLine(template: string, checkDetails: string, language: NotificationLanguage) {
+  if (!checkDetails || template.includes("{check_details}")) {
+    return template;
+  }
+
+  const line = `${language === "tr" ? "Kontrol ayrıntıları" : "Check details"}: {check_details}`;
+  // Kept with the other detail lines, ahead of a trailing section such as the recommended checks.
+  const sectionStart = template.search(/\n\s*\n## /);
+  return sectionStart === -1
+    ? `${template.trimEnd()}\n${line}`
+    : `${template.slice(0, sectionStart).trimEnd()}\n${line}${template.slice(sectionStart)}`;
+}
+
 type TemplateReplacementInput = {
+  checkDetails: string;
   context: NotificationContext;
   displayTarget: string;
   domain: string;
@@ -197,14 +224,9 @@ function buildTemplateReplacements(input: TemplateReplacementInput) {
     "{rca_summary}": input.rcaSummary,
     "{rca_details}": input.rcaDetails,
     "{organization}": input.organization,
+    // Last, so text from the monitored server is never scanned for other placeholders.
+    "{check_details}": input.checkDetails || "N/A",
   };
-}
-
-function resolveNotificationLanguage(
-  monitorLanguage: string | null | undefined,
-  workspaceLanguage: NotificationLanguage
-): NotificationLanguage {
-  return monitorLanguage === "en" || monitorLanguage === "tr" ? monitorLanguage : workspaceLanguage;
 }
 
 type NotificationTemplateKey =

@@ -1,0 +1,153 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildBodyExcerpt,
+  parseFailureEvidence,
+  pickRecordedHeaders,
+  redactSecrets,
+  redactUrl,
+  summarizeFailureEvidence,
+  type FailureEvidence,
+} from "@/lib/monitors/failure-evidence";
+
+describe("failure evidence", () => {
+  it("keeps only headers that explain who answered", () => {
+    expect(pickRecordedHeaders({
+      server: "cloudflare",
+      "set-cookie": ["session=secret"],
+      authorization: "Bearer x",
+      "cf-ray": "abc-IST",
+      "x-powered-by": "PHP",
+      location: "https://user:pass@example.com/next?token=t&lang=tr",
+    })).toEqual({
+      server: "cloudflare",
+      "cf-ray": "abc-IST",
+      location: "https://example.com/next?token=%5Bredacted%5D&lang=tr",
+    });
+  });
+
+  it("removes credentials, the cache buster and secret parameters from URLs", () => {
+    expect(redactUrl("https://admin:pw@example.com/a?_monitor_ts=1&api_key=k&page=2#frag"))
+      .toBe("https://example.com/a?api_key=%5Bredacted%5D&page=2");
+    expect(redactUrl("/login?session=abc&next=%2F")).toBe("/login?session=%5Bredacted%5D&next=%2F");
+  });
+
+  it("redacts secrets but keeps error details readable", () => {
+    const text = redactSecrets(
+      '{"error_code":"RATE_LIMITED","access_token":"tok","detail":"slow down"} password=hunter2 '
+      + "Authorization: Bearer abc.def.ghi eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl "
+      + "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+    );
+
+    expect(text).toContain('"error_code":"RATE_LIMITED"');
+    expect(text).toContain('"detail":"slow down"');
+    expect(text).not.toMatch(/tok"|hunter2|abc\.def\.ghi|eyJhbGci|a1b2c3d4e5f6a1b2/);
+  });
+
+  it("turns an HTML error page into the text a visitor would read", () => {
+    const excerpt = buildBodyExcerpt(
+      "<html><head><title>Maintenance</title><script>secret()</script></head><body><h1>503</h1><p>Service&nbsp;Unavailable &#8212; retry</p></body></html>",
+      "text/html"
+    );
+
+    expect(excerpt).toEqual({ contentType: "text/html", excerpt: "Maintenance\n503\nService Unavailable — retry", truncated: false });
+  });
+
+  it("decodes each entity once, so escaped entities stay as written", () => {
+    expect(buildBodyExcerpt("<p>a &amp;lt;b&amp;gt; &#39;q&#39; &amp;amp; &#x41;&QUOT;</p>", "text/html")?.excerpt)
+      .toBe("a &lt;b&gt; 'q' &amp; A\"");
+  });
+
+  it("reads text and structured content types but not binary ones", () => {
+    expect(buildBodyExcerpt("{\"error\":\"down\"}", "application/problem+json")?.excerpt).toBe("{\"error\":\"down\"}");
+    expect(buildBodyExcerpt("plain", "TEXT/plain; charset=utf-8")?.excerpt).toBe("plain");
+    expect(buildBodyExcerpt("bytes", "application/octet-stream")).toBeNull();
+    expect(buildBodyExcerpt("text", "image/png")).toBeNull();
+  });
+
+  it("keeps the page title, which is often the only error text", () => {
+    expect(buildBodyExcerpt("<html><head><title>502 Bad Gateway</title><meta charset=utf-8></head><body></body></html>", "text/html")?.excerpt)
+      .toBe("502 Bad Gateway");
+  });
+
+  it("keeps long paths and words but hides long tokens", () => {
+    expect(redactSecrets("see /docs/getting-started/installation/troubleshooting-guide here"))
+      .toBe("see /docs/getting-started/installation/troubleshooting-guide here");
+    expect(redactSecrets("id 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"))
+      .toBe("id [redacted]");
+  });
+
+  it("redacts quoted, numeric and Basic credentials and base64 keys with slashes", () => {
+    const text = redactSecrets(
+      'password = "hunter2" SECRET_KEY=\'abc\' {"password": 123456} Authorization: Basic dXNlcjpwYXNz '
+      + "key wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    );
+
+    expect(text).toBe(
+      'password = "[redacted]" SECRET_KEY=\'[redacted]\' {"password": "[redacted]"} Authorization: Basic [redacted] key [redacted]'
+    );
+  });
+
+  it("stays fast on large malformed bodies", () => {
+    for (const body of ["a-".repeat(50_000), "<".repeat(100_000), "<!--".repeat(25_000), "<script".repeat(14_000)]) {
+      const started = performance.now();
+      buildBodyExcerpt(body, "text/html");
+      expect(performance.now() - started).toBeLessThan(500);
+    }
+  });
+
+  it("keeps the host of a protocol-relative redirect", () => {
+    expect(redactUrl("//cdn.example.com/x?token=1&a=2")).toBe("//cdn.example.com/x?token=%5Bredacted%5D&a=2");
+  });
+
+  it("leaves binary bodies out and cuts long ones", () => {
+    expect(buildBodyExcerpt("\u0000PNG", "image/png")).toBeNull();
+    expect(buildBodyExcerpt("\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR\u0000\u0000", null)).toBeNull();
+    const long = buildBodyExcerpt("x ".repeat(3_000), "text/plain");
+    expect(long?.excerpt).toHaveLength(2_000);
+    expect(long?.truncated).toBe(true);
+  });
+
+  it("summarizes the evidence in one line without the body", () => {
+    const evidence: FailureEvidence = {
+      version: 1,
+      phase: "first-byte",
+      hops: [
+        hop({ statusCode: 301 }),
+        hop({
+          remoteAddress: "2001:db8::1",
+          remotePort: 443,
+          timings: { dnsMs: 12, connectMs: 30, tlsMs: 45, firstByteMs: null, totalMs: null },
+          headers: { server: "nginx", "cf-ray": "8a1b-IST", "content-type": "text/html" },
+        }),
+      ],
+      certificate: null,
+      body: { contentType: "text/plain", excerpt: "secret-free but long body", truncated: false },
+      error: "Service did not complete within the 30s hard timeout.",
+    };
+
+    expect(summarizeFailureEvidence(evidence, "en"))
+      .toBe("[2001:db8::1]:443 · DNS 12 ms · connect 30 ms · TLS 45 ms · stopped while waiting for the first byte · 1 redirect · server: nginx · cf-ray: 8a1b-IST");
+    expect(summarizeFailureEvidence(evidence, "tr"))
+      .toBe("[2001:db8::1]:443 · DNS 12 ms · bağlantı 30 ms · TLS 45 ms · ilk bayt beklenirken durdu · 1 yönlendirme · server: nginx · cf-ray: 8a1b-IST");
+  });
+
+  it("accepts only well-formed stored evidence", () => {
+    expect(parseFailureEvidence({ version: 1, phase: "connect", hops: [] })).not.toBeNull();
+    expect(parseFailureEvidence({ version: 2, phase: "connect", hops: [] })).toBeNull();
+    expect(parseFailureEvidence("broken")).toBeNull();
+  });
+});
+
+function hop(overrides: Partial<FailureEvidence["hops"][number]> = {}): FailureEvidence["hops"][number] {
+  return {
+    url: "https://example.com/",
+    method: "GET",
+    statusCode: null,
+    remoteAddress: "203.0.113.10",
+    remotePort: 443,
+    reusedConnection: false,
+    timings: { dnsMs: 1, connectMs: 2, tlsMs: 3, firstByteMs: 4, totalMs: 10 },
+    headers: {},
+    ...overrides,
+  };
+}

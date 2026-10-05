@@ -18,6 +18,7 @@ import {
   monitorDiagnostics,
   monitorEvents,
   monitorOutages,
+  notificationJobs,
   outageEvents,
 } from "@/lib/db/schema";
 import { resetMonitorHistory } from "@/lib/monitors/service";
@@ -56,6 +57,7 @@ describe("monitor history reset service", () => {
     expect(tx.execute).toHaveBeenCalledTimes(1);
     expect(tx.execute.mock.invocationCallOrder[0]).toBeLessThan(removeFrom.mock.invocationCallOrder[0]);
     expect(removeFrom.mock.calls.map(([table]) => table)).toEqual([
+      notificationJobs,
       deliveryEvents,
       outageEvents,
       monitorOutages,
@@ -63,7 +65,7 @@ describe("monitor history reset service", () => {
       monitorEvents,
       monitorChecks,
     ]);
-    expect(removeHistory).toHaveBeenCalledTimes(6);
+    expect(removeHistory).toHaveBeenCalledTimes(7);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
       status: "pending",
       uptime: "--",

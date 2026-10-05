@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { toAuthError } from "@/lib/auth/errors";
 import { getSession } from "@/lib/auth/session";
 import { getActiveSessionUser } from "@/lib/auth/service";
 import { getCachedDashboardData } from "@/lib/dashboard/service";
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
           }
 
           controller.enqueue(
-            encoder.encode(`event: error\ndata: ${JSON.stringify({ message: error instanceof Error ? error.message : "Dashboard stream failed." })}\n\n`)
+            encoder.encode(`event: error\ndata: ${JSON.stringify({ message: toAuthError(error, "Dashboard stream failed.").message })}\n\n`)
           );
         });
       }, STREAM_INTERVAL_MS);

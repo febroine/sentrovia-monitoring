@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Monitor } from "@/lib/db/schema";
 import { calculateVerificationTimeout } from "@/lib/monitors/verification";
+import type { NotificationJob } from "@/lib/db/schema";
 import type { NotificationContext } from "@/worker/types";
 
 type CheckResult = {
@@ -12,6 +13,7 @@ type CheckResult = {
   failureReason?: null | "timeout" | "http_status" | "dns" | "tls" | "connection" | "assertion" | "redirect" | "network" | "database" | "configuration";
   checkedAt: Date;
   sslExpiresAt: Date | null;
+  evidence?: unknown;
 };
 
 const mocks = vi.hoisted(() => ({
@@ -52,14 +54,50 @@ const mocks = vi.hoisted(() => ({
   getRecentMonitorEventMessage: vi.fn(),
   hasRecentFailedNotificationDelivery: vi.fn(),
   canUserAccessPrivateTargets: vi.fn(),
+  evaluateNotificationDecision: vi.fn(),
+  hasAcceptedNotificationDeliverySince: vi.fn(),
+  enqueueNotificationJob: vi.fn(),
+  // The notification outbox, kept in memory; alerts are sent by flushQueuedNotifications().
+  notificationJobs: [] as NotificationJob[],
 }));
 
 vi.mock("@/lib/env", () => ({
   env: {
     workerConcurrency: 20,
     workerPollIntervalMs: 10_000,
+    screenshotConcurrency: 3,
+    notificationConcurrency: 5,
   },
+  getAppEncryptionSecret: () => "scheduler-test-encryption-secret-with-32-characters",
 }));
+
+vi.mock("@/lib/db", () => ({
+  db: { transaction: (operation: (tx: unknown) => Promise<unknown>) => operation({}) },
+}));
+
+vi.mock("@/lib/notifications/outbox", () => {
+  const findJob = (job: Pick<NotificationJob, "id">) => mocks.notificationJobs.find((item) => item.id === job.id);
+  const isOpen = (job: NotificationJob) => job.status === "pending" || job.status === "processing";
+  return {
+    MAX_NOTIFICATION_JOB_ATTEMPTS: 5,
+    NOTIFICATION_JOB_CLAIM_MS: 600_000,
+    enqueueNotificationJob: mocks.enqueueNotificationJob,
+    hasOpenNotificationJob: async (monitorId: string, kind: string) =>
+      mocks.notificationJobs.some((job) => job.monitorId === monitorId && job.kind === kind && isOpen(job)),
+    claimNotificationJobs: async () => [],
+    markNotificationDeliveryStarted: async () => undefined,
+    lockOwnedNotificationJob: async (_database: unknown, job: NotificationJob) => findJob(job)?.status === "processing",
+    isNotificationJobOwned: async (job: NotificationJob) => findJob(job)?.status === "processing",
+    completeNotificationJob: async (_database: unknown, job: NotificationJob, outcome: string) => {
+      Object.assign(findJob(job) ?? {}, { status: "done", outcome });
+      return true;
+    },
+    failNotificationJob: async (job: NotificationJob, errorMessage: string) => {
+      Object.assign(findJob(job) ?? {}, { status: "failed", lastError: errorMessage });
+      return true;
+    },
+  };
+});
 
 vi.mock("@/lib/outages/service", () => ({
   openOrUpdateOutage: mocks.openOrUpdateOutage,
@@ -84,10 +122,13 @@ vi.mock("@/lib/monitoring/rca", () => ({
 }));
 
 vi.mock("@/lib/monitors/service", () => ({
+  // The default check watchdog; long enough that no test check reaches it.
+  calculateMonitorLeaseMs: () => 600_000,
   appendOutageEvent: mocks.appendOutageEvent,
   appendMonitorCheck: mocks.appendMonitorCheck,
   appendMonitorDiagnostic: mocks.appendMonitorDiagnostic,
-  appendMonitorEvent: mocks.appendMonitorEvent,
+  // Markers are written in the job's transaction; the tests only look at what was written.
+  appendMonitorEvent: (input: unknown) => mocks.appendMonitorEvent(input),
   claimDueMonitors: mocks.claimDueMonitors,
   countDueMonitors: mocks.countDueMonitors,
   incrementWorkerCheckedCount: mocks.incrementWorkerCheckedCount,
@@ -98,11 +139,13 @@ vi.mock("@/lib/monitors/service", () => ({
   renewMonitorLease: mocks.renewMonitorLease,
   updateWorkerState: mocks.updateWorkerState,
   withMonitorClaimHistoryLock: mocks.withMonitorClaimHistoryLock,
+  withMonitorHistoryLock: (_monitorId: string, operation: () => Promise<unknown>) => operation(),
   getRecentMonitorEventMessage: mocks.getRecentMonitorEventMessage,
 }));
 
 vi.mock("@/lib/delivery/service", () => ({
   hasRecentFailedNotificationDelivery: mocks.hasRecentFailedNotificationDelivery,
+  hasAcceptedNotificationDeliverySince: mocks.hasAcceptedNotificationDeliverySince,
 }));
 
 vi.mock("@/lib/worker/observability", () => ({
@@ -126,6 +169,7 @@ vi.mock("@/worker/checker", () => ({
 
 vi.mock("@/worker/notifier", () => ({
   sendMonitorNotifications: mocks.sendMonitorNotifications,
+  evaluateNotificationDecision: mocks.evaluateNotificationDecision,
 }));
 
 vi.mock("@/worker/connectivity", () => ({
@@ -136,7 +180,8 @@ vi.mock("@/worker/screenshot", () => ({
   buildFailureScreenshotAttachment: mocks.buildFailureScreenshotAttachment,
 }));
 
-import { runMonitoringCycle } from "@/worker/scheduler";
+import { processNotificationJob } from "@/worker/notification-outbox";
+import { calculateScheduleLagMs, createMonitorDispatcher, runMonitoringCycle } from "@/worker/scheduler";
 
 describe("monitoring scheduler verification flow", () => {
   beforeEach(() => {
@@ -194,6 +239,32 @@ describe("monitoring scheduler verification flow", () => {
     mocks.getRecentMonitorEventMessage.mockResolvedValue(null);
     mocks.hasRecentFailedNotificationDelivery.mockResolvedValue(false);
     mocks.canUserAccessPrivateTargets.mockResolvedValue(true);
+    mocks.notificationJobs = [];
+    mocks.evaluateNotificationDecision.mockResolvedValue({ wouldNotify: true, reason: "Allowed in tests." });
+    mocks.hasAcceptedNotificationDeliverySince.mockResolvedValue(false);
+    mocks.enqueueNotificationJob.mockImplementation(async (input: Omit<NotificationJob, "id" | "seq">) => {
+      const duplicate = input.dedupeKey !== null && mocks.notificationJobs.some((job) =>
+        job.monitorId === input.monitorId
+        && job.dedupeKey === input.dedupeKey
+        && (job.status === "pending" || job.status === "processing"));
+      if (duplicate) return "duplicate";
+      mocks.notificationJobs.push({
+        ...input,
+        id: `job-${mocks.notificationJobs.length + 1}`,
+        seq: mocks.notificationJobs.length + 1,
+        status: "pending",
+        attempts: 0,
+        nextAttemptAt: new Date(0),
+        claimToken: null,
+        claimExpiresAt: null,
+        deliveryStartedAt: null,
+        outcome: null,
+        lastError: null,
+        completedAt: null,
+        createdAt: new Date(0),
+      } as NotificationJob);
+      return "queued";
+    });
     mocks.ensureWorkerConnectivity.mockResolvedValue({
       available: true,
       status: "online",
@@ -207,7 +278,7 @@ describe("monitoring scheduler verification flow", () => {
   it("schedules failed first verification attempts one minute later", async () => {
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -223,6 +294,34 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.refreshMonitorUptime).not.toHaveBeenCalled();
   });
 
+  it("keeps what each failed check saw with the check", async () => {
+    const evidence = { version: 1 as const, phase: "first-byte" as const, hops: [], certificate: null, body: null, error: "timeout" };
+    mocks.checkResult = { ...mocks.checkResult, evidence } as CheckResult;
+    mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
+
+    await runCycleAndSendAlerts();
+
+    expect(mocks.appendMonitorCheck).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", evidence }));
+  });
+
+  it("keeps no failure evidence for a check counted as up", async () => {
+    mocks.checkResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 90,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+    mocks.dueMonitors = [buildMonitor({ status: "up" })];
+
+    await runCycleAndSendAlerts();
+
+    expect(mocks.appendMonitorCheck).toHaveBeenCalledWith(expect.objectContaining({ status: "up", evidence: null }));
+  });
+
   it("keeps checking every minute when verification confirms an outage", async () => {
     mocks.dueMonitors = [
       buildMonitor({
@@ -234,7 +333,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -251,7 +350,7 @@ describe("monitoring scheduler verification flow", () => {
   it("records diagnostics and outage timeline events for failed verification attempts", async () => {
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.runMonitorDiagnostics).toHaveBeenCalledWith(expect.objectContaining({ id: "monitor-1" }));
     expect(mocks.appendMonitorDiagnostic).toHaveBeenCalledWith(
@@ -279,7 +378,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -315,7 +414,7 @@ describe("monitoring scheduler verification flow", () => {
     ];
     mocks.sendMonitorNotifications.mockResolvedValue(true);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "failure-notification", status: "down" })
@@ -345,7 +444,7 @@ describe("monitoring scheduler verification flow", () => {
     ];
     mocks.sendMonitorNotifications.mockResolvedValue(true);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "recovery" })
@@ -383,7 +482,7 @@ describe("monitoring scheduler verification flow", () => {
     ];
     mocks.sendMonitorNotifications.mockResolvedValue(false);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200 })];
     mocks.getRecentMonitorEventMessage.mockImplementation(({ eventType }: { eventType: string }) =>
@@ -391,7 +490,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.hasRecentFailedNotificationDelivery.mockResolvedValue(true);
     mocks.sendMonitorNotifications.mockResolvedValue(true);
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "recovery" })
@@ -425,7 +524,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -479,7 +578,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -516,7 +615,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "latency", status: "up" })
@@ -546,7 +645,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "latency", status: "up" })
@@ -577,7 +676,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -611,7 +710,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -644,7 +743,7 @@ describe("monitoring scheduler verification flow", () => {
     };
     mocks.dueMonitors = [buildMonitor({ status: "up", statusCode: 200, checkSslExpiry: true })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalledWith(
       expect.objectContaining({ kind: "ssl-expiry" })
@@ -679,7 +778,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.openOrUpdateOutage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -726,7 +825,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.sendMonitorNotifications).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "failure" })
@@ -766,18 +865,19 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const notificationContext = getNotificationContext("failure");
     expect(notificationContext.emailAttachments).toBeUndefined();
     expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
     expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
 
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:01.000Z"),
-      expect.any(Function)
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: true, language: "en" }
     );
   });
 
@@ -810,10 +910,14 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    // The screenshot is taken while the queued alert is being sent.
+    mocks.sendMonitorNotifications.mockImplementation(async (context: NotificationContext) => {
+      await expect(context.buildEmailAttachments?.("en")).resolves.toBeUndefined();
+      return true;
+    });
 
-    const notificationContext = getNotificationContext("failure");
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toBeUndefined();
+    await runCycleAndSendAlerts();
+
     expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "screenshot-skipped",
@@ -838,19 +942,178 @@ describe("monitoring scheduler verification flow", () => {
         lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
       }),
     ];
+    // The outage alert already went out an hour ago.
+    mocks.evaluateNotificationDecision.mockImplementation(async (context: NotificationContext) => ({
+      wouldNotify: context.kind !== "failure",
+      reason: "test",
+    }));
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const notificationContext = getNotificationContext("downtime-reminder");
     expect(notificationContext.emailAttachments).toBeUndefined();
     expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
     expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
 
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:00.000Z"),
-      expect.any(Function)
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: true, language: "en" }
+    );
+  });
+
+  it("does not queue a downtime reminder while the outage alert is on its way", async () => {
+    const screenshot = {
+      filename: "sentrovia-api-outage.jpg",
+      content: Buffer.from("image"),
+      contentType: "image/jpeg",
+    };
+    mocks.buildFailureScreenshotAttachment.mockResolvedValue(screenshot);
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    mocks.sendMonitorNotifications.mockResolvedValue(true);
+    // An earlier check queued the outage alert and it is still waiting to be sent.
+    await runMonitoringCycle();
+    mocks.dueMonitors = [mocks.dueMonitors[0]];
+    await runCycleAndSendAlerts();
+
+    expect(mocks.notificationJobs.map((job) => job.kind)).toEqual(["failure"]);
+    expect(mocks.sendMonitorNotifications).toHaveBeenCalledOnce();
+    await expect(getNotificationContext("failure").buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
+    expect(mocks.appendMonitorEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "failure-notification", createdAt: new Date("2026-05-08T07:00:00.000Z") })
+    );
+  });
+
+  it("captures the screenshot in the alert's notification language", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runCycleAndSendAlerts();
+    await getNotificationContext("failure").buildEmailAttachments?.("tr");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledOnce();
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "monitor-1" }),
+      expect.any(Date),
+      expect.any(Function),
+      expect.objectContaining({ language: "tr" })
+    );
+  });
+
+  it("keeps the screenshot for keyword failures even when the page loads", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        monitorType: "keyword",
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runCycleAndSendAlerts();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ monitorType: "keyword" }),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: false, language: "en" }
+    );
+  });
+
+  it("keeps the screenshot for redirect-limit failures because the browser follows the redirect", async () => {
+    mocks.checkResult = {
+      ...mocks.checkResult,
+      statusCode: 301,
+      errorMessage: "HTTP 301 redirect response was not followed within the configured redirect limit.",
+      failureReason: "redirect",
+    };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runCycleAndSendAlerts();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 301, skipWhenSiteResponds: false, language: "en" }
+    );
+  });
+
+  it("keeps the screenshot for a refused redirect reported as an HTTP status failure", async () => {
+    // With custom expected codes the check reports a redirect it may not follow as http_status.
+    mocks.checkResult = { ...mocks.checkResult, statusCode: 301, errorMessage: "Service returned HTTP 301.", failureReason: "http_status" };
+    mocks.dueMonitors = [
+      buildMonitor({
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        expectedStatusCodes: "200",
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runCycleAndSendAlerts();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 301, skipWhenSiteResponds: false, language: "en" }
+    );
+  });
+
+  it("keeps the screenshot for POST monitors because the browser can only load the page with GET", async () => {
+    mocks.dueMonitors = [
+      buildMonitor({
+        method: "POST",
+        status: "down",
+        notificationPref: "email",
+        sendOutageScreenshot: true,
+        consecutiveFailures: 4,
+        lastFailureAt: new Date("2026-05-08T06:00:00.000Z"),
+      }),
+    ];
+
+    await runCycleAndSendAlerts();
+    await getNotificationContext("failure").buildEmailAttachments?.("en");
+
+    expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "POST" }),
+      expect.any(Date),
+      expect.any(Function),
+      { checkStatusCode: 500, skipWhenSiteResponds: false, language: "en" }
     );
   });
 
@@ -880,18 +1143,19 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const notificationContext = getNotificationContext("status-change");
     expect(notificationContext.emailAttachments).toBeUndefined();
     expect(notificationContext.buildEmailAttachments).toEqual(expect.any(Function));
     expect(mocks.buildFailureScreenshotAttachment).not.toHaveBeenCalled();
 
-    await expect(notificationContext.buildEmailAttachments?.()).resolves.toEqual([screenshot]);
+    await expect(notificationContext.buildEmailAttachments?.("en")).resolves.toEqual([screenshot]);
     expect(mocks.buildFailureScreenshotAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: "monitor-1" }),
       new Date("2026-05-08T07:00:00.000Z"),
-      expect.any(Function)
+      expect.any(Function),
+      { checkStatusCode: 204, skipWhenSiteResponds: false, language: "en" }
     );
   });
 
@@ -918,7 +1182,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -985,7 +1249,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
     expect(mocks.incrementWorkerCheckedCount).toHaveBeenCalledWith(2);
@@ -1049,7 +1313,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
@@ -1094,7 +1358,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(1);
     expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
@@ -1108,7 +1372,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.renewMonitorLease.mockResolvedValueOnce(false);
     mocks.dueMonitors = [buildMonitor()];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.renewMonitorLease).toHaveBeenCalledWith(
       "monitor-1",
@@ -1120,7 +1384,7 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
   });
 
-  it("holds the monitor lease until persistence and notification side effects finish", async () => {
+  it("queues alerts while holding the lease and sends them after releasing it", async () => {
     mocks.sendMonitorNotifications.mockResolvedValue(true);
     mocks.dueMonitors = [
       buildMonitor({
@@ -1132,20 +1396,23 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     const releaseOrder = mocks.releaseMonitorLease.mock.invocationCallOrder[0];
     const resultOrder = mocks.recordMonitorResult.mock.invocationCallOrder[0];
+    const queuedOrder = mocks.enqueueNotificationJob.mock.invocationCallOrder[0];
     const notificationOrder = mocks.sendMonitorNotifications.mock.invocationCallOrder[0];
     expect(releaseOrder).toBeGreaterThan(resultOrder);
-    expect(releaseOrder).toBeGreaterThan(notificationOrder);
+    expect(releaseOrder).toBeGreaterThan(queuedOrder);
+    // A slow screenshot or mail server no longer keeps the monitor leased.
+    expect(notificationOrder).toBeGreaterThan(releaseOrder);
   });
 
   it("releases the monitor lease when a check throws unexpectedly", async () => {
     mocks.checkMonitor.mockRejectedValueOnce(new Error("Checker crashed."));
     mocks.dueMonitors = [buildMonitor()];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("monitor-1", "lease-1");
     expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(
@@ -1166,7 +1433,7 @@ describe("monitoring scheduler verification flow", () => {
     };
     mocks.dueMonitors = [buildMonitor()];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorCheck).toHaveBeenCalledWith(
       expect.objectContaining({ status: "pending", statusCode: null })
@@ -1194,7 +1461,7 @@ describe("monitoring scheduler verification flow", () => {
       verificationFailureCount: 1,
     })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -1222,7 +1489,7 @@ describe("monitoring scheduler verification flow", () => {
     };
     mocks.dueMonitors = [buildMonitor({ status: "down", intervalValue: 15 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalledWith(
       "monitor-1",
@@ -1247,7 +1514,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledWith(
       expect.objectContaining({ timeout: 7500 }),
@@ -1267,7 +1534,7 @@ describe("monitoring scheduler verification flow", () => {
       }),
     ];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.checkMonitor).toHaveBeenCalledTimes(2);
     expect(mocks.checkMonitor).toHaveBeenNthCalledWith(
@@ -1286,7 +1553,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.recordMonitorResult.mockResolvedValue(null);
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
     expect(mocks.appendMonitorEvent).not.toHaveBeenCalled();
@@ -1305,7 +1572,7 @@ describe("monitoring scheduler verification flow", () => {
       .mockResolvedValueOnce(false);
     mocks.dueMonitors = [buildMonitor({ status: "up", retries: 3 })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.recordMonitorResult).toHaveBeenCalled();
     expect(mocks.appendMonitorCheck).not.toHaveBeenCalled();
@@ -1318,7 +1585,7 @@ describe("monitoring scheduler verification flow", () => {
     mocks.withMonitorClaimHistoryLock.mockResolvedValueOnce(null);
     mocks.dueMonitors = [buildMonitor({ status: "up" })];
 
-    await runMonitoringCycle();
+    await runCycleAndSendAlerts();
 
     expect(mocks.withMonitorClaimHistoryLock).toHaveBeenCalledWith(
       "monitor-1",
@@ -1331,6 +1598,287 @@ describe("monitoring scheduler verification flow", () => {
     expect(mocks.sendMonitorNotifications).not.toHaveBeenCalled();
   });
 
+
+  describe("independent monitor slots", () => {
+    const healthyResult: CheckResult = {
+      ok: true,
+      status: "up",
+      statusCode: 200,
+      latencyMs: 80,
+      errorMessage: null,
+      failureReason: null,
+      checkedAt: new Date("2026-05-08T07:00:00.000Z"),
+      sslExpiresAt: null,
+    };
+
+    // Monitors whose id starts with "slow" stay in their check until released.
+    function holdSlowChecks() {
+      const releases: Array<() => void> = [];
+      mocks.checkMonitor.mockImplementation((monitor: Monitor) => monitor.id.startsWith("slow")
+        ? new Promise<CheckResult>((resolve) => releases.push(() => resolve(healthyResult)))
+        : Promise.resolve(healthyResult));
+      return {
+        async releaseAll() {
+          await vi.waitFor(() => expect(releases.length).toBeGreaterThan(0));
+          for (const release of releases.splice(0)) release();
+        },
+        count: () => releases.length,
+      };
+    }
+
+    it("checks other monitors while a slow monitor is still running", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-site" })])
+        .mockResolvedValueOnce([buildMonitor({ id: "fast-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      const slowDispatch = await dispatcher.dispatch();
+      const fastDispatch = await dispatcher.dispatch();
+      await fastDispatch.completion;
+
+      expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("fast-site", "lease-1");
+      expect(mocks.releaseMonitorLease).not.toHaveBeenCalledWith("slow-site", "lease-1");
+      expect(dispatcher.getActiveCheckCount()).toBe(1);
+
+      await slowChecks.releaseAll();
+      await slowDispatch.completion;
+      expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("slow-site", "lease-1");
+      expect(dispatcher.getActiveCheckCount()).toBe(0);
+    });
+
+    it("claims only as many monitors as there are free slots", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-a" }), buildMonitor({ id: "slow-b" })])
+        .mockResolvedValueOnce([]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 3 });
+
+      await dispatcher.dispatch();
+      await dispatcher.dispatch();
+
+      expect(mocks.claimDueMonitors).toHaveBeenNthCalledWith(1, expect.any(Date), { limit: 3, verificationLimit: 1 });
+      expect(mocks.claimDueMonitors).toHaveBeenNthCalledWith(2, expect.any(Date), { limit: 1, verificationLimit: 1 });
+
+      dispatcher.stop();
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+    });
+
+    it("keeps half of the slots free of long verification probes", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([
+          buildMonitor({ id: "slow-verify-a", status: "pending", verificationMode: true, verificationFailureCount: 1 }),
+          buildMonitor({ id: "slow-verify-b", status: "pending", verificationMode: true, verificationFailureCount: 1 }),
+        ])
+        .mockResolvedValueOnce([]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await dispatcher.dispatch();
+      await dispatcher.dispatch();
+
+      expect(mocks.claimDueMonitors).toHaveBeenNthCalledWith(2, expect.any(Date), { limit: 2, verificationLimit: 0 });
+
+      dispatcher.stop();
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+    });
+
+    it("does not claim while every slot is busy and refills a slot as soon as it frees", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-site" })])
+        .mockResolvedValueOnce([buildMonitor({ id: "next-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+
+      await dispatcher.dispatch();
+      await expect(dispatcher.dispatch()).resolves.toMatchObject({ claimed: 0 });
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+
+      await slowChecks.releaseAll();
+      await vi.waitFor(() => expect(mocks.releaseMonitorLease).toHaveBeenCalledWith("next-site", "lease-1"));
+      await dispatcher.drain();
+
+      // The refilled slot was full again, so it looks once more; nothing is due, and it settles there.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const claimsAfterSettling = mocks.claimDueMonitors.mock.calls.length;
+      expect(claimsAfterSettling).toBe(3);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(mocks.claimDueMonitors).toHaveBeenCalledTimes(claimsAfterSettling);
+    });
+
+    it("stops refilling and waits for running checks when stopped", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "slow-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+      await dispatcher.dispatch();
+
+      dispatcher.stop();
+      let drained = false;
+      const drain = dispatcher.drain().then(() => { drained = true; });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(drained).toBe(false);
+
+      await slowChecks.releaseAll();
+      await drain;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await expect(dispatcher.dispatch()).resolves.toMatchObject({ claimed: 0 });
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+    });
+
+    it("does not refill slots while the worker is paused", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "slow-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+      dispatcher.setDispatchGuard(async () => false);
+      await dispatcher.dispatch();
+
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+    });
+
+    it("does not keep reclaiming monitors whose checks end without a result while offline", async () => {
+      mocks.ensureWorkerConnectivity.mockResolvedValue({ available: false, message: "Internet connectivity unavailable." });
+      // The failed check leaves the monitor due, so every claim would return it again.
+      mocks.claimDueMonitors.mockResolvedValue([buildMonitor({ id: "offline-site" })]);
+      mocks.countDueMonitors.mockResolvedValue(30);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, refillDelayMs: 0 });
+
+      await (await dispatcher.dispatch()).completion;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(mocks.recordMonitorResult).not.toHaveBeenCalled();
+      expect(mocks.claimDueMonitors).toHaveBeenCalledOnce();
+    });
+
+    it("does not clear an error recorded elsewhere when a batch finishes cleanly", async () => {
+      mocks.checkMonitor.mockResolvedValue(healthyResult);
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "healthy-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await (await dispatcher.dispatch()).completion;
+
+      const finalState = mocks.updateWorkerState.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+      expect(finalState).toMatchObject({ statusMessage: "Completed 1 monitor check(s)." });
+      expect(finalState).not.toHaveProperty("lastErrorAt");
+      expect(finalState).not.toHaveProperty("lastErrorMessage");
+    });
+
+    it("keeps renewing the lease of a long check and stops before releasing it", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "slow-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, leaseHeartbeatMs: 5 });
+
+      const dispatch = await dispatcher.dispatch();
+      await vi.waitFor(() => expect(
+        mocks.renewMonitorLease.mock.calls.filter((call) => call[3]?.heartbeat === true).length
+      ).toBeGreaterThanOrEqual(3));
+
+      await slowChecks.releaseAll();
+      await dispatch.completion;
+      const renewalsAtRelease = mocks.renewMonitorLease.mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(mocks.renewMonitorLease).toHaveBeenCalledTimes(renewalsAtRelease);
+      const lastRenewal = Math.max(...mocks.renewMonitorLease.mock.invocationCallOrder);
+      const release = mocks.releaseMonitorLease.mock.invocationCallOrder[0];
+      expect(release).toBeGreaterThan(lastRenewal);
+    });
+
+    it("records how long the batch's monitors had been due when their checks started", async () => {
+      mocks.checkMonitor.mockResolvedValue(healthyResult);
+      const now = Date.now();
+      mocks.claimDueMonitors.mockResolvedValueOnce([
+        buildMonitor({ id: "on-time", nextCheckAt: new Date(now - 1_000) }),
+        buildMonitor({ id: "late", nextCheckAt: new Date(now - 41_000) }),
+        buildMonitor({ id: "new", nextCheckAt: null }),
+      ]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await (await dispatcher.dispatch()).completion;
+
+      const metric = mocks.recordWorkerCycleMetric.mock.calls[0][0];
+      // The monitor without a due time is left out of the average, and the sample count says so.
+      expect(metric.scheduleLagSamples).toBe(2);
+      expect(metric.maxScheduleLagMs).toBeGreaterThanOrEqual(41_000);
+      expect(metric.maxScheduleLagMs).toBeLessThan(42_000);
+      expect(metric.averageScheduleLagMs).toBeGreaterThanOrEqual(21_000);
+      expect(metric.averageScheduleLagMs).toBeLessThan(22_000);
+    });
+
+    it("abandons a hung check, frees its slot and lets its lease expire", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      // The check never returns, like a query waiting on a lock forever.
+      mocks.checkMonitor.mockImplementation(() => new Promise<CheckResult>(() => undefined));
+      mocks.claimDueMonitors.mockResolvedValueOnce([buildMonitor({ id: "hung-site", name: "Hung site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 1, leaseHeartbeatMs: 5, checkWatchdogMs: () => 40 });
+
+      await (await dispatcher.dispatch()).completion;
+      const renewalsAfterAbandon = mocks.renewMonitorLease.mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(dispatcher.getActiveCheckCount()).toBe(0);
+      expect(mocks.renewMonitorLease).toHaveBeenCalledTimes(renewalsAfterAbandon);
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(expect.objectContaining({
+        claimedMonitors: 1,
+        completedMonitors: 0,
+        errorMessage: expect.stringContaining("The check of monitor Hung site did not finish within"),
+      }));
+      consoleError.mockRestore();
+    });
+
+    it("records each finished batch without holding back later batches", async () => {
+      const slowChecks = holdSlowChecks();
+      mocks.claimDueMonitors
+        .mockResolvedValueOnce([buildMonitor({ id: "slow-site" })])
+        .mockResolvedValueOnce([buildMonitor({ id: "fast-site" })]);
+      const dispatcher = createMonitorDispatcher({ concurrency: 4 });
+
+      await dispatcher.dispatch();
+      await (await dispatcher.dispatch()).completion;
+
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledOnce();
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledWith(
+        expect.objectContaining({ claimedMonitors: 1, completedMonitors: 1, successCount: 1 })
+      );
+
+      await slowChecks.releaseAll();
+      await dispatcher.drain();
+      expect(mocks.recordWorkerCycleMetric).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+describe("schedule lag", () => {
+  it("measures from the moment the monitor became due and never goes negative", () => {
+    const startedAt = new Date("2026-05-08T07:00:30.000Z");
+
+    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:00:00.000Z"), pausedUntil: null }, startedAt)).toBe(30_000);
+    expect(calculateScheduleLagMs({ nextCheckAt: new Date("2026-05-08T07:01:00.000Z"), pausedUntil: null }, startedAt)).toBe(0);
+    expect(calculateScheduleLagMs({ nextCheckAt: null, pausedUntil: null }, startedAt)).toBeNull();
+  });
+
+  it("counts a paused monitor as due only once its pause ends", () => {
+    // Renaming a monitor during a one-day pause moves nextCheckAt to the edit time.
+    const editedAt = new Date("2026-05-07T07:00:00.000Z");
+    const pauseEnds = new Date("2026-05-08T07:00:00.000Z");
+
+    expect(calculateScheduleLagMs(
+      { nextCheckAt: editedAt, pausedUntil: pauseEnds },
+      new Date("2026-05-08T07:00:04.000Z")
+    )).toBe(4_000);
+  });
+
+  it("stays within the metric column after a worker was stopped for weeks", () => {
+    const startedAt = new Date("2026-05-08T07:00:00.000Z");
+    const monthsAgo = new Date("2026-01-01T00:00:00.000Z");
+
+    expect(calculateScheduleLagMs({ nextCheckAt: monthsAgo, pausedUntil: null }, startedAt)).toBe(2_147_483_647);
+  });
 });
 
 describe("verification timeout escalation", () => {
@@ -1341,7 +1889,15 @@ describe("verification timeout escalation", () => {
   it("increases verification timeout and caps it", () => {
     expect(calculateVerificationTimeout(5000, 1)).toBe(7500);
     expect(calculateVerificationTimeout(5000, 2)).toBe(10000);
-    expect(calculateVerificationTimeout(100000, 2)).toBe(120000);
+    expect(calculateVerificationTimeout(100000, 2)).toBe(200000);
+  });
+
+  it("gives even the longest monitor timeout twice its time during verification", () => {
+    expect(calculateVerificationTimeout(60000, 1)).toBe(90000);
+    expect(calculateVerificationTimeout(60000, 2)).toBe(120000);
+    expect(calculateVerificationTimeout(120000, 1)).toBe(180000);
+    expect(calculateVerificationTimeout(120000, 2)).toBe(240000);
+    expect(calculateVerificationTimeout(120000, 10)).toBe(240000);
   });
 });
 
@@ -1403,6 +1959,8 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     jsonPath: null,
     jsonExpectedValue: null,
     jsonMatchMode: "equals",
+    dnsExpectedValues: null,
+    dnsMatchMode: "includes",
     tags: [],
     renotifyCount: null,
     maxRedirects: 5,
@@ -1438,6 +1996,21 @@ function buildMonitor(overrides: Partial<Monitor> = {}): Monitor {
     updatedAt: now,
     ...overrides,
   };
+}
+
+// Runs a cycle and then sends what it queued, as the notification dispatcher would.
+async function runCycleAndSendAlerts() {
+  const claimed = await runMonitoringCycle();
+  await flushQueuedNotifications();
+  return claimed;
+}
+
+async function flushQueuedNotifications() {
+  for (const job of mocks.notificationJobs) {
+    if (job.status !== "pending") continue;
+    Object.assign(job, { status: "processing", claimToken: `claim-${job.id}`, attempts: job.attempts + 1 });
+    await processNotificationJob(job);
+  }
 }
 
 function getNotificationContext(kind: NotificationContext["kind"]) {

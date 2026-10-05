@@ -41,7 +41,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const overview = await getDeliveryOverview(session.id, 1, true, session.activeWorkspaceId ?? undefined);
+      // Stay on the history page the user was looking at.
+      const requestedPage = Number(new URL(request.url).searchParams.get("page"));
+      const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const overview = await getDeliveryOverview(session.id, page, true, session.activeWorkspaceId ?? undefined);
       return NextResponse.json({ delivery, overview });
     }
 

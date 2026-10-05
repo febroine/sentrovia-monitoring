@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   BellRing,
   ChevronRight,
@@ -21,6 +21,11 @@ import { SavedRecipientsManager } from "@/components/settings/saved-recipients-m
 import { TemplateEditor } from "@/components/settings/template-editor";
 import { NotificationTemplatePreviewPanel } from "@/components/settings/notification-template-preview";
 import { Input } from "@/components/ui/input";
+import { DurationInput } from "@/components/ui/duration-input";
+import { NumberInput } from "@/components/ui/number-input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useSettingsStore } from "@/stores/use-settings-store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatPanelDateTime } from "@/lib/time";
 import {
@@ -59,6 +64,7 @@ const TEMPLATE_TOKENS = [
   "{downtime_hours}",
   "{rca_summary}",
   "{rca_details}",
+  "{check_details}",
   "{organization}",
 ];
 
@@ -223,19 +229,19 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
           label="Prolonged downtime reminder interval (minutes)"
           hint="Example: 180 sends reminders at most every 3 hours until the monitor's Re-notify limit is reached."
         >
-          <Input
-            type="number"
+          <NumberInput
+            min={5}
+            max={10080}
             value={settings.notifications.prolongedDowntimeMinutes}
-            onChange={(event) =>
-              updateSetting("notifications.prolongedDowntimeMinutes", Number(event.target.value) || 180)
-            }
+            onValueChange={(value) => updateSetting("notifications.prolongedDowntimeMinutes", value)}
           />
         </Field>
         <Field label="Alert dedup window (minutes)" hint="Suppress duplicate notifications of the same kind for the same monitor inside this time window.">
-          <Input
-            type="number"
+          <NumberInput
+            min={0}
+            max={1440}
             value={settings.notifications.alertDedupMinutes}
-            onChange={(event) => updateSetting("notifications.alertDedupMinutes", Number(event.target.value) || 0)}
+            onValueChange={(value) => updateSetting("notifications.alertDedupMinutes", value)}
           />
         </Field>
       </SectionCard>
@@ -269,10 +275,11 @@ export function NotificationSettingsTab({ settings, saving, saveSettings, update
             />
           </Field>
           <Field label="Port">
-            <Input
-              type="number"
+            <NumberInput
+              min={1}
+              max={65535}
               value={settings.notifications.smtpPort}
-              onChange={(event) => updateSetting("notifications.smtpPort", Number(event.target.value) || 587)}
+              onValueChange={(value) => updateSetting("notifications.smtpPort", value)}
             />
           </Field>
           <Field label="User">
@@ -624,55 +631,49 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
                 placeholder="5m"
               />
             </Field>
-            <Field label="Hard failure timeout (ms)" hint="Maximum time allowed for a complete check when a monitor does not override it.">
-              <Input
-                type="number"
-                min={1000}
-                max={120000}
-                step={500}
-                value={settings.monitoring.timeout}
-                onChange={(event) => updateSetting("monitoring.timeout", Number(event.target.value) || 1000)}
+            <Field label="Hard failure timeout" hint="Maximum time allowed for a complete check when a monitor does not override it.">
+              <DurationInput
+                ariaLabel="Hard failure timeout"
+                valueMs={settings.monitoring.timeout}
+                minSeconds={1}
+                maxSeconds={120}
+                onChange={(value) => { if (value !== null) updateSetting("monitoring.timeout", value); }}
               />
             </Field>
             <Field
-              label="Slow response threshold (ms)"
+              label="Slow response threshold"
               hint="Optional default for new and imported HTTP, keyword, and JSON monitors. Leave blank to disable the default."
             >
-              <Input
-                type="number"
-                min={1}
-                max={Math.max(1, settings.monitoring.timeout - 1)}
-                step={100}
-                value={settings.monitoring.slowResponseThresholdMs ?? ""}
+              <DurationInput
+                ariaLabel="Slow response threshold"
+                valueMs={settings.monitoring.slowResponseThresholdMs}
+                minSeconds={0.001}
+                maxSeconds={Math.max(0.001, (settings.monitoring.timeout - 1) / 1_000)}
                 placeholder="Optional"
-                onChange={(event) => {
-                  const value = event.target.value.trim();
-                  updateSetting("monitoring.slowResponseThresholdMs", value ? Number(value) : null);
-                }}
+                optional
+                onChange={(value) => updateSetting("monitoring.slowResponseThresholdMs", value)}
               />
             </Field>
             <Field
               label="Consecutive failures required"
               hint="Total failed probes required, including the initial failure. A final immediate confirmation probe must also fail before an outage is announced."
             >
-              <Input
-                type="number"
+              <NumberInput
                 min={2}
                 max={10}
                 value={settings.monitoring.retries}
-                onChange={(event) => updateSetting("monitoring.retries", Number(event.target.value) || 2)}
+                onValueChange={(value) => updateSetting("monitoring.retries", value)}
               />
             </Field>
             <Field
               label="Worker batch size"
-              hint="Maximum number of due monitors the worker will claim in one scheduler cycle."
+              hint="Maximum number of this workspace's due monitors the worker claims at once. Free worker slots also limit each claim, and a slow check never holds back the others."
             >
-              <Input
-                type="number"
+              <NumberInput
                 min={1}
                 max={500}
                 value={settings.monitoring.batchSize}
-                onChange={(event) => updateSetting("monitoring.batchSize", Number(event.target.value) || 1)}
+                onValueChange={(value) => updateSetting("monitoring.batchSize", value)}
               />
             </Field>
           </div>
@@ -708,23 +709,19 @@ export function MonitoringSettingsTab({ settings, saving, saveSettings, updateSe
               </Select>
             </Field>
             <Field label="Response max length" hint="0 uses the 100 KB worker safety limit for new monitors.">
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 max={100000}
                 value={settings.monitoring.responseMaxLength}
-                onChange={(event) =>
-                  updateSetting("monitoring.responseMaxLength", Number(event.target.value) || 0)
-                }
+                onValueChange={(value) => updateSetting("monitoring.responseMaxLength", value)}
               />
             </Field>
             <Field label="Max redirects" hint="0 disables redirect following for monitors that do not override it.">
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 max={10}
                 value={settings.monitoring.maxRedirects}
-                onChange={(event) => updateSetting("monitoring.maxRedirects", Number(event.target.value) || 0)}
+                onValueChange={(value) => updateSetting("monitoring.maxRedirects", value)}
               />
             </Field>
           </div>
@@ -888,9 +885,28 @@ function AccentOptionPreview({
   );
 }
 
+const RETENTION_FIELDS = [
+  { key: "retentionDays", label: "Monitor checks" },
+  { key: "eventRetentionDays", label: "Event logs" },
+  { key: "deliveryRetentionDays", label: "Delivery history" },
+] as const;
+
 export function DataSettingsTab({ settings, saving, saveSettings, updateSetting }: TabProps) {
   const isAdmin = settings.profile.role === "admin";
   const { saveSection, savingSection } = useSectionSave(saveSettings);
+  const persisted = useSettingsStore((state) => state.persistedSettings);
+  const [pendingSection, setPendingSection] = useState<SettingsSaveSection | null>(null);
+  // Shorter retention removes the older history at the next cleanup, so it is confirmed first.
+  const shortened = RETENTION_FIELDS
+    .filter((field) => settings.data[field.key] < persisted.data[field.key])
+    .map((field) => ({ ...field, from: persisted.data[field.key], to: settings.data[field.key] }));
+  const saveRetention = async (section: SettingsSaveSection) => {
+    if (shortened.length > 0) {
+      setPendingSection(section);
+      return;
+    }
+    await saveSection(section);
+  };
 
   return (
     <div className="space-y-6">
@@ -903,36 +919,64 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
             sectionId="retention-and-backups"
             saving={saving}
             savingSection={savingSection}
-            onSave={saveSection}
+            onSave={saveRetention}
           />
         }
       >
+        <Dialog open={pendingSection !== null} onOpenChange={(open) => !open && setPendingSection(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Shorten data retention?</DialogTitle>
+              <DialogDescription>
+                History older than the new limits is deleted permanently at the next cleanup.
+              </DialogDescription>
+            </DialogHeader>
+            <ul className="space-y-1 text-sm">
+              {shortened.map((field) => (
+                <li key={field.key}>
+                  {field.label}: {field.from} → <span className="font-medium">{field.to} days</span>
+                </li>
+              ))}
+            </ul>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPendingSection(null)}>Keep current limits</Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  const section = pendingSection;
+                  setPendingSection(null);
+                  if (section) void saveSection(section);
+                }}
+              >
+                Shorten and save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <div className="grid gap-4 md:grid-cols-3">
           <Field label="Monitor checks" hint="Latency and availability samples, in days.">
-            <Input
-              type="number"
+            <NumberInput
               min={7}
               max={3650}
               value={settings.data.retentionDays}
-              onChange={(event) => updateSetting("data.retentionDays", Number(event.target.value))}
+              onValueChange={(value) => updateSetting("data.retentionDays", value)}
             />
           </Field>
           <Field label="Event logs" hint="Monitor events and diagnostic history, in days.">
-            <Input
-              type="number"
+            <NumberInput
               min={1}
               max={3650}
               value={settings.data.eventRetentionDays}
-              onChange={(event) => updateSetting("data.eventRetentionDays", Number(event.target.value))}
+              onValueChange={(value) => updateSetting("data.eventRetentionDays", value)}
             />
           </Field>
           <Field label="Delivery history" hint="Completed notification deliveries, in days.">
-            <Input
-              type="number"
+            <NumberInput
               min={7}
               max={3650}
               value={settings.data.deliveryRetentionDays}
-              onChange={(event) => updateSetting("data.deliveryRetentionDays", Number(event.target.value))}
+              onValueChange={(value) => updateSetting("data.deliveryRetentionDays", value)}
             />
           </Field>
         </div>
@@ -963,13 +1007,12 @@ export function DataSettingsTab({ settings, saving, saveSettings, updateSetting 
               />
             </Field>
             <Field label="Backups to retain" hint="Older verified backup files are removed automatically.">
-              <Input
-                type="number"
+              <NumberInput
                 min={2}
                 max={90}
                 value={settings.data.backupRetentionCount}
                 disabled={!settings.data.autoBackupEnabled}
-                onChange={(event) => updateSetting("data.backupRetentionCount", Number(event.target.value))}
+                onValueChange={(value) => updateSetting("data.backupRetentionCount", value)}
               />
             </Field>
           </div>

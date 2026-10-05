@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FormAlert } from "@/components/ui/form-alert";
+import { showToast } from "@/lib/client-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,6 +30,7 @@ import {
   USER_ROLES,
 } from "@/lib/auth/permissions";
 import { formatPanelDateTime } from "@/lib/time";
+import { markIntentionalSignOut } from "@/lib/client/session-guard";
 
 type MemberRole = MemberRecord["role"];
 type MemberRoleFilter = "all" | MemberRole;
@@ -71,6 +74,8 @@ export default function MembersPageClient() {
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
   const [createForm, setCreateForm] = useState<CreateMemberForm>(EMPTY_CREATE_FORM);
   const [createOpen, setCreateOpen] = useState(false);
+  // Errors of the open add, edit or delete dialog, shown inside it.
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   useEffect(() => {
     const requestedSearch = new URLSearchParams(window.location.search).get("search")?.trim();
@@ -116,7 +121,7 @@ export default function MembersPageClient() {
 
     try {
       const response = await fetch("/api/members", { cache: "no-store" });
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         currentUserId?: string;
         currentUserRole?: MemberRole;
         members?: MemberRecord[];
@@ -147,7 +152,7 @@ export default function MembersPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(createForm),
       });
-      const data = (await response.json()) as { member?: MemberRecord; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { member?: MemberRecord; message?: string };
       if (!response.ok || !data.member) {
         throw new Error(data.message ?? "Unable to add the member.");
       }
@@ -155,9 +160,10 @@ export default function MembersPageClient() {
       setMembers((current) => sortMembers([...current, data.member as MemberRecord]));
       setCreateForm(EMPTY_CREATE_FORM);
       setCreateOpen(false);
-      setError(null);
+      setDialogError(null);
+      showToast(`${data.member.firstName} ${data.member.lastName} was added.`, "success");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to add the member.");
+      setDialogError(caughtError instanceof Error ? caughtError.message : "Unable to add the member.");
     } finally {
       setSaving(false);
     }
@@ -176,17 +182,18 @@ export default function MembersPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
       });
-      const data = (await response.json()) as { member?: MemberRecord; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { member?: MemberRecord; message?: string };
       if (!response.ok || !data.member) {
         throw new Error(data.message ?? "Unable to update the member.");
       }
 
       setEditingMember(null);
-      setError(null);
+      setDialogError(null);
+      showToast("Member updated.", "success");
       await loadMembers();
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to update the member.");
+      setDialogError(caughtError instanceof Error ? caughtError.message : "Unable to update the member.");
     } finally {
       setSaving(false);
     }
@@ -205,7 +212,7 @@ export default function MembersPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: memberIds }),
       });
-      const data = (await response.json()) as { ids?: string[]; message?: string; signedOut?: boolean };
+      const data = (await response.json().catch(() => ({}))) as { ids?: string[]; message?: string; signedOut?: boolean };
       if (!response.ok || !data.ids) {
         throw new Error(data.message ?? "Unable to delete the selected members.");
       }
@@ -214,14 +221,18 @@ export default function MembersPageClient() {
       setMembers((current) => current.filter((member) => !deleted.has(member.id)));
       setSelectedIds(new Set());
       setDeleteTargetIds([]);
-      setError(null);
+      setDialogError(null);
+      if (!data.signedOut) {
+        showToast(`${data.ids.length} member${data.ids.length === 1 ? "" : "s"} removed.`, "success");
+      }
 
       if (data.signedOut) {
+        markIntentionalSignOut();
         router.replace("/login?message=account-removed");
         router.refresh();
       }
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to delete the selected members.");
+      setDialogError(caughtError instanceof Error ? caughtError.message : "Unable to delete the selected members.");
     } finally {
       setSaving(false);
     }
@@ -259,6 +270,12 @@ export default function MembersPageClient() {
       return new Set([...current, ...selectableFilteredIds]);
     });
   }
+
+  // Each dialog starts without the previous one's error.
+  const deleteDialogOpen = deleteTargetIds.length > 0;
+  useEffect(() => {
+    setDialogError(null);
+  }, [createOpen, editingMember, deleteDialogOpen]);
 
   function openEdit(member: MemberRecord) {
     if (!canSelectMember(member)) {
@@ -373,7 +390,7 @@ export default function MembersPageClient() {
         <CardContent className="relative p-0">
           {loading && filtered.length > 0 ? <p role="status" className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">Updating members…</p> : null}
           <div aria-busy={loading} inert={loading && filtered.length > 0}>
-          <Table className="min-w-[820px]">
+          <Table className="min-w-0 xl:min-w-[820px]">
             <TableHeader>
               <TableRow className="bg-muted/20 hover:bg-muted/20">
                 <TableHead className="w-12 pl-4">
@@ -382,17 +399,18 @@ export default function MembersPageClient() {
                     onClick={toggleAllFiltered}
                     aria-label={allFilteredSelected ? "Clear visible member selection" : "Select all visible members"}
                     title={allFilteredSelected ? "Clear visible selection" : "Select all visible members"}
-                    className="flex items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+                    className="-m-2 flex items-center justify-center rounded p-2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={selectableFilteredIds.length === 0}
                   >
                     {allFilteredSelected ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                   </button>
                 </TableHead>
-                <TableHead className="min-w-[250px]">Member</TableHead>
+                <TableHead className="xl:min-w-[250px]">Member</TableHead>
                 <TableHead>Access</TableHead>
-                <TableHead>Username</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Joined</TableHead>
+                {/* Narrow screens keep the member, access and actions in view; the rest is in the edit dialog. */}
+                <TableHead className="hidden xl:table-cell">Username</TableHead>
+                <TableHead className="hidden xl:table-cell">Department</TableHead>
+                <TableHead className="hidden xl:table-cell">Joined</TableHead>
                 <TableHead className="w-24 pr-6 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -416,13 +434,13 @@ export default function MembersPageClient() {
                       type="button"
                       onClick={() => toggleSelect(member)}
                       aria-label={selectedIds.has(member.id) ? `Deselect ${member.firstName} ${member.lastName}` : `Select ${member.firstName} ${member.lastName}`}
-                      className="flex items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+                      className="-m-2 flex items-center justify-center rounded p-2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
                       disabled={!canSelectMember(member)}
                     >
                       {selectedIds.has(member.id) ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4" />}
                     </button>
                   </TableCell>
-                  <TableCell className="align-top py-3.5">
+                  <TableCell className="whitespace-normal align-top py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-xs font-semibold text-sky-700 dark:text-sky-300">
                         {getMemberInitials(member)}
@@ -432,26 +450,26 @@ export default function MembersPageClient() {
                           <p className="font-medium">{member.firstName} {member.lastName}</p>
                           {member.id === currentUserId ? <Badge variant="outline" className="h-5 bg-sky-500/10 px-1.5 text-[10px] text-sky-600 dark:text-sky-400">You</Badge> : null}
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          <span className="truncate">{member.email}</span>
+                        <p className="mt-0.5 text-xs text-muted-foreground [overflow-wrap:anywhere] xl:truncate">
+                          <span className="xl:truncate">{member.email}</span>
                         </p>
                         {member.jobTitle ? <p className="mt-1 truncate text-[11px] text-muted-foreground/80">{member.jobTitle}</p> : null}
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="align-middle py-3.5"><RoleBadge role={member.role} /></TableCell>
-                  <TableCell className="align-middle py-3.5">
+                  <TableCell className="hidden align-middle py-3.5 xl:table-cell">
                     <span className="font-mono text-xs text-muted-foreground">{member.username ? `@${member.username}` : "--"}</span>
                   </TableCell>
-                  <TableCell className="align-middle py-3.5">
+                  <TableCell className="hidden align-middle py-3.5 xl:table-cell">
                     <span className="text-sm text-muted-foreground">{member.department ?? "Unassigned"}</span>
                   </TableCell>
-                  <TableCell className="align-middle py-3.5">
+                  <TableCell className="hidden align-middle py-3.5 xl:table-cell">
                     <time dateTime={member.createdAt} className="text-xs text-muted-foreground">
                       {formatMemberDate(member.createdAt)}
                     </time>
                   </TableCell>
-                  <TableCell className="align-middle py-3.5 pr-4 text-right md:pr-6">
+                  <TableCell className="align-middle py-3.5 pr-2 text-right md:pr-6">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon-sm" aria-label={`Edit ${member.firstName} ${member.lastName}`} title="Edit member" onClick={() => openEdit(member)} disabled={!canSelectMember(member)}>
                         <Pencil className="size-4" />
@@ -477,6 +495,7 @@ export default function MembersPageClient() {
         onChange={setCreateForm}
         actorRole={currentUserRole}
         onSubmit={() => void createMember()}
+        error={dialogError}
       />
 
       <Dialog open={Boolean(editingMember)} onOpenChange={(open) => !open && setEditingMember(null)}>
@@ -521,6 +540,7 @@ export default function MembersPageClient() {
               </Field>
             ) : null}
           </div>
+          <FormAlert message={dialogError} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMember(null)}>Cancel</Button>
             <Button onClick={() => void saveMember()} disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
@@ -551,6 +571,7 @@ export default function MembersPageClient() {
               ))}
             </div>
           </div>
+          <FormAlert message={dialogError} />
           <DialogFooter>
             <Button variant="outline" onClick={closeDeleteConfirmation} disabled={saving}>Cancel</Button>
             <Button variant="destructive" onClick={() => void deleteMembersByIds(deleteTargetIds)} disabled={saving}>
@@ -571,6 +592,7 @@ function CreateMemberDialog({
   onChange,
   actorRole,
   onSubmit,
+  error,
 }: {
   open: boolean;
   form: CreateMemberForm;
@@ -579,6 +601,7 @@ function CreateMemberDialog({
   onChange: (form: CreateMemberForm) => void;
   actorRole: MemberRole;
   onSubmit: () => void;
+  error: string | null;
 }) {
   function updateField(field: keyof CreateMemberForm, value: string) {
     onChange({ ...form, [field]: value });
@@ -591,12 +614,19 @@ function CreateMemberDialog({
           <DialogTitle>Add member</DialogTitle>
           <DialogDescription>Create an account and assign its workspace role.</DialogDescription>
         </DialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First name">
-            <Input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
+            <Input required minLength={2} value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
           </Field>
           <Field label="Last name">
-            <Input value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
+            <Input required minLength={2} value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
           </Field>
           <Field label="Username">
             <Input
@@ -609,7 +639,7 @@ function CreateMemberDialog({
             />
           </Field>
           <Field label="Email">
-            <Input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} />
+            <Input type="email" required value={form.email} onChange={(event) => updateField("email", event.target.value)} />
           </Field>
           <Field label="Department">
             <Input value={form.department} onChange={(event) => updateField("department", event.target.value)} />
@@ -625,16 +655,21 @@ function CreateMemberDialog({
             </Select>
           </Field>
           <Field label="Password">
-            <Input type="password" minLength={12} maxLength={128} value={form.password} onChange={(event) => updateField("password", event.target.value)} />
+            <Input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={form.password} onChange={(event) => updateField("password", event.target.value)} />
           </Field>
           <Field label="Confirm password">
-            <Input type="password" minLength={12} maxLength={128} value={form.confirmPassword} onChange={(event) => updateField("confirmPassword", event.target.value)} />
+            <Input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={form.confirmPassword} onChange={(event) => updateField("confirmPassword", event.target.value)} />
           </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            At least 12 characters, with an uppercase and a lowercase letter, a number and a special character.
+          </p>
         </div>
+        <FormAlert message={error} />
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={onSubmit} disabled={saving}>{saving ? "Creating..." : "Create member"}</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button type="submit" disabled={saving}>{saving ? "Creating..." : "Create member"}</Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -672,7 +707,7 @@ function RoleFilterButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`shrink-0 rounded-md px-2.5 py-1 text-xs leading-none font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      className={`shrink-0 rounded-md px-2.5 py-2 text-xs leading-none font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         active ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
       }`}
     >

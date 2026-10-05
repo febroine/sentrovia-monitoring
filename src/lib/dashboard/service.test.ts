@@ -175,6 +175,23 @@ describe("dashboard service", () => {
     expect(monitors.map((monitor) => monitor.id)).toEqual(["critical", "favorite", "down"]);
   });
 
+  it("describes each focus monitor's target the way the monitor list does", () => {
+    const base = {
+      companyId: null, company: null, isActive: true, isFavorite: false, isCritical: false,
+      status: "up", statusCode: null, latencyMs: null, lastCheckedAt: null,
+    };
+    const monitors = buildDashboardMonitorFocus([
+      { ...base, id: "web", name: "Web", monitorType: "keyword", url: "https://example.com/#keyword=ok" },
+      { ...base, id: "dns", name: "DNS", monitorType: "dns", url: "dns://example.com/MX?server=1.1.1.1" },
+    ], "all");
+
+    const byId = Object.fromEntries(monitors.map((monitor) => [monitor.id, [monitor.url, monitor.target]]));
+    expect(byId).toEqual({
+      web: ["https://example.com/", "https://example.com/"],
+      dns: ["example.com MX", "example.com MX @1.1.1.1"],
+    });
+  });
+
   it("keeps every active monitor in the focus list", () => {
     const monitors = Array.from({ length: 20 }, (_, index) => buildFocusMonitor(`monitor-${index}`));
 

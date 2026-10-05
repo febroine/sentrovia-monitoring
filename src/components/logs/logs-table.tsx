@@ -29,6 +29,7 @@ export function LogsTable({
   page,
   pageSize,
   hasActiveFilters,
+  loadFailed = false,
   onToggleSelect,
   onToggleAll,
   onPageChange,
@@ -43,6 +44,8 @@ export function LogsTable({
   page: number;
   pageSize: number;
   hasActiveFilters: boolean;
+  // The last load failed; an empty list then is not an empty log.
+  loadFailed?: boolean;
   onToggleSelect: (id: string) => void;
   onToggleAll: (visibleIds: string[]) => void;
   onPageChange: (page: number) => void;
@@ -88,7 +91,7 @@ export function LogsTable({
                 <button
                   type="button"
                   onClick={() => onToggleAll(logs.map((log) => log.id))}
-                  className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   aria-label={allVisibleSelected ? "Clear visible log selection" : "Select all visible logs"}
                 >
                   {allVisibleSelected ? (
@@ -115,7 +118,14 @@ export function LogsTable({
                 </TableCell>
               </TableRow>
             ) : null}
-            {!loading && logs.length === 0 ? (
+            {!loading && logs.length === 0 && loadFailed ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                  Event logs could not be loaded.
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {!loading && logs.length === 0 && !loadFailed ? (
               <TableRow>
                 <TableCell colSpan={8}>
                   <EmptyState
@@ -218,7 +228,7 @@ function ExpandedRow({
           <button
             type="button"
             onClick={onToggleSelect}
-            className="flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="-m-2 flex items-center justify-center rounded-sm p-2 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             aria-label={selected ? `Deselect log from ${formatPanelDateTime(log.createdAt)}` : `Select log from ${formatPanelDateTime(log.createdAt)}`}
           >
             {selected ? (

@@ -12,6 +12,8 @@ export const PERMISSIONS = [
   "reports.manage",
   "settings.manage",
   "audit.read",
+  // Deleting the event history; admins only, since it removes the record of what happened.
+  "audit.manage",
   "worker.manage",
   "backups.manage",
   "private-targets.access",

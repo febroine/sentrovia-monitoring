@@ -28,6 +28,7 @@ import {
 } from "@/lib/reports/metrics";
 import type { GeneratedReport, ReportPeriodRange } from "@/lib/reports/types";
 import { ReportComparison } from "@/components/reports/report-comparison";
+import { sanitizeMonitorUrlForDisplay } from "@/lib/monitors/targets";
 
 type MonitorOption = {
   id: string;
@@ -88,8 +89,8 @@ export function ReportAnalyticsWorkspace({ onUseInPreview }: { onUseInPreview?: 
         fetch("/api/monitors", { cache: "no-store" }),
         fetch("/api/companies", { cache: "no-store" }),
       ]);
-      const monitorsData = (await monitorsResponse.json()) as { monitors?: MonitorOption[]; message?: string };
-      const companiesData = (await companiesResponse.json()) as { companies?: CompanyOption[]; message?: string };
+      const monitorsData = (await monitorsResponse.json().catch(() => ({}))) as { monitors?: MonitorOption[]; message?: string };
+      const companiesData = (await companiesResponse.json().catch(() => ({}))) as { companies?: CompanyOption[]; message?: string };
       if (!monitorsResponse.ok) throw new Error(monitorsData.message ?? "Unable to load monitors.");
       if (!companiesResponse.ok) throw new Error(companiesData.message ?? "Unable to load companies.");
       if (requestId !== analyticsRequestRef.current) return;
@@ -445,7 +446,7 @@ function MonitorSelectionPicker({
                   />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium" title={monitor.name}>{monitor.name}</span>
-                    <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={monitor.url}>{monitor.url}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={sanitizeMonitorUrlForDisplay(monitor.url)}>{sanitizeMonitorUrlForDisplay(monitor.url)}</span>
                   </span>
                 </label>
               );
@@ -559,7 +560,7 @@ function AnalyticsReport({ report, filters, previewFilters, previewRangeInvalid,
         body: JSON.stringify(buildAnalyticsRequestPayload(filters)),
       });
       if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
         throw new Error(data.message ?? "Unable to generate the PDF.");
       }
       const filename = response.headers.get("X-Report-Filename") ?? `${buildReportFileSlug(report)}.pdf`;
@@ -620,7 +621,7 @@ function AnalyticsReport({ report, filters, previewFilters, previewRangeInvalid,
               {hasFleetComparison ? <FleetHealthDistribution monitors={report.monitorBreakdown} /> : null}
             </div>
           ) : null}
-          <div className={cn("grid gap-6", hasResponseMix && "xl:grid-cols-[0.72fr_1.28fr]")}>
+          <div className={cn("grid grid-cols-1 gap-6 [&>*]:min-w-0", hasResponseMix && "xl:grid-cols-[0.72fr_1.28fr]")}>
             {hasResponseMix ? <StatusCodeDistribution codes={report.statusCodes} /> : null}
             <MonitorRiskTable report={report} />
           </div>
@@ -1048,7 +1049,7 @@ async function requestAnalyticsReport(filters: AnalyticsFilters) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(buildAnalyticsRequestPayload(filters)),
   });
-  const data = (await response.json()) as { report?: GeneratedReport; message?: string };
+  const data = (await response.json().catch(() => ({}))) as { report?: GeneratedReport; message?: string };
   return { response, data };
 }
 

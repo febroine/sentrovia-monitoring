@@ -31,6 +31,21 @@ describe("worker store request ordering", () => {
     expect(useWorkerStore.getState().worker).toEqual(running);
     expect(useWorkerStore.getState().commandLoading).toBe(false);
   });
+
+  it("keeps the statistics on display when a poll for another range arrives", async () => {
+    const day = { ...buildWorkerStatus({ running: true }), observability: { range: "24h" } } as unknown as WorkerStatus;
+    const hour = { ...buildWorkerStatus({ running: false }), observability: { range: "1h" } } as unknown as WorkerStatus;
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(day))
+      .mockResolvedValueOnce(jsonResponse(hour)));
+
+    await useWorkerStore.getState().loadWorker("24h");
+    await useWorkerStore.getState().loadWorker("1h");
+
+    const worker = useWorkerStore.getState().worker;
+    expect(worker?.running).toBe(false);
+    expect(worker?.observability?.range).toBe("24h");
+  });
 });
 
 function buildWorkerStatus(overrides: Partial<WorkerStatus>): WorkerStatus {

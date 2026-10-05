@@ -14,6 +14,10 @@ const STRING_FIELDS = [
   "jsonPath",
   "jsonExpectedValue",
   "jsonMatchMode",
+  "dnsRecordType",
+  "dnsServer",
+  "dnsExpectedValues",
+  "dnsMatchMode",
   "companyId",
   "company",
   "notificationPref",
@@ -146,7 +150,7 @@ export function toMonitorImportRecord(
   for (const field of STRING_FIELDS) {
     const value = read(field);
     if (value.length > 0) {
-      record[field] = field === "monitorType" ? value.toLowerCase() : value;
+      record[field] = field === "monitorType" ? value.toLowerCase() : field === "dnsRecordType" ? value.toUpperCase() : value;
     }
   }
 

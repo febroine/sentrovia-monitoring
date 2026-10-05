@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { BrowserAlertsCard } from "@/components/profile/browser-alerts-card";
 import { ChangePasswordCard } from "@/components/profile/change-password-card";
 import { AccountSettingsTab } from "@/components/settings/profile-settings-tab";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +48,7 @@ function ProfileHeader() {
     <header>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Identity, contact details, and account security.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Identity, contact details, account security, and browser alerts.</p>
       </div>
     </header>
   );
@@ -86,6 +87,12 @@ function ProfileTabs({
         >
           Security
         </TabsTrigger>
+        <TabsTrigger
+          value="alerts"
+          className="min-h-11 flex-none rounded-none border-0 px-1 pb-3 pt-1 data-active:bg-transparent data-active:text-foreground data-active:after:absolute data-active:after:inset-x-0 data-active:after:-bottom-px data-active:after:h-0.5 data-active:after:bg-primary data-active:after:content-['']"
+        >
+          Alerts
+        </TabsTrigger>
         </TabsList>
 
         <TabsContent value="identity" className="pt-7">
@@ -99,6 +106,10 @@ function ProfileTabs({
 
         <TabsContent value="security" className="pt-7">
           <ChangePasswordCard />
+        </TabsContent>
+
+        <TabsContent value="alerts" className="pt-7">
+          <BrowserAlertsCard />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db, type DatabaseExecutor } from "@/lib/db";
 import {
+  monitorCheckEvidence,
   monitorChecks,
   monitorDiagnostics,
   monitorEvents,
@@ -9,6 +11,7 @@ import {
   workerState,
 } from "@/lib/db/schema";
 import type { MonitorDiagnosticResult } from "@/lib/diagnostics/types";
+import type { FailureEvidence } from "@/lib/monitors/failure-evidence";
 import { WORKER_STATE_ID } from "@/lib/worker/constants";
 import { AuthError } from "@/lib/auth/errors";
 
@@ -39,6 +42,7 @@ export async function appendMonitorEvent(input: {
   rcaType?: string | null;
   rcaTitle?: string | null;
   rcaSummary?: string | null;
+  createdAt?: Date;
 }, database: DatabaseExecutor = db) {
   const workspaceId = await resolveMonitorHistoryWorkspace(input, database);
   await database.insert(monitorEvents).values({
@@ -53,6 +57,7 @@ export async function appendMonitorEvent(input: {
     rcaType: input.rcaType ?? null,
     rcaTitle: input.rcaTitle ?? null,
     rcaSummary: input.rcaSummary ?? null,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   });
 }
 
@@ -131,9 +136,14 @@ export async function appendMonitorCheck(input: {
   statusCode?: number | null;
   latencyMs?: number | null;
   createdAt: Date;
+  evidence?: FailureEvidence | null;
+  // The first failing check after a healthy one starts a new failure; its details are always kept.
+  startsFailure?: boolean;
 }) {
   const workspaceId = await resolveMonitorHistoryWorkspace(input);
+  const checkId = crypto.randomUUID();
   await db.insert(monitorChecks).values({
+    id: checkId,
     workspaceId,
     monitorId: input.monitorId,
     userId: input.userId,
@@ -142,6 +152,41 @@ export async function appendMonitorCheck(input: {
     latencyMs: input.latencyMs ?? null,
     createdAt: input.createdAt,
   });
+
+  if (input.evidence && (input.startsFailure || await isNewFailureEvidence(input.monitorId, input.evidence, input.createdAt))) {
+    await db.insert(monitorCheckEvidence).values({
+      checkId,
+      workspaceId,
+      monitorId: input.monitorId,
+      evidence: input.evidence,
+      createdAt: input.createdAt,
+    });
+  }
+}
+
+// A long outage fails the same way every minute; repeating identical details would grow the history
+// by megabytes a day. The details are kept when the way it fails changes, and otherwise once in a while.
+const REPEATED_EVIDENCE_INTERVAL_MS = 10 * 60_000;
+
+async function isNewFailureEvidence(monitorId: string, evidence: FailureEvidence, createdAt: Date) {
+  const [latest] = await db
+    .select({ createdAt: monitorCheckEvidence.createdAt, evidence: monitorCheckEvidence.evidence })
+    .from(monitorCheckEvidence)
+    .where(eq(monitorCheckEvidence.monitorId, monitorId))
+    .orderBy(desc(monitorCheckEvidence.createdAt))
+    .limit(1);
+  if (!latest) return true;
+
+  const previous = latest.evidence as Partial<FailureEvidence> | null;
+  return createdAt.getTime() - latest.createdAt.getTime() >= REPEATED_EVIDENCE_INTERVAL_MS
+    || describeEvidenceOutcome(previous) !== describeEvidenceOutcome(evidence);
+}
+
+function describeEvidenceOutcome(evidence: Partial<FailureEvidence> | null) {
+  const finalHop = evidence?.hops?.[evidence.hops.length - 1];
+  // Error texts carry timings and round-robin DNS changes the address on every check; either would
+  // make every check look new.
+  return [evidence?.phase, finalHop?.statusCode].join("|");
 }
 
 export async function appendMonitorDiagnostic(input: {

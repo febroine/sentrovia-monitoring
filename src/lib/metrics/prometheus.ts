@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, count, desc, eq, isNull, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   automaticBackupRuns,
@@ -8,6 +8,7 @@ import {
   workerState,
 } from "@/lib/db/schema";
 import { env, getMetricsAuthToken } from "@/lib/env";
+import { getNotificationQueueSummary } from "@/lib/notifications/outbox";
 import { WORKER_STATE_ID } from "@/lib/worker/constants";
 import { getHeartbeatAgeMs, isHeartbeatCurrent } from "@/lib/worker/heartbeat";
 
@@ -24,6 +25,9 @@ export type PrometheusSnapshot = {
   lastCycleMonitorCount: number;
   activeMonitors: number;
   dueMonitors: number;
+  oldestDueSeconds: number;
+  queuedNotifications: number;
+  oldestQueuedNotificationSeconds: number;
   monitorsByStatus: Record<(typeof MONITOR_STATUSES)[number], number>;
   deliveriesByStatus: Record<(typeof DELIVERY_STATUSES)[number], number>;
   backupStatus: (typeof BACKUP_STATUSES)[number];
@@ -40,7 +44,16 @@ export function isMetricsRequestAuthorized(authorizationHeader: string | null) {
 }
 
 export async function collectPrometheusSnapshot(now = new Date()): Promise<PrometheusSnapshot> {
-  const [monitorRows, activeRows, deliveryRows, workerRows, backupRows, successfulBackupRows, dueRows] = await Promise.all([
+  const [
+    monitorRows,
+    activeRows,
+    deliveryRows,
+    workerRows,
+    backupRows,
+    successfulBackupRows,
+    dueRows,
+    notificationQueue,
+  ] = await Promise.all([
     db
       .select({
         status: monitors.status,
@@ -70,14 +83,21 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
       .orderBy(desc(automaticBackupRuns.completedAt))
       .limit(1),
     db
-      .select({ total: count() })
+      .select({
+        total: count(),
+        // A monitor edited during a pause keeps an earlier nextCheckAt; it became due when the pause ended.
+        oldestNextCheckAt: sql<string | null>`min(greatest(${monitors.nextCheckAt}, ${monitors.pausedUntil}))`,
+      })
       .from(monitors)
       .where(and(
         eq(monitors.isActive, true),
         isNull(monitors.deletedAt),
+        // Same as what the worker can claim: a temporarily paused monitor is not waiting.
+        or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now)),
         or(lte(monitors.nextCheckAt, now), isNull(monitors.nextCheckAt)),
         or(lte(monitors.leaseExpiresAt, now), isNull(monitors.leaseExpiresAt))
       )),
+    getNotificationQueueSummary(now),
   ]);
   const worker = workerRows[0];
   const heartbeatAgeSeconds = (getHeartbeatAgeMs(worker?.heartbeatAt, now) ?? 0) / 1000;
@@ -96,6 +116,9 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
     lastCycleMonitorCount: worker?.lastCycleMonitorCount ?? 0,
     activeMonitors: Number(activeRows[0]?.total ?? 0),
     dueMonitors: Number(dueRows[0]?.total ?? 0),
+    oldestDueSeconds: calculateOldestDueSeconds(dueRows[0]?.oldestNextCheckAt, now),
+    queuedNotifications: notificationQueue.waiting,
+    oldestQueuedNotificationSeconds: (notificationQueue.oldestWaitMs ?? 0) / 1000,
     monitorsByStatus: buildStatusRecord(MONITOR_STATUSES, monitorCounts),
     deliveriesByStatus: buildStatusRecord(DELIVERY_STATUSES, deliveryCounts),
     backupStatus: isBackupStatus(backup?.status) ? backup.status : "none",
@@ -103,6 +126,12 @@ export async function collectPrometheusSnapshot(now = new Date()): Promise<Prome
       ? successfulBackup.completedAt.getTime() / 1000
       : 0,
   };
+}
+
+function calculateOldestDueSeconds(oldestNextCheckAt: Date | string | null | undefined, now: Date) {
+  if (!oldestNextCheckAt) return 0;
+  const dueAt = new Date(oldestNextCheckAt).getTime();
+  return Number.isFinite(dueAt) ? Math.max(0, (now.getTime() - dueAt) / 1000) : 0;
 }
 
 export function isWorkerHeartbeatCurrent(heartbeatAt: Date | null | undefined, now: Date, thresholdSeconds: number) {
@@ -135,6 +164,15 @@ export function renderPrometheusMetrics(snapshot: PrometheusSnapshot) {
     "# HELP sentrovia_monitors_due Monitors currently due for a check.",
     "# TYPE sentrovia_monitors_due gauge",
     `sentrovia_monitors_due ${snapshot.dueMonitors}`,
+    "# HELP sentrovia_monitors_oldest_due_seconds How long the most overdue monitor has been waiting for a check.",
+    "# TYPE sentrovia_monitors_oldest_due_seconds gauge",
+    `sentrovia_monitors_oldest_due_seconds ${formatMetricValue(snapshot.oldestDueSeconds)}`,
+    "# HELP sentrovia_notifications_queued Alerts raised by checks and not sent yet.",
+    "# TYPE sentrovia_notifications_queued gauge",
+    `sentrovia_notifications_queued ${snapshot.queuedNotifications}`,
+    "# HELP sentrovia_notifications_oldest_queued_seconds How long the oldest unsent alert has been waiting.",
+    "# TYPE sentrovia_notifications_oldest_queued_seconds gauge",
+    `sentrovia_notifications_oldest_queued_seconds ${formatMetricValue(snapshot.oldestQueuedNotificationSeconds)}`,
     "# HELP sentrovia_monitors_by_status Non-deleted monitors by current status.",
     "# TYPE sentrovia_monitors_by_status gauge",
     ...MONITOR_STATUSES.map((status) => `sentrovia_monitors_by_status{status="${status}"} ${snapshot.monitorsByStatus[status]}`),

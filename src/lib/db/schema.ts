@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   bigint,
+  bigserial,
   check,
   index,
   integer,
@@ -289,6 +290,11 @@ export const companies = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    // Address -> monitor ids it is limited to; an address without an entry covers every monitor.
+    notificationEmailScopes: jsonb("notification_email_scopes")
+      .$type<Record<string, string[]>>()
+      .default({})
+      .notNull(),
     telegramBotTokenEncrypted: text("telegram_bot_token_encrypted"),
     telegramChatId: varchar("telegram_chat_id", { length: 120 }),
     isActive: boolean("is_active").default(true).notNull(),
@@ -401,6 +407,8 @@ export const monitors = pgTable("monitors", {
   jsonPath: varchar("json_path", { length: 255 }),
   jsonExpectedValue: text("json_expected_value"),
   jsonMatchMode: varchar("json_match_mode", { length: 16 }).default("equals").notNull(),
+  dnsExpectedValues: text("dns_expected_values"),
+  dnsMatchMode: varchar("dns_match_mode", { length: 16 }).default("includes").notNull(),
   tags: text("tags")
     .array()
     .notNull()
@@ -517,6 +525,26 @@ export const monitorChecks = pgTable("monitor_checks", {
     table.monitorId,
     table.createdAt
   ),
+  // One monitor's checks over a period (the daily availability calendar), whoever owns the rows.
+  index("monitor_checks_monitor_created_idx").on(table.monitorId, table.createdAt),
+]);
+
+// What a failed check saw (addresses, timings, response headers, a short body excerpt). Kept apart from
+// monitor_checks so the many queries over check history never load it; it goes with its check.
+export const monitorCheckEvidence = pgTable("monitor_check_evidence", {
+  checkId: text("check_id")
+    .primaryKey()
+    .references(() => monitorChecks.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  monitorId: text("monitor_id")
+    .notNull()
+    .references(() => monitors.id, { onDelete: "cascade" }),
+  evidence: jsonb("evidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("monitor_check_evidence_monitor_created_idx").on(table.monitorId, table.createdAt),
 ]);
 
 export const monitorOutages = pgTable(
@@ -632,6 +660,51 @@ export const deliveryEvents = pgTable("delivery_events", {
   index("delivery_events_queue_due_idx").on(table.status, table.nextRetryAt, table.claimExpiresAt, table.createdAt),
 ]);
 
+// Outbox of monitor notifications. The check only records the alert; a separate worker loop takes the
+// screenshot and sends it, so a slow capture or mail server never holds a check slot or its lease.
+export const notificationJobs = pgTable("notification_jobs", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  // Strict per-monitor order: a recovery is never sent before the outage alert it follows.
+  seq: bigserial("seq", { mode: "number" }).notNull(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  monitorId: text("monitor_id")
+    .notNull()
+    .references(() => monitors.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 24 }).notNull(),
+  // Alerts with a key are queued at most once while one is still waiting (e.g. one outage alert).
+  dedupeKey: varchar("dedupe_key", { length: 32 }),
+  status: varchar("status", { length: 16 }).default("pending").notNull(),
+  // Encrypted snapshot of the alert context; it holds recipients and bot tokens.
+  payload: text("payload").notNull(),
+  checkedAt: timestamp("checked_at", { withTimezone: true }).notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+  claimToken: text("claim_token"),
+  claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
+  deliveryStartedAt: timestamp("delivery_started_at", { withTimezone: true }),
+  outcome: varchar("outcome", { length: 16 }),
+  lastError: text("last_error"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("notification_jobs_pending_dedupe_idx")
+    .on(table.monitorId, table.dedupeKey)
+    .where(sql`${table.status} in ('pending', 'processing') and ${table.dedupeKey} is not null`),
+  index("notification_jobs_claim_idx").on(table.status, table.nextAttemptAt, table.seq),
+  index("notification_jobs_monitor_seq_idx").on(table.monitorId, table.seq),
+  index("notification_jobs_completed_idx").on(table.completedAt),
+  check("notification_jobs_status_check", sql`${table.status} in ('pending', 'processing', 'done', 'failed')`),
+]);
+
+export type NotificationJob = typeof notificationJobs.$inferSelect;
+
 export const workerState = pgTable("worker_state", {
   id: text("id").primaryKey(),
   desiredState: varchar("desired_state", { length: 16 }).default("stopped").notNull(),
@@ -674,6 +747,11 @@ export const workerCycleMetrics = pgTable("worker_cycle_metrics", {
   pendingCount: integer("pending_count").default(0).notNull(),
   averageLatencyMs: integer("average_latency_ms"),
   maxLatencyMs: integer("max_latency_ms"),
+  // How long claimed monitors had been due before their check started.
+  averageScheduleLagMs: integer("average_schedule_lag_ms"),
+  maxScheduleLagMs: integer("max_schedule_lag_ms"),
+  // Monitors the lag average covers; monitors without a due time are left out of it.
+  scheduleLagSamples: integer("schedule_lag_samples"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

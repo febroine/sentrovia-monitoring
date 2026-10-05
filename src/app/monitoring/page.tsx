@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Copy,
   FileCode2,
   FileSpreadsheet,
   FileText,
@@ -33,9 +34,10 @@ import { DEFAULT_MONITOR_COLUMNS, MONITOR_OPTIONAL_COLUMNS, parseMonitorTablePre
 import { MonitorTagsDialog } from "@/components/monitoring/monitor-tags-dialog";
 import { MonitorTextImportDialog } from "@/components/monitoring/monitor-text-import-dialog";
 import { WorkerPulseCard } from "@/components/monitoring/worker-pulse-card";
-import { payloadFromMonitor } from "@/components/monitoring/utils";
+import { changedPayloadFields, duplicatePayloadFromMonitor, payloadFromMonitor } from "@/components/monitoring/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useUnsavedChangesGuard } from "@/components/ui/unsaved-changes";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { CompanyRecord } from "@/lib/companies/types";
@@ -55,6 +57,7 @@ import { parseSoftDeleteUndoDeadline } from "@/lib/soft-delete";
 import { useMonitoringStore } from "@/stores/use-monitoring-store";
 import { hasPermission } from "@/lib/auth/permissions";
 import { LatestRequestCommitter } from "@/lib/client/latest-request";
+import { getMonitorTargetDisplay } from "@/lib/monitors/targets";
 
 const ALL_MONITORS_PAGE_SIZE = 500;
 const PAGE_SIZE_OPTIONS = [10, 50, 100, ALL_MONITORS_PAGE_SIZE] as const;
@@ -77,6 +80,8 @@ interface PendingMonitorRestore {
 export default function MonitoringPage() {
   const searchParams = useSearchParams();
   const requestedSearch = searchParams.get("search")?.trim() ?? "";
+  // Links such as the dashboard's offline alert open the list already filtered.
+  const requestedStatus = searchParams.get("status");
   const requestedCreate = searchParams.get("create") === "1";
   const requestedTimeline = searchParams.get("timeline")?.trim() ?? "";
   const requestedTimelineAt = searchParams.get("at")?.trim() ?? "";
@@ -101,6 +106,8 @@ export default function MonitoringPage() {
     restoreMonitors,
     importMonitors,
     clearError,
+    formError,
+    clearFormError,
   } = useMonitoringStore();
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
@@ -114,6 +121,7 @@ export default function MonitoringPage() {
   const [preferencesLoadedFor, setPreferencesLoadedFor] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
+  const { setDirty: setMonitorFormDirty, guardClose: guardMonitorFormClose, confirmDialog: monitorFormDiscardDialog } = useUnsavedChangesGuard();
   const [toolsOpen, setToolsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -133,7 +141,15 @@ export default function MonitoringPage() {
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
   const [workspaceSettings, setWorkspaceSettings] = useState<SettingsPayload | null>(null);
+  // Whether the workspace settings (which decide what this user may change) have loaded.
+  const [settingsStatus, setSettingsStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [defaultForm, setDefaultForm] = useState(DEFAULT_MONITOR_FORM);
+  // The monitor a new one is being copied from; the create form opens with its settings.
+  const [duplicateSource, setDuplicateSource] = useState<MonitorRecord | null>(null);
+  const createInitialValue = useMemo(
+    () => duplicateSource ? duplicatePayloadFromMonitor(duplicateSource) : defaultForm,
+    [duplicateSource, defaultForm]
+  );
   const [historyByMonitor, setHistoryByMonitor] = useState<Record<string, MonitorHistoryPoint[]>>({});
   const [diagnosticsByMonitor, setDiagnosticsByMonitor] = useState<Record<string, MonitorDiagnosticRecord[]>>({});
   const [outageEventsByMonitor, setOutageEventsByMonitor] = useState<Record<string, MonitorOutageEventRecord[]>>({});
@@ -244,6 +260,7 @@ export default function MonitoringPage() {
       ({ companies: nextCompanies, settings }) => {
         setCompanies(nextCompanies);
         setWorkspaceSettings(settings);
+        setSettingsStatus(settings ? "ready" : "failed");
         setSavedEmails(settings?.notifications.savedEmailRecipients ?? []);
         setDefaultForm(buildDefaultMonitorForm(settings));
       }
@@ -266,20 +283,27 @@ export default function MonitoringPage() {
           }>(response);
 
           return {
+            failed: !response.ok,
             points: response.ok ? data?.history?.[monitorId] ?? [] : [],
             diagnostics: response.ok ? data?.diagnostics?.[monitorId] ?? [] : [],
             outageEvents: response.ok ? data?.outageEvents?.[monitorId] ?? [] : [],
           };
         } catch {
-          return { points: [], diagnostics: [], outageEvents: [] };
+          return { failed: true, points: [], diagnostics: [], outageEvents: [] };
         }
       },
-      ({ points, diagnostics, outageEvents }) => {
+      ({ failed, points, diagnostics, outageEvents }) => {
+        // A failed request keeps what was loaded before instead of looking like an empty history.
+        if (failed) return;
         setHistoryByMonitor((current) => ({ ...current, [monitorId]: points }));
         setDiagnosticsByMonitor((current) => ({ ...current, [monitorId]: diagnostics }));
         setOutageEventsByMonitor((current) => ({ ...current, [monitorId]: outageEvents }));
       }
     );
+    if (snapshot?.failed) {
+      showToast("The timeline could not be loaded. Try again in a moment.", "error");
+      return null;
+    }
     return snapshot?.points ?? null;
   }, []);
 
@@ -388,18 +412,35 @@ export default function MonitoringPage() {
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       setSearch(requestedSearch);
+      if (requestedStatus === "up" || requestedStatus === "down") setStatusFilter(requestedStatus);
       setPage(1);
       if (requestedCreate) setCreateOpen(true);
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [requestedSearch, requestedCreate]);
+  }, [requestedSearch, requestedStatus, requestedCreate]);
 
   async function handleCreate(payload: MonitorPayload) {
     const created = await createMonitor(payload);
     if (created) {
       await loadMonitorPage();
       setCreateOpen(false);
+      setDuplicateSource(null);
     }
+  }
+
+  // A save error belongs to the form it came from; opening or closing a form starts clean.
+  useEffect(() => {
+    clearFormError();
+  }, [createOpen, editingMonitor, clearFormError]);
+
+  function closeCreateForm() {
+    setCreateOpen(false);
+    setDuplicateSource(null);
+  }
+
+  function duplicateMonitor(monitor: MonitorRecord) {
+    setDuplicateSource(monitor);
+    setCreateOpen(true);
   }
 
   async function handleUpdate(payload: MonitorPayload) {
@@ -416,19 +457,20 @@ export default function MonitoringPage() {
 
   async function handleBulkUpdate(payload: MonitorPayload) {
     const ids = Array.from(selectedIds);
-    setBulkEditOpen(false);
-    await runBulkAction(
-      `Updating ${ids.length} monitor${ids.length === 1 ? "" : "s"}`,
-      "Schedule, check, notification, tag, and template settings will be updated.",
-      ids.length,
-      async () => {
-        const updated = await bulkUpdateMonitors(ids, payload);
-        if (updated.length > 0) {
-          await loadMonitorPage();
-          setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
-        }
-      }
-    );
+    // Only what the user changed is applied; the form starts from the first selected monitor, and
+    // writing every field would copy its tags, recipients and templates onto all the others.
+    const fields = changedPayloadFields(bulkEditTemplate, payload);
+    if (fields.length === 0) {
+      showToast("Change at least one setting to apply it to the selected monitors.", "info");
+      return;
+    }
+    // The dialog stays open until the update succeeds, so a failed save keeps the edits.
+    const updated = await bulkUpdateMonitors(ids, payload, fields);
+    if (updated.length > 0) {
+      setBulkEditOpen(false);
+      await loadMonitorPage();
+      setSelectedIds((current) => removeIds(current, updated.map((monitor) => monitor.id)));
+    }
   }
 
   async function handleBulkCompanyMove() {
@@ -720,7 +762,9 @@ export default function MonitoringPage() {
         <div className="space-y-1">
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Monitoring</h1>
           <p className="text-sm text-muted-foreground">
-            {pagination.totalItems} endpoints · {problematicCount} problematic on this page
+            {loading && monitors.length === 0
+              ? "Loading monitors…"
+              : `${pagination.totalItems} endpoint${pagination.totalItems === 1 ? "" : "s"} · ${problematicCount} problematic on this page`}
           </p>
         </div>
 
@@ -748,8 +792,20 @@ export default function MonitoringPage() {
       </section>
 
       {error ? (
-        <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+        <div role="alert" className="flex flex-col gap-2 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => { clearError(); void refreshMonitoring(); }} disabled={loading}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
+
+      {settingsStatus === "failed" ? (
+        <div role="alert" className="flex flex-col gap-2 rounded-md bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <span>Workspace settings could not be loaded, so adding and editing monitors is unavailable for now.</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => void loadSupportingData()}>
+            Try again
+          </Button>
         </div>
       ) : null}
 
@@ -938,6 +994,7 @@ export default function MonitoringPage() {
         onToggleFlag={(monitor, field) => void handleToggleMonitorFlag(monitor, field)}
         onRecheck={(monitor) => void handleRecheckMonitor(monitor)}
         onEdit={setEditingMonitor}
+        onDuplicate={duplicateMonitor}
         onOpenTimeline={(monitor) => void handleOpenTimeline(monitor)}
         emptyState={search.trim() || companyFilter !== "all" || statusFilter !== "all" ? {
           title: "No monitors match these filters",
@@ -947,11 +1004,20 @@ export default function MonitoringPage() {
               Clear filters
             </Button>
           ),
+        } : error ? {
+          // A failed load is not an empty workspace.
+          title: "Monitors could not be loaded",
+          description: "Check the connection and try again.",
+          action: (
+            <Button variant="outline" size="sm" onClick={() => { clearError(); void refreshMonitoring(); }}>Try again</Button>
+          ),
         } : {
           title: "No monitors yet",
-          description: canManageMonitors
-            ? "Add an endpoint to begin the first verification cycle."
-            : "A workspace administrator needs to add the first monitor.",
+          description: settingsStatus !== "ready"
+            ? "Monitors added to this workspace appear here."
+            : canManageMonitors
+              ? "Add an endpoint to begin the first verification cycle."
+              : "A workspace administrator needs to add the first monitor.",
           action: canManageMonitors ? (
             <Button size="sm" onClick={() => setCreateOpen(true)}>Add first monitor</Button>
           ) : undefined,
@@ -1112,30 +1178,58 @@ export default function MonitoringPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : guardMonitorFormClose(closeCreateForm))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Create monitor</DialogTitle>
-            <DialogDescription>Configure the target, check behavior, and alert routing.</DialogDescription>
+            <DialogTitle>{duplicateSource ? "Duplicate monitor" : "Create monitor"}</DialogTitle>
+            <DialogDescription>
+              {duplicateSource
+                ? `Starts with the settings of ${duplicateSource.name}. ${duplicateSource.monitorType === "heartbeat"
+                  ? "The copy gets its own heartbeat URL when it is saved."
+                  : "Change the target before saving; two monitors cannot watch the same target."}${duplicateSource.monitorType === "postgres" ? " Enter the database password again." : ""}`
+                : "Configure the target, check behavior, and alert routing."}
+            </DialogDescription>
           </DialogHeader>
           <MonitorForm
-            initialValue={defaultForm}
+            key={duplicateSource?.id ?? "new"}
+            initialValue={createInitialValue}
             companies={companies}
             savedEmails={savedEmails}
             settings={workspaceSettings}
             submitting={saving}
             submitLabel="Save monitor"
-            onCancel={() => setCreateOpen(false)}
+            onCancel={() => guardMonitorFormClose(closeCreateForm)}
             onSubmit={handleCreate}
+            onDirtyChange={setMonitorFormDirty}
+            submitError={formError}
           />
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(editingMonitor)} onOpenChange={(open) => !open && setEditingMonitor(null)}>
+      <Dialog open={Boolean(editingMonitor)} onOpenChange={(open) => !open && guardMonitorFormClose(() => setEditingMonitor(null))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Monitor settings</DialogTitle>
             <DialogDescription>Change the target, check behavior, alerts, and templates.</DialogDescription>
+            {editingMonitor ? (
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const source = editingMonitor;
+                    guardMonitorFormClose(() => {
+                      setEditingMonitor(null);
+                      duplicateMonitor(source);
+                    });
+                  }}
+                >
+                  <Copy data-icon="inline-start" className="size-3.5" />
+                  Duplicate monitor
+                </Button>
+              </div>
+            ) : null}
           </DialogHeader>
           {editingMonitor && editingMonitorInitialValue ? (
             <MonitorForm
@@ -1146,24 +1240,27 @@ export default function MonitoringPage() {
               submitting={saving}
               monitorId={editingMonitor.id}
               submitLabel="Save changes"
-              onCancel={() => setEditingMonitor(null)}
+              submitError={formError}
+              onCancel={() => guardMonitorFormClose(() => setEditingMonitor(null))}
               onSubmit={handleUpdate}
+              onDirtyChange={setMonitorFormDirty}
             />
           ) : null}
         </DialogContent>
       </Dialog>
 
-      <Dialog open={bulkEditOpen} onOpenChange={setBulkEditOpen}>
+      {monitorFormDiscardDialog}
+
+      <Dialog open={bulkEditOpen} onOpenChange={(open) => (open ? setBulkEditOpen(true) : guardMonitorFormClose(() => setBulkEditOpen(false)))}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Bulk monitor settings</DialogTitle>
             <DialogDescription>
-              Update shared schedule, notification, tag, and template settings for the selected monitors. Identity
-              fields stay unchanged.
+              Change schedule, check, notification, tag, or template settings for the selected monitors.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-            Impact: {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}. Identity fields and targets remain unchanged. The operation starts immediately.
+            The form shows the settings of the first selected monitor. Only the settings you change are applied to the {selectedIds.size} selected monitor{selectedIds.size === 1 ? "" : "s"}; everything else, including names and targets, stays as it is.
           </div>
           {selectedIds.size > 0 ? (
             <MonitorForm
@@ -1174,8 +1271,9 @@ export default function MonitoringPage() {
               submitting={saving}
               submitLabel="Apply to selected monitors"
               mode="bulk"
-              onCancel={() => setBulkEditOpen(false)}
+              onCancel={() => guardMonitorFormClose(() => setBulkEditOpen(false))}
               onSubmit={handleBulkUpdate}
+              onDirtyChange={setMonitorFormDirty}
             />
           ) : null}
         </DialogContent>
@@ -1245,7 +1343,7 @@ export default function MonitoringPage() {
               {deleteTargets.slice(0, 5).map((monitor) => (
                 <div key={monitor.id} className="py-2">
                   <p className="text-sm font-medium text-foreground">{monitor.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{monitor.url}</p>
+                  <p className="truncate text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
                 </div>
               ))}
               {deleteTargets.length > 5 ? (
@@ -1277,7 +1375,7 @@ export default function MonitoringPage() {
               {resetTargets.slice(0, 5).map((monitor) => (
                 <div key={monitor.id} className="py-2 first:pt-0 last:pb-0">
                   <p className="text-sm font-medium text-foreground">{monitor.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{monitor.url}</p>
+                  <p className="truncate text-xs text-muted-foreground">{getMonitorTargetDisplay(monitor)}</p>
                 </div>
               ))}
               {resetTargets.length > 5 ? (

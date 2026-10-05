@@ -61,6 +61,8 @@ type SettingsResponse = {
 export function DeliveryPageClient() {
   const [overview, setOverview] = useState<DeliveryOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
+  // Whether the overview has loaded once; before that, empty counts mean "not loaded", not "first run".
+  const [loaded, setLoaded] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<DeliveryNotificationSettings | null>(null);
   const [notificationSettingsLoading, setNotificationSettingsLoading] = useState(true);
   const [notificationSettingsError, setNotificationSettingsError] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export function DeliveryPageClient() {
     ],
     [overview.summary]
   );
-  const isFirstRun = isDeliveryFirstRun(overview);
+  const isFirstRun = loaded && isDeliveryFirstRun(overview);
   const failedHistoryIds = overview.history.filter((item) => item.status === "failed").map((item) => item.id);
 
   const loadOverview = useCallback(async (requestedPage = 1) => {
@@ -156,6 +158,7 @@ export function DeliveryPageClient() {
 
       const nextOverview = normalizeOverview(data?.overview);
       setOverview(nextOverview);
+      setLoaded(true);
       setHistoryPage(nextOverview.pagination.page);
       setSelectedDeliveryIds([]);
       setWebhookUrl(nextOverview.webhook?.url ?? "");
@@ -295,7 +298,7 @@ export function DeliveryPageClient() {
     setPendingAction(`retry-${eventId}`);
 
     try {
-      const response = await fetch(`/api/delivery/retry?eventId=${encodeURIComponent(eventId)}`, { method: "POST" });
+      const response = await fetch(`/api/delivery/retry?eventId=${encodeURIComponent(eventId)}&page=${historyPage}`, { method: "POST" });
       const data = await readJsonOrNull<{ delivery?: DeliveryHistoryRecord; overview?: DeliveryOverview; message?: string }>(response);
       if (!response.ok) {
         throw new Error(data?.message ?? "Unable to retry this delivery.");
@@ -306,7 +309,11 @@ export function DeliveryPageClient() {
       setHistoryPage(nextOverview.pagination.page);
       setSelectedDeliveryIds((ids) => ids.filter((id) => id !== eventId));
       setSelectedRow(data?.delivery ?? null);
-      setMessage({ text: "Delivery retry completed.", tone: "success" });
+      // The retry ran, but the delivery itself may have failed again.
+      const delivery = data?.delivery;
+      setMessage(delivery?.status === "delivered"
+        ? { text: "The delivery was sent.", tone: "success" }
+        : { text: `The retry did not go through${delivery?.errorMessage ? `: ${delivery.errorMessage}` : "."}`, tone: "error" });
     } catch (error) {
       setMessage({ text: toMessage(error, "Unable to retry this delivery."), tone: "error" });
     } finally {
@@ -517,14 +524,16 @@ export function DeliveryPageClient() {
             <TableHeader>
               <TableRow className="bg-muted/30">
                 <TableHead className="w-10 pl-6">
-                  <input
-                    type="checkbox"
-                    aria-label="Select failed deliveries on this page"
-                    className="accent-primary"
-                    checked={failedHistoryIds.length > 0 && failedHistoryIds.every((id) => selectedDeliveryIds.includes(id))}
-                    onChange={(event) => setSelectedDeliveryIds(event.target.checked ? failedHistoryIds : [])}
-                    disabled={failedHistoryIds.length === 0 || pendingAction !== null}
-                  />
+                  <label className="-m-2 inline-flex cursor-pointer p-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Select failed deliveries on this page"
+                      className="size-4 cursor-pointer accent-primary"
+                      checked={failedHistoryIds.length > 0 && failedHistoryIds.every((id) => selectedDeliveryIds.includes(id))}
+                      onChange={(event) => setSelectedDeliveryIds(event.target.checked ? failedHistoryIds : [])}
+                      disabled={failedHistoryIds.length === 0 || pendingAction !== null}
+                    />
+                  </label>
                 </TableHead>
                 <TableHead className="pl-6">Channel</TableHead>
                 <TableHead>Kind</TableHead>
@@ -536,7 +545,13 @@ export function DeliveryPageClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {overview.history.length === 0 ? (
+              {overview.history.length === 0 && !loaded ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                    {loading ? "Loading deliveries…" : "Delivery history could not be loaded."}
+                  </TableCell>
+                </TableRow>
+              ) : overview.history.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8}>
                     <EmptyState
@@ -550,14 +565,16 @@ export function DeliveryPageClient() {
                   <TableRow key={item.id} className="cursor-pointer" onClick={() => setSelectedRow(item)}>
                     <TableCell className="pl-6" onClick={(event) => event.stopPropagation()}>
                       {item.status === "failed" ? (
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${toTitleCase(item.channel)} delivery to retry`}
-                          className="accent-primary"
-                          checked={selectedDeliveryIds.includes(item.id)}
-                          onChange={(event) => setSelectedDeliveryIds((ids) => event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))}
-                          disabled={pendingAction !== null}
-                        />
+                        <label className="-m-2 inline-flex cursor-pointer p-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${toTitleCase(item.channel)} delivery to retry`}
+                            className="size-4 cursor-pointer accent-primary"
+                            checked={selectedDeliveryIds.includes(item.id)}
+                            onChange={(event) => setSelectedDeliveryIds((ids) => event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))}
+                            disabled={pendingAction !== null}
+                          />
+                        </label>
                       ) : null}
                     </TableCell>
                     <TableCell className="pl-6">

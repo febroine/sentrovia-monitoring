@@ -18,7 +18,9 @@ export function BackupRestorePanel({
 }) {
   const [format, setFormat] = useState<"json" | "yaml">("json");
   const [content, setContent] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessageState] = useState<{ text: string; tone: "success" | "error" | "info" } | null>(null);
+  const setMessage = (text: string | null, tone: "success" | "error" | "info" = "error") =>
+    setMessageState(text === null ? null : { text, tone });
   const [restoring, setRestoring] = useState(false);
   const [preview, setPreview] = useState<RestorePreview | null>(null);
   const [restoreToken, setRestoreToken] = useState<string | null>(null);
@@ -29,7 +31,14 @@ export function BackupRestorePanel({
       const text = await response.text();
 
       if (!response.ok) {
-        setMessage("Unable to create a workspace backup.");
+        const serverMessage = (() => {
+          try {
+            return (JSON.parse(text) as { message?: string }).message;
+          } catch {
+            return undefined;
+          }
+        })();
+        setMessage(serverMessage ?? "Unable to create a workspace backup.");
         return;
       }
 
@@ -42,7 +51,7 @@ export function BackupRestorePanel({
       URL.revokeObjectURL(url);
       const timestamp = new Date().toISOString();
       onBackupCreated(timestamp);
-      setMessage("Workspace backup exported.");
+      setMessage("Workspace backup exported.", "success");
     } catch {
       setMessage("Unable to create a workspace backup.");
     }
@@ -80,12 +89,12 @@ export function BackupRestorePanel({
         const nextPreview = data?.preview && data.restoreToken ? data.preview : null;
         setPreview(nextPreview);
         setRestoreToken(data?.restoreToken ?? null);
-        setMessage(nextPreview ? "Restore analysis is ready. Review the impact before continuing." : "Unable to verify the restore analysis.");
+        setMessage(nextPreview ? "Restore analysis is ready. Review the impact before continuing." : "Unable to verify the restore analysis.", nextPreview ? "info" : "error");
       } else {
         setPreview(null);
         setRestoreToken(null);
         setContent("");
-        setMessage("Workspace backup restored. Refreshing the page is recommended.");
+        setMessage("Workspace backup restored. Refreshing the page is recommended.", "success");
       }
     } catch {
       setMessage("Unable to restore the backup.");
@@ -144,7 +153,20 @@ export function BackupRestorePanel({
           />
         </div>
 
-        {message ? <div className="rounded-md bg-muted/20 px-3 py-2 text-sm">{message}</div> : null}
+        {message ? (
+          <div
+            role={message.tone === "error" ? "alert" : "status"}
+            className={
+              message.tone === "error"
+                ? "rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                : message.tone === "success"
+                  ? "rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300"
+                  : "rounded-md bg-muted/20 px-3 py-2 text-sm"
+            }
+          >
+            {message.text}
+          </div>
+        ) : null}
 
         {preview ? <RestoreImpactPreview preview={preview} /> : null}
 

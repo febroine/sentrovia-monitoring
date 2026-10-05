@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitors } from "@/lib/db/schema";
 import { env } from "@/lib/env";
@@ -19,14 +19,22 @@ export interface SystemHealthAlarm {
   detail: string;
 }
 
-export async function getSystemHealth() {
+// The worker is shared by every workspace, so its state is reported as is; the monitor queue only
+// covers the caller's workspace, so one workspace never sees another's monitors.
+export async function getSystemHealth(workspaceId: string) {
   const now = new Date();
   const worker = await getWorkerState();
 
   const monitorRows = await db
     .select()
     .from(monitors)
-    .where(and(eq(monitors.isActive, true), isNull(monitors.deletedAt)));
+    .where(and(
+      eq(monitors.workspaceId, workspaceId),
+      eq(monitors.isActive, true),
+      isNull(monitors.deletedAt),
+      // A temporarily paused monitor is neither due nor late.
+      or(isNull(monitors.pausedUntil), lte(monitors.pausedUntil, now))
+    ));
 
   const allDelayedMonitors = monitorRows
     .map((monitor) => toDelayedMonitor(monitor, now))
