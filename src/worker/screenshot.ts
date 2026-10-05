@@ -895,11 +895,11 @@ function extractNetworkErrorCode(message: string) {
   return /net::(ERR_[A-Z0-9_]+)/.exec(message)?.[1] ?? null;
 }
 
-// The reasons can quote the monitored site, so line breaks and control characters are flattened to keep
-// them from forging extra log lines.
+// The reasons can quote the monitored site, so line breaks are removed and other control characters
+// flattened to keep them from forging extra log lines. Reasons are already cut to their first line.
 export function toLogText(value: string) {
   return value
-    .replace(/[\r\n\u2028\u2029]+/g, " ")
+    .replace(/[\r\n\u2028\u2029]/g, "")
     .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
     .trim();
 }

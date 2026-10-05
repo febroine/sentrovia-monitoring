@@ -98,8 +98,8 @@ describe("failure screenshot log messages", () => {
   });
 
   it("keeps site-controlled text on one log line", () => {
-    expect(toLogText("status 500\n[sentrovia] Fake entry\r\u2028more\u0000"))
-      .toBe("status 500 [sentrovia] Fake entry more");
+    expect(toLogText("status 500 \n[sentrovia] Fake entry \r\u2028more\u0000\ttail"))
+      .toBe("status 500 [sentrovia] Fake entry more tail");
   });
 
   it("keeps the browser network error code", () => {
