@@ -126,7 +126,7 @@ function paintedPage(ctx, o = {}) {
 // ------------------------------------------------------------------ S6b: the aldercv.com CV
 function cvLayout(env) {
   if (env.vertical) {
-    const panel = { x: 64, y: 230, w: 952, h: 1460, r: 26 };
+    const panel = { x: 64, y: 250, w: 952, h: 1400, r: 26 };
     return {
       panel, barH: 150, logo: 84, url: 66, pad: 76,
       name: 128, title: 54, summary: 48, head: 30, item: 40, lh: 56,
@@ -194,8 +194,7 @@ function drawCV(x, L) {
     // stacked sections
     head(sk.h, px, y);
     y += L.lh * 1.05;
-    const skills = sk.items.join('  ·  ');
-    for (const line of wrap(x, skills, itemFont, w - px * 2)) { C.text(x, line, px, y, { font: itemFont, color: ink }); y += L.lh; }
+    for (const line of wrapItems(x, sk.items, '  ·  ', itemFont, w - px * 2)) { C.text(x, line, px, y, { font: itemFont, color: ink }); y += L.lh; }
     y += L.lh * 0.7;
     head(ex.h, px, y); y += L.lh * 1.05;
     for (const it of ex.items) {
@@ -212,6 +211,15 @@ function drawCV(x, L) {
   x.restore();
 }
 function splitYear(s) { const m = s.match(/^(.*),\s*(\d{4})$/); return m ? [m[1], m[2]] : [s, '']; }
+function wrapItems(x, items, sep, font, maxW) {
+  x.save(); x.font = font;
+  const out = [];
+  let cur = '';
+  for (const it of items) { const t = cur ? cur + sep + it : it; if (x.measureText(t).width > maxW && cur) { out.push(cur); cur = it; } else cur = t; }
+  if (cur) out.push(cur);
+  x.restore();
+  return out;
+}
 function wrap(x, str, font, maxW) {
   x.save(); x.font = font;
   const words = str.split(' '), out = [];
@@ -276,7 +284,7 @@ function drawS6b(ctx, env, t, T) {
   const kk = C.seg(t, 0, 0.16, C.ease.inOutSine);
   const S = C.lerp(A.s, B.s, kk), X = C.lerp(A.x, B.x, kk), Y = C.lerp(A.y, B.y, kk);
   // the visible outline: the sheet's own edge -> straightens into the brand panel
-  const R0 = { x: A.x - 8, y: A.y - 8, w: G_.DW * s0 + 16, h: G_.DH * s0 + 16 };
+  const R0 = { x: X - 8, y: Y - 8, w: G_.DW * S + 16, h: G_.DH * S + 16 };
   const R = { x: C.lerp(R0.x, P.x, k), y: C.lerp(R0.y, P.y, k), w: C.lerp(R0.w, P.w, k), h: C.lerp(R0.h, P.h, k) };
   const rot = C.lerp(-0.02, 0, k);
 
@@ -340,14 +348,14 @@ function drawS6a(ctx, env, t, T) {
   const seat = fns.BANK ? { x: fns.BANK.girlX, y: fns.BANK.girlY, s: fns.BANK.girlS } : SEAT;
   const lift = C.seg(T, LIFT.t0, LIFT.t1, C.ease.inOutSine);
   const tilt = C.seg(T, 22.35, 23.75, C.ease.inOutSine);
-  const cam = { cx: 900, cy: C.lerp(540, 480, tilt), zoom: 1, vx: seat.x + 20 };
+  const cam = { cx: 900, cy: C.lerp(540, 480, tilt), zoom: 1, vx: seat.x + 100 };
   // character on twos: hands open as the page leaves them, then she watches it rise
   const tt = C.twos(T);
   const releaseK = C.seg(tt, 22.3, 22.9, C.ease.inOutSine);
   const lookUp = C.seg(tt, 22.55, 23.5, C.ease.inOutSine);
   const glowAmt = C.lerp(0.2, 0.5, C.seg(T, 22.3, 23.3));
   const girlO = {
-    breath: 1, eyes: { open: C.lerp(0.6, 1, lookUp), lookY: C.lerp(0.9, -0.9, lookUp), lookX: 0.05 },
+    breath: 1, eyes: { open: C.lerp(0.6, 1, lookUp), lookY: C.lerp(0.9, -0.9, lookUp), lookX: C.lerp(0.05, 0.6, lookUp) },
     mouth: lookUp > 0.7 ? 'soft' : 'neutral', hands: 'release', releaseK, lookUp,
     glow: PAL.paper, glowAmt,
     light: { rim: C.mix(PAL.glow, '#8ea2dc', C.seg(T, 22.4, 24)), rimAmt: 0.45, side: 1, glow: PAL.paper, glowAmt },
@@ -364,14 +372,15 @@ function drawS6a(ctx, env, t, T) {
 function drawLiftingPage(ctx, env, T, lift, seat) {
   const G_ = pageGeom();
   const w0 = 160, h0 = w0 * G_.DH / G_.DW;
-  const x = C.lerp(seat.x + 4, seat.x + 30, lift);
+  // drifts right early (so it never covers her face) while it rises; ends top-centre of frame
+  const x = C.lerp(seat.x + 4, 965, C.ease.outSine(C.seg(lift, 0, 0.8)));
   const y = C.lerp(seat.y - 112 * seat.s, 300, lift);
-  const sc = C.lerp(1, 1.55, lift);
+  const sc = C.lerp(1, 1.8, lift);
   const face = C.lerp(0.3, 1, C.ease.inOutSine(C.seg(lift, 0.05, 0.75)));
   const sway = Math.sin((T - LIFT.t0) * 2.4) * 0.03 * Math.sin(Math.PI * lift); // only while rising
   const glowA = C.ease.inOutSine(C.seg(T, 22.25, 23.4));
-  C.glow(ctx, x, y, 420 * sc, PAL.paper, 0.38 * glowA);
-  C.glow(ctx, x, y, 210 * sc, PAL.paperWarm, 0.5 * glowA);
+  C.glow(ctx, x, y, 520 * sc, PAL.paper, 0.42 * glowA);
+  C.glow(ctx, x, y, 240 * sc, PAL.paperWarm, 0.6 * glowA);
   const lay = env.once('brand:painted:world', () => C.layer(G_.DW, G_.DH, env.res * (w0 * 1.6) / G_.DW, (c2) => paintedPage(c2, {})));
   ctx.save();
   ctx.translate(x, y);
@@ -520,7 +529,7 @@ function lockup(ctx, x, y, size, a, align) {
 
 module.exports = {
   S6: {
-    vfocus: 780,
+    vfocus: 860,
     draw(ctx, env, t, info) {
       if (t < 2.4) return drawS6a(ctx, env, t, info.T);
       return drawS6b(ctx, env, t - 2.4, info.T);
