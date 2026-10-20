@@ -4,3 +4,4 @@ out/stills/
 tools/scratch/
 *.log
 .DS_Store
+__pycache__/
