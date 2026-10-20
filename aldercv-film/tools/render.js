@@ -1,6 +1,6 @@
 'use strict';
 // Parallel render.  node tools/render.js --mode landscape --scale 1 --out out/video_landscape.mp4 [--from 0 --to 900 --workers 4 --crf 14]
-// Video only; tools/mux.sh adds the score.
+// Video only; tools/finalize.sh muxes in audio/score.wav.
 const { fork, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
