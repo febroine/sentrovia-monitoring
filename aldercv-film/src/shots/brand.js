@@ -302,7 +302,7 @@ function drawS6b(ctx, env, t, T) {
   //  1) grain + painted words dissolve into a clean blank page while the edges straighten (k 0 -> .65);
   //     her name glides onto the CV name's exact place, so it reads as the one thing that stays
   //  2) the teal bar and the rest of the CV resolve on that clean page (k .45 -> 1)
-  const aBlank = C.seg(k, 0.0, 0.45, C.ease.inOutSine);
+  const aBlank = C.seg(k, 0.2, 0.5, C.ease.inOutSine);
   const aPaint = 1 - C.seg(k, 0.25, 0.65, C.ease.inOutSine);
   const aCV = C.seg(k, 0.45, 1.0, C.ease.inOutSine);
   if (aBlank > 0 && aCV < 1) {
