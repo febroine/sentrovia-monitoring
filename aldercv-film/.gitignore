@@ -1,0 +1,6 @@
+node_modules/
+out/cache/
+out/stills/
+tools/scratch/
+*.log
+.DS_Store

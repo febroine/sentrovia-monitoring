@@ -1,0 +1,212 @@
+[
+ {
+  "t": 0.0,
+  "frame": 0.0,
+  "name": "drone_in (loop seam)",
+  "kind": "soft"
+ },
+ {
+  "t": 0.05,
+  "frame": 1.5,
+  "name": "held_breath",
+  "kind": "soft"
+ },
+ {
+  "t": 0.15,
+  "frame": 4.5,
+  "name": "blip_1 (red pulse)",
+  "kind": "hard"
+ },
+ {
+  "t": 0.85,
+  "frame": 25.5,
+  "name": "blip_2 (red pulse)",
+  "kind": "hard"
+ },
+ {
+  "t": 1.55,
+  "frame": 46.5,
+  "name": "blip_3 (red pulse)",
+  "kind": "hard"
+ },
+ {
+  "t": 2.0,
+  "frame": 60.0,
+  "name": "blink_cut (S1->S2)",
+  "kind": "soft"
+ },
+ {
+  "t": 2.0,
+  "frame": 60.0,
+  "name": "water_in",
+  "kind": "soft"
+ },
+ {
+  "t": 2.0,
+  "frame": 60.0,
+  "name": "paper_rustle_in",
+  "kind": "soft"
+ },
+ {
+  "t": 3.6,
+  "frame": 108.0,
+  "name": "tear_1",
+  "kind": "hard"
+ },
+ {
+  "t": 4.0,
+  "frame": 120.0,
+  "name": "sink_bloop_1",
+  "kind": "soft"
+ },
+ {
+  "t": 5.2,
+  "frame": 156.0,
+  "name": "tear_2",
+  "kind": "hard"
+ },
+ {
+  "t": 5.6,
+  "frame": 168.0,
+  "name": "sink_bloop_2",
+  "kind": "soft"
+ },
+ {
+  "t": 7.4,
+  "frame": 222.0,
+  "name": "wet_grab",
+  "kind": "hard"
+ },
+ {
+  "t": 8.3,
+  "frame": 249.0,
+  "name": "ink_slide_start",
+  "kind": "soft"
+ },
+ {
+  "t": 10.8,
+  "frame": 324.0,
+  "name": "page_drifts_away",
+  "kind": "soft"
+ },
+ {
+  "t": 12.0,
+  "frame": 360.0,
+  "name": "water_paper_fade_out",
+  "kind": "soft"
+ },
+ {
+  "t": 12.6,
+  "frame": 378.0,
+  "name": "exhale",
+  "kind": "hard"
+ },
+ {
+  "t": 12.8,
+  "frame": 384.0,
+  "name": "near_silence (room tone)",
+  "kind": "soft"
+ },
+ {
+  "t": 16.0,
+  "frame": 480.0,
+  "name": "act2_piano_returns",
+  "kind": "soft"
+ },
+ {
+  "t": 16.3,
+  "frame": 489.0,
+  "name": "smooth_sheet",
+  "kind": "soft"
+ },
+ {
+  "t": 16.8,
+  "frame": 504.0,
+  "name": "line_1_pencil",
+  "kind": "soft"
+ },
+ {
+  "t": 17.5,
+  "frame": 525.0,
+  "name": "leaf_1_C5",
+  "kind": "hard"
+ },
+ {
+  "t": 18.3,
+  "frame": 549.0,
+  "name": "line_2_pencil",
+  "kind": "soft"
+ },
+ {
+  "t": 18.9,
+  "frame": 567.0,
+  "name": "leaf_2_E5",
+  "kind": "hard"
+ },
+ {
+  "t": 19.5,
+  "frame": 585.0,
+  "name": "line_3_pencil",
+  "kind": "soft"
+ },
+ {
+  "t": 20.0,
+  "frame": 600.0,
+  "name": "leaf_3_G5",
+  "kind": "hard"
+ },
+ {
+  "t": 20.5,
+  "frame": 615.0,
+  "name": "line_4_pencil",
+  "kind": "soft"
+ },
+ {
+  "t": 21.1,
+  "frame": 633.0,
+  "name": "leaf_4_A5",
+  "kind": "hard"
+ },
+ {
+  "t": 22.0,
+  "frame": 660.0,
+  "name": "shimmer_page_lifts",
+  "kind": "soft"
+ },
+ {
+  "t": 22.0,
+  "frame": 660.0,
+  "name": "pad_swell_start",
+  "kind": "soft"
+ },
+ {
+  "t": 23.5,
+  "frame": 705.0,
+  "name": "sea_to_stars_twinkles",
+  "kind": "soft"
+ },
+ {
+  "t": 24.5,
+  "frame": 735.0,
+  "name": "WARM_CHORD Fmaj9 (CV reveal)",
+  "kind": "hard"
+ },
+ {
+  "t": 27.6,
+  "frame": 828.0,
+  "name": "url_bell C6",
+  "kind": "hard"
+ },
+ {
+  "t": 29.0,
+  "frame": 870.0,
+  "name": "cut_to_black",
+  "kind": "soft"
+ },
+ {
+  "t": 29.2667,
+  "frame": 878.0,
+  "name": "calm_eye_note E6 (frame 878)",
+  "kind": "hard"
+ }
+]
