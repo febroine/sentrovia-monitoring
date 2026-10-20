@@ -335,8 +335,9 @@ function alderLeaf(ctx, x, y, size, o = {}) {
 
 // ---- layout
 const LAYOUTS = {
-  wide: { DW: 1040, margin: 104, top: 120, sizes: { name: 112, italic: 58, body: 52 }, after: { name: 0.95, italic: 0.9, body: 0.82 }, before: 0.95 },
-  narrow: { DW: 560, margin: 46, top: 90, sizes: { name: 80, italic: 40, body: 38 }, after: { name: 0.9, italic: 0.85, body: 0.8 }, before: 0.95, wrap: true },
+  // first = first baseline; gap[style] = baseline distance from a line's last row to the next line
+  wide: { DW: 1040, margin: 104, first: 215, sizes: { name: 116, italic: 58, body: 53 }, gap: { name: 158, italic: 112, body: 104 } },
+  narrow: { DW: 560, margin: 42, first: 170, sizes: { name: 82, italic: 40, body: 37 }, gap: { name: 122, italic: 96, body: 92 }, wrap: true },
 };
 const FONTS = { name: C.FONT.serifMed, italic: C.FONT.serifIt, body: C.FONT.serif };
 let measureCtx = null;
@@ -348,12 +349,12 @@ function getLayout(kind) {
   const m = measureCtx, Lk = LAYOUTS[kind];
   const avail = Lk.DW - Lk.margin * 2;
   const lines = [];
-  let y = Lk.top;
+  let y = Lk.first, prev = null;
   STORY.pageLines.forEach((ln, li) => {
     const size = Lk.sizes[ln.style];
     m.font = FONTS[ln.style](size);
     const leafSize = ln.style === 'name' ? size * 0.92 : size * 1.25;
-    const leafRoom = leafSize * 0.95;
+    const leafRoom = leafSize * 1.45;
     // wrap into rows if the line plus its leaf does not fit
     let rows = [ln.text];
     if (Lk.wrap && m.measureText(ln.text).width + leafRoom > avail) {
@@ -366,7 +367,7 @@ function getLayout(kind) {
       }
       if (best) rows = best.rows;
     }
-    y += size * (li === 0 ? 0.7 : Lk.before * 0.6);
+    if (prev) y += Lk.gap[prev];
     const out = { li, style: ln.style, size, start: ln.start, leaf: ln.leaf, leafSize, rows: [] };
     rows.forEach((txt, ri) => {
       if (ri > 0) y += size * 1.18;
@@ -380,7 +381,7 @@ function getLayout(kind) {
       const width = m.measureText(txt).width;
       out.rows.push({ text: txt, x: Lk.margin, y, width, glyphs });
     });
-    y += size * Lk.after[ln.style];
+    prev = ln.style;
     lines.push(out);
   });
   // vines: one per row, a gentle wobble just under the baseline; the last row hooks up into the leaf

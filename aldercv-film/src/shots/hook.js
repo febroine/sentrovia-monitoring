@@ -168,21 +168,24 @@ function skinLayer(env) {
     x.restore();
     // blush hatching on the cheek (her design: hatched blush)
     x.save();
-    x.strokeStyle = C.rgba(PAL.blush, 0.55); x.lineWidth = 3.2; x.lineCap = 'round';
+    x.filter = 'blur(30px)'; x.fillStyle = C.rgba(PAL.blush, 0.4);
+    x.beginPath(); x.ellipse(1420, 1060, 230, 70, -0.1, 0, Math.PI * 2); x.fill(); x.filter = 'none';
+    x.strokeStyle = C.rgba(C.mix(PAL.blush, PAL.line, 0.2), 0.4); x.lineWidth = 3; x.lineCap = 'round';
     x.beginPath();
-    for (let k = 0; k < 13; k++) { const bx = 1180 + k * 26; x.moveTo(bx - 14, 1068); x.lineTo(bx + 14, 1012); }
+    for (let k = 0; k < 7; k++) { const bx = 1330 + k * 30; x.moveTo(bx - 12, 1070 - k * 2); x.lineTo(bx + 12, 1030 - k * 2); }
     x.stroke(); x.restore();
     // brow (dark aubergine-black), partly off the top edge
-    const browLo = sample([[150, 196], [520, 70], [1150, 20], [1640, 150]], 30);
-    const browHi = sample([[180, 120], [520, -20], [1150, -70], [1600, 90]], 30);
-    const brow = poly([...browLo, [1680, 168], ...browHi.reverse()]);
+    const BROW = [[150, 150], [520, 46], [1150, 6], [1640, 124]];
+    const browLo = sample(BROW, 30);
+    const browHi = sample([[200, 96], [520, -24], [1150, -60], [1600, 82]], 30);
+    const brow = poly([...browLo, [1680, 140], ...browHi.reverse()]);
     C.cel(x, brow, PAL.hair, { mottle: 0.1 });
     x.save(); x.clip(brow);
     const rb = C.rng(31);
     x.strokeStyle = C.rgba(PAL.hairLight, 0.55); x.lineWidth = 3; x.lineCap = 'round';
     x.beginPath();
     for (let k = 0; k < 120; k++) {
-      const s = rb(); const p = bez([[150, 196], [520, 70], [1150, 20], [1640, 150]], s);
+      const s = rb(); const p = bez(BROW, s);
       const L = 40 + rb() * 60, ang = -0.5 + s * 0.65;
       x.moveTo(p[0], p[1] - rb() * 70); x.lineTo(p[0] + Math.cos(ang) * L, p[1] - rb() * 70 + Math.sin(ang) * L);
     }
@@ -190,7 +193,7 @@ function skinLayer(env) {
     // stray brow hairs below the edge
     x.save(); x.strokeStyle = PAL.hair; x.lineWidth = 2.6; x.lineCap = 'round'; x.beginPath();
     for (let k = 0; k < 40; k++) {
-      const s = 0.05 + rb() * 0.9; const p = bez([[150, 196], [520, 70], [1150, 20], [1640, 150]], s);
+      const s = 0.05 + rb() * 0.9; const p = bez(BROW, s);
       x.moveTo(p[0], p[1] - 4); x.lineTo(p[0] + 18 + rb() * 18, p[1] + 6 + rb() * 10);
     }
     x.stroke(); x.restore();
@@ -204,7 +207,8 @@ function edgeLayer(env, palette) {
     const lay = C.layer(420, 1400, env.res, (x) => {
       x.translate(-1720, 160);
       const red = palette === 'red';
-      const sky = poly([[1880, -170], [1840, 200], [1872, 560], [1900, 900], [1860, 1250], [2160, 1250], [2160, -170]]);
+      const CONTOUR = [[1830, -170], [1786, 200], [1806, 560], [1838, 900], [1800, 1250]];
+      const sky = poly([...CONTOUR, [2160, 1250], [2160, -170]]);
       const g = x.createLinearGradient(0, -160, 0, 1240);
       const stops = red
         ? [[0, PAL.night0], [0.3, PAL.night1], [0.5, PAL.night2], [0.62, PAL.blueband], [0.7, PAL.glow], [0.78, PAL.ember2], [0.9, PAL.ember1], [1, PAL.ember0]]
@@ -215,13 +219,12 @@ function edgeLayer(env, palette) {
         const rs = C.rng(77); x.fillStyle = C.rgba(PAL.paper, 0.85);
         for (let k = 0; k < 30; k++) { x.beginPath(); x.arc(1850 + rs() * 300, -150 + rs() * 1000, 1 + rs() * 2.2, 0, Math.PI * 2); x.fill(); }
       }
-      C.ink(x, poly([[1880, -170], [1840, 200], [1872, 560], [1900, 900], [1860, 1250]], false), { color: PAL.line, width: 4 });
+      C.ink(x, poly(CONTOUR, false), { color: PAL.line, width: 4 });
       // side lock: tapered strands with gaps
       const lock = new C.Path2D();
       const r = C.rng(41);
-      for (let k = 0; k < 7; k++) {
-        const bx = 1790 + k * 34 + r() * 20, tx = bx + 10 + r() * 60, ty = 760 + r() * 520;
-        strand(lock, [bx, -170], [bx - 30 + r() * 30, ty * 0.5], [tx, ty], 46 + r() * 26);
+      for (const [bx, w, tx, ty] of [[1800, 70, 1770, 1300], [1890, 56, 1905, 1020], [1990, 90, 2010, 1300], [2090, 80, 2110, 900]]) {
+        strand(lock, [bx, -170], [bx - 26 + r() * 20, ty * 0.5], [tx, ty], w);
       }
       C.cel(x, lock, PAL.hair, { mottle: 0.1 });
       x.save(); x.clip(lock);
@@ -257,11 +260,11 @@ function globeLayer(env) {
       x.translate(-X0, -Y0);
       // sclera: cool cream, spherical shading toward the corners
       const sclera = rectPath(X0, Y0, GW, GH);
-      C.paint(x, sclera, { fill: C.mix(PAL.paper, PAL.agaveLight, 0.45), mottle: 0.22, hatch: 0.05, hatchColor: PAL.agaveShade, seed: 2 });
+      C.paint(x, sclera, { fill: C.mix(PAL.paper, PAL.agaveLight, 0.25), mottle: 0.22, hatch: 0.05, hatchColor: PAL.agaveShade, seed: 2 });
       const sg = x.createRadialGradient(IRIS.x, IRIS.y + 40, 260, IRIS.x, IRIS.y + 40, 820);
       sg.addColorStop(0, C.rgba(PAL.agaveShade, 0));
       sg.addColorStop(0.55, C.rgba(PAL.agaveShade, 0.35));
-      sg.addColorStop(1, C.rgba(C.mix(PAL.agaveShade, PAL.skinShade, 0.5), 0.85));
+      sg.addColorStop(1, C.rgba(C.mix(PAL.agaveShade, PAL.skinShade, 0.6), 0.9));
       x.fillStyle = sg; x.fillRect(X0, Y0, GW, GH);
       // iris
       x.save();
@@ -334,12 +337,12 @@ function warpFwd(sx, sy) { // flat -> destination offset (Newton-free fixed poin
   }
   return [dx, dy];
 }
-function warpedLayer(env, key, fw, fh, drawFlat) {
+function warpedLayer(env, key, fw, fh, drawFlat, sc = 1) {
   return env.once('hook:refl:' + key, () => {
     const sres = env.res * 1.5;
     const flat = C.canvas(fw * sres, fh * sres);
     const fx = flat.getContext('2d');
-    fx.scale(sres, sres); fx.translate(fw / 2, fh / 2);
+    fx.scale(sres, sres); fx.translate(fw / 2, fh / 2); fx.scale(sc, sc);
     drawFlat(fx);
     const FW = flat.width, FH = flat.height;
     const src = fx.getImageData(0, 0, FW, FH).data;
@@ -394,28 +397,32 @@ function bloomOf(env, key, src, color, blur, extra) {
 }
 
 // flat email card (S1). Centre of the card = (0,0).
-const EMAIL = { w: 610, h: 384 };
-const DOT_FLAT = [EMAIL.w / 2 - 22, -EMAIL.h / 2 + 22];
+const EMAIL = { w: 548, h: 330, oy: 22 };
+const DOT_FLAT = [EMAIL.w / 2 - 18, -EMAIL.h / 2 + EMAIL.oy + 18];
+function fitFont(x, str, fontFn, px, maxW) {
+  for (let f = px; f > 20; f--) { x.font = fontFn(f); if (x.measureText(str).width <= maxW) return f; }
+  return 20;
+}
 function drawEmailFlat(x) {
   const { w, h } = EMAIL;
+  x.translate(0, EMAIL.oy);
   const card = new C.Path2D(); card.roundRect(-w / 2, -h / 2, w, h, 22);
-  C.paint(x, card, { fill: C.mix(PAL.paper, PAL.bloomLight, 0.18), mottle: 0.18, hatch: 0.04, seed: 8 });
-  const L = -w / 2 + 36;
+  C.paint(x, card, { fill: C.mix(PAL.paper, PAL.bloomLight, 0.22), mottle: 0.18, hatch: 0.04, seed: 8 });
+  const L = -w / 2 + 30, maxW = w - 58;
   // sender row: avatar + muted bar
-  x.fillStyle = C.mix(PAL.paperShade, PAL.ink, 0.2); x.beginPath(); x.arc(L + 16, -h / 2 + 40, 16, 0, Math.PI * 2); x.fill();
-  x.fillStyle = C.rgba(PAL.paperShade, 0.9); x.fillRect(L + 44, -h / 2 + 33, 170, 13);
-  C.text(x, 'Re: Application — Junior Designer', L, -h / 2 + 100, { font: C.FONT.sansSemi(31), color: PAL.ink });
-  x.fillStyle = C.rgba(PAL.paperShade, 0.9); x.fillRect(L, -h / 2 + 118, w - 72, 3);
-  // body, wrapped
-  const words = 'Unfortunately, we have decided to move forward with other candidates.'.split(' ');
-  x.font = C.FONT.sansSemi(46);
-  const lines = []; let cur = '';
-  for (const wd of words) { const tryS = cur ? cur + ' ' + wd : wd; if (x.measureText(tryS).width > w - 64 && cur) { lines.push(cur); cur = wd; } else cur = tryS; }
-  lines.push(cur);
-  lines.forEach((ln, i) => C.text(x, ln, L, -h / 2 + 178 + i * 58, { font: i === 0 ? C.FONT.sansBold(48) : C.FONT.sans(46), color: PAL.ink }));
+  x.fillStyle = C.mix(PAL.paperShade, PAL.ink, 0.2); x.beginPath(); x.arc(L + 14, -h / 2 + 34, 14, 0, Math.PI * 2); x.fill();
+  x.fillStyle = C.rgba(PAL.paperShade, 0.9); x.fillRect(L + 38, -h / 2 + 28, 150, 12);
+  const subj = 'Re: Application — Junior Designer';
+  C.text(x, subj, L, -h / 2 + 88, { font: C.FONT.sansSemi(fitFont(x, subj, C.FONT.sansSemi, 30, maxW)), color: PAL.ink });
+  x.fillStyle = C.rgba(PAL.paperShade, 0.9); x.fillRect(L, -h / 2 + 104, maxW, 3);
+  const lines = ['Unfortunately, we have', 'decided to move forward', 'with other candidates.'];
+  const fb = fitFont(x, lines[0], C.FONT.sansBold, 46, maxW);
+  const fr = Math.min(fb, ...lines.slice(1).map((ln) => fitFont(x, ln, C.FONT.sans, 44, maxW)));
+  lines.forEach((ln, i) => C.text(x, ln, L, -h / 2 + 162 + i * 54, { font: i === 0 ? C.FONT.sansBold(fb) : C.FONT.sans(fr), color: PAL.ink }));
   // red notification dot (badge on the corner)
-  x.fillStyle = PAL.stampRed; x.beginPath(); x.arc(DOT_FLAT[0], DOT_FLAT[1], 27, 0, Math.PI * 2); x.fill();
-  x.fillStyle = C.rgba(PAL.ember2, 0.9); x.beginPath(); x.arc(DOT_FLAT[0] - 5, DOT_FLAT[1] - 5, 14, 0, Math.PI * 2); x.fill();
+  x.translate(0, -EMAIL.oy);
+  x.fillStyle = PAL.stampRed; x.beginPath(); x.arc(DOT_FLAT[0], DOT_FLAT[1], 26, 0, Math.PI * 2); x.fill();
+  x.fillStyle = C.rgba(PAL.ember2, 0.9); x.beginPath(); x.arc(DOT_FLAT[0] - 5, DOT_FLAT[1] - 5, 13, 0, Math.PI * 2); x.fill();
 }
 // flat aldercv.com page (S8): cream page, teal bar with the logo, a few lines, an alder leaf
 const CVP = { w: 330, h: 430 };
@@ -455,13 +462,13 @@ function drawCvFlat(x) {
 
 function reflection(env, kind) {
   if (kind === 'email') {
-    const lay = warpedLayer(env, 'email', EMAIL.w + 80, EMAIL.h + 80, drawEmailFlat);
+    const lay = warpedLayer(env, 'email', EMAIL.w + 80, EMAIL.h + 2 * EMAIL.oy + 80, drawEmailFlat);
     const dot = warpFwd(DOT_FLAT[0], DOT_FLAT[1]);
     const dotW = [IRIS.x + dot[0], IRIS.y + dot[1]];
     const glow = bloomOf(env, 'email', lay, PAL.ember2, 26, (x) => C.glow(x, dotW[0], dotW[1], 90, PAL.ember2, 1));
     return { lay, glow, dot: dotW };
   }
-  const lay = warpedLayer(env, 'cv', CVP.w + 60, CVP.h + 60, drawCvFlat);
+  const lay = warpedLayer(env, 'cv', (CVP.w + 60) * 0.7, (CVP.h + 60) * 0.7, drawCvFlat, 0.7);
   const glow = bloomOf(env, 'cv', lay, PAL.alderLight, 30);
   return { lay, glow, dot: null };
 }
@@ -502,50 +509,63 @@ function lightLayer(env, palette) {
 function ambientLayer(env, palette) {
   return worldLayer(env, 'amb:' + palette, (x, A) => {
     const red = palette === 'red';
-    const g = x.createRadialGradient(960, 600, 120, 960, 600, 1250);
+    const g = x.createRadialGradient(960, 590, 140, 960, 590, 1120);
     if (red) {
-      g.addColorStop(0, C.mix(PAL.paper, PAL.ember2, 0.1));
-      g.addColorStop(0.45, C.mix(PAL.paper, PAL.bloom, 0.32));
-      g.addColorStop(0.75, C.mix(PAL.paper, PAL.night2, 0.5));
-      g.addColorStop(1, C.mix(PAL.night1, PAL.paper, 0.25));
+      g.addColorStop(0, C.mix(PAL.paper, PAL.ember2, 0.12));
+      g.addColorStop(0.4, C.mix(PAL.paper, PAL.bloom, 0.45));
+      g.addColorStop(0.7, C.mix(PAL.paper, PAL.night2, 0.62));
+      g.addColorStop(1, C.mix(PAL.night1, PAL.paper, 0.15));
     } else {
-      g.addColorStop(0, C.mix(PAL.paper, PAL.agaveLight, 0.5));
-      g.addColorStop(0.45, C.mix(PAL.paper, PAL.blueband, 0.4));
-      g.addColorStop(0.75, C.mix(PAL.paper, PAL.night2, 0.62));
-      g.addColorStop(1, C.mix(PAL.night1, PAL.paper, 0.18));
+      g.addColorStop(0, C.mix(PAL.paper, PAL.blueband, 0.25));
+      g.addColorStop(0.4, C.mix(PAL.paper, PAL.blueband, 0.55));
+      g.addColorStop(0.7, C.mix(PAL.paper, PAL.night2, 0.75));
+      g.addColorStop(1, C.mix(PAL.night1, PAL.paper, 0.1));
     }
     x.fillStyle = g; x.fillRect(A.x0, A.y0, A.x1 - A.x0, A.y1 - A.y0);
   });
 }
 
 // ---------------------------------------------------------------- baked: bangs in front
+// a hair clump: wide at the root (off the top edge), curving to one soft point
+function clump(p, rx, rw, tx, ty, bend) {
+  const l = rx - rw / 2, rr = rx + rw / 2;
+  p.moveTo(l, -220);
+  p.bezierCurveTo(l + bend * 0.2, ty * 0.25, tx - rw * 0.22 + bend * 0.6, ty * 0.72, tx, ty);
+  p.bezierCurveTo(tx + rw * 0.12 + bend * 0.5, ty * 0.62, rr + bend * 0.25, ty * 0.2, rr, -220);
+  p.closePath();
+}
 function bangsLayer(env) {
   return worldLayer(env, 'bangs', (x) => {
     const r = C.rng(52);
-    const p = new C.Path2D();
+    // [rootX, rootW, tipX, tipY, bend]
     const spec = [
-      // [rootX, tipX, tipY, width]
-      [230, 170, 300, 200], [380, 330, 345, 170], [520, 500, 270, 150], [610, 640, 205, 110],
-      [820, 770, 292, 46],
-      [1170, 1210, 190, 130], [1300, 1330, 248, 150], [1440, 1470, 170, 120],
+      [60, 300, 70, 236, -30], [270, 270, 250, 330, -36], [470, 230, 455, 286, 24], [640, 190, 618, 196, 34],
+      [1210, 190, 1236, 156, 30], [1380, 260, 1395, 248, 44], [1590, 260, 1630, 196, 36], [1790, 300, 1830, 290, 20],
     ];
-    for (const [rx, tx, ty, w] of spec) strand(p, [rx, -180], [rx + (tx - rx) * 0.3 - 20, ty * 0.45], [tx, ty], w);
+    const p = new C.Path2D();
+    for (const [rx, rw, tx, ty, bend] of spec) clump(p, rx, rw, tx, ty, bend);
+    // a few loose strands crossing the top edge toward the eye
+    for (const [bx, tx, ty, w] of [[760, 700, 286, 18], [830, 812, 238, 12], [1100, 1150, 214, 14], [395, 330, 382, 12]]) {
+      strand(p, [bx, -200], [bx + (tx - bx) * 0.2 - 18, ty * 0.55], [tx, ty], w);
+    }
     C.cel(x, p, PAL.hair, { mottle: 0.1 });
     x.save(); x.clip(p);
-    // one shade shape per clump (right side of each strand is in shadow)
-    x.fillStyle = C.shade(PAL.hair, -0.3);
+    // one shade shape: the right flank of each clump turns away from the light
     const sh = new C.Path2D();
-    for (const [rx, tx, ty, w] of spec) strand(sh, [rx + w * 0.3, -180], [rx + (tx - rx) * 0.3 + w * 0.1, ty * 0.45], [tx + 4, ty - 6], w * 0.4);
-    x.fill(sh);
-    x.strokeStyle = C.rgba(PAL.hairLight, 0.7); x.lineWidth = 7; x.lineCap = 'round';
-    x.beginPath();
-    for (const [rx, tx, ty, w] of spec) {
-      if (w < 60) continue;
-      x.moveTo(rx - w * 0.25, -40); x.quadraticCurveTo(rx - w * 0.2, 40, C.lerp(rx, tx, 0.5) - w * 0.15, ty * 0.5);
-    }
+    for (const [rx, rw, tx, ty, bend] of spec) clump(sh, rx + rw * 0.28, rw * 0.44, tx + 6, ty - 18, bend);
+    x.fillStyle = C.shade(PAL.hair, -0.32); x.fill(sh);
+    // sheen band (one per clump) + fine strand lines
+    x.lineCap = 'round';
+    x.strokeStyle = C.rgba(PAL.hairLight, 0.75); x.lineWidth = 9; x.beginPath();
+    for (const [rx, rw, , ty] of spec) { x.moveTo(rx - rw * 0.32, 30 + ty * 0.05); x.quadraticCurveTo(rx - rw * 0.1, 18, rx + rw * 0.12, 34 + ty * 0.04); }
     x.stroke();
-    x.strokeStyle = C.rgba(PAL.hairLight, 0.35); x.lineWidth = 2.4; x.beginPath();
-    for (let k = 0; k < 40; k++) { const sx = 150 + r() * 1400; x.moveTo(sx, -150); x.quadraticCurveTo(sx - 10, 40, sx + 8, 120 + r() * 140); }
+    x.strokeStyle = C.rgba(PAL.hairLight, 0.4); x.lineWidth = 2.6; x.beginPath();
+    for (const [rx, rw, tx, ty, bend] of spec) {
+      for (let k = 0; k < 4; k++) {
+        const u = (k + 0.5) / 4 - 0.5, sx = rx + u * rw * 0.8;
+        x.moveTo(sx, -150); x.bezierCurveTo(sx + bend * 0.1, ty * 0.3, C.lerp(sx, tx, 0.6) + bend * 0.4, ty * 0.6, C.lerp(sx, tx, 0.85), ty * (0.78 + r() * 0.1));
+      }
+    }
     x.stroke();
     x.restore();
     C.ink(x, p, { color: PAL.line, width: 3.6 });
@@ -628,7 +648,7 @@ function drawEye(ctx, env, state) {
       ctx.save(); ctx.globalCompositeOperation = 'screen';
       C.blit(ctx, R.glow, R.glow.ox, R.glow.oy, 0.55);
       ctx.restore();
-      C.blit(ctx, R.lay, R.lay.ox, R.lay.oy, 0.9);
+      C.blit(ctx, R.lay, R.lay.ox, R.lay.oy, 0.82);
     }
     ctx.restore();
     // the lid still shades the top of the reflection a little
@@ -655,7 +675,7 @@ function drawEye(ctx, env, state) {
   blitL(ctx, bangsLayer(env));
 }
 
-function drawLids(ctx, upPts, loPts, b) {
+function drawLids(ctx, upPts, loPts, b, palette, pulse) {
   const F = frames(upPts), FL = frames(loPts);
   const n = F.length;
   // lower lid line (thin at the inner corner, firmer outward)
@@ -676,7 +696,7 @@ function drawLids(ctx, upPts, loPts, b) {
   ctx.restore();
 
   // upper lash ribbon
-  const width = (s) => 7 + 24 * C.smooth(s / 0.82);
+  const width = (s) => 9 + 38 * C.smooth(s / 0.8);
   const outer = [], inner = [];
   F.forEach(({ p, n: nn }, i) => {
     const w = width(i / (n - 1));
