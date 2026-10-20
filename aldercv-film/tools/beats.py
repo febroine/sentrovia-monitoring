@@ -201,8 +201,8 @@ def main():
     with open(a.cues) as f:
         cues = json.load(f)
     print()
-    print(f"{'cue':<26} {'kind':<5} {'t_cue':>7} {'frame':>6} {'onset':>8} {'d(ms)':>7} {'str':>5}  status")
-    print("-" * 80)
+    print(f"{'cue':<30} {'kind':<5} {'t_cue':>7} {'frame':>6} {'onset':>8} {'d(ms)':>7} {'str':>5}  status")
+    print("-" * 84)
     hard_fail = 0
     n_hard = 0
     for c in cues:
@@ -225,8 +225,8 @@ def main():
             n_hard += 1
             status = "OK" if ok else "FLAG >40ms"
             hard_fail += 0 if ok else 1
-        print(f"{c['name']:<26} {kind:<5} {t:7.3f} {t * a.fps:6.1f} {on:8.3f} {dms:+7.1f} {s:5.2f}  {status}")
-    print("-" * 80)
+        print(f"{c['name']:<30} {kind:<5} {t:7.3f} {t * a.fps:6.1f} {on:8.3f} {dms:+7.1f} {s:5.2f}  {status}")
+    print("-" * 84)
     print(f"hard cues: {n_hard - hard_fail}/{n_hard} within +/-{TOL_MS:.0f} ms")
     return 1 if hard_fail else 0
 
