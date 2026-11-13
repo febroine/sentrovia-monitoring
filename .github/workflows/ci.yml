@@ -18,7 +18,8 @@ concurrency:
 jobs:
   quality:
     name: Test, lint, typecheck, and build
-    runs-on: ubuntu-latest
+    # Pinned: Playwright 1.60 cannot install Chromium on ubuntu-26.04 (current ubuntu-latest).
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       APP_URL: http://localhost:3000
