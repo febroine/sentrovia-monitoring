@@ -54,10 +54,6 @@ export function PublicSiteHeader({ active }: { active?: PublicPage }) {
         </nav>
 
         <div className="hidden items-center gap-4 lg:flex">
-          <Link href="/status" className="inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-[13px] font-medium text-blue-100/65 transition-colors hover:text-space-ice focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-space-electric/70">
-            <span aria-hidden="true" className="size-1.5 rounded-full bg-sky-400" />
-            System status
-          </Link>
           <Link href="/login" className="inline-flex min-h-11 items-center rounded-md px-2 text-sm font-medium text-blue-100/70 transition-colors hover:text-space-ice focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-space-electric/70">
             Sign in
           </Link>

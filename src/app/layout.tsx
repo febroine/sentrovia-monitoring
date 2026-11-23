@@ -5,6 +5,7 @@ import AppShell from '@/components/app-shell';
 import { ToastRegion } from '@/components/ui/toast-region';
 import { getSession } from '@/lib/auth/session';
 import { getSettings } from '@/lib/settings/service';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SOCIAL_IMAGE, getSiteUrl } from '@/lib/seo/site';
 
 const ibmPlexSans = IBM_Plex_Sans({
   weight: 'variable',
@@ -19,18 +20,37 @@ const ibmPlexMono = IBM_Plex_Mono({
   display: 'swap',
 });
 
-export const metadata: Metadata = {
-  title: 'Sentrovia Uptime Monitoring',
-  description: 'Self-hosted uptime monitoring and notification operations.',
-  applicationName: 'Sentrovia',
-  icons: {
-    icon: [
-      { url: '/icon.png', type: 'image/png' },
-    ],
-    shortcut: ['/favicon.ico'],
-    apple: ['/icon.png'],
-  },
-};
+// A function, not a constant: metadataBase must follow this installation's APP_URL at runtime.
+export function generateMetadata(): Metadata {
+  return {
+    metadataBase: new URL(getSiteUrl()),
+    title: {
+      default: SITE_TITLE,
+      template: `%s | ${SITE_NAME}`,
+    },
+    description: SITE_DESCRIPTION,
+    applicationName: SITE_NAME,
+    openGraph: {
+      type: 'website',
+      siteName: SITE_NAME,
+      title: SITE_TITLE,
+      description: SITE_DESCRIPTION,
+      images: [SOCIAL_IMAGE],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: SITE_TITLE,
+      description: SITE_DESCRIPTION,
+    },
+    icons: {
+      icon: [
+        { url: '/icon.png', type: 'image/png' },
+      ],
+      shortcut: ['/favicon.ico'],
+      apple: ['/icon.png'],
+    },
+  };
+}
 
 export default async function RootLayout({
   children,
