@@ -3,6 +3,8 @@ import { ArrowRight, ArrowUpRight, Database, FileCheck2, GitBranch, ShieldCheck 
 import { SentroviaLogo } from "@/components/brand/sentrovia-logo";
 import { PublicSiteShell } from "@/components/public/public-site-shell";
 import { getSession } from "@/lib/auth/session";
+import type { Metadata } from "next";
+import { PUBLIC_PAGES, publicPageMetadata } from "@/lib/seo/site";
 import packageJson from "../../../package.json";
 
 const linkButtonClassName =
@@ -79,6 +81,8 @@ const resources = [
   { label: "Releases", href: `${packageJson.homepage}/releases`, description: "Read release notes before updating your installation." },
   { label: "Report an issue", href: packageJson.bugs.url, description: "Include your version and reproduction steps; remove credentials and private data." },
 ] as const;
+
+export const metadata: Metadata = publicPageMetadata(PUBLIC_PAGES[0]);
 
 export default async function AboutPage() {
   const session = await getSession();

@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import {
   AlertTriangle,
   Globe2,
@@ -16,9 +18,26 @@ export const revalidate = 0;
 type Params = Promise<{ slug: string }>;
 type StatusPageData = NonNullable<Awaited<ReturnType<typeof getPublicStatusPage>>>;
 
+// One database read per request, shared by the metadata and the page.
+const loadPublicStatusPage = cache(getPublicStatusPage);
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { slug } = await params;
+  const statusPage = await loadPublicStatusPage(slug);
+  if (!statusPage) {
+    return { title: "Status page not found", robots: { index: false } };
+  }
+
+  return {
+    title: statusPage.title,
+    description: statusPage.summary,
+    alternates: { canonical: `/status/${statusPage.slug}` },
+  };
+}
+
 export default async function PublicStatusPage({ params }: { params: Params }) {
   const { slug } = await params;
-  const statusPage = await getPublicStatusPage(slug);
+  const statusPage = await loadPublicStatusPage(slug);
 
   if (!statusPage) {
     notFound();

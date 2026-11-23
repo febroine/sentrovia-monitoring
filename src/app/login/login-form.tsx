@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -196,6 +197,11 @@ export function LoginForm({ notice = null }: { notice?: string | null }) {
           Trouble signing in? <span className="text-blue-50/72">Contact your workspace administrator.</span>
         </p>
       </form>
+      {/* Plain links so visitors, and crawlers sent here from "/", can reach the public pages. */}
+      <nav aria-label="About Sentrovia" className="mt-6 flex justify-center gap-5 text-[0.82rem] text-blue-100/50">
+        <Link href="/about" className="underline-offset-4 hover:text-blue-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-space-electric/70">About Sentrovia</Link>
+        <Link href="/help" className="underline-offset-4 hover:text-blue-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-space-electric/70">Help</Link>
+      </nav>
     </AuthShell>
   );
 }

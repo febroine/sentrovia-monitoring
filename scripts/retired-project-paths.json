@@ -27,6 +27,7 @@
   "src/app/api/monitors/overview",
   "src/app/icon.svg",
   "src/app/incidents",
+  "src/app/loading.tsx",
   "src/app/maintenance",
   "src/app/observability",
   "src/app/signup",

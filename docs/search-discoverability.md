@@ -64,3 +64,14 @@ After publishing the README, check Google for the exact repository URL and brand
 ## Revision of 2 October 2026
 
 The README now leads with the two outcomes readers search for, *fewer false alarms* and *evidence for every alert*. It adds sections that answer specific intents with features the product actually has: outage screenshots, per-check failure evidence, the notification queue, worker tuning, and self-monitoring through Prometheus. A short FAQ answers common evaluation questions in plain language: single-check alerts, screenshots, outbound data, internal services, host metrics, and languages. Claims were checked against the code; roadmap items stay labeled as such. As before, the wording follows search intent, not measured query volume.
+
+## Revision of 23 November 2026: crawlers received empty pages
+
+An installation's own pages were not reaching search engines at all. A request as Googlebot showed why:
+
+- `src/app/loading.tsx` sat at the app root, so every page streamed a `200` before its server code ran. The redirect on `/` (to sign-in or onboarding) arrived as a client-side redirect inside an empty `200` page, so crawlers saw a homepage with no text and no links. Unknown status page slugs answered `200` with `noindex` (soft 404s). The loading skeleton now lives only in the signed-in routes, and `/` answers with a real `307`, unknown slugs with a real `404`.
+- There was no `robots.txt`, `sitemap.xml`, or `llms.txt`. All three are now generated from `APP_URL` at request time. The sitemap lists `/about` and `/help` only; public status pages stay out because their slugs are shared by link.
+- Every page had the same title and description, with no canonical URL. `/about`, `/help`, and status pages now have their own title, description, canonical URL, and Open Graph data. Sign-in and setup pages are `noindex, follow`.
+- The sign-in page, where `/` sends visitors, had no links. It now links to About and Help, and the public header's "System status" link, which pointed at a route that never existed, was removed.
+
+`APP_URL` must be the installation's real public address, because canonical URLs, the sitemap, and `llms.txt` are built from it. After deploying, submit `https://<your-domain>/sitemap.xml` in Google Search Console and request indexing for `/about`.
